@@ -3127,8 +3127,9 @@ function renderClients(list) {
           <span class="badge ${STATUT_BADGE[c.statut]||'badge-muted'}" style="font-size:10px">${STATUT_LABEL[c.statut]||c.statut}</span>
           <div class="cli-val" style="margin-top:4px">${c.valeur?(c.valeur/1000).toFixed(0)+'k':''}</div>
           <div class="cli-actions" onclick="event.stopPropagation()">
-            <button class="btn btn-outline btn-sm" onclick="showQR(${c.id})" style="padding:4px 8px">🪪</button>
-            <button class="btn btn-outline btn-sm" onclick="editClient(${c.id})" style="padding:4px 8px">✏️</button>
+            <button class="btn btn-outline btn-sm" onclick="showQR(${c.id})" style="padding:4px 8px" title="Carte QR">🪪</button>
+            <button class="btn btn-outline btn-sm" onclick="editClient(${c.id})" style="padding:4px 8px" title="Modifier">✏️</button>
+            <button class="btn btn-outline btn-sm" onclick="deleteClient(${c.id})" style="padding:4px 8px;color:var(--danger)" title="Supprimer">🗑</button>
           </div>
         </div>
       </div>`).join('');
@@ -3158,8 +3159,9 @@ function openNewClient() {
 function editClient(id) {
   const c = CLIENTS.find(x=>x.id===id);
   if(!c) return;
+  const type = STATUT_LABEL[c.statut] || 'Contact';
   document.getElementById('client-edit-id').value = id;
-  document.getElementById('client-modal-title').textContent = '✏️ Modifier client';
+  document.getElementById('client-modal-title').textContent = `✏️ Modifier ${type}`;
   document.getElementById('client-modal-sub').textContent = c.nom;
   document.getElementById('c-nom').value = c.nom||'';
   document.getElementById('c-phone').value = c.phone||'';
@@ -3205,12 +3207,24 @@ function saveClient() {
 function deleteClient(id) {
   const c = CLIENTS.find(x=>x.id===id);
   if(!c) return;
-  if(!confirm(`Supprimer "${c.nom}" ?\n\nCette action est irréversible.`)) return;
+  const type = STATUT_LABEL[c.statut] || c.statut;
+  if(!confirm(`Supprimer ${type} "${c.nom}" ?\n\nCette action est irréversible.`)) return;
   const idx = CLIENTS.findIndex(x=>x.id===id);
   if(idx!==-1) CLIENTS.splice(idx,1);
   saveStore('clients');
   renderClients(getFilteredClients());
-  showToast(`🗑 ${c.nom} supprimé`);
+  showToast(`🗑 ${type} "${c.nom}" supprimé`);
+}
+
+function convertProspectToClient(id) {
+  const c = CLIENTS.find(x=>x.id===id);
+  if(!c) return;
+  if(!confirm(`Convertir le prospect "${c.nom}" en Client actif ?`)) return;
+  c.statut = 'client';
+  c.updated_at = new Date().toISOString();
+  saveStore('clients');
+  renderClients(getFilteredClients());
+  showToast(`✅ "${c.nom}" converti en Client actif !`);
 }
 
 function showClientDetail(id) {
@@ -3234,10 +3248,12 @@ function showClientDetail(id) {
       </div>`).join('')}
     </div>
     ${c.notes?`<div style="background:var(--warning-l);border-radius:var(--r-sm);padding:10px;margin-bottom:12px;font-size:12px"><strong>📝 Notes :</strong> ${c.notes}</div>`:''}
-    <div class="flex gap-2">
+    <div class="flex gap-2" style="flex-wrap:wrap">
       <button class="btn btn-primary btn-sm" onclick="editClient(${c.id});document.getElementById('modal-client-detail').classList.add('hidden')">✏️ Modifier</button>
+      ${c.statut==='prospect'?`<button class="btn btn-outline btn-sm" style="color:var(--success);border-color:var(--success)" onclick="convertProspectToClient(${c.id});document.getElementById('modal-client-detail').classList.add('hidden')">✅ Convertir en Client</button>`:''}
       <button class="btn btn-outline btn-sm" onclick="showQR(${c.id});document.getElementById('modal-client-detail').classList.add('hidden')">🪪 Carte QR</button>
       <button class="btn btn-outline btn-sm" onclick="whatsappClient(${c.id})">📱 WhatsApp</button>
+      <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="document.getElementById('modal-client-detail').classList.add('hidden');deleteClient(${c.id})">🗑 Supprimer</button>
     </div>`;
   document.getElementById('modal-client-detail').classList.remove('hidden');
 }
