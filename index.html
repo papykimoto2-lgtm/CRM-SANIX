@@ -589,32 +589,40 @@ select.form-input{cursor:pointer}
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section">Navigation</div>
+  <div class="sb-section">① Pilotage</div>
 
   <div class="sb-item active" onclick="navigate('dashboard',this)">
     <div class="sb-icon">📊</div><span>Tableau de bord</span>
   </div>
   <div class="sb-item" onclick="navigate('pipeline',this)">
     <div class="sb-icon">🎯</div><span>Pipeline</span>
-    <span class="sb-badge">14</span>
-  </div>
-  <div class="sb-item" onclick="navigate('clients',this)">
-    <div class="sb-icon">👤</div><span>Clients & Prospects</span>
-    <span class="sb-badge warn">3</span>
+    <span class="sb-badge" id="sb-pipeline-badge">0</span>
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section">Ventes</div>
+  <div class="sb-section">② Prospection</div>
+
+  <div class="sb-item" onclick="navigate('clients',this)">
+    <div class="sb-icon">👤</div><span>Clients & Prospects</span>
+    <span class="sb-badge warn" id="sb-prospects-badge">0</span>
+  </div>
+  <div class="sb-item" onclick="navigate('carte',this)">
+    <div class="sb-icon">🗺️</div><span>Carte & Géoloc</span>
+  </div>
+  <div class="sb-item" onclick="navigate('rapports',this)">
+    <div class="sb-icon">📋</div><span>Rapports terrain</span>
+    <span class="sb-badge warn" id="sb-rapports-badge">0</span>
+  </div>
+
+  <div class="sb-divider"></div>
+  <div class="sb-section">③ Présentation</div>
 
   <div class="sb-item" onclick="navigate('logiciels',this)">
-    <div class="sb-icon">💻</div><span>Logiciels</span>
+    <div class="sb-icon">💻</div><span>Catalogue logiciels</span>
   </div>
-  <div class="sb-item" onclick="navigate('equipe',this)">
-    <div class="sb-icon">🏆</div><span>Équipe commerciale</span>
-  </div>
-  <div class="sb-item" id="sb-commissions-item" onclick="navigate('commissions',this)">
-    <div class="sb-icon">💰</div><span>Commissions</span>
-    <span class="sb-badge warn" id="sb-comm-badge" style="display:none">0</span>
+  <div class="sb-item" onclick="navigate('presentations',this)">
+    <div class="sb-icon">🎬</div><span>Présentations & Démos</span>
+    <span class="sb-badge" id="sb-pres-badge">0</span>
   </div>
   <div class="sb-item" onclick="navigate('messagerie',this)">
     <div class="sb-icon">💬</div><span>Messagerie</span>
@@ -622,17 +630,33 @@ select.form-input{cursor:pointer}
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section">Terrain</div>
+  <div class="sb-section">④ Vente</div>
 
-  <div class="sb-item" onclick="navigate('carte',this)">
-    <div class="sb-icon">🗺️</div><span>Carte & Géoloc</span>
+  <div class="sb-item" onclick="navigate('commandes',this)">
+    <div class="sb-icon">🛒</div><span>Commandes clients</span>
+    <span class="sb-badge warn" id="sb-cmd-badge">0</span>
   </div>
+  <div class="sb-item" onclick="navigate('contrats',this)">
+    <div class="sb-icon">📝</div><span>Contrats & Conventions</span>
+    <span class="sb-badge" id="sb-contrat-badge">0</span>
+  </div>
+  <div class="sb-item" id="sb-commissions-item" onclick="navigate('commissions',this)">
+    <div class="sb-icon">💰</div><span>Commissions</span>
+    <span class="sb-badge warn" id="sb-comm-badge" style="display:none">0</span>
+  </div>
+
+  <div class="sb-divider"></div>
+  <div class="sb-section">⑤ Déploiement</div>
+
   <div class="sb-item" onclick="navigate('planning',this)">
     <div class="sb-icon">📅</div><span>Planning déploiement</span>
   </div>
-  <div class="sb-item" onclick="navigate('rapports',this)">
-    <div class="sb-icon">📋</div><span>Rapports terrain</span>
-    <span class="sb-badge warn">2</span>
+
+  <div class="sb-divider"></div>
+  <div class="sb-section">⑥ Équipe</div>
+
+  <div class="sb-item" onclick="navigate('equipe',this)">
+    <div class="sb-icon">🏆</div><span>Équipe commerciale</span>
   </div>
 
   <div class="sb-divider"></div>
@@ -1396,9 +1420,460 @@ select.form-input{cursor:pointer}
       </div>
     </div>
 
+    <!-- ══ VIEW: PRÉSENTATIONS ══ -->
+    <div id="view-presentations" class="hidden fade-in">
+      <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:8px;margin-bottom:6px">
+        <div>
+          <h1 class="page-title">Présentations & Démos</h1>
+          <p class="page-sub">Planifier, suivre et historiser chaque démonstration client</p>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openPresModal()">+ Nouvelle présentation</button>
+      </div>
+
+      <!-- Barre de progression marche en avant -->
+      <div style="display:flex;gap:0;border-radius:var(--r-sm);overflow:hidden;margin-bottom:20px;height:28px">
+        <div style="flex:1;background:#94A3B8;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">① PROSPECT</div>
+        <div style="flex:1;background:#3B82F6;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">② CONTACT</div>
+        <div style="flex:1;background:#8B5CF6;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">③ DÉMO ◀ ICI</div>
+        <div style="flex:1;background:#94A3B840;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#64748B">④ COMMANDE</div>
+        <div style="flex:1;background:#94A3B840;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#64748B">⑤ CONTRAT</div>
+        <div style="flex:1;background:#94A3B840;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#64748B">⑥ DEPLOY</div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px" id="pres-stats"></div>
+
+      <!-- Filtres -->
+      <div class="flex gap-2" style="margin-bottom:16px;flex-wrap:wrap;align-items:center">
+        <input type="text" class="form-input" id="pres-search" placeholder="🔍 Rechercher client / logiciel..." style="flex:1;min-width:180px" oninput="renderPresentations()">
+        <select class="form-input" id="pres-filter-statut" style="width:auto" onchange="renderPresentations()">
+          <option value="">Tous statuts</option>
+          <option value="planifiee">Planifiée</option>
+          <option value="realisee">Réalisée</option>
+          <option value="annulee">Annulée</option>
+          <option value="relance">À relancer</option>
+        </select>
+        <select class="form-input" id="pres-filter-log" style="width:auto" onchange="renderPresentations()">
+          <option value="">Tous logiciels</option>
+        </select>
+      </div>
+
+      <!-- Table -->
+      <div class="card">
+        <div style="overflow-x:auto">
+          <table class="client-table" id="pres-table">
+            <thead>
+              <tr>
+                <th>Date</th><th>Client / Prospect</th><th>Logiciel présenté</th>
+                <th>Commercial</th><th>Type</th><th>Statut</th><th>Résultat</th><th>Suite</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="pres-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ VIEW: COMMANDES ══ -->
+    <div id="view-commandes" class="hidden fade-in">
+      <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:8px;margin-bottom:6px">
+        <div>
+          <h1 class="page-title">Commandes Clients</h1>
+          <p class="page-sub">Bons de commande — de la validation à la facturation</p>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openCommandeModal()">+ Nouvelle commande</button>
+      </div>
+
+      <!-- Barre marche en avant -->
+      <div style="display:flex;gap:0;border-radius:var(--r-sm);overflow:hidden;margin-bottom:20px;height:28px">
+        <div style="flex:1;background:#94A3B840;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#64748B">① PROSPECT</div>
+        <div style="flex:1;background:#94A3B840;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#64748B">② CONTACT</div>
+        <div style="flex:1;background:#94A3B840;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#64748B">③ DÉMO</div>
+        <div style="flex:1;background:#F59E0B;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">④ COMMANDE ◀ ICI</div>
+        <div style="flex:1;background:#94A3B840;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#64748B">⑤ CONTRAT</div>
+        <div style="flex:1;background:#94A3B840;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#64748B">⑥ DEPLOY</div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px" id="cmd-stats"></div>
+
+      <!-- Filtres -->
+      <div class="flex gap-2" style="margin-bottom:16px;flex-wrap:wrap">
+        <input type="text" class="form-input" id="cmd-search" placeholder="🔍 N° commande, client..." style="flex:1;min-width:180px" oninput="renderCommandes()">
+        <select class="form-input" id="cmd-filter-statut" style="width:auto" onchange="renderCommandes()">
+          <option value="">Tous statuts</option>
+          <option value="brouillon">Brouillon</option>
+          <option value="confirmee">Confirmée</option>
+          <option value="en_cours">En cours</option>
+          <option value="livree">Livrée</option>
+          <option value="annulee">Annulée</option>
+        </select>
+      </div>
+
+      <!-- Table -->
+      <div class="card">
+        <div style="overflow-x:auto">
+          <table class="client-table">
+            <thead>
+              <tr>
+                <th>N° Commande</th><th>Date</th><th>Client</th><th>Logiciel</th>
+                <th>Montant HT</th><th>TVA</th><th>TTC</th><th>Statut</th><th>Commercial</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="cmd-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ VIEW: CONTRATS ══ -->
+    <div id="view-contrats" class="hidden fade-in">
+      <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:8px;margin-bottom:6px">
+        <div>
+          <h1 class="page-title">Contrats & Conventions de Vente</h1>
+          <p class="page-sub">Actes commerciaux — de la signature au déploiement</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-outline btn-sm" onclick="openContratModal('convention')">📋 Nouvelle convention</button>
+          <button class="btn btn-primary btn-sm" onclick="openContratModal('contrat')">📝 Nouveau contrat</button>
+        </div>
+      </div>
+
+      <!-- Barre marche en avant -->
+      <div style="display:flex;gap:0;border-radius:var(--r-sm);overflow:hidden;margin-bottom:20px;height:28px">
+        <div style="flex:1;background:#94A3B840;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#64748B">① PROSPECT</div>
+        <div style="flex:1;background:#94A3B840;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#64748B">② CONTACT</div>
+        <div style="flex:1;background:#94A3B840;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#64748B">③ DÉMO</div>
+        <div style="flex:1;background:#94A3B840;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#64748B">④ COMMANDE</div>
+        <div style="flex:1;background:#059669;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">⑤ CONTRAT ◀ ICI</div>
+        <div style="flex:1;background:#94A3B840;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#64748B">⑥ DEPLOY</div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px" id="contrat-stats"></div>
+
+      <!-- Onglets type -->
+      <div class="tabs" style="margin-bottom:16px">
+        <div class="tab active" onclick="contratTabSwitch('all',this)">Tous (<span id="ct-cnt-all">0</span>)</div>
+        <div class="tab" onclick="contratTabSwitch('contrat',this)">📝 Contrats (<span id="ct-cnt-contrat">0</span>)</div>
+        <div class="tab" onclick="contratTabSwitch('convention',this)">📋 Conventions (<span id="ct-cnt-convention">0</span>)</div>
+      </div>
+
+      <!-- Filtres -->
+      <div class="flex gap-2" style="margin-bottom:16px;flex-wrap:wrap">
+        <input type="text" class="form-input" id="contrat-search" placeholder="🔍 Référence, client..." style="flex:1;min-width:180px" oninput="renderContrats()">
+        <select class="form-input" id="contrat-filter-statut" style="width:auto" onchange="renderContrats()">
+          <option value="">Tous statuts</option>
+          <option value="brouillon">Brouillon</option>
+          <option value="envoye">Envoyé client</option>
+          <option value="signe">Signé ✅</option>
+          <option value="en_cours">En cours d'exécution</option>
+          <option value="termine">Terminé</option>
+          <option value="resilie">Résilié</option>
+        </select>
+      </div>
+
+      <!-- Table -->
+      <div class="card">
+        <div style="overflow-x:auto">
+          <table class="client-table">
+            <thead>
+              <tr>
+                <th>Réf.</th><th>Type</th><th>Date signature</th><th>Client</th><th>Logiciel</th>
+                <th>Montant TTC</th><th>Durée</th><th>Statut</th><th>Lié à commande</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="contrat-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /content -->
 </div><!-- /main -->
 </div><!-- /app -->
+
+<!-- ══ MODAL PRÉSENTATION ══ -->
+<div id="modal-pres" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:520px;max-height:90vh;overflow-y:auto">
+    <div class="modal-close" onclick="closePresModal()">✕</div>
+    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:4px" id="pres-modal-title">🎬 Nouvelle présentation</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Planifier ou enregistrer une démo client</div>
+    <input type="hidden" id="pres-edit-id">
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Client / Prospect *</label>
+        <input type="text" class="form-input" id="pres-client" placeholder="Nom ou entreprise" list="pres-client-list">
+        <datalist id="pres-client-list"></datalist>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date *</label>
+        <input type="date" class="form-input" id="pres-date">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Logiciel présenté *</label>
+        <select class="form-input" id="pres-logiciel"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Type</label>
+        <select class="form-input" id="pres-type">
+          <option value="demo_physique">🤝 Démo physique</option>
+          <option value="demo_video">💻 Démo vidéo/Teams</option>
+          <option value="demo_site">🌐 Démo site client</option>
+          <option value="presentation_pdf">📄 Présentation PDF</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Commercial</label>
+        <select class="form-input" id="pres-commercial"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Durée (min)</label>
+        <input type="number" class="form-input" id="pres-duree" value="30" min="5" step="5">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Statut</label>
+      <select class="form-input" id="pres-statut">
+        <option value="planifiee">📅 Planifiée</option>
+        <option value="realisee">✅ Réalisée</option>
+        <option value="annulee">❌ Annulée</option>
+        <option value="relance">🔔 À relancer</option>
+      </select>
+    </div>
+    <div class="form-row" id="pres-resultat-group">
+      <div class="form-group">
+        <label class="form-label">Résultat</label>
+        <select class="form-input" id="pres-resultat">
+          <option value="">— À définir —</option>
+          <option value="interesse">✨ Intéressé</option>
+          <option value="tres_interesse">🔥 Très intéressé</option>
+          <option value="commande">🛒 → Commande immédiate</option>
+          <option value="relance_j7">📅 Relance J+7</option>
+          <option value="relance_j30">📅 Relance J+30</option>
+          <option value="negatif">👎 Négatif</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Suite → Créer</label>
+        <select class="form-input" id="pres-suite">
+          <option value="">Aucune action auto</option>
+          <option value="commande">🛒 Commande client</option>
+          <option value="deal">🎯 Deal pipeline</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes / Compte-rendu</label>
+      <textarea class="form-input" id="pres-notes" rows="3" placeholder="Besoins exprimés, objections, décisions..."></textarea>
+    </div>
+    <div class="flex gap-2" style="margin-top:6px">
+      <button class="btn btn-primary" style="flex:1" onclick="savePres()">💾 Enregistrer</button>
+      <button class="btn btn-outline" onclick="closePresModal()">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL COMMANDE ══ -->
+<div id="modal-commande" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:560px;max-height:90vh;overflow-y:auto">
+    <div class="modal-close" onclick="closeCommandeModal()">✕</div>
+    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:4px" id="cmd-modal-title">🛒 Nouvelle commande client</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px" id="cmd-modal-ref" style="font-weight:700;color:var(--primary)"></div>
+    <input type="hidden" id="cmd-edit-id">
+    <div style="background:var(--primary-l);border:1px solid rgba(37,99,235,.15);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:16px;font-size:11px;color:var(--primary)">
+      📌 Le bon de commande est l'engagement formel du client. Il précède le contrat et déclenche la facturation.
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Client *</label>
+        <input type="text" class="form-input" id="cmd-client" placeholder="Raison sociale" list="cmd-client-list">
+        <datalist id="cmd-client-list"></datalist>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date commande *</label>
+        <input type="date" class="form-input" id="cmd-date">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Logiciel commandé *</label>
+        <select class="form-input" id="cmd-logiciel" onchange="cmdAutoFillPrix()"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Type licence</label>
+        <select class="form-input" id="cmd-type-licence">
+          <option value="Annuelle">📅 Annuelle</option>
+          <option value="Mensuelle">🔄 Mensuelle</option>
+          <option value="Perpetuelle">♾️ Perpétuelle</option>
+          <option value="SaaS">☁️ SaaS</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Prix HT (FCFA) *</label>
+        <input type="number" class="form-input" id="cmd-prix-ht" min="0" oninput="cmdCalcTTC()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Remise (%)</label>
+        <input type="number" class="form-input" id="cmd-remise" value="0" min="0" max="50" oninput="cmdCalcTTC()">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">TVA 18%</label>
+        <input type="text" class="form-input" id="cmd-tva" readonly style="background:var(--surface2)">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Total TTC (FCFA)</label>
+        <input type="text" class="form-input" id="cmd-ttc" readonly style="background:var(--primary-l);font-weight:700;color:var(--primary)">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Acompte (FCFA)</label>
+        <input type="number" class="form-input" id="cmd-acompte" value="0" min="0" oninput="cmdCalcTTC()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Solde restant</label>
+        <input type="text" class="form-input" id="cmd-solde" readonly style="background:var(--warning-l);color:var(--warning);font-weight:700">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Commercial</label>
+        <select class="form-input" id="cmd-commercial"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Statut</label>
+        <select class="form-input" id="cmd-statut">
+          <option value="brouillon">📝 Brouillon</option>
+          <option value="confirmee">✅ Confirmée</option>
+          <option value="en_cours">⚙️ En cours</option>
+          <option value="livree">📦 Livrée</option>
+          <option value="annulee">❌ Annulée</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Lié à présentation</label>
+      <select class="form-input" id="cmd-pres-link">
+        <option value="">— Aucune —</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes</label>
+      <textarea class="form-input" id="cmd-notes" rows="2" placeholder="Conditions particulières, délais, exigences..."></textarea>
+    </div>
+    <div class="flex gap-2" style="margin-top:6px">
+      <button class="btn btn-primary" style="flex:1" onclick="saveCommande()">💾 Enregistrer</button>
+      <button class="btn btn-outline" onclick="closeCommandeModal()">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL CONTRAT ══ -->
+<div id="modal-contrat" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:560px;max-height:90vh;overflow-y:auto">
+    <div class="modal-close" onclick="closeContratModal()">✕</div>
+    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:4px" id="contrat-modal-title">📝 Nouveau contrat</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Acte commercial — licence, maintenance, déploiement</div>
+    <input type="hidden" id="contrat-edit-id">
+    <input type="hidden" id="contrat-type-hidden">
+    <div style="background:var(--success-l);border:1px solid rgba(5,150,105,.15);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:16px;font-size:11px;color:var(--success)">
+      ✅ Le contrat/convention formalise légalement la vente. Il suit la commande et précède le déploiement.
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Type *</label>
+        <select class="form-input" id="contrat-type">
+          <option value="contrat">📝 Contrat de licence</option>
+          <option value="convention">📋 Convention de vente</option>
+          <option value="contrat_maintenance">🔧 Contrat de maintenance</option>
+          <option value="contrat_formation">🎓 Contrat de formation</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Référence *</label>
+        <input type="text" class="form-input" id="contrat-ref" placeholder="CTR-2025-001">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Client *</label>
+        <input type="text" class="form-input" id="contrat-client" placeholder="Raison sociale" list="contrat-client-list">
+        <datalist id="contrat-client-list"></datalist>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date signature *</label>
+        <input type="date" class="form-input" id="contrat-date">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Logiciel *</label>
+        <select class="form-input" id="contrat-logiciel"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Durée</label>
+        <select class="form-input" id="contrat-duree">
+          <option value="1an">1 an</option>
+          <option value="2ans">2 ans</option>
+          <option value="3ans">3 ans</option>
+          <option value="indeterminee">Indéterminée</option>
+          <option value="ponctuel">Ponctuel</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Montant TTC (FCFA) *</label>
+        <input type="number" class="form-input" id="contrat-montant" min="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Modalité paiement</label>
+        <select class="form-input" id="contrat-paiement">
+          <option value="comptant">Comptant</option>
+          <option value="acompte_solde">Acompte + Solde</option>
+          <option value="echelonne">Échelonné</option>
+          <option value="mensuel">Mensuel</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Statut</label>
+        <select class="form-input" id="contrat-statut">
+          <option value="brouillon">📝 Brouillon</option>
+          <option value="envoye">📤 Envoyé client</option>
+          <option value="signe">✅ Signé</option>
+          <option value="en_cours">⚙️ En cours d'exécution</option>
+          <option value="termine">🏁 Terminé</option>
+          <option value="resilie">❌ Résilié</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Lié à commande</label>
+        <select class="form-input" id="contrat-cmd-link">
+          <option value="">— Aucune —</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Objet / Clauses particulières</label>
+      <textarea class="form-input" id="contrat-notes" rows="3" placeholder="Périmètre de la prestation, conditions de renouvellement, pénalités..."></textarea>
+    </div>
+    <div class="flex gap-2" style="margin-top:6px">
+      <button class="btn btn-primary" style="flex:1" onclick="saveContrat()">💾 Enregistrer</button>
+      <button class="btn btn-outline" onclick="closeContratModal()">Annuler</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══ MODAL MÉDIATHÈQUE ══ -->
 <div id="modal-media" class="modal-overlay hidden">
@@ -2466,7 +2941,8 @@ function navigate(view, el) {
     dashboard:'Tableau de bord',pipeline:'Pipeline Commercial',clients:'Clients & Prospects',
     logiciels:'Catalogue Logiciels',equipe:'Équipe Commerciale',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
     planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
-    users:'Utilisateurs & Accès',parametrage:'Paramétrage',parametres:'Paramètres & Sync'
+    users:'Utilisateurs & Accès',parametrage:'Paramétrage',parametres:'Paramètres & Sync',
+    presentations:'Présentations & Démos',commandes:'Commandes Clients',contrats:'Contrats & Conventions'
   }[view] || view;
   if(view === 'carte') setTimeout(initMap, 100);
   if(view === 'pipeline') setTimeout(populatePipelineFilters, 60);
@@ -2474,6 +2950,7 @@ function navigate(view, el) {
   if(view === 'parametrage') setTimeout(initParametrage, 50);
   if(view === 'parametres') setTimeout(initParametres, 50);
   if(view === 'users') setTimeout(initUsersView, 50);
+  document.dispatchEvent(new CustomEvent('sanix:navigate', {detail: view}));
   closeSidebar();
 }
 function toggleSidebar(){
@@ -5083,9 +5560,606 @@ function showToast(msg, dur=3000) {
   setTimeout(()=>{ toast.style.opacity='0'; toast.style.transition='opacity .3s'; setTimeout(()=>toast.remove(),300); }, dur);
 }
 
+
 // ═══════════════════════════════════════
-//  MÉDIATHÈQUE — IndexedDB Engine
+//  PRÉSENTATIONS
 // ═══════════════════════════════════════
+let PRESENTATIONS = [];
+let _presTabFilter = 'all';
+
+const PRES_STATUT = {
+  planifiee:  {lbl:'Planifiée',  cls:'badge-primary'},
+  realisee:   {lbl:'Réalisée',   cls:'badge-success'},
+  annulee:    {lbl:'Annulée',    cls:'badge-muted'},
+  relance:    {lbl:'À relancer', cls:'badge-warning'},
+};
+const PRES_TYPE_LBL = {
+  demo_physique:'🤝 Physique', demo_video:'💻 Vidéo/Teams',
+  demo_site:'🌐 Site client', presentation_pdf:'📄 PDF',
+};
+const PRES_RESULTAT_LBL = {
+  interesse:'✨ Intéressé', tres_interesse:'🔥 Très intéressé',
+  commande:'🛒 Commande', relance_j7:'📅 J+7', relance_j30:'📅 J+30', negatif:'👎 Négatif',
+};
+
+function initPresentations() {
+  renderPresStats();
+  renderPresentations();
+  populatePresFilters();
+}
+
+function renderPresStats() {
+  const el = document.getElementById('pres-stats');
+  if(!el) return;
+  const total = PRESENTATIONS.length;
+  const planifiees = PRESENTATIONS.filter(p=>p.statut==='planifiee').length;
+  const realisees  = PRESENTATIONS.filter(p=>p.statut==='realisee').length;
+  const relances   = PRESENTATIONS.filter(p=>p.statut==='relance').length;
+  const converties = PRESENTATIONS.filter(p=>p.resultat==='commande').length;
+  el.innerHTML = [
+    {ico:'🎬',v:total,    lbl:'Total présentations', c:'var(--primary)',   bg:'var(--primary-l)'},
+    {ico:'📅',v:planifiees,lbl:'Planifiées',          c:'var(--warning)',   bg:'var(--warning-l)'},
+    {ico:'✅',v:realisees, lbl:'Réalisées',           c:'var(--success)',   bg:'var(--success-l)'},
+    {ico:'🛒',v:converties,lbl:'→ Commandes',         c:'var(--purple)',    bg:'var(--purple-l)'},
+  ].map(s=>`
+    <div class="stat-card" style="--accent:${s.c}">
+      <div class="stat-icon" style="background:${s.bg}">${s.ico}</div>
+      <div class="stat-val" style="color:${s.c}">${s.v}</div>
+      <div class="stat-label">${s.lbl}</div>
+    </div>`).join('');
+  // Badge sidebar
+  const b = document.getElementById('sb-pres-badge');
+  if(b) b.textContent = planifiees;
+}
+
+function populatePresFilters() {
+  const logSel = document.getElementById('pres-filter-log');
+  if(logSel) {
+    logSel.innerHTML = '<option value="">Tous logiciels</option>' +
+      LOGICIELS.map(l=>`<option value="${l.nom}">${l.icon||'💻'} ${l.nom}</option>`).join('');
+  }
+}
+
+function renderPresentations() {
+  const tbody = document.getElementById('pres-tbody');
+  if(!tbody) return;
+  const q    = (document.getElementById('pres-search')?.value||'').toLowerCase();
+  const st   = document.getElementById('pres-filter-statut')?.value||'';
+  const log  = document.getElementById('pres-filter-log')?.value||'';
+  let list   = [...PRESENTATIONS].sort((a,b)=>b.date.localeCompare(a.date));
+  if(q)  list = list.filter(p=>(p.client+p.logiciel).toLowerCase().includes(q));
+  if(st) list = list.filter(p=>p.statut===st);
+  if(log)list = list.filter(p=>p.logiciel===log);
+  if(!list.length) { tbody.innerHTML=`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Aucune présentation enregistrée</td></tr>`; return; }
+  tbody.innerHTML = list.map(p=>{
+    const s = PRES_STATUT[p.statut]||{lbl:p.statut,cls:'badge-muted'};
+    return `<tr>
+      <td style="font-weight:600">${p.date}</td>
+      <td>${p.client}</td>
+      <td>${p.logiciel}</td>
+      <td>${p.commercial||'—'}</td>
+      <td style="font-size:11px">${PRES_TYPE_LBL[p.type]||p.type}</td>
+      <td><span class="badge ${s.cls}">${s.lbl}</span></td>
+      <td style="font-size:11px">${p.resultat?PRES_RESULTAT_LBL[p.resultat]||p.resultat:'—'}</td>
+      <td style="font-size:11px">${p.suite==='commande'?'<button onclick="openCommandeModal(null,\''+p.id+'\')" class="btn btn-outline btn-sm" style="font-size:10px">🛒 Commande</button>':p.suite==='deal'?'<span style="color:var(--primary)">🎯 Deal</span>':'—'}</td>
+      <td>
+        <div class="flex gap-1">
+          <button onclick="editPres('${p.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px">✏️</button>
+          <button onclick="deletePres('${p.id}')" class="btn btn-sm" style="padding:3px 8px;font-size:11px;background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2)">🗑</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openPresModal(id=null) {
+  document.getElementById('pres-edit-id').value = id||'';
+  document.getElementById('pres-modal-title').textContent = id ? '✏️ Modifier présentation' : '🎬 Nouvelle présentation';
+  document.getElementById('pres-date').value = new Date().toISOString().split('T')[0];
+  // Populate selects
+  const logSel = document.getElementById('pres-logiciel');
+  logSel.innerHTML = '<option value="">— Sélectionner —</option>' + LOGICIELS.map(l=>`<option value="${l.nom}">${l.icon||'💻'} ${l.nom}</option>`).join('');
+  const commSel = document.getElementById('pres-commercial');
+  commSel.innerHTML = '<option value="">— Sélectionner —</option>' + EQUIPE.filter(m=>m.type==='salarie').map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('');
+  // Client datalist
+  document.getElementById('pres-client-list').innerHTML = CLIENTS.map(c=>`<option value="${c.nom}">`).join('');
+  if(id) {
+    const p = PRESENTATIONS.find(x=>x.id===id);
+    if(!p) return;
+    const sv = (elId,v)=>{ const e=document.getElementById(elId); if(e) e.value=v||''; };
+    sv('pres-client',p.client); sv('pres-date',p.date); sv('pres-logiciel',p.logiciel);
+    sv('pres-type',p.type); sv('pres-commercial',p.commercial); sv('pres-duree',p.duree||30);
+    sv('pres-statut',p.statut); sv('pres-resultat',p.resultat||''); sv('pres-suite',p.suite||'');
+    sv('pres-notes',p.notes||'');
+  } else {
+    ['pres-client','pres-notes'].forEach(i=>{ const e=document.getElementById(i); if(e)e.value=''; });
+    document.getElementById('pres-statut').value='planifiee';
+    document.getElementById('pres-resultat').value='';
+    document.getElementById('pres-suite').value='';
+    document.getElementById('pres-duree').value='30';
+  }
+  document.getElementById('modal-pres').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('pres-client').focus(),100);
+}
+
+function closePresModal() { document.getElementById('modal-pres').classList.add('hidden'); }
+
+function savePres() {
+  const gv = id=>(document.getElementById(id)||{}).value||'';
+  const client = gv('pres-client').trim();
+  const date   = gv('pres-date');
+  const logiciel = gv('pres-logiciel');
+  if(!client||!date||!logiciel) { showToast('❌ Client, date et logiciel obligatoires'); return; }
+  const id = gv('pres-edit-id');
+  const data = {
+    client, date, logiciel, type:gv('pres-type'), commercial:gv('pres-commercial'),
+    duree:parseInt(gv('pres-duree'))||30, statut:gv('pres-statut'),
+    resultat:gv('pres-resultat'), suite:gv('pres-suite'), notes:gv('pres-notes').trim()
+  };
+  if(id) {
+    const p = PRESENTATIONS.find(x=>x.id===id);
+    if(p) Object.assign(p,data);
+    showToast('✅ Présentation mise à jour');
+  } else {
+    PRESENTATIONS.push({id:'pres_'+Date.now(),...data});
+    showToast('✅ Présentation enregistrée');
+  }
+  lsSave('presentations', PRESENTATIONS);
+  closePresModal();
+  initPresentations();
+  updateSidebarBadges();
+}
+
+function editPres(id) { openPresModal(id); }
+function deletePres(id) {
+  const p = PRESENTATIONS.find(x=>x.id===id);
+  if(!p||!confirm(`Supprimer la présentation "${p.client}" ?`)) return;
+  PRESENTATIONS = PRESENTATIONS.filter(x=>x.id!==id);
+  lsSave('presentations', PRESENTATIONS);
+  initPresentations();
+  showToast('🗑 Présentation supprimée');
+}
+
+// ═══════════════════════════════════════
+//  COMMANDES CLIENTS
+// ═══════════════════════════════════════
+let COMMANDES = [];
+
+const CMD_STATUT = {
+  brouillon: {lbl:'Brouillon',  cls:'badge-muted'},
+  confirmee: {lbl:'Confirmée',  cls:'badge-primary'},
+  en_cours:  {lbl:'En cours',   cls:'badge-warning'},
+  livree:    {lbl:'Livrée',     cls:'badge-success'},
+  annulee:   {lbl:'Annulée',    cls:'badge-muted'},
+};
+
+function cmdNumero() {
+  const n = COMMANDES.length + 1;
+  const y = new Date().getFullYear();
+  return `CMD-${y}-${String(n).padStart(3,'0')}`;
+}
+
+function cmdCalcTTC() {
+  const ht     = parseFloat(document.getElementById('cmd-prix-ht')?.value)||0;
+  const remise = parseFloat(document.getElementById('cmd-remise')?.value)||0;
+  const acompte= parseFloat(document.getElementById('cmd-acompte')?.value)||0;
+  const htNet  = ht * (1 - remise/100);
+  const tva    = Math.round(htNet * 0.18);
+  const ttc    = Math.round(htNet + tva);
+  const solde  = Math.max(0, ttc - acompte);
+  const fv = n => n.toLocaleString('fr-FR');
+  const sv = (id,v)=>{ const e=document.getElementById(id); if(e) e.value=v; };
+  sv('cmd-tva', fv(tva)+' FCFA');
+  sv('cmd-ttc', fv(ttc)+' FCFA');
+  sv('cmd-solde', fv(solde)+' FCFA');
+}
+
+function cmdAutoFillPrix() {
+  const nom = document.getElementById('cmd-logiciel')?.value;
+  const l = LOGICIELS.find(x=>x.nom===nom);
+  if(l) {
+    document.getElementById('cmd-prix-ht').value = l.prixNum||'';
+    cmdCalcTTC();
+  }
+}
+
+function initCommandes() {
+  renderCmdStats();
+  renderCommandes();
+}
+
+function renderCmdStats() {
+  const el = document.getElementById('cmd-stats');
+  if(!el) return;
+  const total    = COMMANDES.length;
+  const enAttente= COMMANDES.filter(c=>c.statut==='confirmee'||c.statut==='brouillon').length;
+  const livrees  = COMMANDES.filter(c=>c.statut==='livree').length;
+  const ca       = COMMANDES.filter(c=>c.statut!=='annulee').reduce((s,c)=>s+(c.ttc||0),0);
+  el.innerHTML = [
+    {ico:'🛒',v:total,     lbl:'Total commandes',    c:'var(--primary)', bg:'var(--primary-l)'},
+    {ico:'⏳',v:enAttente, lbl:'En attente/Confirmées',c:'var(--warning)',bg:'var(--warning-l)'},
+    {ico:'📦',v:livrees,   lbl:'Livrées',            c:'var(--success)', bg:'var(--success-l)'},
+    {ico:'💰',v:(ca/1000).toFixed(0)+'k',lbl:'CA commandes FCFA',c:'var(--purple)',bg:'var(--purple-l)'},
+  ].map(s=>`
+    <div class="stat-card" style="--accent:${s.c}">
+      <div class="stat-icon" style="background:${s.bg}">${s.ico}</div>
+      <div class="stat-val" style="color:${s.c}">${s.v}</div>
+      <div class="stat-label">${s.lbl}</div>
+    </div>`).join('');
+  const b = document.getElementById('sb-cmd-badge');
+  if(b) { b.textContent=enAttente; b.style.display=enAttente>0?'':'none'; }
+}
+
+function renderCommandes() {
+  const tbody = document.getElementById('cmd-tbody');
+  if(!tbody) return;
+  const q  = (document.getElementById('cmd-search')?.value||'').toLowerCase();
+  const st = document.getElementById('cmd-filter-statut')?.value||'';
+  let list = [...COMMANDES].sort((a,b)=>b.date.localeCompare(a.date));
+  if(q)  list = list.filter(c=>(c.ref+c.client+c.logiciel).toLowerCase().includes(q));
+  if(st) list = list.filter(c=>c.statut===st);
+  if(!list.length) { tbody.innerHTML=`<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px">Aucune commande</td></tr>`; return; }
+  const fv = n => (n||0).toLocaleString('fr-FR');
+  tbody.innerHTML = list.map(c=>{
+    const s = CMD_STATUT[c.statut]||{lbl:c.statut,cls:'badge-muted'};
+    return `<tr>
+      <td style="font-weight:700;color:var(--primary)">${c.ref}</td>
+      <td>${c.date}</td>
+      <td style="font-weight:600">${c.client}</td>
+      <td>${c.logiciel}</td>
+      <td>${fv(c.htNet)} FCFA</td>
+      <td>${fv(c.tva)} FCFA</td>
+      <td style="font-weight:700">${fv(c.ttc)} FCFA</td>
+      <td><span class="badge ${s.cls}">${s.lbl}</span></td>
+      <td>${c.commercial||'—'}</td>
+      <td>
+        <div class="flex gap-1">
+          <button onclick="editCommande('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px">✏️</button>
+          <button onclick="creerContratFromCmd('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;color:var(--success)" title="Créer contrat">📝</button>
+          <button onclick="deleteCommande('${c.id}')" class="btn btn-sm" style="padding:3px 8px;font-size:11px;background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2)">🗑</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openCommandeModal(id=null, presId=null) {
+  document.getElementById('cmd-edit-id').value = id||'';
+  document.getElementById('cmd-modal-title').textContent = id ? '✏️ Modifier commande' : '🛒 Nouvelle commande';
+  const ref = id ? (COMMANDES.find(x=>x.id===id)?.ref||'') : cmdNumero();
+  document.getElementById('cmd-modal-ref').textContent = '📋 Réf : '+ref;
+  document.getElementById('cmd-date').value = new Date().toISOString().split('T')[0];
+  // Populate
+  const logSel = document.getElementById('cmd-logiciel');
+  logSel.innerHTML = '<option value="">— Sélectionner —</option>'+LOGICIELS.map(l=>`<option value="${l.nom}">${l.icon||'💻'} ${l.nom}</option>`).join('');
+  const commSel = document.getElementById('cmd-commercial');
+  commSel.innerHTML = '<option value="">— Sélectionner —</option>'+EQUIPE.filter(m=>m.type==='salarie').map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('');
+  document.getElementById('cmd-client-list').innerHTML = CLIENTS.map(c=>`<option value="${c.nom}">`).join('');
+  // Pres link
+  const presSel = document.getElementById('cmd-pres-link');
+  presSel.innerHTML = '<option value="">— Aucune —</option>'+PRESENTATIONS.filter(p=>p.statut==='realisee').map(p=>`<option value="${p.id}">${p.date} — ${p.client} — ${p.logiciel}</option>`).join('');
+  if(id) {
+    const c = COMMANDES.find(x=>x.id===id);
+    if(!c) return;
+    const sv=(elId,v)=>{ const e=document.getElementById(elId); if(e) e.value=v||''; };
+    sv('cmd-client',c.client); sv('cmd-date',c.date); sv('cmd-logiciel',c.logiciel);
+    sv('cmd-type-licence',c.typeLicence); sv('cmd-prix-ht',c.htBrut||'');
+    sv('cmd-remise',c.remise||0); sv('cmd-acompte',c.acompte||0);
+    sv('cmd-commercial',c.commercial); sv('cmd-statut',c.statut);
+    sv('cmd-pres-link',c.presId||''); sv('cmd-notes',c.notes||'');
+    cmdCalcTTC();
+  } else {
+    ['cmd-client','cmd-notes'].forEach(i=>{ const e=document.getElementById(i); if(e)e.value=''; });
+    document.getElementById('cmd-prix-ht').value='';
+    document.getElementById('cmd-remise').value='0';
+    document.getElementById('cmd-acompte').value='0';
+    document.getElementById('cmd-tva').value='';
+    document.getElementById('cmd-ttc').value='';
+    document.getElementById('cmd-solde').value='';
+    document.getElementById('cmd-statut').value='confirmee';
+    if(presId) {
+      const p = PRESENTATIONS.find(x=>x.id===presId);
+      if(p) {
+        document.getElementById('cmd-client').value = p.client;
+        document.getElementById('cmd-logiciel').value = p.logiciel;
+        document.getElementById('cmd-pres-link').value = presId;
+        cmdAutoFillPrix();
+      }
+    }
+  }
+  document.getElementById('modal-commande').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('cmd-client').focus(),100);
+}
+
+function closeCommandeModal() { document.getElementById('modal-commande').classList.add('hidden'); }
+
+function saveCommande() {
+  const gv = id=>(document.getElementById(id)||{}).value||'';
+  const client  = gv('cmd-client').trim();
+  const date    = gv('cmd-date');
+  const logiciel= gv('cmd-logiciel');
+  if(!client||!date||!logiciel) { showToast('❌ Client, date et logiciel obligatoires'); return; }
+  const htBrut  = parseFloat(gv('cmd-prix-ht'))||0;
+  const remise  = parseFloat(gv('cmd-remise'))||0;
+  const htNet   = Math.round(htBrut*(1-remise/100));
+  const tva     = Math.round(htNet*0.18);
+  const ttc     = htNet+tva;
+  const acompte = parseFloat(gv('cmd-acompte'))||0;
+  const solde   = Math.max(0,ttc-acompte);
+  const id = gv('cmd-edit-id');
+  const data = {
+    client, date, logiciel, typeLicence:gv('cmd-type-licence'),
+    htBrut, remise, htNet, tva, ttc, acompte, solde,
+    commercial:gv('cmd-commercial'), statut:gv('cmd-statut'),
+    presId:gv('cmd-pres-link'), notes:gv('cmd-notes').trim()
+  };
+  if(id) {
+    const c = COMMANDES.find(x=>x.id===id);
+    if(c) Object.assign(c,data);
+    showToast('✅ Commande mise à jour');
+  } else {
+    COMMANDES.push({id:'cmd_'+Date.now(), ref:cmdNumero(), ...data});
+    showToast('✅ Commande créée — '+cmdNumero());
+  }
+  lsSave('commandes', COMMANDES);
+  closeCommandeModal();
+  initCommandes();
+  updateSidebarBadges();
+}
+
+function editCommande(id) { openCommandeModal(id); }
+function deleteCommande(id) {
+  const c = COMMANDES.find(x=>x.id===id);
+  if(!c||!confirm(`Supprimer commande "${c.ref}" ?`)) return;
+  COMMANDES = COMMANDES.filter(x=>x.id!==id);
+  lsSave('commandes',COMMANDES);
+  initCommandes();
+  showToast('🗑 Commande supprimée');
+}
+
+function creerContratFromCmd(cmdId) {
+  const c = COMMANDES.find(x=>x.id===cmdId);
+  if(!c) return;
+  openContratModal('contrat', cmdId);
+}
+
+// ═══════════════════════════════════════
+//  CONTRATS & CONVENTIONS
+// ═══════════════════════════════════════
+let CONTRATS = [];
+let _contratTabFilter = 'all';
+
+const CONTRAT_STATUT = {
+  brouillon:  {lbl:'Brouillon',        cls:'badge-muted'},
+  envoye:     {lbl:'Envoyé',           cls:'badge-primary'},
+  signe:      {lbl:'Signé ✅',         cls:'badge-success'},
+  en_cours:   {lbl:'En exécution',     cls:'badge-warning'},
+  termine:    {lbl:'Terminé',          cls:'badge-muted'},
+  resilie:    {lbl:'Résilié',          cls:'badge-warning'},
+};
+const CONTRAT_TYPE_LBL = {
+  contrat:'📝 Contrat', convention:'📋 Convention',
+  contrat_maintenance:'🔧 Maintenance', contrat_formation:'🎓 Formation',
+};
+
+function contratRef() {
+  const n = CONTRATS.length+1;
+  const y = new Date().getFullYear();
+  return `CTR-${y}-${String(n).padStart(3,'0')}`;
+}
+
+function initContrats() {
+  renderContratStats();
+  renderContrats();
+}
+
+function renderContratStats() {
+  const el = document.getElementById('contrat-stats');
+  if(!el) return;
+  const total   = CONTRATS.length;
+  const signes  = CONTRATS.filter(c=>c.statut==='signe'||c.statut==='en_cours').length;
+  const brouill = CONTRATS.filter(c=>c.statut==='brouillon'||c.statut==='envoye').length;
+  const ca      = CONTRATS.filter(c=>c.statut!=='resilie').reduce((s,c)=>s+(c.montant||0),0);
+  el.innerHTML = [
+    {ico:'📝',v:total,  lbl:'Total actes',     c:'var(--primary)', bg:'var(--primary-l)'},
+    {ico:'⏳',v:brouill,lbl:'En attente signature',c:'var(--warning)',bg:'var(--warning-l)'},
+    {ico:'✅',v:signes, lbl:'Signés / Actifs',  c:'var(--success)', bg:'var(--success-l)'},
+    {ico:'💰',v:(ca/1000).toFixed(0)+'k',lbl:'CA contractualisé',c:'var(--purple)',bg:'var(--purple-l)'},
+  ].map(s=>`
+    <div class="stat-card" style="--accent:${s.c}">
+      <div class="stat-icon" style="background:${s.bg}">${s.ico}</div>
+      <div class="stat-val" style="color:${s.c}">${s.v}</div>
+      <div class="stat-label">${s.lbl}</div>
+    </div>`).join('');
+  // counts tabs
+  const ctAll = document.getElementById('ct-cnt-all');
+  const ctCtr = document.getElementById('ct-cnt-contrat');
+  const ctCvn = document.getElementById('ct-cnt-convention');
+  if(ctAll) ctAll.textContent=total;
+  if(ctCtr) ctCtr.textContent=CONTRATS.filter(c=>c.type==='contrat'||c.type==='contrat_maintenance'||c.type==='contrat_formation').length;
+  if(ctCvn) ctCvn.textContent=CONTRATS.filter(c=>c.type==='convention').length;
+  const b = document.getElementById('sb-contrat-badge');
+  if(b) b.textContent=total;
+}
+
+function contratTabSwitch(filter, el) {
+  _contratTabFilter=filter;
+  document.querySelectorAll('#view-contrats .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  renderContrats();
+}
+
+function renderContrats() {
+  const tbody = document.getElementById('contrat-tbody');
+  if(!tbody) return;
+  const q  = (document.getElementById('contrat-search')?.value||'').toLowerCase();
+  const st = document.getElementById('contrat-filter-statut')?.value||'';
+  let list = [...CONTRATS].sort((a,b)=>b.date.localeCompare(a.date));
+  if(_contratTabFilter==='contrat')    list=list.filter(c=>c.type!=='convention');
+  if(_contratTabFilter==='convention') list=list.filter(c=>c.type==='convention');
+  if(q)  list=list.filter(c=>(c.ref+c.client+c.logiciel).toLowerCase().includes(q));
+  if(st) list=list.filter(c=>c.statut===st);
+  if(!list.length) { tbody.innerHTML=`<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px">Aucun acte enregistré</td></tr>`; return; }
+  const fv = n=>(n||0).toLocaleString('fr-FR');
+  tbody.innerHTML = list.map(c=>{
+    const s = CONTRAT_STATUT[c.statut]||{lbl:c.statut,cls:'badge-muted'};
+    const cmdRef = c.cmdId ? (COMMANDES.find(x=>x.id===c.cmdId)?.ref||c.cmdId) : '—';
+    return `<tr>
+      <td style="font-weight:700;color:var(--success)">${c.ref}</td>
+      <td style="font-size:11px">${CONTRAT_TYPE_LBL[c.type]||c.type}</td>
+      <td>${c.date}</td>
+      <td style="font-weight:600">${c.client}</td>
+      <td>${c.logiciel}</td>
+      <td style="font-weight:700">${fv(c.montant)} FCFA</td>
+      <td style="font-size:11px">${c.duree||'—'}</td>
+      <td><span class="badge ${s.cls}">${s.lbl}</span></td>
+      <td style="font-size:11px;color:var(--primary)">${cmdRef}</td>
+      <td>
+        <div class="flex gap-1">
+          <button onclick="editContrat('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px">✏️</button>
+          <button onclick="creerDeploiementFromContrat('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;color:var(--primary)" title="→ Déploiement">📅</button>
+          <button onclick="deleteContrat('${c.id}')" class="btn btn-sm" style="padding:3px 8px;font-size:11px;background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2)">🗑</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openContratModal(typeDefault='contrat', cmdId=null) {
+  const id = null; // toujours nouveau sauf si editContrat appelé
+  document.getElementById('contrat-edit-id').value='';
+  document.getElementById('contrat-modal-title').textContent = typeDefault==='convention' ? '📋 Nouvelle convention' : '📝 Nouveau contrat';
+  document.getElementById('contrat-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('contrat-ref').value = contratRef();
+  document.getElementById('contrat-type').value = typeDefault==='convention' ? 'convention' : 'contrat';
+  // Selects
+  const logSel = document.getElementById('contrat-logiciel');
+  logSel.innerHTML='<option value="">— Sélectionner —</option>'+LOGICIELS.map(l=>`<option value="${l.nom}">${l.icon||'💻'} ${l.nom}</option>`).join('');
+  document.getElementById('contrat-client-list').innerHTML=CLIENTS.map(c=>`<option value="${c.nom}">`).join('');
+  const cmdSel = document.getElementById('contrat-cmd-link');
+  cmdSel.innerHTML='<option value="">— Aucune —</option>'+COMMANDES.filter(c=>c.statut!=='annulee').map(c=>`<option value="${c.id}">${c.ref} — ${c.client}</option>`).join('');
+  // Pre-fill from commande
+  if(cmdId) {
+    const c = COMMANDES.find(x=>x.id===cmdId);
+    if(c) {
+      document.getElementById('contrat-client').value=c.client;
+      document.getElementById('contrat-logiciel').value=c.logiciel;
+      document.getElementById('contrat-montant').value=c.ttc||'';
+      document.getElementById('contrat-cmd-link').value=cmdId;
+    }
+  } else {
+    ['contrat-client','contrat-notes'].forEach(i=>{ const e=document.getElementById(i); if(e)e.value=''; });
+    document.getElementById('contrat-montant').value='';
+  }
+  document.getElementById('contrat-statut').value='brouillon';
+  document.getElementById('modal-contrat').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('contrat-client').focus(),100);
+}
+
+function closeContratModal() { document.getElementById('modal-contrat').classList.add('hidden'); }
+
+function saveContrat() {
+  const gv=id=>(document.getElementById(id)||{}).value||'';
+  const client  = gv('contrat-client').trim();
+  const date    = gv('contrat-date');
+  const logiciel= gv('contrat-logiciel');
+  const ref     = gv('contrat-ref').trim();
+  if(!client||!date||!logiciel||!ref) { showToast('❌ Référence, client, date et logiciel obligatoires'); return; }
+  const editId = gv('contrat-edit-id');
+  const data = {
+    ref, type:gv('contrat-type'), client, date, logiciel,
+    duree:gv('contrat-duree'), montant:parseFloat(gv('contrat-montant'))||0,
+    paiement:gv('contrat-paiement'), statut:gv('contrat-statut'),
+    cmdId:gv('contrat-cmd-link'), notes:gv('contrat-notes').trim()
+  };
+  if(editId) {
+    const c = CONTRATS.find(x=>x.id===editId);
+    if(c) Object.assign(c,data);
+    showToast('✅ Contrat mis à jour');
+  } else {
+    CONTRATS.push({id:'ctr_'+Date.now(),...data});
+    showToast('✅ '+( data.type==='convention'?'Convention':'Contrat' )+' créé — '+ref);
+  }
+  lsSave('contrats',CONTRATS);
+  closeContratModal();
+  initContrats();
+  updateSidebarBadges();
+}
+
+function editContrat(id) {
+  const c = CONTRATS.find(x=>x.id===id);
+  if(!c) return;
+  openContratModal(c.type);
+  setTimeout(()=>{
+    document.getElementById('contrat-edit-id').value=id;
+    document.getElementById('contrat-modal-title').textContent='✏️ Modifier acte — '+c.ref;
+    const sv=(elId,v)=>{ const e=document.getElementById(elId); if(e) e.value=v||''; };
+    sv('contrat-ref',c.ref); sv('contrat-type',c.type); sv('contrat-client',c.client);
+    sv('contrat-date',c.date); sv('contrat-logiciel',c.logiciel); sv('contrat-duree',c.duree);
+    sv('contrat-montant',c.montant); sv('contrat-paiement',c.paiement);
+    sv('contrat-statut',c.statut); sv('contrat-cmd-link',c.cmdId||''); sv('contrat-notes',c.notes||'');
+  },50);
+}
+
+function deleteContrat(id) {
+  const c = CONTRATS.find(x=>x.id===id);
+  if(!c||!confirm(`Supprimer "${c.ref}" ?`)) return;
+  CONTRATS=CONTRATS.filter(x=>x.id!==id);
+  lsSave('contrats',CONTRATS);
+  initContrats();
+  showToast('🗑 Acte supprimé');
+}
+
+function creerDeploiementFromContrat(ctrId) {
+  const c = CONTRATS.find(x=>x.id===ctrId);
+  if(!c) return;
+  // Pré-remplir le modal déploiement existant
+  navigate('planning', document.querySelector('[onclick*="planning"]'));
+  setTimeout(()=>{
+    openDeploiementModal();
+    setTimeout(()=>{
+      const sv=(id,v)=>{ const e=document.getElementById(id); if(e) e.value=v||''; };
+      sv('dep-client',c.client); sv('dep-logiciel',c.logiciel);
+      sv('dep-phase','installation');
+    },100);
+  },200);
+  showToast('📅 Déploiement pré-rempli depuis contrat '+c.ref);
+}
+
+// ─── Badges sidebar globaux ─────────────
+function updateSidebarBadges() {
+  const sbPipeline = document.getElementById('sb-pipeline-badge');
+  if(sbPipeline) sbPipeline.textContent = DEALS.filter(d=>d.stage!=='gagne'&&d.stage!=='perdu').length;
+  const sbProspects = document.getElementById('sb-prospects-badge');
+  if(sbProspects) sbProspects.textContent = CLIENTS.filter(c=>c.statut==='prospect').length;
+}
+
+// ─── Persist & Load ─────────────────────
+// Extend loadAll by patching LS_STORES at runtime
+const _extendLoadAll = () => {
+  const pres = lsLoad('presentations'); if(pres&&Array.isArray(pres)) PRESENTATIONS=pres;
+  const cmds = lsLoad('commandes');     if(cmds&&Array.isArray(cmds))  COMMANDES=cmds;
+  const ctrs = lsLoad('contrats');      if(ctrs&&Array.isArray(ctrs))  CONTRATS=ctrs;
+};
+
+// ─── Navigate extension pour nouveaux modules ─
+const _navExtensions = {
+  presentations: ()=>setTimeout(initPresentations,50),
+  commandes:     ()=>setTimeout(initCommandes,50),
+  contrats:      ()=>setTimeout(initContrats,50),
+};
+// Hook into existing navigate via event
+document.addEventListener('sanix:navigate', e=>{
+  const fn = _navExtensions[e.detail];
+  if(fn) fn();
+});
+
+// ─── Init badges au démarrage ────────────
+document.addEventListener('DOMContentLoaded',()=>{
+  setTimeout(()=>{ _extendLoadAll(); updateSidebarBadges(); }, 900);
+});
+
+
 const MEDIA_DB_NAME = 'sanix_media';
 const MEDIA_DB_VER  = 1;
 let _mediaDB = null;
