@@ -2222,11 +2222,13 @@ select.form-input{cursor:pointer}
 
 <!-- ══ MODAL CLIENT CRÉER / MODIFIER ══ -->
 <div id="modal-client" class="modal-overlay hidden">
-  <div class="modal-box" style="max-width:520px">
+  <div class="modal-box" style="max-width:520px;max-height:92vh;overflow-y:auto">
     <div class="modal-close" onclick="closeClientModal()">✕</div>
     <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:4px" id="client-modal-title">➕ Nouveau client</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:18px" id="client-modal-sub">Ajouter un prospect ou client</div>
     <input type="hidden" id="client-edit-id">
+    <input type="hidden" id="c-lat">
+    <input type="hidden" id="c-lng">
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Nom / Entreprise *</label>
@@ -2289,10 +2291,28 @@ select.form-input{cursor:pointer}
         <input type="number" class="form-input" id="c-valeur" placeholder="500000" min="0">
       </div>
     </div>
+
+    <!-- ADRESSE + GÉOLOCALISATION -->
     <div class="form-group">
       <label class="form-label">Adresse / Localisation</label>
-      <input type="text" class="form-input" id="c-adresse" placeholder="Ex: Cocody, Riviera 3, Abidjan">
+      <div style="display:flex;gap:6px">
+        <input type="text" class="form-input" id="c-adresse" placeholder="Ex: Cocody, Riviera 3, Abidjan" style="flex:1">
+        <button type="button" onclick="geolocClient()" id="geo-btn"
+          style="flex-shrink:0;padding:0 12px;background:var(--teal-l);color:var(--teal);border:1px solid rgba(13,148,136,.25);border-radius:var(--r-sm);font-size:18px;cursor:pointer;transition:all .2s;height:40px"
+          title="Obtenir ma position GPS actuelle">📍</button>
+      </div>
+      <!-- Statut géo -->
+      <div id="geo-status" style="margin-top:4px;font-size:11px;color:var(--muted);min-height:16px"></div>
+      <!-- Mini-carte inline -->
+      <div id="geo-map-preview" style="display:none;height:160px;border-radius:var(--r-sm);border:1px solid var(--border);overflow:hidden;margin-top:8px"></div>
+      <!-- Coordonnées affichées -->
+      <div id="geo-coords-display" style="display:none;margin-top:6px;padding:6px 10px;background:var(--teal-l);border-radius:var(--r-sm);border:1px solid rgba(13,148,136,.2);font-size:11px;color:var(--teal);font-weight:600;display:none;align-items:center;gap:6px">
+        <span>📍</span>
+        <span id="geo-coords-text"></span>
+        <button onclick="clearGeo()" style="margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px" title="Effacer GPS">✕</button>
+      </div>
     </div>
+
     <div class="form-group">
       <label class="form-label">Notes</label>
       <textarea class="form-input" id="c-notes" rows="2" placeholder="Besoins, contexte, historique..."></textarea>
@@ -4412,11 +4432,12 @@ function openNewClient() {
   document.getElementById('client-edit-id').value = '';
   document.getElementById('client-modal-title').textContent = '➕ Nouveau client';
   document.getElementById('client-modal-sub').textContent = 'Ajouter un prospect ou client';
-  ['c-nom','c-phone','c-email','c-valeur','c-adresse','c-notes'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['c-nom','c-phone','c-email','c-valeur','c-adresse','c-notes','c-lat','c-lng'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('c-secteur').value = 'Immobilier';
   document.getElementById('c-logiciel').value = '';
   document.getElementById('c-statut').value = 'prospect';
   document.getElementById('c-commercial').value = '';
+  geoReset();
   document.getElementById('modal-client').classList.remove('hidden');
   setTimeout(()=>document.getElementById('c-nom').focus(), 100);
 }
@@ -4437,6 +4458,14 @@ function editClient(id) {
   document.getElementById('c-logiciel').value = c.logiciel||'';
   document.getElementById('c-statut').value = c.statut||'prospect';
   document.getElementById('c-commercial').value = c.commercial||'';
+  // Géolocalisation existante
+  geoReset();
+  if(c.lat && c.lng) {
+    document.getElementById('c-lat').value = c.lat;
+    document.getElementById('c-lng').value = c.lng;
+    geoShowCoords(c.lat, c.lng, false);
+    geoShowMiniMap(c.lat, c.lng);
+  }
   document.getElementById('modal-client').classList.remove('hidden');
 }
 function closeClientModal() { document.getElementById('modal-client').classList.add('hidden'); }
@@ -4452,15 +4481,17 @@ function saveClient() {
   const valeur  = parseInt(document.getElementById('c-valeur').value)||0;
   const adresse = document.getElementById('c-adresse').value.trim();
   const notes   = document.getElementById('c-notes').value.trim();
+  const lat     = parseFloat(document.getElementById('c-lat').value)||null;
+  const lng     = parseFloat(document.getElementById('c-lng').value)||null;
   const editId  = parseInt(document.getElementById('client-edit-id').value)||null;
   if(!nom){ showToast('❌ Nom obligatoire'); document.getElementById('c-nom').focus(); return; }
   if(!phone){ showToast('❌ Téléphone obligatoire'); document.getElementById('c-phone').focus(); return; }
   if(editId) {
     const c = CLIENTS.find(x=>x.id===editId);
-    if(c) Object.assign(c,{nom,phone,email,secteur,logiciel,statut,commercial,valeur,adresse,notes,updated_at:new Date().toISOString()});
+    if(c) Object.assign(c,{nom,phone,email,secteur,logiciel,statut,commercial,valeur,adresse,lat,lng,notes,updated_at:new Date().toISOString()});
   } else {
     const newId = Math.max(0,...CLIENTS.map(c=>c.id))+1;
-    CLIENTS.push({id:newId,nom,phone,email,secteur,logiciel,statut,commercial,valeur,adresse,notes,created_at:new Date().toISOString(),updated_at:new Date().toISOString()});
+    CLIENTS.push({id:newId,nom,phone,email,secteur,logiciel,statut,commercial,valeur,adresse,lat,lng,notes,created_at:new Date().toISOString(),updated_at:new Date().toISOString()});
   }
   saveStore('clients');
   closeClientModal();
@@ -4512,6 +4543,15 @@ function showClientDetail(id) {
       </div>`).join('')}
     </div>
     ${c.notes?`<div style="background:var(--warning-l);border-radius:var(--r-sm);padding:10px;margin-bottom:12px;font-size:12px"><strong>📝 Notes :</strong> ${c.notes}</div>`:''}
+    ${c.lat&&c.lng?`
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">📍 Localisation GPS</div>
+      <div style="background:var(--teal-l);border:1px solid rgba(13,148,136,.2);border-radius:var(--r-sm);padding:8px 12px;font-size:11px;color:var(--teal);font-weight:600;display:flex;align-items:center;justify-content:space-between">
+        <span>📍 ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}</span>
+        <a href="https://www.google.com/maps?q=${c.lat},${c.lng}" target="_blank" class="btn btn-outline btn-sm" style="font-size:10px;text-decoration:none;padding:3px 8px">🗺️ Google Maps</a>
+      </div>
+      <div id="detail-geo-map-${c.id}" style="height:140px;border-radius:var(--r-sm);border:1px solid var(--border);overflow:hidden;margin-top:6px"></div>
+    </div>`:''}
     <div class="flex gap-2" style="flex-wrap:wrap">
       <button class="btn btn-primary btn-sm" onclick="editClient(${c.id});document.getElementById('modal-client-detail').classList.add('hidden')">✏️ Modifier</button>
       ${c.statut==='prospect'?`<button class="btn btn-outline btn-sm" style="color:var(--success);border-color:var(--success)" onclick="convertProspectToClient(${c.id});document.getElementById('modal-client-detail').classList.add('hidden')">✅ Convertir en Client</button>`:''}
@@ -4520,6 +4560,18 @@ function showClientDetail(id) {
       <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="document.getElementById('modal-client-detail').classList.add('hidden');deleteClient(${c.id})">🗑 Supprimer</button>
     </div>`;
   document.getElementById('modal-client-detail').classList.remove('hidden');
+  // Init mini-map dans détail si GPS dispo
+  if(c.lat && c.lng) {
+    setTimeout(()=>{
+      const mapEl = document.getElementById('detail-geo-map-'+c.id);
+      if(mapEl && typeof L !== 'undefined') {
+        const m = L.map(mapEl, {zoomControl:true, scrollWheelZoom:false}).setView([c.lat, c.lng], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(m);
+        const ico = L.divIcon({html:'<div style="background:var(--primary);color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.3)">👤</div>',iconSize:[28,28],iconAnchor:[14,14],className:''});
+        L.marker([c.lat, c.lng], {icon:ico}).addTo(m).bindPopup(`<b>${c.nom}</b><br>${c.adresse||''}`).openPopup();
+      }
+    }, 200);
+  }
 }
 
 function whatsappClient(id) {
@@ -6160,8 +6212,105 @@ document.addEventListener('DOMContentLoaded',()=>{
 });
 
 
+// ═══════════════════════════════════════
+//  GÉOLOCALISATION CLIENT
+// ═══════════════════════════════════════
+let _geoMiniMap = null;
+let _geoMiniMarker = null;
+
+function geoReset() {
+  const status  = document.getElementById('geo-status');
+  const preview = document.getElementById('geo-map-preview');
+  const coords  = document.getElementById('geo-coords-display');
+  const btn     = document.getElementById('geo-btn');
+  if(status)  { status.textContent=''; status.style.color='var(--muted)'; }
+  if(preview) { preview.style.display='none'; }
+  if(coords)  { coords.style.display='none'; }
+  if(btn)     { btn.textContent='📍'; btn.style.background='var(--teal-l)'; btn.style.color='var(--teal)'; btn.disabled=false; }
+  if(_geoMiniMap) { try { _geoMiniMap.remove(); } catch(e){} _geoMiniMap=null; _geoMiniMarker=null; }
+}
+
+function geoShowCoords(lat, lng, fromDevice=true) {
+  const coords = document.getElementById('geo-coords-display');
+  const text   = document.getElementById('geo-coords-text');
+  const status = document.getElementById('geo-status');
+  if(text)   text.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  if(coords) coords.style.display='flex';
+  if(status && fromDevice) { status.textContent='✅ Position GPS obtenue'; status.style.color='var(--success)'; }
+}
+
+function geoShowMiniMap(lat, lng) {
+  const preview = document.getElementById('geo-map-preview');
+  if(!preview || typeof L === 'undefined') return;
+  preview.style.display='block';
+  if(_geoMiniMap) {
+    _geoMiniMap.setView([lat,lng],15);
+    if(_geoMiniMarker) _geoMiniMarker.setLatLng([lat,lng]);
+    return;
+  }
+  setTimeout(()=>{
+    _geoMiniMap = L.map(preview,{zoomControl:true,scrollWheelZoom:false,attributionControl:false}).setView([lat,lng],15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(_geoMiniMap);
+    const ico = L.divIcon({html:'<div style="width:16px;height:16px;background:#0D9488;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 4px rgba(13,148,136,.3)"></div>',iconSize:[16,16],iconAnchor:[8,8],className:''});
+    _geoMiniMarker = L.marker([lat,lng],{icon:ico,draggable:true}).addTo(_geoMiniMap);
+    _geoMiniMarker.on('dragend',e=>{
+      const p=e.target.getLatLng();
+      document.getElementById('c-lat').value=p.lat.toFixed(6);
+      document.getElementById('c-lng').value=p.lng.toFixed(6);
+      geoShowCoords(p.lat,p.lng,false);
+      document.getElementById('geo-status').textContent='📍 Marqueur déplacé';
+      document.getElementById('geo-status').style.color='var(--teal)';
+    });
+    _geoMiniMap.on('click',e=>{
+      const {lat:lt,lng:ln}=e.latlng;
+      document.getElementById('c-lat').value=lt.toFixed(6);
+      document.getElementById('c-lng').value=ln.toFixed(6);
+      geoShowCoords(lt,ln,false);
+      _geoMiniMarker.setLatLng([lt,ln]);
+      document.getElementById('geo-status').textContent='📍 Position ajustée';
+      document.getElementById('geo-status').style.color='var(--teal)';
+    });
+  },100);
+}
+
+function geolocClient() {
+  const btn=document.getElementById('geo-btn');
+  const status=document.getElementById('geo-status');
+  if(!btn||!status) return;
+  if(!navigator.geolocation){status.textContent='❌ Non supporté';status.style.color='var(--danger)';return;}
+  btn.textContent='⏳';btn.disabled=true;
+  status.textContent='🔍 Localisation en cours…';status.style.color='var(--primary)';
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      const lat=pos.coords.latitude,lng=pos.coords.longitude,acc=Math.round(pos.coords.accuracy);
+      document.getElementById('c-lat').value=lat.toFixed(6);
+      document.getElementById('c-lng').value=lng.toFixed(6);
+      btn.textContent='✅';btn.style.background='var(--success-l)';btn.style.color='var(--success)';btn.disabled=false;
+      geoShowCoords(lat,lng,true);
+      status.textContent=`✅ GPS — précision ±${acc}m`;status.style.color='var(--success)';
+      geoShowMiniMap(lat,lng);
+      const addrEl=document.getElementById('c-adresse');
+      if(addrEl&&!addrEl.value.trim()){
+        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=fr`)
+          .then(r=>r.json()).then(d=>{if(d.display_name) addrEl.value=d.display_name.split(',').slice(0,4).join(', ');}).catch(()=>{});
+      }
+    },
+    err=>{
+      btn.textContent='📍';btn.disabled=false;btn.style.background='var(--teal-l)';btn.style.color='var(--teal)';
+      const msgs={1:'❌ Permission refusée — autorisez la géolocalisation',2:'❌ Position indisponible',3:'❌ Délai dépassé'};
+      status.textContent=msgs[err.code]||'❌ Erreur GPS';status.style.color='var(--danger)';
+    },
+    {enableHighAccuracy:true,timeout:12000,maximumAge:60000}
+  );
+}
+
+function clearGeo() {
+  document.getElementById('c-lat').value='';
+  document.getElementById('c-lng').value='';
+  geoReset();
+}
+
 const MEDIA_DB_NAME = 'sanix_media';
-const MEDIA_DB_VER  = 1;
 let _mediaDB = null;
 let _mediaCurrentLogId = null;
 let _mediaCurrentTab = 'all';
