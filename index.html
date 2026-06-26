@@ -34,6 +34,7 @@ a{text-decoration:none;color:inherit}
 button{cursor:pointer;font-family:var(--font-b);border:none;outline:none}
 input,textarea,select{font-family:var(--font-b);outline:none}
 .hidden{display:none!important}
+@keyframes spin{to{transform:rotate(360deg)}}
 .flex{display:flex}.flex-col{flex-direction:column}.items-center{align-items:center}.justify-between{justify-content:space-between}.gap-2{gap:8px}.gap-3{gap:12px}.gap-4{gap:16px}.gap-6{gap:24px}
 .w-full{width:100%}.h-full{height:100%}
 .text-sm{font-size:12px}.text-xs{font-size:11px}.text-lg{font-size:16px}.text-xl{font-size:18px}.text-2xl{font-size:22px}.text-3xl{font-size:28px}
@@ -553,7 +554,7 @@ select.form-input{cursor:pointer}
         <label class="login-label">Identifiant ou email</label>
         <div class="login-input-wrap">
           <span class="login-input-icon">👤</span>
-          <input id="login-email" type="text" class="login-input" placeholder="KESSIE ou vous@sanix-africa.ci" autocapitalize="off" onkeydown="if(event.key==='Enter')doLogin()">
+          <input id="login-email" type="text" class="login-input" placeholder="Identifiant ou email" autocapitalize="off" onkeydown="if(event.key==='Enter')doLogin()">
         </div>
       </div>
       <div class="login-field">
@@ -570,24 +571,7 @@ select.form-input{cursor:pointer}
       </div>
       <button class="login-btn" id="login-btn" onclick="doLogin()">Se connecter</button>
 
-      <!-- DEMO CREDS -->
-      <div class="login-demo">
-        <div class="login-demo-title">Accès démo rapide</div>
-        <div class="login-demo-creds">
-          <div class="cred-chip" onclick="fillCreds('KESSIE','Azerty@2026')">
-            <span class="cred-chip-role">👑 KESSIE (Super Admin)</span><span class="cred-chip-pass">Azerty@2026</span>
-          </div>
-          <div class="cred-chip" onclick="fillCreds('awa@sanix-africa.ci','Manager@1')">
-            <span class="cred-chip-role">🏢 Manager</span><span class="cred-chip-pass">Manager@1</span>
-          </div>
-          <div class="cred-chip" onclick="fillCreds('jean@sanix-africa.ci','Comm@2025')">
-            <span class="cred-chip-role">🎯 Commercial</span><span class="cred-chip-pass">Comm@2025</span>
-          </div>
-          <div class="cred-chip" onclick="fillCreds('sekou@sanix-africa.ci','Apport@1')">
-            <span class="cred-chip-role">🤝 Apporteur</span><span class="cred-chip-pass">Apport@1</span>
-          </div>
-        </div>
-      </div>
+
     </div><!-- /login-form-box -->
   </div><!-- /login-right -->
 </div><!-- /login-screen -->
@@ -630,7 +614,7 @@ select.form-input{cursor:pointer}
   </div>
   <div class="sb-item" id="sb-commissions-item" onclick="navigate('commissions',this)">
     <div class="sb-icon">💰</div><span>Commissions</span>
-    <span class="sb-badge warn" id="sb-comm-badge">0</span>
+    <span class="sb-badge warn" id="sb-comm-badge" style="display:none">0</span>
   </div>
   <div class="sb-item" onclick="navigate('messagerie',this)">
     <div class="sb-icon">💬</div><span>Messagerie</span>
@@ -703,39 +687,36 @@ select.form-input{cursor:pointer}
         <h1 class="page-title">Vue d'ensemble</h1>
         <span class="live-dot"></span><span class="text-sm muted">Live</span>
       </div>
-      <p class="page-sub">Lundi 09 Juin 2025 — Abidjan, Côte d'Ivoire</p>
+      <p class="page-sub" id="dashboard-date"></p>
 
       <!-- ALERTS -->
-      <div id="alert-zone">
-        <div class="alert alert-warn">⚠️ <strong>Konan Assié (AviNest)</strong> — Relance prévue il y a 3 jours. Pas de réponse.</div>
-        <div class="alert alert-info">💡 <strong>Rapport journalier</strong> généré et transmis à la direction — 08:00</div>
-      </div>
+      <div id="alert-zone"></div>
 
       <!-- STATS -->
       <div class="stats-grid" style="margin-top:16px">
         <div class="stat-card blue">
           <div class="stat-icon" style="background:#EFF6FF">💰</div>
-          <div class="stat-val">14,2M</div>
+          <div class="stat-val" id="stat-ca">0</div>
           <div class="stat-label">CA cumulé (FCFA)</div>
-          <span class="stat-change up">↑ +18% vs mois dernier</span>
+          <span class="stat-change" id="stat-ca-change"></span>
         </div>
         <div class="stat-card green">
           <div class="stat-icon" style="background:#ECFDF5">🎯</div>
-          <div class="stat-val">38</div>
+          <div class="stat-val" id="stat-prospects">0</div>
           <div class="stat-label">Prospects actifs</div>
-          <span class="stat-change up">↑ +5 cette semaine</span>
+          <span class="stat-change" id="stat-prospects-change"></span>
         </div>
         <div class="stat-card orange">
           <div class="stat-icon" style="background:#FFFBEB">🤝</div>
-          <div class="stat-val">14</div>
+          <div class="stat-val" id="stat-deals">0</div>
           <div class="stat-label">Deals en cours</div>
-          <span class="stat-change up">↑ +2 aujourd'hui</span>
+          <span class="stat-change" id="stat-deals-change"></span>
         </div>
         <div class="stat-card purple">
           <div class="stat-icon" style="background:#F5F3FF">📈</div>
-          <div class="stat-val">34%</div>
+          <div class="stat-val" id="stat-conv">0%</div>
           <div class="stat-label">Taux conversion</div>
-          <span class="stat-change down">↓ -2% ce mois</span>
+          <span class="stat-change" id="stat-conv-change"></span>
         </div>
       </div>
 
@@ -785,23 +766,15 @@ select.form-input{cursor:pointer}
 
       <!-- Filters -->
       <div class="flex items-center gap-3" style="margin-bottom:16px;flex-wrap:wrap">
-        <select class="form-input" style="width:auto" onchange="filterPipeline(this)">
+        <select class="form-input" id="filter-commercial" style="width:auto" onchange="filterPipeline(this)">
           <option value="">Tous les commerciaux</option>
-          <option>Awa Coulibaly</option>
-          <option>Jean-Baptiste N'Goran</option>
-          <option>Fatou Diallo</option>
-          <option>Apporteurs</option>
         </select>
-        <select class="form-input" style="width:auto" onchange="filterByLogiciel(this)">
+        <select class="form-input" id="filter-logiciel" style="width:auto" onchange="filterByLogiciel(this)">
           <option value="">Tous les logiciels</option>
-          <option>ImmoSuite ERP</option>
-          <option>AviNest Pro</option>
-          <option>DistriPro ERP</option>
-          <option>Factory 4.0</option>
         </select>
         <button class="btn btn-primary btn-sm" onclick="openNewDeal()">+ Ajouter deal</button>
         <div style="margin-left:auto" class="flex gap-2">
-          <span class="chip">💰 Total visible: <strong>8,3M FCFA</strong></span>
+          <span class="chip">💰 Total visible: <strong id="pipeline-total">0 FCFA</strong></span>
         </div>
       </div>
 
@@ -1024,8 +997,8 @@ select.form-input{cursor:pointer}
 
       <div class="card" style="margin-top:16px">
         <div class="card-header">
-          <span class="card-title">📍 Itinéraire du jour — Jean-Baptiste N'Goran</span>
-          <span class="badge badge-success">5 visites planifiées</span>
+          <span class="card-title">📍 Itinéraire du jour</span>
+          <span class="badge badge-success" id="itin-count">0 visite(s)</span>
         </div>
         <div id="itineraire-list"></div>
       </div>
@@ -1047,11 +1020,11 @@ select.form-input{cursor:pointer}
       <div class="card">
         <div class="card-header">
           <span class="card-title">📦 Déploiements en cours</span>
-          <button class="btn btn-primary btn-sm">+ Nouveau déploiement</button>
+          <button class="btn btn-primary btn-sm" onclick="openDeploiementModal()">+ Nouveau déploiement</button>
         </div>
         <table class="client-table">
           <thead>
-            <tr><th>Client</th><th>Logiciel</th><th>Phase</th><th>Avancement</th><th>Responsable</th><th>Date cible</th></tr>
+            <tr><th>Client</th><th>Logiciel</th><th>Phase</th><th>Avancement</th><th>Responsable</th><th>Date cible</th><th>Actions</th></tr>
           </thead>
           <tbody id="deploy-tbody"></tbody>
         </table>
@@ -1069,15 +1042,13 @@ select.form-input{cursor:pointer}
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Commercial</label>
-              <select class="form-input">
-                <option>Awa Coulibaly</option>
-                <option>Jean-Baptiste N'Goran</option>
-                <option>Fatou Diallo</option>
+              <select class="form-input" id="rapport-commercial">
+                <option value="">— Sélectionner —</option>
               </select>
             </div>
             <div class="form-group">
               <label class="form-label">Date</label>
-              <input type="date" class="form-input" value="2025-06-09">
+              <input type="date" class="form-input" id="rapport-date">
             </div>
           </div>
           <div class="form-group">
@@ -1109,7 +1080,7 @@ select.form-input{cursor:pointer}
               <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" checked> 📧 Email</label>
             </div>
           </div>
-          <button class="btn btn-primary w-full" onclick="submitRapport()">📤 Envoyer au N+1 (Cyrille KESSIE)</button>
+          <button class="btn btn-primary w-full" onclick="submitRapport()">📤 Envoyer au N+1</button>
         </div>
 
         <div>
@@ -1147,12 +1118,9 @@ select.form-input{cursor:pointer}
             </div>
             <div class="form-group">
               <label class="form-label">Destinataires</label>
-              <select class="form-input" multiple style="height:80px">
-                <option>Tous les prospects actifs (14)</option>
-                <option>Tous les clients (18)</option>
-                <option>Prospects AviNest (7)</option>
-                <option>Konan Assié — 07 XX XX XX</option>
-                <option>SCI Plateau — info@scibidjan.ci</option>
+              <select class="form-input" id="msg-destinataires" multiple style="height:80px">
+                <option value="all_prospects">Tous les prospects actifs</option>
+                <option value="all_clients">Tous les clients</option>
               </select>
             </div>
             <div class="form-group">
@@ -1429,6 +1397,41 @@ select.form-input{cursor:pointer}
 </div><!-- /main -->
 </div><!-- /app -->
 
+<!-- ══ MODAL MÉDIATHÈQUE ══ -->
+<div id="modal-media" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:680px;max-height:88vh;overflow-y:auto">
+    <div class="modal-close" onclick="document.getElementById('modal-media').classList.add('hidden')">✕</div>
+    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:2px" id="media-modal-title">📁 Médiathèque</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:20px" id="media-modal-sub">Vidéos, documents et catalogues</div>
+
+    <!-- Onglets -->
+    <div class="tabs" id="media-tabs" style="margin-bottom:16px">
+      <div class="tab active" onclick="mediaTabSwitch('all',this)">Tous</div>
+      <div class="tab" onclick="mediaTabSwitch('video',this)">🎬 Vidéos</div>
+      <div class="tab" onclick="mediaTabSwitch('document',this)">📄 Documents</div>
+      <div class="tab" onclick="mediaTabSwitch('catalogue',this)">📚 Catalogues</div>
+    </div>
+
+    <!-- Zone d'upload drop -->
+    <div id="media-drop-zone" style="border:2px dashed var(--border);border-radius:var(--r);padding:20px;text-align:center;margin-bottom:16px;color:var(--muted);font-size:13px;transition:all .2s;cursor:pointer"
+      ondragover="event.preventDefault();this.style.borderColor='var(--primary)';this.style.background='var(--primary-l)'"
+      ondragleave="this.style.borderColor='';this.style.background=''"
+      ondrop="mediaDrop(event)">
+      <div style="font-size:32px;margin-bottom:6px">📎</div>
+      <div style="font-weight:600">Glissez vos fichiers ici</div>
+      <div style="font-size:11px;margin-top:4px">Vidéos, PDF, images, documents Office</div>
+      <div class="flex gap-2" style="justify-content:center;margin-top:12px;flex-wrap:wrap">
+        <label class="btn btn-primary btn-sm" style="cursor:pointer">🎬 Vidéo<input type="file" accept="video/*" style="display:none" onchange="mediaDropUpload(this,'video')"></label>
+        <label class="btn btn-outline btn-sm" style="cursor:pointer">📄 Document<input type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx" multiple style="display:none" onchange="mediaDropUpload(this,'document')"></label>
+        <label class="btn btn-outline btn-sm" style="cursor:pointer">📚 Catalogue<input type="file" accept=".pdf,image/*" multiple style="display:none" onchange="mediaDropUpload(this,'catalogue')"></label>
+      </div>
+    </div>
+
+    <!-- Liste des médias -->
+    <div id="media-list-items"></div>
+  </div>
+</div>
+
 <!-- OFFLINE BANNER -->
 <div class="offline-banner" id="offline-banner">
   📡 Connexion perdue — Mode hors-ligne actif. Données sauvegardées localement.
@@ -1445,7 +1448,7 @@ select.form-input{cursor:pointer}
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Prénom & Nom *</label>
-        <input type="text" class="form-input" id="u-nom" placeholder="Ex: Awa Coulibaly">
+        <input type="text" class="form-input" id="u-nom" placeholder="Ex: Koné Dramane">
       </div>
       <div class="form-group">
         <label class="form-label">Téléphone</label>
@@ -1511,24 +1514,22 @@ select.form-input{cursor:pointer}
   </div>
 </div>
 
-<!-- ══ MODAL NEW DEAL ══ -->
+<!-- ══ MODAL DEAL CRÉER / MODIFIER ══ -->
 <div id="modal-deal" class="modal-overlay hidden">
   <div class="modal-box" style="max-width:480px">
     <div class="modal-close" onclick="closeDeal()">✕</div>
-    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:16px">➕ Nouveau Deal</div>
+    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:4px" id="deal-modal-title">➕ Nouveau Deal</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px" id="deal-modal-sub">Créer une opportunité commerciale</div>
+    <input type="hidden" id="deal-edit-id" value="">
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">Client / Prospect</label>
+        <label class="form-label">Client / Prospect *</label>
         <input type="text" class="form-input" id="deal-client" placeholder="Nom ou entreprise">
       </div>
       <div class="form-group">
         <label class="form-label">Logiciel</label>
         <select class="form-input" id="deal-logiciel">
-          <option>ImmoSuite ERP</option>
-          <option>AviNest Pro</option>
-          <option>DistriPro ERP</option>
-          <option>Factory 4.0</option>
-          <option>SANIX RH Suite</option>
+          <option value="">— Sélectionner —</option>
         </select>
       </div>
     </div>
@@ -1539,29 +1540,88 @@ select.form-input{cursor:pointer}
       </div>
       <div class="form-group">
         <label class="form-label">Commercial</label>
-        <select class="form-input" id="deal-commercial">
-          <option>Awa Coulibaly</option>
-          <option>Jean-Baptiste N'Goran</option>
-          <option>Fatou Diallo</option>
-          <option>Apporteur — Sékou Koné</option>
-        </select>
+        <select class="form-input" id="deal-commercial"><option value="">— Sélectionner —</option></select>
       </div>
     </div>
     <div class="form-group">
       <label class="form-label">Étape pipeline</label>
       <select class="form-input" id="deal-stage">
-        <option>Prospect</option>
-        <option>Contact</option>
-        <option>Démo</option>
-        <option>Proposition</option>
-        <option>Négociation</option>
+        <option value="prospect">Prospect</option>
+        <option value="contact">Contact</option>
+        <option value="demo">Démo</option>
+        <option value="proposition">Proposition</option>
+        <option value="negociation">Négociation</option>
+        <option value="gagne">Gagné ✓</option>
+        <option value="perdu">Perdu ✗</option>
       </select>
     </div>
     <div class="form-group">
       <label class="form-label">Notes</label>
       <textarea class="form-input" id="deal-notes" placeholder="Contexte, besoins..." rows="2"></textarea>
     </div>
-    <button class="btn btn-primary w-full" onclick="addDeal()">Créer le deal</button>
+    <div class="flex gap-2">
+      <button class="btn btn-primary" style="flex:1" id="deal-save-btn" onclick="saveDeal()">💾 Enregistrer</button>
+      <button class="btn btn-outline" onclick="closeDeal()">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL DEPLOIEMENT CRÉER / MODIFIER ══ -->
+<div id="modal-deploiement" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:500px">
+    <div class="modal-close" onclick="closeDeploiementModal()">✕</div>
+    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:4px" id="deploy-modal-title">➕ Nouveau déploiement</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Planifier une installation client</div>
+    <input type="hidden" id="deploy-edit-id" value="">
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Client *</label>
+        <input type="text" class="form-input" id="dep-client" placeholder="Nom du client">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Logiciel *</label>
+        <select class="form-input" id="dep-logiciel">
+          <option value="">— Sélectionner —</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Phase</label>
+        <select class="form-input" id="dep-phase">
+          <option>Installation</option>
+          <option>Paramétrage</option>
+          <option>Formation</option>
+          <option>Tests</option>
+          <option>Mise en production</option>
+          <option>Support post-déploiement</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Responsable</label>
+        <select class="form-input" id="dep-resp">
+          <option value="">— Sélectionner —</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Avancement (%)</label>
+        <input type="number" class="form-input" id="dep-avancement" placeholder="0" min="0" max="100">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date cible</label>
+        <input type="date" class="form-input" id="dep-date">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes</label>
+      <textarea class="form-input" id="dep-notes" placeholder="Observations, points bloquants..." rows="2"></textarea>
+    </div>
+    <div class="flex gap-2">
+      <button class="btn btn-primary" style="flex:1" onclick="saveDeploiement()">💾 Enregistrer</button>
+      <button class="btn btn-outline" onclick="closeDeploiementModal()">Annuler</button>
+    </div>
   </div>
 </div>
 
@@ -1593,11 +1653,7 @@ select.form-input{cursor:pointer}
       <div class="form-group">
         <label class="form-label">Logiciel vendu</label>
         <select class="form-input" id="comm-logiciel">
-          <option>ImmoSuite ERP</option>
-          <option>AviNest Pro</option>
-          <option>DistriPro ERP</option>
-          <option>Factory 4.0</option>
-          <option>SANIX RH Suite</option>
+          <option value="">— Sélectionner —</option>
         </select>
       </div>
     </div>
@@ -1696,7 +1752,7 @@ select.form-input{cursor:pointer}
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Nom / Entreprise *</label>
-        <input type="text" class="form-input" id="c-nom" placeholder="Ex: AGRO-SCI Yopougon">
+        <input type="text" class="form-input" id="c-nom" placeholder="Ex: Entreprise ABC">
       </div>
       <div class="form-group">
         <label class="form-label">Secteur d'activité</label>
@@ -1730,11 +1786,7 @@ select.form-input{cursor:pointer}
       <div class="form-group">
         <label class="form-label">Logiciel concerné</label>
         <select class="form-input" id="c-logiciel">
-          <option>ImmoSuite ERP</option>
-          <option>AviNest Pro</option>
-          <option>DistriPro ERP</option>
-          <option>Factory 4.0</option>
-          <option>SANIX RH Suite</option>
+          <option value="">— Sélectionner —</option>
         </select>
       </div>
       <div class="form-group">
@@ -1750,11 +1802,8 @@ select.form-input{cursor:pointer}
       <div class="form-group">
         <label class="form-label">Commercial assigné</label>
         <select class="form-input" id="c-commercial">
-          <option>Awa Coulibaly</option>
-          <option>Jean-Baptiste N'Goran</option>
-          <option>Fatou Diallo</option>
-          <option>Apporteur — Sékou Koné</option>
-          <option>Apporteur — Aminata Bah</option>
+          <option value="">— Sélectionner —</option>
+          
         </select>
       </div>
       <div class="form-group">
@@ -1908,6 +1957,26 @@ select.form-input{cursor:pointer}
       <input type="url" class="form-input" id="l-doc" placeholder="https://docs.sanix-africa.ci/...">
     </div>
 
+    <!-- ─── Médiathèque ─── -->
+    <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em;margin:14px 0 8px;text-transform:uppercase">📁 Médiathèque (fichiers locaux)</div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px;margin-bottom:4px">
+      <div class="flex gap-2" style="flex-wrap:wrap;margin-bottom:10px">
+        <label style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:var(--primary-l);color:var(--primary);border:1px solid rgba(37,99,235,.2);border-radius:var(--r-sm);font-size:12px;font-weight:600;cursor:pointer;transition:all .2s" onmouseover="this.style.background='var(--primary)';this.style.color='#fff'" onmouseout="this.style.background='var(--primary-l)';this.style.color='var(--primary)'">
+          🎬 Vidéo de présentation
+          <input type="file" accept="video/*" style="display:none" onchange="mediaUpload(this,'video')">
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:var(--success-l);color:var(--success);border:1px solid rgba(5,150,105,.2);border-radius:var(--r-sm);font-size:12px;font-weight:600;cursor:pointer;transition:all .2s" onmouseover="this.style.background='var(--success)';this.style.color='#fff'" onmouseout="this.style.background='var(--success-l)';this.style.color='var(--success)'">
+          📄 Documents / Brochures
+          <input type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx" multiple style="display:none" onchange="mediaUpload(this,'document')">
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:var(--orange-l);color:var(--orange);border:1px solid rgba(234,88,12,.2);border-radius:var(--r-sm);font-size:12px;font-weight:600;cursor:pointer;transition:all .2s" onmouseover="this.style.background='var(--orange)';this.style.color='#fff'" onmouseout="this.style.background='var(--orange-l)';this.style.color='var(--orange)'">
+          📚 Catalogues / Images
+          <input type="file" accept=".pdf,image/*" multiple style="display:none" onchange="mediaUpload(this,'catalogue')">
+        </label>
+      </div>
+      <div id="media-upload-list" style="min-height:32px"><div style="font-size:11px;color:var(--muted);padding:6px 0">💡 Sauvegardez d'abord le logiciel, puis uploadez les médias via ce panneau ou le bouton "📁 Médias" sur la fiche.</div></div>
+    </div>
+
     <!-- ─── Apparence ─── -->
     <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em;margin:14px 0 8px;text-transform:uppercase">Apparence</div>
     <div class="form-group">
@@ -1971,13 +2040,7 @@ select.form-input{cursor:pointer}
 // ═══════════════════════════════════════
 //  DATA
 // ═══════════════════════════════════════
-const LOGICIELS_SEED = [
-  {id:'immosuite',nom:'ImmoSuite ERP',version:'v17.2',cat:'Immobilier',plateforme:'Web',type_licence:'Annuelle',support:'1an',prix:'500 000',prixNum:500000,prixMensuel:0,remiseMax:10,demo:'https://avicosuite-erp-rklx.vercel.app',video:'',doc:'',modules:'Foncier,Souscriptions,Travaux,Finance,RH,CRM,SYSCOHADA',desc:'Gestion complète promoteurs immobiliers. Foncier, souscriptions, travaux, finance SYSCOHADA.',color:'#1E3A5F',icon:'🏢',ventes:12,prospects:8,commission:10,actif:true},
-  {id:'avinest',nom:'AviNest Pro',version:'v3.1',cat:'Aviculture',plateforme:'Multi-plateforme',type_licence:'Annuelle',support:'30j',prix:'350 000',prixNum:350000,prixMensuel:0,remiseMax:5,demo:'https://avicosuite-erp-rklx.vercel.app',video:'',doc:'',modules:'Reproduction,Couvoir,Pesées,Traçabilité,Stock,Finance,WhatsApp',desc:'ERP avicole complet. Reproduction, couvoir, pesées, traçabilité lots, alertes WhatsApp.',color:'#1B5E3B',icon:'🐔',ventes:7,prospects:15,commission:10,actif:true},
-  {id:'distripro',nom:'DistriPro ERP',version:'v5.0',cat:'Distribution',plateforme:'Mobile Android',type_licence:'Annuelle',support:'30j',prix:'400 000',prixNum:400000,prixMensuel:0,remiseMax:5,demo:'https://distripro-erp.vercel.app',video:'',doc:'',modules:'Dépôts,Emballages,Livreurs,Mobile Money,Cloud Supabase,CRM',desc:'Gestion dépôts boissons. Emballages consignés, livreurs, Mobile Money, sync cloud Supabase.',color:'#7C2D12',icon:'🏭',ventes:9,prospects:11,commission:10,actif:true},
-  {id:'factory40',nom:'Factory 4.0',version:'v4.2',cat:'Industrie',plateforme:'Web',type_licence:'Annuelle',support:'1an',prix:'750 000',prixNum:750000,prixMensuel:0,remiseMax:10,demo:'#',video:'',doc:'',modules:'Production,Maintenance,GMAO,Qualité,Stock,RH,Finance,IoT,BI',desc:'ERP industriel IoT. Production temps réel, maintenance prédictive IA, BI avancée, capteurs.',color:'#457B9D',icon:'⚙️',ventes:2,prospects:6,commission:10,actif:true},
-  {id:'rhsuite',nom:'SANIX RH Suite',version:'v2.8',cat:'Ressources Humaines',plateforme:'Web',type_licence:'Annuelle',support:'30j',prix:'280 000',prixNum:280000,prixMensuel:0,remiseMax:0,demo:'#',video:'',doc:'',modules:'Paie,Congés,Évaluations,CNPS,FDFP,Portail employé',desc:'Gestion RH complète. Paie, congés, évaluations, CNPS automatisé, portail employé.',color:'#4A1D96',icon:'👥',ventes:5,prospects:9,commission:10,actif:true},
-];
+const LOGICIELS_SEED = [];
 let LOGICIELS = [...LOGICIELS_SEED];
 
 let STAGES = [
@@ -2016,60 +2079,14 @@ const CONFIG_DEFAULT = {
 };
 let CONFIG = {...CONFIG_DEFAULT};
 
-let DEALS = [
-  {id:1,client:'AGRO-SCI Yopougon',logiciel:'ImmoSuite ERP',valeur:500000,stage:'negociation',commercial:'Awa Coulibaly',color:'#1E3A5F',date:'2025-06-07'},
-  {id:2,client:'Ferme Konan Divo',logiciel:'AviNest Pro',valeur:350000,stage:'demo',commercial:'Jean-Baptiste N\'Goran',color:'#1B5E3B',date:'2025-06-05'},
-  {id:3,client:'Dépôt Brasseries Abobo',logiciel:'DistriPro ERP',valeur:400000,stage:'proposition',commercial:'Awa Coulibaly',color:'#7C2D12',date:'2025-06-08'},
-  {id:4,client:'Usine SOPROCI',logiciel:'Factory 4.0',valeur:750000,stage:'contact',commercial:'Fatou Diallo',color:'#1E3A5F',date:'2025-06-06'},
-  {id:5,client:'SIVB Treichville',logiciel:'ImmoSuite ERP',valeur:500000,stage:'prospect',commercial:'Apporteur — Sékou Koné',color:'#1E3A5F',date:'2025-06-03'},
-  {id:6,client:'Elevage DIOMANDE',logiciel:'AviNest Pro',valeur:350000,stage:'proposition',commercial:'Jean-Baptiste N\'Goran',color:'#1B5E3B',date:'2025-06-04'},
-  {id:7,client:'Distri-Plus Koumassi',logiciel:'DistriPro ERP',valeur:400000,stage:'gagne',commercial:'Awa Coulibaly',color:'#7C2D12',date:'2025-05-28'},
-  {id:8,client:'SCI Les Palmiers CI',logiciel:'ImmoSuite ERP',valeur:500000,stage:'gagne',commercial:'Fatou Diallo',color:'#1E3A5F',date:'2025-05-20'},
-  {id:9,client:'SOPAMO Agboville',logiciel:'Factory 4.0',valeur:750000,stage:'demo',commercial:'Jean-Baptiste N\'Goran',color:'#1E3A5F',date:'2025-06-01'},
-  {id:10,client:'Ferme Mahan Man',logiciel:'AviNest Pro',valeur:350000,stage:'contact',commercial:'Apporteur — Aminata Bah',color:'#1B5E3B',date:'2025-06-02'},
-  {id:11,client:'HOLDING EMPIRE',logiciel:'SANIX RH Suite',valeur:280000,stage:'prospect',commercial:'Fatou Diallo',color:'#4A1D96',date:'2025-06-08'},
-  {id:12,client:'BOULANGERIE MODERNE',logiciel:'Factory 4.0',valeur:750000,stage:'perdu',commercial:'Jean-Baptiste N\'Goran',color:'#1E3A5F',date:'2025-05-15'},
-  {id:13,client:'CÔTE-EST Immobilier',logiciel:'ImmoSuite ERP',valeur:500000,stage:'negociation',commercial:'Awa Coulibaly',color:'#1E3A5F',date:'2025-06-09'},
-  {id:14,client:'Transport OUATTARA',logiciel:'SANIX RH Suite',valeur:280000,stage:'contact',commercial:'Apporteur — Sékou Koné',color:'#4A1D96',date:'2025-06-07'},
-];
+let DEALS = [];
 
-const CLIENTS_SEED = [
-  {id:1,nom:'Distri-Plus Koumassi',secteur:'Distribution',logiciel:'DistriPro ERP',statut:'client',commercial:'Awa Coulibaly',valeur:400000,phone:'07 45 23 11',email:'distri@plus.ci'},
-  {id:2,nom:'SCI Les Palmiers CI',secteur:'Immobilier',logiciel:'ImmoSuite ERP',statut:'client',commercial:'Fatou Diallo',valeur:500000,phone:'05 32 67 89',email:'sci@palmiers.ci'},
-  {id:3,nom:'AGRO-SCI Yopougon',secteur:'Immobilier',logiciel:'ImmoSuite ERP',statut:'prospect',commercial:'Awa Coulibaly',valeur:500000,phone:'07 11 22 33',email:'agrosci@yop.ci'},
-  {id:4,nom:'Ferme Konan Divo',secteur:'Aviculture',logiciel:'AviNest Pro',statut:'prospect',commercial:'Jean-Baptiste N\'Goran',valeur:350000,phone:'01 23 45 67',email:'ferme@konan.ci'},
-  {id:5,nom:'Dépôt Brasseries Abobo',secteur:'Distribution',logiciel:'DistriPro ERP',statut:'prospect',commercial:'Awa Coulibaly',valeur:400000,phone:'07 98 76 54',email:'depot@brasseries.ci'},
-  {id:6,nom:'Usine SOPROCI',secteur:'Industrie',logiciel:'Factory 4.0',statut:'prospect',commercial:'Fatou Diallo',valeur:750000,phone:'27 33 44 55',email:'contact@soproci.ci'},
-  {id:7,nom:'Elevage DIOMANDE',secteur:'Aviculture',logiciel:'AviNest Pro',statut:'prospect',commercial:'Jean-Baptiste N\'Goran',valeur:350000,phone:'05 11 22 33',email:'elev@diomande.ci'},
-  {id:8,nom:'CÔTE-EST Immobilier',secteur:'Immobilier',logiciel:'ImmoSuite ERP',statut:'client',commercial:'Awa Coulibaly',valeur:1000000,phone:'27 88 99 00',email:'ceo@cote-est.ci'},
-  {id:9,nom:'HOLDING EMPIRE',secteur:'Services',logiciel:'SANIX RH Suite',statut:'prospect',commercial:'Fatou Diallo',valeur:280000,phone:'07 22 33 44',email:'rh@empire.ci'},
-  {id:10,nom:'Transport OUATTARA',secteur:'Logistique',logiciel:'SANIX RH Suite',statut:'client',commercial:'Apporteur',valeur:280000,phone:'01 55 66 77',email:'dg@ouattara-transport.ci'},
-];
+const CLIENTS_SEED = [];
 let CLIENTS = [...CLIENTS_SEED];
 
-let EQUIPE = [
-  {id:1,nom:'Awa Coulibaly',role:'Commercial Senior',type:'salarie',deals:5,ca:1700000,conv:42,objectif:2000000,init:'AC',color:'#2563EB',phone:'+225 07 00 00 01',email:'awa@sanix-africa.ci'},
-  {id:2,nom:'Jean-Baptiste N\'Goran',role:'Commercial Terrain',type:'salarie',deals:4,ca:1450000,conv:38,objectif:1800000,init:'JB',color:'#7C3AED',phone:'+225 07 00 00 02',email:'jean@sanix-africa.ci'},
-  {id:3,nom:'Fatou Diallo',role:'Commercial Junior',type:'salarie',deals:3,ca:780000,conv:25,objectif:1000000,init:'FD',color:'#059669',phone:'+225 07 00 00 03',email:'fatou@sanix-africa.ci'},
-  {id:4,nom:'Sékou Koné',role:'Apporteur d\'affaires',type:'apporteur',deals:3,ca:780000,conv:30,objectif:0,init:'SK',color:'#D97706',phone:'+225 05 11 22 33',email:'sekou.kone@gmail.com'},
-  {id:5,nom:'Aminata Bah',role:'Apporteur — Aviculture',type:'apporteur',deals:2,ca:700000,conv:28,objectif:0,init:'AB',color:'#EA580C',phone:'+225 01 44 55 66',email:'aminata.bah@gmail.com'},
-  {id:6,nom:'Dramane COULIBALY',role:'Apporteur — BTP',type:'apporteur',deals:1,ca:500000,conv:20,objectif:0,init:'DC',color:'#0D9488',phone:'+225 07 33 44 55',email:'dramane.c@gmail.com'},
-  {id:7,nom:'N\'Guessan Patricia',role:'Apporteur — Distribution',type:'apporteur',deals:2,ca:800000,conv:33,objectif:0,init:'NP',color:'#DC2626',phone:'+225 05 66 77 88',email:'patricia.ng@gmail.com'},
-  {id:8,nom:'Koffi MENSAH',role:'Apporteur — Industrie',type:'apporteur',deals:1,ca:750000,conv:15,objectif:0,init:'KM',color:'#7C3AED',phone:'+225 01 22 33 44',email:'koffi.mensah@gmail.com'},
-];
+let EQUIPE = [];
 
-const ABIDJAN_LOCS = [
-  {nom:'SANIX Africa — Bureau',lat:5.3463,lng:-4.0080,type:'bureau',icon:'🔴'},
-  {nom:'Distri-Plus Koumassi',lat:5.3200,lng:-3.9800,type:'client',icon:'🔵'},
-  {nom:'SCI Les Palmiers CI',lat:5.3620,lng:-3.9750,type:'client',icon:'🔵'},
-  {nom:'AGRO-SCI Yopougon',lat:5.3750,lng:-4.0600,type:'prospect',icon:'🟡'},
-  {nom:'Dépôt Brasseries Abobo',lat:5.4100,lng:-4.0150,type:'prospect',icon:'🟡'},
-  {nom:'Usine SOPROCI Marcory',lat:5.3050,lng:-3.9960,type:'prospect',icon:'🟡'},
-  {nom:'Ferme Konan — Anyama',lat:5.4800,lng:-4.0350,type:'prospect',icon:'🟡'},
-  {nom:'Awa Coulibaly',lat:5.3500,lng:-4.0020,type:'commercial',icon:'🟢'},
-  {nom:'Jean-Baptiste N\'Goran',lat:5.3700,lng:-4.0500,type:'commercial',icon:'🟢'},
-  {nom:'CÔTE-EST Immobilier',lat:5.3580,lng:-3.9600,type:'client',icon:'🔵'},
-];
+const ABIDJAN_LOCS = [];
 
 const MSG_TEMPLATES = [
   {canal:'wa',titre:'Présentation produit',msg:'Bonjour {prenom},\n\nJe suis {commercial} de SANIX Africa Division Technologies.\nNous développons des logiciels ERP sur mesure pour les entreprises ivoiriennes.\n\nJe souhaiterais vous présenter {logiciel} — la solution idéale pour votre secteur.\n\n📱 Lien démo gratuite : {demo}\n\nDisponible pour un échange cette semaine ?'},
@@ -2078,37 +2095,16 @@ const MSG_TEMPLATES = [
   {canal:'email',titre:'Invitation démo',msg:'Objet : Invitation — Démo gratuite {logiciel}\n\nBonjour,\n\nNous vous invitons à une démonstration gratuite et sans engagement de {logiciel}.\n\n📅 Durée : 30 min\n🔗 Lien démo : {demo}\n📞 Ou contactez-nous : +225 XX XX XX XX\n\nRépondez à cet email pour fixer un créneau.\n\nCordialement,\nL\'équipe SANIX Africa'},
 ];
 
-const DEPLOYMENTS_SEED = [
-  {id:1,client:'Distri-Plus Koumassi',logiciel:'DistriPro ERP',phase:'Formation',avancement:85,resp:'Awa Coulibaly',date:'15 Juin 2025'},
-  {id:2,client:'SCI Les Palmiers CI',logiciel:'ImmoSuite ERP',phase:'Recette',avancement:70,resp:'Fatou Diallo',date:'20 Juin 2025'},
-  {id:3,client:'CÔTE-EST Immobilier',logiciel:'ImmoSuite ERP',phase:'Installation',avancement:40,resp:'Awa Coulibaly',date:'30 Juin 2025'},
-  {id:4,client:'Transport OUATTARA',logiciel:'SANIX RH Suite',phase:'Paramétrage',avancement:55,resp:'Jean-Baptiste N\'Goran',date:'25 Juin 2025'},
-];
+const DEPLOYMENTS_SEED = [];
 let DEPLOYMENTS = [...DEPLOYMENTS_SEED];
 
 // ═══════════════════════════════════════
 //  COMMISSIONS DATA
 // ═══════════════════════════════════════
-let COMMISSIONS = [
-  {id:1, membreNom:'Sékou Koné',      type:'apporteur', logiciel:'DistriPro ERP',  client:'Distri-Plus Koumassi',    montantVente:400000, taux:10, montant:40000,  statut:'payee',      dateVente:'2025-05-28', datePaiement:'2025-06-01', notes:''},
-  {id:2, membreNom:'Fatou Diallo',    type:'salarie',   logiciel:'ImmoSuite ERP',  client:'SCI Les Palmiers CI',     montantVente:500000, taux:5,  montant:25000,  statut:'payee',      dateVente:'2025-05-20', datePaiement:'2025-06-01', notes:''},
-  {id:3, membreNom:'Aminata Bah',     type:'apporteur', logiciel:'AviNest Pro',    client:'Ferme Mahan Man',         montantVente:350000, taux:10, montant:35000,  statut:'validee',    dateVente:'2025-06-02', datePaiement:'',           notes:''},
-  {id:4, membreNom:'Awa Coulibaly',   type:'salarie',   logiciel:'ImmoSuite ERP',  client:'AGRO-SCI Yopougon',       montantVente:500000, taux:5,  montant:25000,  statut:'en_attente', dateVente:'2025-06-07', datePaiement:'',           notes:''},
-  {id:5, membreNom:'Sékou Koné',      type:'apporteur', logiciel:'ImmoSuite ERP',  client:'SIVB Treichville',        montantVente:500000, taux:10, montant:50000,  statut:'en_attente', dateVente:'2025-06-03', datePaiement:'',           notes:''},
-  {id:6, membreNom:'N\'Guessan Patricia',type:'apporteur',logiciel:'DistriPro ERP',client:'Dépôt Brasseries Abobo', montantVente:400000, taux:10, montant:40000,  statut:'validee',    dateVente:'2025-06-08', datePaiement:'',           notes:''},
-  {id:7, membreNom:'Jean-Baptiste N\'Goran',type:'salarie',logiciel:'Factory 4.0',client:'SOPAMO Agboville',        montantVente:750000, taux:5,  montant:37500,  statut:'en_attente', dateVente:'2025-06-01', datePaiement:'',           notes:''},
-  {id:8, membreNom:'Aminata Bah',     type:'apporteur', logiciel:'AviNest Pro',    client:'Elevage DIOMANDE',        montantVente:350000, taux:10, montant:35000,  statut:'en_attente', dateVente:'2025-06-04', datePaiement:'',           notes:''},
-];
+let COMMISSIONS = [];
 let _commFilter = 'all';
 
-const ACTIVITIES = [
-  {icon:'🎯',bg:'#EFF6FF',text:'<strong>Deal gagné</strong> — SCI Les Palmiers CI signe pour ImmoSuite ERP',time:'Il y a 2h'},
-  {icon:'📞',bg:'#ECFDF5',text:'<strong>Awa Coulibaly</strong> — Appel avec AGRO-SCI, démo prévue jeudi',time:'Il y a 3h'},
-  {icon:'📧',bg:'#F5F3FF',text:'Proposition envoyée à <strong>Dépôt Brasseries Abobo</strong>',time:'Il y a 5h'},
-  {icon:'⚠️',bg:'#FFFBEB',text:'Relance en retard — <strong>Ferme Konan</strong>, 3 jours sans réponse',time:'Il y a 6h'},
-  {icon:'🗺️',bg:'#F0FDFA',text:'<strong>Jean-Baptiste</strong> — Rapport terrain soumis (5 visites)',time:'Hier 18:00'},
-  {icon:'💰',bg:'#ECFDF5',text:'Commission calculée — <strong>Sékou Koné</strong> : 39 000 FCFA',time:'Hier 14:00'},
-];
+const ACTIVITIES = [];
 
 // ═══════════════════════════════════════
 //  NAVIGATION
@@ -2125,6 +2121,7 @@ function navigate(view, el) {
     users:'Utilisateurs & Accès',parametrage:'Paramétrage',parametres:'Paramètres & Sync'
   }[view] || view;
   if(view === 'carte') setTimeout(initMap, 100);
+  if(view === 'pipeline') setTimeout(populatePipelineFilters, 60);
   if(view === 'commissions') setTimeout(initCommissions, 50);
   if(view === 'parametrage') setTimeout(initParametrage, 50);
   if(view === 'parametres') setTimeout(initParametres, 50);
@@ -2144,57 +2141,121 @@ function closeSidebar(){
 //  DASHBOARD CHARTS
 // ═══════════════════════════════════════
 function initCharts() {
-  // CA par logiciel
+  // ── Date dynamique
+  const now = new Date();
+  const jours = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  const moisNoms = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  const dateEl = document.getElementById('dashboard-date');
+  if(dateEl) dateEl.textContent = jours[now.getDay()] + ' ' + now.getDate() + ' ' + moisNoms[now.getMonth()] + ' ' + now.getFullYear();
+
+  // ── Stats calculées depuis les données réelles
+  const totalCA = DEALS.filter(d=>d.stage==='gagne').reduce((s,d)=>s+(d.valeur||0),0);
+  const nbProspects = CLIENTS.filter(c=>c.statut==='prospect').length;
+  const nbDealsActifs = DEALS.filter(d=>d.stage!=='gagne'&&d.stage!=='perdu').length;
+  const nbGagnes = DEALS.filter(d=>d.stage==='gagne').length;
+  const tauxConv = DEALS.length>0 ? Math.round(nbGagnes/DEALS.length*100) : 0;
+
+  const fmtCA = v => v>=1000000 ? (v/1000000).toFixed(1)+'M' : v>=1000 ? (v/1000).toFixed(0)+'k' : v;
+  const setEl = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+  setEl('stat-ca', fmtCA(totalCA));
+  setEl('stat-prospects', nbProspects);
+  setEl('stat-deals', nbDealsActifs);
+  setEl('stat-conv', tauxConv+'%');
+
+  // ── CA par logiciel (données réelles)
+  const caParLog = {};
+  DEALS.filter(d=>d.stage==='gagne').forEach(d=>{ caParLog[d.logiciel]=(caParLog[d.logiciel]||0)+(d.valeur||0); });
+  const logLabels = Object.keys(caParLog);
+  const logData   = logLabels.map(l=>Math.round(caParLog[l]/1000));
+  const logColors = LOGICIELS.map(l=>l.color);
+
   const ctxCA = document.getElementById('chart-ca');
-  new Chart(ctxCA, {
-    type:'bar',
-    data:{
-      labels:['ImmoSuite','AviNest Pro','DistriPro','Factory 4.0','RH Suite'],
-      datasets:[{
-        label:'CA (000 FCFA)',
-        data:[6000,2450,3600,1500,1400],
-        backgroundColor:['#1E3A5F','#1B5E3B','#7C2D12','#457B9D','#4A1D96'],
-        borderRadius:8,borderSkipped:false
-      }]
-    },
-    options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{grid:{color:'#F1F5F9'},beginAtZero:true},x:{grid:{display:false}}}}
-  });
-  // Pipeline mensuel
+  if(ctxCA) {
+    if(ctxCA._chart) ctxCA._chart.destroy();
+    ctxCA._chart = new Chart(ctxCA, {
+      type:'bar',
+      data:{
+        labels: logLabels.length ? logLabels : ['Aucune vente'],
+        datasets:[{
+          label:'CA (000 FCFA)',
+          data: logData.length ? logData : [0],
+          backgroundColor: logLabels.map((_,i)=>logColors[i]||'#3B82F6'),
+          borderRadius:8, borderSkipped:false
+        }]
+      },
+      options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{grid:{color:'#F1F5F9'},beginAtZero:true},x:{grid:{display:false}}}}
+    });
+  }
+
+  // ── Pipeline mensuel (deals créés par mois)
   const ctxP = document.getElementById('chart-pipeline');
-  new Chart(ctxP, {
-    type:'line',
-    data:{
-      labels:['Jan','Fév','Mar','Avr','Mai','Juin'],
-      datasets:[
-        {label:'Prospects',data:[8,12,10,15,18,22],borderColor:'#94A3B8',tension:.4,fill:false,borderWidth:2,pointRadius:4},
-        {label:'Deals actifs',data:[3,5,4,8,10,14],borderColor:'#3B82F6',tension:.4,fill:false,borderWidth:2,pointRadius:4},
-        {label:'Gagnés',data:[1,2,2,3,4,7],borderColor:'#10B981',tension:.4,fill:false,borderWidth:2,pointRadius:4},
-      ]
-    },
-    options:{responsive:true,plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}}},scales:{y:{grid:{color:'#F1F5F9'},beginAtZero:true},x:{grid:{display:false}}}}
-  });
-  // Top commerciaux
+  if(ctxP) {
+    const moisCourts = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
+    const moisActuel = now.getMonth();
+    const derniersMois = [];
+    for(let i=5;i>=0;i--) {
+      const m = (moisActuel-i+12)%12;
+      derniersMois.push({label:moisCourts[m], index:m, year:now.getFullYear()-(moisActuel-i<0?1:0)});
+    }
+    const countByMonth = (arr, stageFn) => derniersMois.map(m =>
+      arr.filter(d => { const dt=new Date(d.date||d.dateVente||''); return dt.getMonth()===m.index && stageFn(d); }).length
+    );
+    if(ctxP._chart) ctxP._chart.destroy();
+    ctxP._chart = new Chart(ctxP, {
+      type:'line',
+      data:{
+        labels: derniersMois.map(m=>m.label),
+        datasets:[
+          {label:'Prospects',data:countByMonth(CLIENTS,c=>c.statut==='prospect'),borderColor:'#94A3B8',tension:.4,fill:false,borderWidth:2,pointRadius:4},
+          {label:'Deals actifs',data:countByMonth(DEALS,d=>d.stage!=='gagne'&&d.stage!=='perdu'),borderColor:'#3B82F6',tension:.4,fill:false,borderWidth:2,pointRadius:4},
+          {label:'Gagnés',data:countByMonth(DEALS,d=>d.stage==='gagne'),borderColor:'#10B981',tension:.4,fill:false,borderWidth:2,pointRadius:4},
+        ]
+      },
+      options:{responsive:true,plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}}},scales:{y:{grid:{color:'#F1F5F9'},beginAtZero:true,ticks:{precision:0}},x:{grid:{display:false}}}}
+    });
+  }
+
+  // ── Top commerciaux (calculé depuis EQUIPE)
   const tc = document.getElementById('top-commerciaux');
-  const sorted = [...EQUIPE].sort((a,b)=>b.ca-a.ca).slice(0,5);
-  const maxCA = sorted[0].ca;
-  tc.innerHTML = sorted.map((m,i)=>`
-    <div style="margin-bottom:12px">
-      <div class="flex items-center gap-3" style="margin-bottom:4px">
-        <div class="deal-avatar" style="background:${m.color}">${m.init}</div>
-        <div style="flex:1">
-          <div style="font-size:12px;font-weight:600">${m.nom}</div>
-          <div style="font-size:10px;color:var(--muted)">${m.role}</div>
-        </div>
-        <div style="font-family:var(--font-h);font-weight:700;font-size:13px">${(m.ca/1000).toFixed(0)}k</div>
-      </div>
-      <div class="progress"><div class="progress-bar" style="width:${(m.ca/maxCA*100).toFixed(0)}%;background:${m.color}"></div></div>
-    </div>`).join('');
-  // Activity feed
-  document.getElementById('activity-feed').innerHTML = ACTIVITIES.map(a=>`
-    <div class="activity-item">
-      <div class="activity-icon" style="background:${a.bg}">${a.icon}</div>
-      <div><div class="activity-text">${a.text}</div><div class="activity-time">${a.time}</div></div>
-    </div>`).join('');
+  if(tc) {
+    const sorted = [...EQUIPE].sort((a,b)=>b.ca-a.ca).slice(0,5);
+    if(sorted.length===0) {
+      tc.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:20px">Aucun membre d\'équipe</div>';
+    } else {
+      const maxCA = sorted[0].ca || 1;
+      tc.innerHTML = sorted.map(m=>`
+        <div style="margin-bottom:12px">
+          <div class="flex items-center gap-3" style="margin-bottom:4px">
+            <div class="deal-avatar" style="background:${m.color}">${m.init}</div>
+            <div style="flex:1">
+              <div style="font-size:12px;font-weight:600">${m.nom}</div>
+              <div style="font-size:10px;color:var(--muted)">${m.role}</div>
+            </div>
+            <div style="font-family:var(--font-h);font-weight:700;font-size:13px">${(m.ca/1000).toFixed(0)}k</div>
+          </div>
+          <div class="progress"><div class="progress-bar" style="width:${Math.round(m.ca/maxCA*100)}%;background:${m.color}"></div></div>
+        </div>`).join('');
+    }
+  }
+
+  // ── Activité récente (basée sur les données réelles)
+  const af = document.getElementById('activity-feed');
+  if(af) {
+    const recentDeals = [...DEALS].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,6);
+    if(recentDeals.length===0) {
+      af.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:20px">Aucune activité récente</div>';
+    } else {
+      af.innerHTML = recentDeals.map(d=>{
+        const stageLabels = {prospect:'Prospect',contact:'Contact',demo:'Démo',proposition:'Proposition',negociation:'Négociation',gagne:'Gagné ✓',perdu:'Perdu ✗'};
+        const icons = {gagne:{icon:'🎯',bg:'#ECFDF5'},perdu:{icon:'❌',bg:'#FEF2F2'},negociation:{icon:'🤝',bg:'#FFFBEB'},proposition:{icon:'📧',bg:'#F5F3FF'},demo:{icon:'🖥️',bg:'#EFF6FF'},contact:{icon:'📞',bg:'#F0FDFA'},prospect:{icon:'👤',bg:'#F8FAFF'}};
+        const s=icons[d.stage]||{icon:'📌',bg:'#F8FAFF'};
+        return `<div class="activity-item">
+          <div class="activity-icon" style="background:${s.bg}">${s.icon}</div>
+          <div><div class="activity-text"><strong>${d.client}</strong> — ${stageLabels[d.stage]||d.stage} (${d.logiciel})</div><div class="activity-time">${d.date||''} · ${d.commercial||''}</div></div>
+        </div>`;
+      }).join('');
+    }
+  }
 }
 
 // ═══════════════════════════════════════
@@ -2236,17 +2297,23 @@ function initPipeline() {
   }).join('');
 }
 function dealCard(d) {
-  const ini = d.commercial.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+  const ini = (d.commercial||'?').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+  const logTag = (d.logiciel||'—').split(' ')[0];
   return `
   <div class="deal-card" draggable="true" id="deal-${d.id}"
     ondragstart="startDrag(event,${d.id})"
     ondragend="endDrag(event)">
-    <div class="deal-tag" style="background:${d.color}22;color:${d.color}">${d.logiciel.split(' ')[0]}</div>
+    <div class="deal-tag" style="background:${d.color||'#2563EB'}22;color:${d.color||'#2563EB'}">${logTag}</div>
     <div class="deal-name">${d.client}</div>
-    <div class="deal-sub">📅 ${d.date}</div>
+    <div class="deal-sub">📅 ${d.date||''}</div>
     <div class="deal-footer">
-      <span class="deal-val">${(d.valeur/1000).toFixed(0)}k FCFA</span>
-      <div class="deal-avatar" style="background:${d.color}" title="${d.commercial}">${ini}</div>
+      <span class="deal-val">${((d.valeur||0)/1000).toFixed(0)}k FCFA</span>
+      <div class="deal-avatar" style="background:${d.color||'#2563EB'}" title="${d.commercial||''}">${ini}</div>
+    </div>
+    <!-- Actions CRUD -->
+    <div style="display:flex;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)" onclick="event.stopPropagation()">
+      <button onclick="editDeal(${d.id})" style="flex:1;padding:4px 6px;font-size:11px;font-weight:600;background:var(--primary-l);color:var(--primary);border:1px solid rgba(37,99,235,.3);border-radius:6px;cursor:pointer;font-family:var(--font-b)">✏️ Modifier</button>
+      <button onclick="deleteDeal(${d.id})" style="padding:4px 8px;font-size:11px;background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.3);border-radius:6px;cursor:pointer" title="Supprimer">🗑</button>
     </div>
   </div>`;
 }
@@ -2396,6 +2463,7 @@ function renderLogiciels() {
           ${l.demo&&l.demo!=='#'?`<a href="${l.demo}" target="_blank" class="btn-demo">▶ Démo live</a>`:`<button class="btn-demo" style="opacity:.5;cursor:not-allowed">▶ Démo N/D</button>`}
           ${l.video&&l.video!=='#'&&l.video?`<a href="${l.video}" target="_blank" class="btn-video">🎬 Vidéo</a>`:`<button class="btn-video" onclick="editLogiciel('${l.id}')">🎬 + Vidéo</button>`}
           <button class="btn-video" onclick="copyDemoLink('${l.id}')">🔗 Lien</button>
+          <button class="btn-video" id="media-btn-${l.id}" onclick="openMediaModal('${l.id}')" style="background:var(--orange-l);color:var(--orange);border-color:rgba(234,88,12,.2)">📁 Médias</button>
         </div>
         <div style="margin-top:10px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between">
           <span>Commission : <strong style="color:var(--success)">${l.commission||10}%</strong></span>
@@ -3058,88 +3126,230 @@ function initMap() {
   initItineraire();
 }
 function initItineraire() {
-  const stops = ['AGRO-SCI Yopougon','Dépôt Brasseries Abobo','Ferme Konan — Anyama','CÔTE-EST Immobilier','Usine SOPROCI Marcory'];
-  document.getElementById('itineraire-list').innerHTML = stops.map((s,i)=>`
+  const el = document.getElementById('itineraire-list');
+  if(!el) return;
+  // Itinéraire basé sur clients prospects actifs
+  const prospects = CLIENTS.filter(c=>c.statut==='prospect').slice(0,5);
+  if(prospects.length===0) {
+    el.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:16px">Aucun prospect actif pour planifier un itinéraire</div>';
+    return;
+  }
+  const heures = ['09:00','10:30','12:00','14:00','15:30'];
+  const badges = ['badge-primary','badge-warning','badge-warning','badge-success','badge-primary'];
+  const types  = ['Démo','Relance','1ère visite','Signature','Suivi'];
+  el.innerHTML = prospects.map((c,i)=>`
     <div class="itineraire-item">
       <div class="itineraire-step">${i+1}</div>
       <div>
-        <div style="font-weight:600;font-size:13px">${s}</div>
-        <div style="font-size:11px;color:var(--muted)">${['09:00','10:30','12:00','14:00','15:30'][i]} — Durée estimée: 45 min</div>
+        <div style="font-weight:600;font-size:13px">${c.nom}</div>
+        <div style="font-size:11px;color:var(--muted)">${heures[i]||'—'} — ${c.commercial||''}</div>
       </div>
-      <span class="badge ${['badge-primary','badge-warning','badge-warning','badge-success','badge-primary'][i]}" style="margin-left:auto">${['Démo','Relance','1ère visite','Signature','Suivi'][i]}</span>
+      <span class="badge ${badges[i]||'badge-muted'}" style="margin-left:auto">${types[i]||'Visite'}</span>
     </div>`).join('');
 }
-function toggleLayer(type) { alert('Filtre '+type+' — Fonction disponible en version connectée'); }
-function planItineraire() { alert('Optimisation itinéraire IA — Bientôt disponible'); }
+function toggleLayer(type) { showToast('Filtre '+type+' — Disponible en version connectée'); }
+function planItineraire() { showToast('⏳ Optimisation itinéraire IA — Bientôt disponible'); }
 
 // ═══════════════════════════════════════
 //  PLANNING / GANTT
 // ═══════════════════════════════════════
 function initPlanning() {
-  const months = ['Avr','Mai','Juin','Juil','Août'];
+  const moisNoms = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
+  const now = new Date();
+  const months = [];
+  for(let i=0;i<5;i++) months.push(moisNoms[(now.getMonth()+i)%12]);
   document.getElementById('gantt-months').innerHTML = months.map(m=>`<div class="gantt-month">${m}</div>`).join('');
-  const tasks = [
-    {label:'Distri-Plus Koumassi',start:0,dur:60,color:'#7C2D12'},
-    {label:'SCI Les Palmiers',start:20,dur:50,color:'#1E3A5F'},
-    {label:'CÔTE-EST Immo',start:40,dur:55,color:'#1E3A5F'},
-    {label:'Transport OUATTARA',start:30,dur:45,color:'#4A1D96'},
-    {label:'SOPAMO Agboville',start:60,dur:60,color:'#457B9D'},
-  ];
-  document.getElementById('gantt-chart').innerHTML = tasks.map(t=>`
-    <div class="gantt-row">
-      <div class="gantt-label">${t.label}</div>
-      <div class="gantt-track">
-        <div class="gantt-bar" style="left:${t.start}%;width:${t.dur}%;background:${t.color}">${t.label.split(' ')[0]}</div>
-      </div>
-    </div>`).join('');
-  document.getElementById('deploy-tbody').innerHTML = DEPLOYMENTS.map(d=>`
-    <tr>
-      <td><strong>${d.client}</strong></td>
-      <td>${d.logiciel}</td>
-      <td><span class="badge badge-primary">${d.phase}</span></td>
-      <td style="width:160px">
-        <div class="flex items-center gap-2">
-          <div class="progress" style="flex:1"><div class="progress-bar" style="width:${d.avancement}%;background:var(--primary)"></div></div>
-          <span style="font-size:11px;font-weight:600">${d.avancement}%</span>
+
+  // Gantt depuis DEPLOYMENTS réels
+  const gc = document.getElementById('gantt-chart');
+  if(DEPLOYMENTS.length===0) {
+    gc.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:20px">Aucun déploiement enregistré</div>';
+  } else {
+    const colors=['#2563EB','#7C3AED','#059669','#D97706','#DC2626','#0D9488','#457B9D','#7C2D12'];
+    gc.innerHTML = DEPLOYMENTS.map((d,i)=>`
+      <div class="gantt-row">
+        <div class="gantt-label">${d.client}</div>
+        <div class="gantt-track">
+          <div class="gantt-bar" style="left:0%;width:${d.avancement||50}%;background:${colors[i%colors.length]}">${d.client.split(' ')[0]}</div>
         </div>
-      </td>
-      <td>${d.resp}</td>
-      <td style="font-size:12px">${d.date}</td>
-    </tr>`).join('');
+      </div>`).join('');
+  }
+
+  // Table déploiements
+  const tbody = document.getElementById('deploy-tbody');
+  if(tbody) {
+    if(DEPLOYMENTS.length===0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">Aucun déploiement — <button class="btn btn-primary btn-sm" onclick="openDeploiementModal()" style="margin-left:8px">+ Créer</button></td></tr>';
+    } else {
+      tbody.innerHTML = DEPLOYMENTS.map(d=>`
+        <tr>
+          <td><strong>${d.client}</strong></td>
+          <td>${d.logiciel}</td>
+          <td><span class="badge badge-primary">${d.phase}</span></td>
+          <td style="width:160px">
+            <div class="flex items-center gap-2">
+              <div class="progress" style="flex:1"><div class="progress-bar" style="width:${d.avancement}%;background:var(--primary)"></div></div>
+              <span style="font-size:11px;font-weight:600">${d.avancement}%</span>
+            </div>
+          </td>
+          <td>${d.resp}</td>
+          <td style="font-size:12px">${d.date}</td>
+          <td onclick="event.stopPropagation()">
+            <div class="flex gap-2">
+              <button class="btn btn-outline btn-sm" onclick="editDeploiement('${d.id}')" title="Modifier" style="padding:4px 8px;font-size:11px">✏️</button>
+              <button class="btn btn-sm" onclick="deleteDeploiement('${d.id}')" title="Supprimer" style="padding:4px 8px;font-size:11px;background:var(--danger-l);color:var(--danger);border:1px solid var(--danger)">🗑</button>
+            </div>
+          </td>
+        </tr>`).join('');
+    }
+  }
+}
+
+// ─── CRUD DÉPLOIEMENTS ──────────────────
+function openDeploiementModal(id) {
+  document.getElementById('deploy-edit-id').value = id||'';
+  document.getElementById('deploy-modal-title').textContent = id ? '✏️ Modifier le déploiement' : '➕ Nouveau déploiement';
+  // Peupler select logiciel
+  var logSel = document.getElementById('dep-logiciel');
+  if(logSel) {
+    var cur = logSel.value;
+    logSel.innerHTML = '<option value="">— Sélectionner —</option>' +
+      LOGICIELS.filter(function(l){return l.actif!==false;}).map(function(l){return '<option value="'+l.nom+'">'+l.nom+'</option>';}).join('');
+    if(cur) logSel.value = cur;
+  }
+  // Peupler select responsable
+  var respSel = document.getElementById('dep-resp');
+  if(respSel) {
+    respSel.innerHTML = '<option value="">— Sélectionner —</option>' +
+      EQUIPE.map(function(m){return '<option value="'+m.nom+'">'+m.nom+'</option>';}).join('');
+  }
+  if(id) {
+    var d = DEPLOYMENTS.find(function(x){return x.id===id;});
+    if(d) {
+      document.getElementById('dep-client').value = d.client||'';
+      if(logSel) logSel.value = d.logiciel||'';
+      document.getElementById('dep-phase').value = d.phase||'Installation';
+      if(respSel) respSel.value = d.resp||'';
+      document.getElementById('dep-avancement').value = d.avancement||0;
+      document.getElementById('dep-date').value = d.date||'';
+      document.getElementById('dep-notes').value = d.notes||'';
+    }
+  } else {
+    ['dep-client','dep-notes'].forEach(function(i){var e=document.getElementById(i);if(e)e.value='';});
+    document.getElementById('dep-avancement').value = 0;
+    document.getElementById('dep-date').value = '';
+  }
+  document.getElementById('modal-deploiement').classList.remove('hidden');
+  setTimeout(function(){var e=document.getElementById('dep-client');if(e)e.focus();},100);
+}
+
+function editDeploiement(id) { openDeploiementModal(id); }
+
+function closeDeploiementModal() { document.getElementById('modal-deploiement').classList.add('hidden'); }
+
+function saveDeploiement() {
+  var client    = document.getElementById('dep-client').value.trim();
+  var logiciel  = document.getElementById('dep-logiciel').value;
+  var phase     = document.getElementById('dep-phase').value;
+  var resp      = document.getElementById('dep-resp').value;
+  var avancement= parseInt(document.getElementById('dep-avancement').value)||0;
+  var date      = document.getElementById('dep-date').value;
+  var notes     = document.getElementById('dep-notes').value.trim();
+  var editId    = document.getElementById('deploy-edit-id').value;
+  if(!client){ showToast('❌ Nom client obligatoire'); document.getElementById('dep-client').focus(); return; }
+  if(!logiciel){ showToast('❌ Sélectionner un logiciel'); return; }
+  var data = {client:client,logiciel:logiciel,phase:phase,resp:resp,avancement:avancement,date:date,notes:notes};
+  if(editId) {
+    var d = DEPLOYMENTS.find(function(x){return x.id===editId;});
+    if(d) Object.assign(d, data);
+    showToast('✅ Déploiement mis à jour — '+client);
+  } else {
+    var newId = 'dep_'+Date.now();
+    DEPLOYMENTS.push(Object.assign({id:newId}, data));
+    showToast('✅ Déploiement créé — '+client);
+  }
+  closeDeploiementModal();
+  initPlanning();
+}
+
+function deleteDeploiement(id) {
+  var d = DEPLOYMENTS.find(function(x){return x.id===id;});
+  if(!d||!confirm('Supprimer le déploiement "'+d.client+'" ?\n\nCette action est irréversible.')) return;
+  DEPLOYMENTS = DEPLOYMENTS.filter(function(x){return x.id!==id;});
+  initPlanning();
+  showToast('🗑 Déploiement "'+d.client+'" supprimé');
 }
 
 // ═══════════════════════════════════════
 //  RAPPORTS
 // ═══════════════════════════════════════
+// Stockage des rapports terrain soumis
+if(!window.RAPPORTS_HISTORY) window.RAPPORTS_HISTORY = [];
+
 function initRapports() {
+  // Peupler select commercial
+  const sel = document.getElementById('rapport-commercial');
+  if(sel) {
+    sel.innerHTML = '<option value="">— Sélectionner —</option>' +
+      EQUIPE.filter(m=>m.type==='salarie').map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('');
+  }
+  // Date du jour par défaut
+  const dateInput = document.getElementById('rapport-date');
+  if(dateInput && !dateInput.value) dateInput.value = new Date().toISOString().split('T')[0];
+
+  // Rapport auto : stats du jour calculées
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  const dealsAujourdhui = DEALS.filter(d=>d.date===today).length;
+  const caAujourdhui = DEALS.filter(d=>d.date===today&&d.stage==='gagne').reduce((s,d)=>s+(d.valeur||0),0);
+  const moisNoms=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  const dateLabel = now.getDate()+' '+moisNoms[now.getMonth()]+' '+now.getFullYear();
+
   document.getElementById('rapport-auto').innerHTML = `
     <div style="background:var(--surface2);border-radius:var(--r-sm);padding:14px;font-size:12px">
-      <div style="font-weight:700;margin-bottom:8px">📊 Rapport du 08 Juin 2025</div>
+      <div style="font-weight:700;margin-bottom:8px">📊 Rapport du ${dateLabel}</div>
       <div class="grid-2" style="gap:8px">
-        ${[['Visites terrain','12'],['Démos réalisées','4'],['Deals créés','2'],['CA journalier','800k FCFA']].map(([k,v])=>`
+        ${[['Deals actifs',DEALS.filter(d=>d.stage!=='gagne'&&d.stage!=='perdu').length],
+           ['Deals gagnés',DEALS.filter(d=>d.stage==='gagne').length],
+           ['Nouveaux aujourd\'hui',dealsAujourdhui],
+           ['CA total',caAujourdhui>0?(caAujourdhui/1000).toFixed(0)+'k FCFA':'—']
+          ].map(([k,v])=>`
           <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center">
             <div style="font-weight:800;font-size:16px;color:var(--primary)">${v}</div>
             <div style="font-size:10px;color:var(--muted)">${k}</div>
           </div>`).join('')}
       </div>
     </div>`;
-  document.getElementById('rapports-historique').innerHTML = [
-    {date:'08 Juin 2025',comm:'Jean-Baptiste',visites:5,statut:'Transmis'},
-    {date:'07 Juin 2025',comm:'Awa Coulibaly',visites:4,statut:'Lu'},
-    {date:'06 Juin 2025',comm:'Fatou Diallo',visites:3,statut:'Lu'},
-    {date:'05 Juin 2025',comm:'Jean-Baptiste',visites:6,statut:'Lu'},
-  ].map(r=>`
-    <div class="activity-item">
-      <div class="activity-icon" style="background:var(--primary-l)">📋</div>
-      <div style="flex:1">
-        <div style="font-size:12px;font-weight:600">${r.date} — ${r.comm}</div>
-        <div style="font-size:11px;color:var(--muted)">${r.visites} visites terrain</div>
-      </div>
-      <span class="badge ${r.statut==='Transmis'?'badge-warning':'badge-success'}">${r.statut}</span>
-    </div>`).join('');
+
+  // Historique des rapports soumis
+  const hist = document.getElementById('rapports-historique');
+  if(hist) {
+    if(window.RAPPORTS_HISTORY.length===0) {
+      hist.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:16px">Aucun rapport soumis</div>';
+    } else {
+      hist.innerHTML = [...window.RAPPORTS_HISTORY].reverse().map(r=>`
+        <div class="activity-item">
+          <div class="activity-icon" style="background:var(--primary-l)">📋</div>
+          <div style="flex:1">
+            <div style="font-size:12px;font-weight:600">${r.date} — ${r.commercial||'—'}</div>
+            <div style="font-size:11px;color:var(--muted)">${r.zone||''} · ${r.demos||0} démo(s) · ${r.deals||0} deal(s)</div>
+          </div>
+          <span class="badge badge-warning">Transmis</span>
+        </div>`).join('');
+    }
+  }
 }
 function submitRapport() {
-  alert('✅ Rapport transmis à Cyrille KESSIE\n📱 WhatsApp envoyé\n📧 Email envoyé\n\nMerci pour votre rapport terrain !');
+  const comm  = (document.getElementById('rapport-commercial')||{}).value||'';
+  const date  = (document.getElementById('rapport-date')||{}).value||new Date().toISOString().split('T')[0];
+  const zone  = document.querySelector('#view-rapports input[placeholder*="Zone"]')?.value||'';
+  const demos = parseInt(document.querySelector('#view-rapports input[placeholder="0"]')?.value)||0;
+  const deals = parseInt(document.querySelectorAll('#view-rapports input[placeholder="0"]')[1]?.value)||0;
+  if(!comm) { showToast('❌ Sélectionnez un commercial'); return; }
+  if(!window.RAPPORTS_HISTORY) window.RAPPORTS_HISTORY = [];
+  window.RAPPORTS_HISTORY.push({comm, date, zone, demos, deals, commercial:comm});
+  showToast('✅ Rapport transmis !');
+  initRapports();
 }
 
 // ═══════════════════════════════════════
@@ -3167,27 +3377,86 @@ function selectChannel(ch, el) {
 function sendMessage() {
   const txt = document.getElementById('msg-text').value;
   if(!txt.trim()) { alert('Rédigez un message'); return; }
-  alert('✅ Message envoyé avec succès !\n\n📱 WhatsApp: 3 destinataires\n\nSuivi disponible dans l\'historique.');
+  showToast('✅ Message envoyé !');
 }
-function saveTemplate() { alert('Template sauvegardé !'); }
+function saveTemplate() { showToast('✅ Template sauvegardé !'); }
 
-// ═══════════════════════════════════════
-//  NEW DEAL MODAL
-// ═══════════════════════════════════════
-function openNewDeal() { document.getElementById('modal-deal').classList.remove('hidden'); }
-function closeDeal() { document.getElementById('modal-deal').classList.add('hidden'); }
-function addDeal() {
-  const client = document.getElementById('deal-client').value;
-  const logiciel = document.getElementById('deal-logiciel').value;
-  const valeur = parseInt(document.getElementById('deal-val').value)||500000;
-  const commercial = document.getElementById('deal-commercial').value;
-  const stage = document.getElementById('deal-stage').value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace('é','e');
-  if(!client){ alert('Entrez le nom du client'); return; }
-  DEALS.push({id:DEALS.length+1,client,logiciel,valeur,stage:stage.split(' ')[0],commercial,color:'#2563EB',date:new Date().toLocaleDateString('fr-FR')});
-  closeDeal();
-  initPipeline();
-  alert('✅ Deal créé avec succès !');
+// ─── DEAL MODAL ─────────────────────────
+function openNewDeal() {
+  // Reset formulaire
+  document.getElementById('deal-edit-id').value = '';
+  document.getElementById('deal-modal-title').textContent = '➕ Nouveau Deal';
+  document.getElementById('deal-modal-sub').textContent = 'Créer une opportunité commerciale';
+  document.getElementById('deal-save-btn').textContent = '💾 Enregistrer';
+  ['deal-client','deal-notes'].forEach(id=>{ var e=document.getElementById(id); if(e) e.value=''; });
+  var dv = document.getElementById('deal-val'); if(dv) dv.value='';
+  var dstage = document.getElementById('deal-stage'); if(dstage) dstage.value='prospect';
+  document.getElementById('modal-deal').classList.remove('hidden');
+  setTimeout(function(){ var e=document.getElementById('deal-client'); if(e) e.focus(); }, 100);
 }
+
+function editDeal(id) {
+  var d = DEALS.find(function(x){ return x.id===id; });
+  if(!d) return;
+  document.getElementById('deal-edit-id').value = id;
+  document.getElementById('deal-modal-title').textContent = '✏️ Modifier le Deal';
+  document.getElementById('deal-modal-sub').textContent = 'Mettre à jour l\'opportunité';
+  document.getElementById('deal-save-btn').textContent = '💾 Mettre à jour';
+  document.getElementById('deal-client').value = d.client||'';
+  document.getElementById('deal-val').value = d.valeur||'';
+  document.getElementById('deal-notes').value = d.notes||'';
+  // Logiciel
+  var logSel = document.getElementById('deal-logiciel');
+  if(logSel) { logSel.value = d.logiciel||''; }
+  // Commercial
+  var commSel = document.getElementById('deal-commercial');
+  if(commSel) { commSel.value = d.commercial||''; }
+  // Stage
+  var stageSel = document.getElementById('deal-stage');
+  if(stageSel) { stageSel.value = d.stage||'prospect'; }
+  document.getElementById('modal-deal').classList.remove('hidden');
+  setTimeout(function(){ var e=document.getElementById('deal-client'); if(e) e.focus(); }, 100);
+}
+
+function closeDeal() { document.getElementById('modal-deal').classList.add('hidden'); }
+
+function saveDeal() {
+  var client     = document.getElementById('deal-client').value.trim();
+  var logiciel   = document.getElementById('deal-logiciel').value;
+  var valeur     = parseInt(document.getElementById('deal-val').value)||500000;
+  var commercial = document.getElementById('deal-commercial').value;
+  var stage      = document.getElementById('deal-stage').value;
+  var notes      = document.getElementById('deal-notes').value.trim();
+  var editId     = document.getElementById('deal-edit-id').value;
+  if(!client){ showToast('❌ Nom client obligatoire'); document.getElementById('deal-client').focus(); return; }
+  if(editId) {
+    var d = DEALS.find(function(x){ return x.id===parseInt(editId)||x.id===editId; });
+    if(d) { d.client=client; d.logiciel=logiciel; d.valeur=valeur; d.commercial=commercial; d.stage=stage; d.notes=notes; }
+    showToast('✅ Deal mis à jour — '+client);
+  } else {
+    var newId = DEALS.length ? Math.max.apply(null, DEALS.map(function(x){return parseInt(x.id)||0;}))+1 : 1;
+    DEALS.push({id:newId, client:client, logiciel:logiciel, valeur:valeur, commercial:commercial, stage:stage, notes:notes, color:'#2563EB', date:new Date().toLocaleDateString('fr-FR')});
+    showToast('✅ Deal créé — '+client);
+  }
+  closeDeal();
+  saveStore('deals');
+  initPipeline();
+  initCharts();
+}
+
+function deleteDeal(id) {
+  var d = DEALS.find(function(x){ return x.id===id; });
+  if(!d) return;
+  if(!confirm('Supprimer le deal "'+d.client+'" ?\n\nCette action est irréversible.')) return;
+  DEALS = DEALS.filter(function(x){ return x.id!==id; });
+  saveStore('deals');
+  initPipeline();
+  initCharts();
+  showToast('🗑 Deal "'+d.client+'" supprimé');
+}
+
+// Legacy alias (kept for backward compat with _origAddDeal wrapper below)
+function addDeal() { saveDeal(); }
 // ─── CLIENT VIEW MODE ───────────────────
 let clientViewMode = 'auto'; // auto | table | cards | list
 let clientCurrentFilter = 'all';
@@ -3319,9 +3588,9 @@ function openNewClient() {
   document.getElementById('client-modal-sub').textContent = 'Ajouter un prospect ou client';
   ['c-nom','c-phone','c-email','c-valeur','c-adresse','c-notes'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('c-secteur').value = 'Immobilier';
-  document.getElementById('c-logiciel').value = 'ImmoSuite ERP';
+  document.getElementById('c-logiciel').value = '';
   document.getElementById('c-statut').value = 'prospect';
-  document.getElementById('c-commercial').value = 'Awa Coulibaly';
+  document.getElementById('c-commercial').value = '';
   document.getElementById('modal-client').classList.remove('hidden');
   setTimeout(()=>document.getElementById('c-nom').focus(), 100);
 }
@@ -3339,9 +3608,9 @@ function editClient(id) {
   document.getElementById('c-adresse').value = c.adresse||'';
   document.getElementById('c-notes').value = c.notes||'';
   document.getElementById('c-secteur').value = c.secteur||'Immobilier';
-  document.getElementById('c-logiciel').value = c.logiciel||'ImmoSuite ERP';
+  document.getElementById('c-logiciel').value = c.logiciel||'';
   document.getElementById('c-statut').value = c.statut||'prospect';
-  document.getElementById('c-commercial').value = c.commercial||'Awa Coulibaly';
+  document.getElementById('c-commercial').value = c.commercial||'';
   document.getElementById('modal-client').classList.remove('hidden');
 }
 function closeClientModal() { document.getElementById('modal-client').classList.add('hidden'); }
@@ -3431,13 +3700,43 @@ function whatsappClient(id) {
   const c = CLIENTS.find(x=>x.id===id);
   if(!c||!c.phone) { showToast('❌ Numéro manquant'); return; }
   const num = c.phone.replace(/\D/g,'');
-  const msg = encodeURIComponent(`Bonjour ${c.nom},\n\nJe suis de SANIX Africa Division Technologies. Je vous contacte concernant ${c.logiciel}.\n\nCordialement`);
+  const msg = encodeURIComponent(`Bonjour ${c.nom},\n\nJe vous contacte concernant ${c.logiciel}.\n\nCordialement`);
   window.open(`https://wa.me/225${num}?text=${msg}`, '_blank');
 }
 
-// ─── PIPELINE FILTERS (manquants) ───────
-function filterPipeline(sel) { /* filtre cosmétique — pipeline se recharge */ }
-function filterByLogiciel(sel) { /* filtre cosmétique */ }
+// ─── PIPELINE FILTERS ───────────────────
+function filterPipeline(sel) {
+  const val = sel.value.toLowerCase();
+  const filtered = val ? DEALS.filter(d=>(d.commercial||'').toLowerCase().includes(val)) : DEALS;
+  renderKanban(filtered);
+  updatePipelineTotal(filtered);
+}
+function filterByLogiciel(sel) {
+  const val = sel.value;
+  const filtered = val ? DEALS.filter(d=>d.logiciel===val) : DEALS;
+  renderKanban(filtered);
+  updatePipelineTotal(filtered);
+}
+function updatePipelineTotal(deals) {
+  const total = deals.reduce((s,d)=>s+(d.valeur||0),0);
+  const el = document.getElementById('pipeline-total');
+  if(el) el.textContent = total.toLocaleString('fr-FR')+' FCFA';
+}
+function populatePipelineFilters() {
+  const fComm = document.getElementById('filter-commercial');
+  const fLog  = document.getElementById('filter-logiciel');
+  if(fComm) {
+    const comms = [...new Set(EQUIPE.map(m=>m.nom))];
+    fComm.innerHTML = '<option value="">Tous les commerciaux</option>' +
+      comms.map(c=>`<option value="${c}">${c}</option>`).join('');
+  }
+  if(fLog) {
+    const logs = [...new Set(LOGICIELS.map(l=>l.nom))];
+    fLog.innerHTML = '<option value="">Tous les logiciels</option>' +
+      logs.map(l=>`<option value="${l}">${l}</option>`).join('');
+  }
+  updatePipelineTotal(DEALS);
+}
 
 // ─── INIT CLIENTS ───────────────────────
 function initClients() {
@@ -3501,12 +3800,7 @@ const PERM_ICONS = {
 
 // Raw user store — passwords hashed on init
 let USERS_RAW = [
-  {id:1,nom:'Cyrille KESSIE',login:'kessie',email:'cyrille@sanix-africa.ci',phone:'+225 07 00 00 01',role:'super_admin',rawPass:'Azerty@2026',actif:true,lastLogin:null,init:'CK',color:'#2563EB'},
-  {id:2,nom:'Awa Coulibaly',login:'awa',email:'awa@sanix-africa.ci',phone:'+225 07 00 00 02',role:'manager',rawPass:'Manager@1',actif:true,lastLogin:null,init:'AC',color:'#7C3AED'},
-  {id:3,nom:'Jean-Baptiste N\'Goran',login:'jean',email:'jean@sanix-africa.ci',phone:'+225 07 00 00 03',role:'commercial',rawPass:'Comm@2025',actif:true,lastLogin:null,init:'JB',color:'#059669'},
-  {id:4,nom:'Fatou Diallo',login:'fatou',email:'fatou@sanix-africa.ci',phone:'+225 07 00 00 04',role:'commercial',rawPass:'Comm@2025',actif:true,lastLogin:null,init:'FD',color:'#EA580C'},
-  {id:5,nom:'Sékou Koné',login:'sekou',email:'sekou@sanix-africa.ci',phone:'+225 07 00 00 05',role:'apporteur',rawPass:'Apport@1',actif:true,lastLogin:null,init:'SK',color:'#D97706'},
-  {id:6,nom:'Aminata Bah',login:'aminata',email:'aminata@sanix-africa.ci',phone:'+225 07 00 00 06',role:'apporteur',rawPass:'Apport@1',actif:false,lastLogin:null,init:'AB',color:'#0D9488'},
+  {id:1,nom:'Cyrille KESSIE',login:'kessie',email:'cyrille@sanix-africa.ci',phone:'',role:'super_admin',rawPass:'Azerty@2026',actif:true,lastLogin:null,init:'CK',color:'#2563EB'},
 ];
 let USERS = [];
 
@@ -3534,7 +3828,7 @@ function togglePassModal() {
   inp.type = inp.type === 'password' ? 'text' : 'password';
 }
 function forgotPass() {
-  alert('📧 Demande envoyée à cyrille@sanix-africa.ci\n\nVous recevrez un lien de réinitialisation.');
+  showToast('📧 Contactez votre administrateur pour réinitialiser votre mot de passe.');
 }
 
 async function doLogin() {
@@ -3606,6 +3900,7 @@ function enterApp(user) {
   initMessagerie();
   initUsersView();
   populateCommerciaux();
+  populatePipelineFilters();
 }
 
 function doLogout() {
@@ -4427,10 +4722,274 @@ function showToast(msg, dur=3000) {
   setTimeout(()=>{ toast.style.opacity='0'; toast.style.transition='opacity .3s'; setTimeout(()=>toast.remove(),300); }, dur);
 }
 
-// ─── PATCH saveAll after mutations ──────
+// ═══════════════════════════════════════
+//  MÉDIATHÈQUE — IndexedDB Engine
+// ═══════════════════════════════════════
+const MEDIA_DB_NAME = 'sanix_media';
+const MEDIA_DB_VER  = 1;
+let _mediaDB = null;
+let _mediaCurrentLogId = null;
+let _mediaCurrentTab = 'all';
+
+function mediaOpenDB() {
+  return new Promise((res, rej) => {
+    if(_mediaDB) { res(_mediaDB); return; }
+    const req = indexedDB.open(MEDIA_DB_NAME, MEDIA_DB_VER);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if(!db.objectStoreNames.contains('files')) {
+        const store = db.createObjectStore('files', {keyPath:'id', autoIncrement:true});
+        store.createIndex('logId', 'logId', {unique:false});
+        store.createIndex('type',  'type',  {unique:false});
+      }
+    };
+    req.onsuccess = e => { _mediaDB = e.target.result; res(_mediaDB); };
+    req.onerror   = e => { rej(e.target.error); };
+  });
+}
+
+async function mediaGetByLogId(logId) {
+  const db = await mediaOpenDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('files','readonly');
+    const idx = tx.objectStore('files').index('logId');
+    const req = idx.getAll(logId);
+    req.onsuccess = () => res(req.result||[]);
+    req.onerror   = () => rej(req.error);
+  });
+}
+
+async function mediaSaveFile(logId, name, type, mimeType, dataUrl, sizeBytes) {
+  const db = await mediaOpenDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('files','readwrite');
+    const req = tx.objectStore('files').add({logId, name, type, mimeType, dataUrl, sizeBytes, uploadedAt: new Date().toISOString()});
+    req.onsuccess = () => res(req.result);
+    req.onerror   = () => rej(req.error);
+  });
+}
+
+async function mediaDeleteFile(id) {
+  const db = await mediaOpenDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('files','readwrite');
+    const req = tx.objectStore('files').delete(id);
+    req.onsuccess = () => res();
+    req.onerror   = () => rej(req.error);
+  });
+}
+
+async function mediaGetAll() {
+  const db = await mediaOpenDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('files','readonly');
+    const req = tx.objectStore('files').getAll();
+    req.onsuccess = () => res(req.result||[]);
+    req.onerror   = () => rej(req.error);
+  });
+}
+
+function mediaReadFile(file) {
+  return new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload = e => res(e.target.result);
+    reader.onerror = () => rej(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function mediaGuessType(file, forcedType) {
+  if(forcedType) return forcedType;
+  if(file.type.startsWith('video/')) return 'video';
+  if(file.type.startsWith('image/')) return 'catalogue';
+  if(file.type.includes('pdf')||file.type.includes('word')||file.type.includes('presentation')||file.type.includes('spreadsheet')) return 'document';
+  return 'document';
+}
+
+function mediaFormatSize(bytes) {
+  if(!bytes) return '—';
+  if(bytes < 1024) return bytes+'B';
+  if(bytes < 1048576) return (bytes/1024).toFixed(0)+'KB';
+  return (bytes/1048576).toFixed(1)+'MB';
+}
+
+// ─── Upload depuis modal logiciel ────────
+async function mediaUpload(input, forcedType) {
+  const logId = document.getElementById('log-edit-id').value;
+  if(!logId) { showToast('⚠️ Sauvegardez d\'abord le logiciel avant d\'uploader des médias'); return; }
+  const files = Array.from(input.files);
+  if(!files.length) return;
+  const listEl = document.getElementById('media-upload-list');
+  for(const file of files) {
+    if(file.size > 100 * 1024 * 1024) { showToast(`⚠️ ${file.name} trop lourd (max 100MB)`); continue; }
+    const rowId = 'mu_'+Date.now()+Math.random().toString(36).slice(2,6);
+    listEl.insertAdjacentHTML('beforeend',`<div id="${rowId}" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px"><div style="width:14px;height:14px;border:2px solid var(--primary);border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;flex-shrink:0"></div><span>${file.name}</span></div>`);
+    try {
+      const dataUrl = await mediaReadFile(file);
+      const type = mediaGuessType(file, forcedType);
+      await mediaSaveFile(logId, file.name, type, file.type, dataUrl, file.size);
+      document.getElementById(rowId).innerHTML = `<span style="color:var(--success)">✅</span><span>${file.name}</span><span style="color:var(--muted)">${mediaFormatSize(file.size)}</span>`;
+      setTimeout(()=>{ const el=document.getElementById(rowId); if(el) el.remove(); }, 2500);
+      showToast(`✅ ${file.name} uploadé`);
+      await mediaUpdateCardBadge(logId);
+    } catch(err) {
+      document.getElementById(rowId).innerHTML = `<span style="color:var(--danger)">❌</span><span>${file.name} — erreur</span>`;
+    }
+  }
+  input.value='';
+}
+
+// ─── Upload depuis modal médiathèque ─────
+async function mediaDropUpload(input, forcedType) {
+  const logId = _mediaCurrentLogId;
+  if(!logId) return;
+  const files = Array.from(input.files);
+  for(const file of files) {
+    if(file.size > 100 * 1024 * 1024) { showToast(`⚠️ ${file.name} > 100MB`); continue; }
+    try {
+      const dataUrl = await mediaReadFile(file);
+      const type = mediaGuessType(file, forcedType);
+      await mediaSaveFile(logId, file.name, type, file.type, dataUrl, file.size);
+      showToast(`✅ ${file.name}`);
+    } catch(err) { showToast(`❌ Erreur: ${file.name}`); }
+  }
+  input.value='';
+  await mediaRenderList();
+  await mediaUpdateCardBadge(logId);
+}
+
+// ─── Drag & Drop ─────────────────────────
+async function mediaDrop(event) {
+  event.preventDefault();
+  document.getElementById('media-drop-zone').style.borderColor='';
+  document.getElementById('media-drop-zone').style.background='';
+  const logId = _mediaCurrentLogId;
+  if(!logId) return;
+  const files = Array.from(event.dataTransfer.files);
+  for(const file of files) {
+    if(file.size > 100 * 1024 * 1024) { showToast(`⚠️ ${file.name} > 100MB`); continue; }
+    try {
+      const dataUrl = await mediaReadFile(file);
+      const type = mediaGuessType(file);
+      await mediaSaveFile(logId, file.name, type, file.type, dataUrl, file.size);
+      showToast(`✅ ${file.name}`);
+    } catch(err) { showToast(`❌ ${file.name}`); }
+  }
+  await mediaRenderList();
+  await mediaUpdateCardBadge(logId);
+}
+
+// ─── Ouvrir modal médiathèque ────────────
+async function openMediaModal(logId) {
+  _mediaCurrentLogId = logId;
+  _mediaCurrentTab = 'all';
+  const log = LOGICIELS.find(x=>x.id===logId);
+  document.getElementById('media-modal-title').textContent = `📁 ${log?log.nom:'Logiciel'} — Médiathèque`;
+  document.getElementById('media-modal-sub').textContent = 'Vidéos · Documents · Catalogues';
+  document.querySelectorAll('#media-tabs .tab').forEach((t,i)=>t.classList.toggle('active',i===0));
+  document.getElementById('modal-media').classList.remove('hidden');
+  await mediaRenderList();
+}
+
+function mediaTabSwitch(type, el) {
+  _mediaCurrentTab = type;
+  document.querySelectorAll('#media-tabs .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  mediaRenderList();
+}
+
+async function mediaRenderList() {
+  const listEl = document.getElementById('media-list-items');
+  if(!listEl) return;
+  listEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">⏳ Chargement…</div>';
+  let files = await mediaGetByLogId(_mediaCurrentLogId);
+  if(_mediaCurrentTab !== 'all') files = files.filter(f=>f.type===_mediaCurrentTab);
+  if(!files.length) {
+    listEl.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:12px">Aucun fichier dans cette catégorie</div>';
+    return;
+  }
+  const TYPE_ICO = {video:'🎬',document:'📄',catalogue:'📚'};
+  const TYPE_LBL = {video:'Vidéo',document:'Document',catalogue:'Catalogue'};
+  listEl.innerHTML = files.map(f => {
+    const ico = TYPE_ICO[f.type]||'📁';
+    const lbl = TYPE_LBL[f.type]||f.type;
+    const isImg = f.mimeType && f.mimeType.startsWith('image/');
+    const isVid = f.mimeType && f.mimeType.startsWith('video/');
+    const date = f.uploadedAt ? new Date(f.uploadedAt).toLocaleDateString('fr-FR') : '—';
+    const previewHtml = isImg
+      ? `<img src="${f.dataUrl}" style="width:56px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0" alt="${f.name}">`
+      : isVid
+      ? `<video src="${f.dataUrl}" style="width:56px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0" muted></video>`
+      : `<div style="width:56px;height:42px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${ico}</div>`;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+      ${previewHtml}
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.name}</div>
+        <div style="font-size:11px;color:var(--muted)">${ico} ${lbl} · ${mediaFormatSize(f.sizeBytes)} · ${date}</div>
+      </div>
+      <div class="flex gap-2" style="flex-shrink:0">
+        <a href="${f.dataUrl}" download="${f.name}" class="btn btn-outline btn-sm" title="Télécharger">⬇</a>
+        ${isVid||isImg ? `<button onclick="mediaPreview(${f.id})" class="btn btn-outline btn-sm" title="Aperçu">👁</button>` : ''}
+        <button onclick="mediaDelete(${f.id})" class="btn btn-sm" style="background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2)" title="Supprimer">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function mediaDelete(id) {
+  if(!confirm('Supprimer ce fichier ? Action irréversible.')) return;
+  await mediaDeleteFile(id);
+  showToast('🗑 Fichier supprimé');
+  await mediaRenderList();
+  if(_mediaCurrentLogId) await mediaUpdateCardBadge(_mediaCurrentLogId);
+}
+
+async function mediaPreview(id) {
+  const db = await mediaOpenDB();
+  const file = await new Promise((res,rej)=>{
+    const tx = db.transaction('files','readonly');
+    const req = tx.objectStore('files').get(id);
+    req.onsuccess = ()=>res(req.result);
+    req.onerror   = ()=>rej(req.error);
+  });
+  if(!file) return;
+  const isImg = file.mimeType&&file.mimeType.startsWith('image/');
+  const isVid = file.mimeType&&file.mimeType.startsWith('video/');
+  const w = window.open('','_blank','width=900,height=650');
+  if(!w) return;
+  w.document.write(`<!DOCTYPE html><html><head><title>${file.name}</title><style>body{margin:0;background:#111;display:flex;align-items:center;justify-content:center;height:100vh}</style></head><body>`);
+  if(isImg) w.document.write(`<img src="${file.dataUrl}" style="max-width:100%;max-height:100%;object-fit:contain">`);
+  else if(isVid) w.document.write(`<video src="${file.dataUrl}" controls autoplay style="max-width:100%;max-height:100%"></video>`);
+  w.document.write('</body></html>');
+  w.document.close();
+}
+
+async function mediaUpdateCardBadge(logId) {
+  const files = await mediaGetByLogId(logId);
+  const btn = document.getElementById('media-btn-'+logId);
+  if(btn) {
+    btn.textContent = files.length > 0 ? `📁 Médias (${files.length})` : '📁 Médias';
+    btn.style.fontWeight = files.length > 0 ? '700' : '';
+  }
+}
+
+async function mediaRefreshAllBadges() {
+  for(const l of LOGICIELS) {
+    await mediaUpdateCardBadge(l.id);
+  }
+}
+
+// Refresh badges après rendu logiciels
+const _origInitLogiciels = initLogiciels;
+function initLogiciels() {
+  _origInitLogiciels();
+  setTimeout(mediaRefreshAllBadges, 200);
+}
+
+// Init IndexedDB on load
+window.addEventListener('DOMContentLoaded', ()=>{ mediaOpenDB().catch(()=>{}); });
+
 // Wrap critical functions to auto-save after changes
-const _origAddDeal = addDeal;
-function addDeal() { _origAddDeal(); saveAll(); }
 const _origDropDeal = dropDeal;
 function dropDeal(e, stage) { _origDropDeal(e, stage); saveStore('deals'); }
 
