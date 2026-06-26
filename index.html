@@ -518,8 +518,8 @@ select.form-input{cursor:pointer}
     <div class="login-brand">
       <div class="login-brand-icon">🌍</div>
       <div>
-        <div class="login-brand-name">SANIX CRM Pro</div>
-        <div class="login-brand-sub">Africa Division Technologies</div>
+        <div class="login-brand-name" id="brand-login-name">SANIX CRM Pro</div>
+        <div class="login-brand-sub" id="brand-login-sub">Africa Division Technologies</div>
       </div>
     </div>
     <h1 class="login-headline">Pilotez vos ventes<br><span>intelligemment.</span></h1>
@@ -599,8 +599,8 @@ select.form-input{cursor:pointer}
   <div class="sb-logo">
     <div class="sb-logo-icon">🌍</div>
     <div>
-      <div class="sb-logo-text">SANIX CRM</div>
-      <div class="sb-logo-sub">Africa Division</div>
+      <div class="sb-logo-text" id="brand-sb-name">SANIX CRM</div>
+      <div class="sb-logo-sub" id="brand-sb-sub">Africa Division</div>
     </div>
   </div>
 
@@ -655,6 +655,9 @@ select.form-input{cursor:pointer}
   <div class="sb-section" id="sb-admin-section">Administration</div>
   <div class="sb-item" id="sb-users-item" onclick="navigate('users',this)">
     <div class="sb-icon">🔐</div><span>Utilisateurs & Accès</span>
+  </div>
+  <div class="sb-item" onclick="navigate('parametrage',this)">
+    <div class="sb-icon">🛠️</div><span>Paramétrage</span>
   </div>
   <div class="sb-item" onclick="navigate('parametres',this)">
     <div class="sb-icon">⚙️</div><span>Paramètres & Sync</span>
@@ -1208,6 +1211,145 @@ select.form-input{cursor:pointer}
 
       <!-- Users grid -->
       <div class="grid-3" id="users-grid"></div>
+    </div>
+
+    <!-- ══ VIEW: PARAMETRAGE ══ -->
+    <div id="view-parametrage" class="hidden fade-in">
+      <div class="flex justify-between items-center" style="margin-bottom:20px">
+        <div>
+          <h1 class="page-title">Paramétrage</h1>
+          <p class="page-sub">Identité, finance, pipeline, listes — paramètres métier persistants</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-outline btn-sm" onclick="resetConfig()">↺ Valeurs par défaut</button>
+          <button class="btn btn-primary btn-sm" onclick="saveConfigForm()">💾 Enregistrer</button>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:16px">
+        <!-- IDENTITE -->
+        <div class="sync-section">
+          <h3>🏢 Identité entreprise</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Nom application</label>
+              <input type="text" class="form-input" id="cfg-appName">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Sigle (sidebar)</label>
+              <input type="text" class="form-input" id="cfg-sigle">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Sous-titre / Slogan</label>
+            <input type="text" class="form-input" id="cfg-sub">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Raison sociale</label>
+            <input type="text" class="form-input" id="cfg-raisonSociale">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">RCCM</label>
+              <input type="text" class="form-input" id="cfg-rccm" placeholder="CI-ABJ-XXXX-X-XXXXX">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Compte Contribuable (CC)</label>
+              <input type="text" class="form-input" id="cfg-cc">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Téléphone</label>
+              <input type="text" class="form-input" id="cfg-tel">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <input type="email" class="form-input" id="cfg-email">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Adresse</label>
+              <input type="text" class="form-input" id="cfg-adresse">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Emoji logo</label>
+              <input type="text" class="form-input" id="cfg-emoji" maxlength="4">
+            </div>
+          </div>
+        </div>
+
+        <!-- FINANCE -->
+        <div class="sync-section">
+          <h3>💰 Paramètres financiers</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Devise</label>
+              <input type="text" class="form-input" id="cfg-devise">
+            </div>
+            <div class="form-group">
+              <label class="form-label">TVA (%)</label>
+              <input type="number" class="form-input" id="cfg-tva" min="0" max="100" step="0.5">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Timbre fiscal (FCFA)</label>
+              <input type="number" class="form-input" id="cfg-timbre" min="0" step="100">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Commission défaut (%)</label>
+              <input type="number" class="form-input" id="cfg-commissionDefaut" min="0" max="50" step="1">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Objectif CA défaut (FCFA)</label>
+              <input type="number" class="form-input" id="cfg-objectifDefaut" min="0" step="50000">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Remise max défaut (%)</label>
+              <input type="number" class="form-input" id="cfg-remiseMaxDefaut" min="0" max="100" step="1">
+            </div>
+          </div>
+          <div class="divider"></div>
+          <div style="font-size:11px;color:var(--muted)">TVA 18 % + timbre 200 FCFA = standard DGI Côte d'Ivoire. Devise = libellé affiché.</div>
+        </div>
+      </div>
+
+      <!-- PIPELINE -->
+      <div class="sync-section" style="margin-bottom:16px">
+        <h3 style="justify-content:space-between">🎯 Phases du pipeline <button class="btn btn-outline btn-sm" onclick="addStageRow()">➕ Ajouter phase</button></h3>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:12px">Ordre = ordre d'affichage. ID technique non modifiable après création de deals. Couleur en hex.</p>
+        <div id="cfg-stages-list"></div>
+      </div>
+
+      <!-- LISTES -->
+      <div class="grid-2" style="margin-bottom:16px">
+        <div class="sync-section">
+          <h3>🏭 Secteurs d'activité</h3>
+          <p style="font-size:11px;color:var(--muted);margin-bottom:8px">Un par ligne</p>
+          <textarea class="form-input" id="cfg-secteurs" rows="8" style="font-family:monospace;font-size:12px"></textarea>
+        </div>
+        <div class="sync-section">
+          <h3>🗂️ Catégories logiciels</h3>
+          <p style="font-size:11px;color:var(--muted);margin-bottom:8px">Un par ligne</p>
+          <textarea class="form-input" id="cfg-categories" rows="8" style="font-family:monospace;font-size:12px"></textarea>
+        </div>
+      </div>
+
+      <!-- DIAGNOSTIC -->
+      <div class="sync-section">
+        <h3>🩺 Diagnostic base de données</h3>
+        <div id="cfg-diagnostic" class="grid-2" style="gap:10px"></div>
+        <div class="divider"></div>
+        <div class="flex gap-2" style="flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" onclick="exportJson()">📤 Exporter JSON</button>
+          <button class="btn btn-outline btn-sm" onclick="forceSaveAll()">💾 Forcer sauvegarde</button>
+          <button class="btn btn-outline btn-sm" onclick="navigate('parametres', document.querySelector('[onclick*=&quot;parametres&quot;]'))">☁️ Aller à Sync cloud</button>
+        </div>
+      </div>
     </div>
 
     <!-- ══ VIEW: PARAMETRES ══ -->
@@ -1838,7 +1980,7 @@ const LOGICIELS_SEED = [
 ];
 let LOGICIELS = [...LOGICIELS_SEED];
 
-const STAGES = [
+let STAGES = [
   {id:'prospect',label:'Prospect',color:'#94A3B8'},
   {id:'contact',label:'Contact',color:'#3B82F6'},
   {id:'demo',label:'Démo',color:'#8B5CF6'},
@@ -1847,6 +1989,32 @@ const STAGES = [
   {id:'gagne',label:'Gagné ✓',color:'#10B981'},
   {id:'perdu',label:'Perdu ✗',color:'#6B7280'},
 ];
+
+// ═══════════════════════════════════════
+//  CONFIG ENTREPRISE / PARAMÉTRAGE
+// ═══════════════════════════════════════
+const CONFIG_DEFAULT = {
+  appName:'SANIX CRM Pro',
+  sigle:'SANIX CRM',
+  sub:'Africa Division Technologies',
+  raisonSociale:'SANIX Africa Division Technologies',
+  rccm:'',
+  cc:'',
+  tel:'+225 ',
+  email:'contact@sanix-africa.ci',
+  adresse:'Abidjan, Côte d\'Ivoire',
+  emoji:'🌍',
+  devise:'FCFA',
+  tva:18,
+  timbre:200,
+  commissionDefaut:10,
+  objectifDefaut:1500000,
+  remiseMaxDefaut:10,
+  stages:null,        // null = défaut
+  secteurs:['Immobilier','Aviculture','Distribution','Industrie','Agro-industrie','Santé','BTP','Commerce','Services','Autre'],
+  categories:['Immobilier','Aviculture','Distribution','Industrie','Ressources Humaines','Santé','Autre'],
+};
+let CONFIG = {...CONFIG_DEFAULT};
 
 let DEALS = [
   {id:1,client:'AGRO-SCI Yopougon',logiciel:'ImmoSuite ERP',valeur:500000,stage:'negociation',commercial:'Awa Coulibaly',color:'#1E3A5F',date:'2025-06-07'},
@@ -1954,10 +2122,11 @@ function navigate(view, el) {
     dashboard:'Tableau de bord',pipeline:'Pipeline Commercial',clients:'Clients & Prospects',
     logiciels:'Catalogue Logiciels',equipe:'Équipe Commerciale',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
     planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
-    users:'Utilisateurs & Accès',parametres:'Paramètres & Sync'
+    users:'Utilisateurs & Accès',parametrage:'Paramétrage',parametres:'Paramètres & Sync'
   }[view] || view;
   if(view === 'carte') setTimeout(initMap, 100);
   if(view === 'commissions') setTimeout(initCommissions, 50);
+  if(view === 'parametrage') setTimeout(initParametrage, 50);
   if(view === 'parametres') setTimeout(initParametres, 50);
   if(view === 'users') setTimeout(initUsersView, 50);
   closeSidebar();
@@ -4070,6 +4239,129 @@ function copySql() {
   });
 }
 
+// ─── CONFIG PERSISTENCE & APPLY ──────────
+function loadConfig() {
+  const saved = lsLoad('config');
+  if(saved && typeof saved === 'object') CONFIG = {...CONFIG_DEFAULT, ...saved};
+  if(CONFIG.stages && Array.isArray(CONFIG.stages) && CONFIG.stages.length) STAGES = CONFIG.stages;
+}
+function persistConfig() {
+  lsSave('config', CONFIG);
+  lsSave('config_updated', Date.now());
+}
+function applyConfig() {
+  const set = (id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=v; };
+  set('brand-sb-name', CONFIG.sigle);
+  set('brand-sb-sub', CONFIG.sub);
+  set('brand-login-name', CONFIG.appName);
+  set('brand-login-sub', CONFIG.sub);
+  document.title = CONFIG.appName;
+  const logoIcons = document.querySelectorAll('.sb-logo-icon,.login-brand-icon');
+  logoIcons.forEach(e=>{ if(CONFIG.emoji) e.textContent = CONFIG.emoji; });
+  // Deal-stage select depuis STAGES
+  const ds = document.getElementById('deal-stage');
+  if(ds) ds.innerHTML = STAGES.filter(s=>!['gagne','perdu'].includes(s.id))
+    .map(s=>`<option value="${s.id}">${s.label}</option>`).join('');
+  // Secteurs (modal client)
+  const cs = document.getElementById('c-secteur');
+  if(cs){ const cur=cs.value; cs.innerHTML = CONFIG.secteurs.map(s=>`<option>${s}</option>`).join(''); if(cur) cs.value=cur; }
+  // Catégories (modal logiciel)
+  const lc = document.getElementById('l-cat');
+  if(lc){ const cur=lc.value; lc.innerHTML = CONFIG.categories.map(c=>`<option>${c}</option>`).join(''); if(cur) lc.value=cur; }
+}
+
+// ─── INIT PARAMETRAGE VIEW ───────────────
+function initParametrage() {
+  const g = id => document.getElementById(id);
+  const fields = ['appName','sigle','sub','raisonSociale','rccm','cc','tel','email','adresse','emoji',
+                  'devise','tva','timbre','commissionDefaut','objectifDefaut','remiseMaxDefaut'];
+  fields.forEach(f=>{ const e=g('cfg-'+f); if(e) e.value = CONFIG[f]; });
+  g('cfg-secteurs').value = (CONFIG.secteurs||[]).join('\n');
+  g('cfg-categories').value = (CONFIG.categories||[]).join('\n');
+  renderStageRows();
+  renderDiagnostic();
+}
+function renderStageRows() {
+  const box = document.getElementById('cfg-stages-list');
+  if(!box) return;
+  box.innerHTML = STAGES.map((s,i)=>`
+    <div class="form-row" data-i="${i}" style="align-items:center;gap:8px;margin-bottom:8px">
+      <input type="text" class="form-input cfg-stg-label" value="${s.label}" placeholder="Libellé" style="flex:2">
+      <input type="text" class="form-input cfg-stg-id" value="${s.id}" placeholder="id" style="flex:1;font-family:monospace;font-size:12px">
+      <input type="color" class="cfg-stg-color" value="${s.color}" style="width:42px;height:34px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:none">
+      <button class="btn btn-outline btn-sm" onclick="removeStageRow(${i})" style="color:var(--danger)">🗑</button>
+    </div>`).join('');
+}
+function collectStages() {
+  const rows = document.querySelectorAll('#cfg-stages-list .form-row');
+  const out = [];
+  rows.forEach(r=>{
+    const label = r.querySelector('.cfg-stg-label').value.trim();
+    let id = r.querySelector('.cfg-stg-id').value.trim().toLowerCase().replace(/\s+/g,'_');
+    const color = r.querySelector('.cfg-stg-color').value;
+    if(label && id) out.push({id,label,color});
+  });
+  return out;
+}
+function addStageRow() {
+  STAGES = collectStages();
+  STAGES.push({id:'phase_'+Date.now(),label:'Nouvelle phase',color:'#64748B'});
+  renderStageRows();
+}
+function removeStageRow(i) {
+  STAGES = collectStages();
+  if(STAGES.length<=2){ showToast('❌ Minimum 2 phases'); return; }
+  STAGES.splice(i,1);
+  renderStageRows();
+}
+function renderDiagnostic() {
+  const box = document.getElementById('cfg-diagnostic');
+  if(!box) return;
+  const items = [
+    ['Logiciels', LOGICIELS.length],['Clients', CLIENTS.length],['Deals', DEALS.length],
+    ['Déploiements', DEPLOYMENTS.length],['Commissions', COMMISSIONS.length],
+    ['Équipe', EQUIPE.length],['Utilisateurs', USERS.length],['Phases pipeline', STAGES.length],
+  ];
+  box.innerHTML = items.map(([k,v])=>`
+    <div style="padding:10px 12px;background:var(--surface2);border-radius:var(--r-sm);border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:12px;color:var(--text2)">${k}</span>
+      <strong style="font-family:var(--font-h);font-size:16px">${v}</strong>
+    </div>`).join('');
+}
+function saveConfigForm() {
+  const g = id => document.getElementById(id);
+  const nums = ['tva','timbre','commissionDefaut','objectifDefaut','remiseMaxDefaut'];
+  const strs = ['appName','sigle','sub','raisonSociale','rccm','cc','tel','email','adresse','emoji','devise'];
+  strs.forEach(f=>{ CONFIG[f] = g('cfg-'+f).value.trim(); });
+  nums.forEach(f=>{ CONFIG[f] = parseFloat(g('cfg-'+f).value)||0; });
+  if(!CONFIG.appName){ showToast('❌ Nom application obligatoire'); g('cfg-appName').focus(); return; }
+  CONFIG.secteurs = g('cfg-secteurs').value.split('\n').map(x=>x.trim()).filter(Boolean);
+  CONFIG.categories = g('cfg-categories').value.split('\n').map(x=>x.trim()).filter(Boolean);
+  const newStages = collectStages();
+  if(newStages.length<2){ showToast('❌ Minimum 2 phases pipeline'); return; }
+  STAGES = newStages;
+  CONFIG.stages = STAGES;
+  persistConfig();
+  applyConfig();
+  if(typeof initPipeline==='function') try{ initPipeline(); }catch(e){}
+  renderDiagnostic();
+  showToast('✅ Paramétrage enregistré');
+}
+function resetConfig() {
+  if(!confirm('Restaurer tous les paramètres par défaut ?')) return;
+  CONFIG = {...CONFIG_DEFAULT};
+  STAGES = JSON.parse(JSON.stringify([
+    {id:'prospect',label:'Prospect',color:'#94A3B8'},{id:'contact',label:'Contact',color:'#3B82F6'},
+    {id:'demo',label:'Démo',color:'#8B5CF6'},{id:'proposition',label:'Proposition',color:'#F59E0B'},
+    {id:'negociation',label:'Négociation',color:'#EF4444'},{id:'gagne',label:'Gagné ✓',color:'#10B981'},
+    {id:'perdu',label:'Perdu ✗',color:'#6B7280'}
+  ]));
+  persistConfig();
+  applyConfig();
+  initParametrage();
+  showToast('↺ Paramètres réinitialisés');
+}
+
 // ─── INIT PARAMETRES VIEW ────────────────
 function initParametres() {
   // Load saved config
@@ -4116,6 +4408,9 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   await initUsersHashAll();
   // Load localStorage first
   loadAll();
+  // Load business config + apply branding/lists
+  loadConfig();
+  applyConfig();
   // Store deals seed ref
   window.DEALS_SEED = [...DEALS];
   // Offline detection
