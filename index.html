@@ -2003,6 +2003,8 @@ select.form-input{cursor:pointer}
         <span style="font-size:22px;cursor:pointer;padding:4px 6px;border-radius:6px;transition:background .15s" onclick="selectEmoji(this,'🏥')">🏥</span>
         <span style="font-size:22px;cursor:pointer;padding:4px 6px;border-radius:6px;transition:background .15s" onclick="selectEmoji(this,'🔧')">🔧</span>
         <span style="font-size:22px;cursor:pointer;padding:4px 6px;border-radius:6px;transition:background .15s" onclick="selectEmoji(this,'🍺')">🍺</span>
+        <span style="font-size:22px;cursor:pointer;padding:4px 6px;border-radius:6px;transition:background .15s" onclick="selectEmoji(this,'🌿')">🌿</span>
+        <span style="font-size:22px;cursor:pointer;padding:4px 6px;border-radius:6px;transition:background .15s" onclick="selectEmoji(this,'🏪')">🏪</span>
         <input type="text" id="l-icon-custom" class="form-input" style="width:52px;height:36px;padding:4px 8px;font-size:18px;text-align:center" placeholder="✏️" oninput="document.getElementById('l-icon').value=this.value;updateLogPreview()">
       </div>
       <input type="hidden" id="l-icon" value="📦">
@@ -2333,6 +2335,54 @@ const LOGICIELS_SEED = [
     doc:'',
     icon:'📊',
     color:'#2563EB',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_psf',
+    nom:'Phyto Strike Force',
+    version:'v1.0',
+    cat:'Distribution',
+    plateforme:'Web',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'ERP distributeur de produits phytosanitaires : SYSCOHADA SIG cascade, TVA déclaration & liquidation, clôture exercice avec détermination résultat & à-nouveaux, livraisons/réceptions partielles, conditions distributeur avec blocage encours, cartographie Leaflet offline, dashboards SVG par module.',
+    modules:'Clients & Fournisseurs,Commandes & BL,Livraisons partielles,Conditions Distributeur,Encours & Blocage,Stock FIFO,Facturation TVA 18%,TVA Déclaration & Liquidation,Clôture Exercice,Résultat & À-Nouveaux,SYSCOHADA SIG Cascade,Cartographie Leaflet,Dashboards SVG',
+    prixNum:650000,
+    prix:'650 000',
+    prixMensuel:65000,
+    remiseMax:10,
+    demo:'',
+    video:'',
+    doc:'',
+    icon:'🌿',
+    color:'#1B5E3B',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_grenier',
+    nom:'Le Grenier CI',
+    version:'v1.0',
+    cat:'Commerce',
+    plateforme:'Multi-plateforme',
+    type_licence:'SaaS',
+    support:'1an',
+    desc:'Marketplace C2C Côte d\'Ivoire : 13 modules de services, Mobile Money Wave/Orange/MTN, dispatch livraison avec scoring chauffeurs, IndexedDB offline, admin panel, Firebase/Supabase DAO.',
+    modules:'Catalogue Produits,Commandes C2C,Dispatch Livraison,Scoring Chauffeurs,Mobile Money,Messagerie Acheteur/Vendeur,Admin Panel,Statistiques & KPI,Firebase DAO,Supabase Sync,IndexedDB Offline,PWA',
+    prixNum:400000,
+    prix:'400 000',
+    prixMensuel:40000,
+    remiseMax:10,
+    demo:'',
+    video:'',
+    doc:'',
+    icon:'🏪',
+    color:'#D97706',
     commission:10,
     ventes:0,
     prospects:0,
