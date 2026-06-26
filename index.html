@@ -550,10 +550,10 @@ select.form-input{cursor:pointer}
       <div id="login-error" class="login-error">❌ Email ou mot de passe incorrect.</div>
 
       <div class="login-field">
-        <label class="login-label">Adresse email</label>
+        <label class="login-label">Identifiant ou email</label>
         <div class="login-input-wrap">
-          <span class="login-input-icon">📧</span>
-          <input id="login-email" type="email" class="login-input" placeholder="vous@sanix-africa.ci" onkeydown="if(event.key==='Enter')doLogin()">
+          <span class="login-input-icon">👤</span>
+          <input id="login-email" type="text" class="login-input" placeholder="KESSIE ou vous@sanix-africa.ci" autocapitalize="off" onkeydown="if(event.key==='Enter')doLogin()">
         </div>
       </div>
       <div class="login-field">
@@ -574,8 +574,8 @@ select.form-input{cursor:pointer}
       <div class="login-demo">
         <div class="login-demo-title">Accès démo rapide</div>
         <div class="login-demo-creds">
-          <div class="cred-chip" onclick="fillCreds('cyrille@sanix-africa.ci','Admin@2025!')">
-            <span class="cred-chip-role">👑 Super Admin</span><span class="cred-chip-pass">Admin@2025!</span>
+          <div class="cred-chip" onclick="fillCreds('KESSIE','Azerty@2026')">
+            <span class="cred-chip-role">👑 KESSIE (Super Admin)</span><span class="cred-chip-pass">Azerty@2026</span>
           </div>
           <div class="cred-chip" onclick="fillCreds('awa@sanix-africa.ci','Manager@1')">
             <span class="cred-chip-role">🏢 Manager</span><span class="cred-chip-pass">Manager@1</span>
@@ -656,10 +656,10 @@ select.form-input{cursor:pointer}
   <div class="sb-item" id="sb-users-item" onclick="navigate('users',this)">
     <div class="sb-icon">🔐</div><span>Utilisateurs & Accès</span>
   </div>
-  <div class="sb-item" onclick="navigate('parametrage',this)">
+  <div class="sb-item" id="sb-parametrage-item" onclick="navigate('parametrage',this)">
     <div class="sb-icon">🛠️</div><span>Paramétrage</span>
   </div>
-  <div class="sb-item" onclick="navigate('parametres',this)">
+  <div class="sb-item" id="sb-parametres-item" onclick="navigate('parametres',this)">
     <div class="sb-icon">⚙️</div><span>Paramètres & Sync</span>
   </div>
 
@@ -3484,7 +3484,7 @@ const ROLE_BG = {
   apporteur:'#FFFBEB'
 };
 const PERMISSIONS = {
-  super_admin:['dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports','users'],
+  super_admin:['dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports','users','parametrage','parametres'],
   manager:    ['dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports'],
   commercial: ['dashboard','pipeline','clients','logiciels','messagerie','carte','rapports'],
   apporteur:  ['pipeline','clients','messagerie','rapports'],
@@ -3492,21 +3492,21 @@ const PERMISSIONS = {
 const PERM_LABELS = {
   dashboard:'Tableau de bord',pipeline:'Pipeline',clients:'Clients',logiciels:'Logiciels',
   equipe:'Équipe',commissions:'Commissions',messagerie:'Messagerie',carte:'Carte',planning:'Planning',
-  rapports:'Rapports',users:'Gestion utilisateurs'
+  rapports:'Rapports',users:'Gestion utilisateurs',parametrage:'Paramétrage',parametres:'Sync cloud'
 };
 const PERM_ICONS = {
   dashboard:'📊',pipeline:'🎯',clients:'👤',logiciels:'💻',equipe:'🏆',
-  commissions:'💰',messagerie:'💬',carte:'🗺️',planning:'📅',rapports:'📋',users:'🔐'
+  commissions:'💰',messagerie:'💬',carte:'🗺️',planning:'📅',rapports:'📋',users:'🔐',parametrage:'🛠️',parametres:'⚙️'
 };
 
 // Raw user store — passwords hashed on init
 let USERS_RAW = [
-  {id:1,nom:'Cyrille KESSIE',email:'cyrille@sanix-africa.ci',phone:'+225 07 00 00 01',role:'super_admin',rawPass:'Admin@2025!',actif:true,lastLogin:null,init:'CK',color:'#2563EB'},
-  {id:2,nom:'Awa Coulibaly',email:'awa@sanix-africa.ci',phone:'+225 07 00 00 02',role:'manager',rawPass:'Manager@1',actif:true,lastLogin:null,init:'AC',color:'#7C3AED'},
-  {id:3,nom:'Jean-Baptiste N\'Goran',email:'jean@sanix-africa.ci',phone:'+225 07 00 00 03',role:'commercial',rawPass:'Comm@2025',actif:true,lastLogin:null,init:'JB',color:'#059669'},
-  {id:4,nom:'Fatou Diallo',email:'fatou@sanix-africa.ci',phone:'+225 07 00 00 04',role:'commercial',rawPass:'Comm@2025',actif:true,lastLogin:null,init:'FD',color:'#EA580C'},
-  {id:5,nom:'Sékou Koné',email:'sekou@sanix-africa.ci',phone:'+225 07 00 00 05',role:'apporteur',rawPass:'Apport@1',actif:true,lastLogin:null,init:'SK',color:'#D97706'},
-  {id:6,nom:'Aminata Bah',email:'aminata@sanix-africa.ci',phone:'+225 07 00 00 06',role:'apporteur',rawPass:'Apport@1',actif:false,lastLogin:null,init:'AB',color:'#0D9488'},
+  {id:1,nom:'Cyrille KESSIE',login:'kessie',email:'cyrille@sanix-africa.ci',phone:'+225 07 00 00 01',role:'super_admin',rawPass:'Azerty@2026',actif:true,lastLogin:null,init:'CK',color:'#2563EB'},
+  {id:2,nom:'Awa Coulibaly',login:'awa',email:'awa@sanix-africa.ci',phone:'+225 07 00 00 02',role:'manager',rawPass:'Manager@1',actif:true,lastLogin:null,init:'AC',color:'#7C3AED'},
+  {id:3,nom:'Jean-Baptiste N\'Goran',login:'jean',email:'jean@sanix-africa.ci',phone:'+225 07 00 00 03',role:'commercial',rawPass:'Comm@2025',actif:true,lastLogin:null,init:'JB',color:'#059669'},
+  {id:4,nom:'Fatou Diallo',login:'fatou',email:'fatou@sanix-africa.ci',phone:'+225 07 00 00 04',role:'commercial',rawPass:'Comm@2025',actif:true,lastLogin:null,init:'FD',color:'#EA580C'},
+  {id:5,nom:'Sékou Koné',login:'sekou',email:'sekou@sanix-africa.ci',phone:'+225 07 00 00 05',role:'apporteur',rawPass:'Apport@1',actif:true,lastLogin:null,init:'SK',color:'#D97706'},
+  {id:6,nom:'Aminata Bah',login:'aminata',email:'aminata@sanix-africa.ci',phone:'+225 07 00 00 06',role:'apporteur',rawPass:'Apport@1',actif:false,lastLogin:null,init:'AB',color:'#0D9488'},
 ];
 let USERS = [];
 
@@ -3548,7 +3548,11 @@ async function doLogin() {
   err.classList.remove('show');
   await new Promise(r=>setTimeout(r,600)); // UX delay
   const hash = await sha256(pass + SALT);
-  const user = USERS.find(u=>u.email.toLowerCase()===email && u.hash===hash);
+  const user = USERS.find(u=>u.hash===hash && (
+    (u.login && u.login.toLowerCase()===email) ||
+    u.email.toLowerCase()===email ||
+    (u.nom && u.nom.toLowerCase()===email)
+  ));
   btn.disabled = false;
   btn.innerHTML = 'Se connecter';
   if(!user){ err.textContent='❌ Email ou mot de passe incorrect.'; err.classList.add('show'); return; }
@@ -3581,6 +3585,13 @@ function clearSession() {
 }
 
 function enterApp(user) {
+  // Débloquer modules admin pour super_admin avant applyRoleUI
+  if (user.role === 'super_admin') {
+    ['sb-admin-section','sb-users-item','sb-parametrage-item','sb-parametres-item'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el){ el.style.display=''; el.style.opacity=''; el.style.pointerEvents=''; el.title=''; }
+    });
+  }
   document.getElementById('login-screen').style.display = 'none';
   applyRoleUI(user);
   startSessionCountdown();
@@ -3619,34 +3630,57 @@ function applyRoleUI(user) {
   document.getElementById('sb-user-role').textContent = ROLE_LABELS[user.role];
   // Show/hide admin section
   const adminSection = document.getElementById('sb-admin-section');
-  const usersItem = document.getElementById('sb-users-item');
-  if(user.role === 'super_admin') {
-    adminSection.style.display = '';
-    usersItem.style.display = '';
-  } else {
-    adminSection.style.display = 'none';
-    usersItem.style.display = 'none';
+  const usersItem    = document.getElementById('sb-users-item');
+  const paramItem    = document.getElementById('sb-parametrage-item');
+  const syncItem     = document.getElementById('sb-parametres-item');
+  const isSuper = user.role === 'super_admin';
+
+  // Toujours afficher la section admin pour super_admin
+  [adminSection, usersItem, paramItem, syncItem].forEach(el => {
+    if (el) el.style.display = isSuper ? '' : 'none';
+  });
+
+  // Super admin = accès total, aucune restriction sur aucun item
+  if (isSuper) {
+    document.querySelectorAll('.sb-item').forEach(item => {
+      item.style.opacity      = '';
+      item.style.pointerEvents = '';
+      item.style.cursor       = '';
+      item.title              = '';
+    });
+    // Forcer explicitement les items admin accessibles
+    [usersItem, paramItem, syncItem].forEach(el => {
+      if (el) {
+        el.style.display      = '';
+        el.style.opacity      = '';
+        el.style.pointerEvents = '';
+        el.style.cursor       = 'pointer';
+        el.title              = '';
+      }
+    });
+    return;
   }
+
   // Disable nav items user cannot access
   document.querySelectorAll('.sb-item[onclick]').forEach(item => {
     const match = item.getAttribute('onclick').match(/navigate\('(\w+)'/);
-    if(match) {
+    if (match) {
       const view = match[1];
-      if(!perms.includes(view)) {
-        item.style.opacity = '.35';
+      if (!perms.includes(view)) {
+        item.style.opacity      = '.35';
         item.style.pointerEvents = 'none';
-        item.title = 'Accès restreint — rôle insuffisant';
+        item.title              = 'Accès restreint — rôle insuffisant';
       } else {
-        item.style.opacity = '';
+        item.style.opacity      = '';
         item.style.pointerEvents = '';
-        item.title = '';
+        item.title              = '';
       }
     }
   });
+
   // If current user can't see dashboard, navigate to first allowed
-  if(!perms.includes('dashboard')) {
-    const first = perms[0];
-    navigate(first, null);
+  if (!perms.includes('dashboard')) {
+    navigate(perms[0], null);
   }
 }
 
