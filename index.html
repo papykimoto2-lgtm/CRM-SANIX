@@ -875,9 +875,12 @@ select.form-input{cursor:pointer}
         <div class="tab active" onclick="logCatTab('',this)">Tous</div>
         <div class="tab" onclick="logCatTab('Immobilier',this)">🏢 Immobilier</div>
         <div class="tab" onclick="logCatTab('Aviculture',this)">🐔 Aviculture</div>
-        <div class="tab" onclick="logCatTab('Distribution',this)">🏭 Distribution</div>
+        <div class="tab" onclick="logCatTab('Distribution',this)">🚚 Distribution</div>
         <div class="tab" onclick="logCatTab('Industrie',this)">⚙️ Industrie</div>
+        <div class="tab" onclick="logCatTab('Agriculture',this)">🌾 Agriculture</div>
+        <div class="tab" onclick="logCatTab('Santé',this)">🏥 Santé</div>
         <div class="tab" onclick="logCatTab('Ressources Humaines',this)">👥 RH</div>
+        <div class="tab" onclick="logCatTab('Commerce',this)">🛒 Commerce</div>
       </div>
 
       <!-- Grille produits -->
@@ -1836,7 +1839,7 @@ select.form-input{cursor:pointer}
 
 <!-- ══ MODAL LOGICIEL CRÉER / MODIFIER ══ -->
 <div id="modal-logiciel" class="modal-overlay hidden">
-  <div class="modal-box" style="max-width:540px">
+  <div class="modal-box" style="max-width:540px;max-height:92vh;overflow-y:auto;overflow-x:hidden">
     <div class="modal-close" onclick="closeLogicielModal()">✕</div>
     <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:4px" id="log-modal-title">➕ Nouveau logiciel / produit</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Ajouter au catalogue SANIX Africa · Tous champs * obligatoires</div>
@@ -1958,8 +1961,11 @@ select.form-input{cursor:pointer}
     </div>
 
     <!-- ─── Médiathèque ─── -->
-    <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em;margin:14px 0 8px;text-transform:uppercase">📁 Médiathèque (fichiers locaux)</div>
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px;margin-bottom:4px">
+    <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em;margin:14px 0 8px;text-transform:uppercase;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleMediaSection()">
+      <span>📁 Médiathèque (fichiers locaux)</span>
+      <span id="media-section-toggle" style="font-size:14px;transition:transform .2s">▼</span>
+    </div>
+    <div id="media-section-body" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px;margin-bottom:4px">
       <div class="flex gap-2" style="flex-wrap:wrap;margin-bottom:10px">
         <label style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:var(--primary-l);color:var(--primary);border:1px solid rgba(37,99,235,.2);border-radius:var(--r-sm);font-size:12px;font-weight:600;cursor:pointer;transition:all .2s" onmouseover="this.style.background='var(--primary)';this.style.color='#fff'" onmouseout="this.style.background='var(--primary-l)';this.style.color='var(--primary)'">
           🎬 Vidéo de présentation
@@ -1974,7 +1980,7 @@ select.form-input{cursor:pointer}
           <input type="file" accept=".pdf,image/*" multiple style="display:none" onchange="mediaUpload(this,'catalogue')">
         </label>
       </div>
-      <div id="media-upload-list" style="min-height:32px"><div style="font-size:11px;color:var(--muted);padding:6px 0">💡 Sauvegardez d'abord le logiciel, puis uploadez les médias via ce panneau ou le bouton "📁 Médias" sur la fiche.</div></div>
+      <div id="media-upload-list" style="min-height:28px"><div style="font-size:11px;color:var(--muted);padding:4px 0">💡 Sauvegardez d'abord le logiciel, puis uploadez les médias via ce panneau ou le bouton "📁 Médias" sur la fiche.</div></div>
     </div>
 
     <!-- ─── Apparence ─── -->
@@ -1994,6 +2000,9 @@ select.form-input{cursor:pointer}
         <span style="font-size:22px;cursor:pointer;padding:4px 6px;border-radius:6px;transition:background .15s" onclick="selectEmoji(this,'📊')">📊</span>
         <span style="font-size:22px;cursor:pointer;padding:4px 6px;border-radius:6px;transition:background .15s" onclick="selectEmoji(this,'🛒')">🛒</span>
         <span style="font-size:22px;cursor:pointer;padding:4px 6px;border-radius:6px;transition:background .15s" onclick="selectEmoji(this,'🏗️')">🏗️</span>
+        <span style="font-size:22px;cursor:pointer;padding:4px 6px;border-radius:6px;transition:background .15s" onclick="selectEmoji(this,'🏥')">🏥</span>
+        <span style="font-size:22px;cursor:pointer;padding:4px 6px;border-radius:6px;transition:background .15s" onclick="selectEmoji(this,'🔧')">🔧</span>
+        <span style="font-size:22px;cursor:pointer;padding:4px 6px;border-radius:6px;transition:background .15s" onclick="selectEmoji(this,'🍺')">🍺</span>
         <input type="text" id="l-icon-custom" class="form-input" style="width:52px;height:36px;padding:4px 8px;font-size:18px;text-align:center" placeholder="✏️" oninput="document.getElementById('l-icon').value=this.value;updateLogPreview()">
       </div>
       <input type="hidden" id="l-icon" value="📦">
@@ -2040,7 +2049,296 @@ select.form-input{cursor:pointer}
 // ═══════════════════════════════════════
 //  DATA
 // ═══════════════════════════════════════
-const LOGICIELS_SEED = [];
+const LOGICIELS_SEED = [
+  {
+    id:'log_immo',
+    nom:'ImmoSuite ERP',
+    version:'v3.2',
+    cat:'Immobilier',
+    plateforme:'Web',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'ERP immobilier complet pour promoteurs et gestionnaires : programmes, lots, unités, ventes, souscripteurs diaspora, DQE/étude de prix, SYSCOHADA, FEC DGI, portail client.',
+    modules:'Programmes,Lots & Unités,Ventes,Souscripteurs,DQE / Étude de Prix,Comptabilité SYSCOHADA,FEC Export,Portail Client,Messagerie interne,Visiteurs & Accueil,Admin Médias,Sync Supabase',
+    prixNum:750000,
+    prix:'750 000',
+    prixMensuel:75000,
+    remiseMax:10,
+    demo:'https://immo-suite.vercel.app',
+    video:'',
+    doc:'',
+    icon:'🏢',
+    color:'#1E3A5F',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_avinest',
+    nom:'AviNest Pro',
+    version:'v2.1',
+    cat:'Aviculture',
+    plateforme:'Web',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'ERP avicole complet : gestion des lots, bandes, couvoir/reproduction, GMQ, IC, mortalité, OHADA, TVA 18%, timbre fiscal, BI analytique avec régression linéaire, PWA offline.',
+    modules:'Lots & Bandes,Couvoir / Reproduction,Alimentation & Intrants,Mortalité & Rebuts,Performance GMQ/IC,Ventes & Facturation,Stock & Fournisseurs,SYSCOHADA,BI & Prévisions,PWA Offline,Paramétrage',
+    prixNum:500000,
+    prix:'500 000',
+    prixMensuel:50000,
+    remiseMax:10,
+    demo:'',
+    video:'',
+    doc:'',
+    icon:'🐔',
+    color:'#92400E',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_distripro',
+    nom:'DistriPro ERP',
+    version:'v2.0',
+    cat:'Distribution',
+    plateforme:'Web',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'ERP distribution & commerce : gestion clients/fournisseurs, commandes, livraisons partielles, avoirs, encours & blocage, conditions distributeur, grand livre auxiliaire, SYSCOHADA.',
+    modules:'Clients & Fournisseurs,Commandes & BL,Livraisons partielles,Avoirs clients,Encours & Blocage,Stock FIFO,Facturation TVA,Grand Livre Auxiliaire,SYSCOHADA,Supabase Sync',
+    prixNum:600000,
+    prix:'600 000',
+    prixMensuel:60000,
+    remiseMax:10,
+    demo:'',
+    video:'',
+    doc:'',
+    icon:'🚚',
+    color:'#065F46',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_medicore',
+    nom:'MediCore Suite',
+    version:'v1.5',
+    cat:'Santé',
+    plateforme:'Web',
+    type_licence:'Annuelle',
+    support:'Premium',
+    desc:'ERP hospitalier complet : portail patient IPP, agenda consultations, file d\'attente, dossiers médicaux, bloc opératoire, radiologie, laboratoire avec alertes automate, comptabilité analytique, SYSCOHADA.',
+    modules:'Portail Patient,Agenda & Rendez-vous,File d\'attente / Triage,Dossiers Médicaux,Bloc Opératoire,Radiologie,Laboratoire & Automate,Facturation,Comptabilité Analytique,SYSCOHADA,Supabase Sync',
+    prixNum:1500000,
+    prix:'1 500 000',
+    prixMensuel:150000,
+    remiseMax:5,
+    demo:'',
+    video:'',
+    doc:'',
+    icon:'🏥',
+    color:'#1D4ED8',
+    commission:8,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_factory',
+    nom:'SANIX Factory 4.0',
+    version:'v1.0',
+    cat:'Industrie',
+    plateforme:'Web',
+    type_licence:'Annuelle',
+    support:'Premium',
+    desc:'ERP industriel Industrie 4.0 : production temps réel, ordres de fabrication, rendement & pertes, maintenance préventive/curative, qualité & traçabilité lots, coût de revient, IoT-ready, offline.',
+    modules:'Production & OF,Rendement & Pertes,Maintenance Préventive,Gestion Pannes,Qualité & Traçabilité,Stock & Approvisionnement,Commercial & Distribution,Finance & Coût de Revient,RH & Présence,Tableau de Bord KPI,IoT Ready,Offline Mode',
+    prixNum:1200000,
+    prix:'1 200 000',
+    prixMensuel:120000,
+    remiseMax:10,
+    demo:'',
+    video:'',
+    doc:'',
+    icon:'⚙️',
+    color:'#4A1D96',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_sanixrh',
+    nom:'SANIX RH Suite',
+    version:'v1.2',
+    cat:'Ressources Humaines',
+    plateforme:'Web',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'ERP RH complet : gestion du personnel, contrats, paie SYSCOHADA, congés & absences, évaluations de performance, formations, tableau de bord direction.',
+    modules:'Personnel & Contrats,Paie & Bulletins,Congés & Absences,Évaluations,Formations,Recrutement,Tableau de Bord RH,SYSCOHADA,Export DGI',
+    prixNum:500000,
+    prix:'500 000',
+    prixMensuel:50000,
+    remiseMax:10,
+    demo:'',
+    video:'',
+    doc:'',
+    icon:'👥',
+    color:'#0D9488',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_easystock',
+    nom:'SANIX EasyStock',
+    version:'v1.3',
+    cat:'Commerce',
+    plateforme:'Multi-plateforme',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'POS & gestion de stock multi-PDV : caisse tactile, FIFO, ardoise/crédit client, Mobile Money Wave/Orange/MTN, rôles, PWA offline, SYSCOHADA.',
+    modules:'Caisse POS,Stock Multi-PDV,Ardoise & Crédit Client,Fournisseurs & Achats,FIFO Approvisionnement,Mobile Money,Rapports & KPI,PWA Offline,SYSCOHADA',
+    prixNum:350000,
+    prix:'350 000',
+    prixMensuel:35000,
+    remiseMax:10,
+    demo:'',
+    video:'',
+    doc:'',
+    icon:'🛒',
+    color:'#457B9D',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_autogarage',
+    nom:'AutoGarage Pro',
+    version:'v1.1',
+    cat:'Distribution',
+    plateforme:'Desktop Windows',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'ERP garage & flotte automobile : fiches véhicules, ordres de réparation, Gantt maintenance préventive/VT, stock pièces détachées, affectation mécaniciens, licences 15j démo, Supabase sync XHR.',
+    modules:'Véhicules & Flotte,Ordres de Réparation,Maintenance Préventive,Planification Gantt,Stock Pièces,Mécaniciens & Affectation,Facturation,Licence & Démo,Supabase Sync',
+    prixNum:400000,
+    prix:'400 000',
+    prixMensuel:40000,
+    remiseMax:10,
+    demo:'',
+    video:'',
+    doc:'',
+    icon:'🔧',
+    color:'#7C2D12',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_menkoagro',
+    nom:'Menko Agro',
+    version:'v1.0',
+    cat:'Agriculture',
+    plateforme:'Web',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'ERP agricole avec GIS/cartographie Leaflet satellite, traçabilité complète par lot (MA-XXX-YYMMDD), campagnes & itinéraires techniques, main-d\'œuvre, intrants FIFO, SYSCOHADA, BI SVG.',
+    modules:'Parcelles & Cartographie GIS,Campagnes & Itinéraires,Lots & Traçabilité,Main-d\'œuvre & Pointage,Intrants & Stock FIFO,Récoltes & Rendements,Ventes & Facturation,SYSCOHADA,BI & Tableaux de Bord',
+    prixNum:600000,
+    prix:'600 000',
+    prixMensuel:60000,
+    remiseMax:10,
+    demo:'https://menco-holding.vercel.app',
+    video:'',
+    doc:'',
+    icon:'🌾',
+    color:'#1B5E3B',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_menkoimmo',
+    nom:'Menko Immo',
+    version:'v1.0',
+    cat:'Immobilier',
+    plateforme:'Web',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'ERP immobilier offline-first (IndexedDB), 36 modules CSV import, contrôle Cloud/Synchro par module, white-label, réinitialisation production 5 étapes admin niveau 4.',
+    modules:'Programmes & Lots,Ventes & Contrats,DQE & Coût de Revient,Comptabilité SYSCOHADA,FEC DGI,CSV Import 36 modules,Cloud Sync par module,White-Label,Reset Production',
+    prixNum:700000,
+    prix:'700 000',
+    prixMensuel:70000,
+    remiseMax:10,
+    demo:'https://menco-holding.vercel.app',
+    video:'',
+    doc:'',
+    icon:'🏗️',
+    color:'#1D4ED8',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_afribar',
+    nom:'AFRI-BAR Manager',
+    version:'v1.0',
+    cat:'Distribution',
+    plateforme:'Desktop Windows',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'ERP dépôt boissons 3 niveaux (concessionnaire → dépôt → client) : emballages consignés comme actif financier, stock liquide/bouteille/casier unifié, SYSCOHADA, launcher Windows batch.',
+    modules:'Articles & Stock Unifié,Emballages Consignés,Commandes & Livraisons,Clients & Concessionnaires,Facturation,Comptabilité SYSCOHADA,Tableau de Bord,Launcher Windows',
+    prixNum:350000,
+    prix:'350 000',
+    prixMensuel:35000,
+    remiseMax:10,
+    demo:'',
+    video:'',
+    doc:'',
+    icon:'🍺',
+    color:'#92400E',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_sanixcrm',
+    nom:'SANIX CRM Pro',
+    version:'v2.0',
+    cat:'Commerce',
+    plateforme:'Web',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'CRM commercial SANIX : pipeline Kanban, clients & prospects, médiathèque par logiciel, carte Leaflet géolocalisation, Gantt déploiement, rapports terrain, commissions apporteurs, Supabase sync.',
+    modules:'Pipeline Kanban,Clients & Prospects,Catalogue Logiciels,Médiathèque,Équipe Commerciale,Commissions,Carte & Géoloc,Planning Déploiement,Rapports Terrain,Messagerie,Supabase Sync',
+    prixNum:300000,
+    prix:'300 000',
+    prixMensuel:30000,
+    remiseMax:5,
+    demo:'https://crm-sanix.vercel.app',
+    video:'',
+    doc:'',
+    icon:'📊',
+    color:'#2563EB',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+];
 let LOGICIELS = [...LOGICIELS_SEED];
 
 let STAGES = [
@@ -2374,6 +2672,7 @@ function initLogiciels() {
   renderLogStats();
   renderLogiciels();
   updateLogicielSelects();
+  setTimeout(mediaRefreshAllBadges, 250);
 }
 
 function renderLogStats() {
@@ -4200,7 +4499,19 @@ function loadAll() {
   Object.entries(LS_STORES).forEach(([key, store]) => {
     const data = lsLoad(key);
     if(data && Array.isArray(data) && data.length > 0) {
-      store.set(data);
+      // Pour logiciels : merger le seed pour les IDs absents
+      if(key === 'logiciels') {
+        const existingIds = new Set(data.map(l=>l.id));
+        const missing = LOGICIELS_SEED.filter(l=>!existingIds.has(l.id));
+        if(missing.length > 0) {
+          store.set([...data, ...missing]);
+          syncLog('info', `🔄 ${missing.length} logiciel(s) seed ajouté(s)`);
+        } else {
+          store.set(data);
+        }
+      } else {
+        store.set(data);
+      }
       loaded++;
       syncLog('ok', `📂 LS loaded: ${key} (${data.length} entrées)`);
     }
@@ -4979,15 +5290,19 @@ async function mediaRefreshAllBadges() {
   }
 }
 
-// Refresh badges après rendu logiciels
-const _origInitLogiciels = initLogiciels;
-function initLogiciels() {
-  _origInitLogiciels();
-  setTimeout(mediaRefreshAllBadges, 200);
-}
+// Refresh badges après rendu logiciels — appelé via flag dans initLogiciels original
 
 // Init IndexedDB on load
 window.addEventListener('DOMContentLoaded', ()=>{ mediaOpenDB().catch(()=>{}); });
+
+function toggleMediaSection() {
+  const body = document.getElementById('media-section-body');
+  const ico  = document.getElementById('media-section-toggle');
+  if(!body||!ico) return;
+  const hidden = body.style.display === 'none';
+  body.style.display = hidden ? '' : 'none';
+  ico.style.transform = hidden ? '' : 'rotate(-90deg)';
+}
 
 // Wrap critical functions to auto-save after changes
 const _origDropDeal = dropDeal;
