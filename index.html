@@ -269,6 +269,19 @@ select.form-input{cursor:pointer}
 .activity-text{font-size:12px;line-height:1.5}
 .activity-time{font-size:10px;color:var(--muted);margin-top:2px}
 
+/* ─── DEAL HISTORY TIMELINE ─────────────────────────────── */
+.deal-timeline{position:relative;padding-left:20px}
+.deal-timeline::before{content:'';position:absolute;left:7px;top:0;bottom:0;width:2px;background:var(--border)}
+.deal-tl-item{position:relative;padding:0 0 14px 18px;font-size:12px}
+.deal-tl-item:last-child{padding-bottom:0}
+.deal-tl-dot{position:absolute;left:-13px;top:2px;width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 2px var(--border);flex-shrink:0}
+.deal-tl-title{font-weight:700;color:var(--text);margin-bottom:1px}
+.deal-tl-sub{color:var(--muted);font-size:11px}
+.deal-tl-time{font-size:10px;color:var(--muted);margin-top:2px}
+.deal-history-modal .modal-box{max-width:520px;max-height:90vh;overflow-y:auto}
+.log-type-btn{display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:var(--r-sm);font-size:11px;font-weight:600;border:1px solid var(--border);background:var(--surface2);cursor:pointer;transition:all .2s}
+.log-type-btn:hover,.log-type-btn.active{border-color:var(--primary);background:var(--primary-l);color:var(--primary)}
+
 /* ─── PROGRESS ─────────────────────────────────────── */
 .progress{height:6px;background:var(--border);border-radius:3px;overflow:hidden}
 .progress-bar{height:100%;border-radius:3px;transition:width 1s ease}
@@ -1327,11 +1340,20 @@ select.form-input{cursor:pointer}
         </div>
 
         <div>
-          <div class="card">
+          <div class="card" style="margin-bottom:16px">
             <div class="card-header">
               <span class="card-title">📝 Templates messages</span>
             </div>
             <div id="msg-templates"></div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">📜 Historique des envois</span>
+              <span class="badge badge-muted" id="msg-hist-count">0</span>
+            </div>
+            <div id="msg-history-list" style="max-height:260px;overflow-y:auto">
+              <div style="text-align:center;color:var(--muted);font-size:12px;padding:16px">Aucun message envoyé pour l'instant</div>
+            </div>
           </div>
         </div>
       </div>
@@ -2775,6 +2797,47 @@ select.form-input{cursor:pointer}
     <div class="flex gap-2" style="margin-top:16px">
       <button class="btn btn-primary" onclick="printCard()">🖨️ Imprimer</button>
       <button class="btn btn-outline" onclick="closeQR()">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL HISTORIQUE DEAL ══ -->
+<div id="modal-deal-history" class="modal-overlay hidden deal-history-modal">
+  <div class="modal-box" style="max-width:540px;max-height:90vh;overflow-y:auto;padding:0">
+    <div style="padding:20px 24px 0;position:sticky;top:0;background:var(--surface);z-index:10;border-bottom:1px solid var(--border);padding-bottom:14px">
+      <div class="modal-close" onclick="closeDealHistory()" style="top:16px;right:16px">✕</div>
+      <div style="font-family:var(--font-h);font-weight:800;font-size:16px" id="dh-title">Historique du deal</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px" id="dh-sub">Suivi complet des échanges</div>
+      <div id="dh-info" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
+    <div style="padding:20px 24px">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:20px">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">➕ Enregistrer un échange</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px" id="dh-log-types">
+          <button class="log-type-btn active" data-type="appel" data-ico="📞" onclick="dhSelectType(this)">📞 Appel</button>
+          <button class="log-type-btn" data-type="whatsapp" data-ico="💬" onclick="dhSelectType(this)">💬 WhatsApp</button>
+          <button class="log-type-btn" data-type="email" data-ico="📧" onclick="dhSelectType(this)">📧 Email</button>
+          <button class="log-type-btn" data-type="visite" data-ico="🏢" onclick="dhSelectType(this)">🏢 Visite terrain</button>
+          <button class="log-type-btn" data-type="demo" data-ico="🎬" onclick="dhSelectType(this)">🎬 Démo</button>
+          <button class="log-type-btn" data-type="proposition" data-ico="📄" onclick="dhSelectType(this)">📄 Proposition</button>
+          <button class="log-type-btn" data-type="relance" data-ico="🔔" onclick="dhSelectType(this)">🔔 Relance</button>
+          <button class="log-type-btn" data-type="autre" data-ico="📌" onclick="dhSelectType(this)">📌 Autre</button>
+        </div>
+        <textarea id="dh-log-note" class="form-input" rows="2" placeholder="Note sur l'échange (résultat, prochaine étape…)" style="margin-bottom:8px"></textarea>
+        <div style="display:flex;gap:8px">
+          <select id="dh-log-resultat" class="form-input" style="flex:1">
+            <option value="">Résultat de l'échange…</option>
+            <option value="positif">✅ Positif — intéressé</option>
+            <option value="neutre">⏸ Neutre — à relancer</option>
+            <option value="negatif">❌ Négatif — pas intéressé</option>
+            <option value="rdv">📅 RDV fixé</option>
+            <option value="commande">🛒 Commande en cours</option>
+          </select>
+          <button onclick="dhLogEchange()" class="btn btn-primary btn-sm" style="white-space:nowrap">💾 Logger</button>
+        </div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px" id="dh-count">📋 Historique (0 échanges)</div>
+      <div id="dh-timeline" class="deal-timeline"></div>
     </div>
   </div>
 </div>
@@ -4318,6 +4381,7 @@ function dealCard(d) {
     </div>
     <!-- Actions CRUD -->
     <div style="display:flex;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)" onclick="event.stopPropagation()">
+      <button onclick="openDealHistory(${d.id})" style="padding:4px 8px;font-size:11px;font-weight:600;background:var(--teal-l);color:var(--teal);border:1px solid rgba(13,148,136,.3);border-radius:6px;cursor:pointer;position:relative" title="Historique échanges">📋${(d.history&&d.history.length)?`<span style='position:absolute;top:-4px;right:-4px;width:15px;height:15px;background:var(--teal);color:#fff;border-radius:50%;font-size:9px;font-weight:700;line-height:15px;text-align:center'>${d.history.length}</span>`:''}</button>
       <button onclick="editDeal(${d.id})" style="flex:1;padding:4px 6px;font-size:11px;font-weight:600;background:var(--primary-l);color:var(--primary);border:1px solid rgba(37,99,235,.3);border-radius:6px;cursor:pointer;font-family:var(--font-b)">✏️ Modifier</button>
       <button onclick="deleteDeal(${d.id})" style="padding:4px 8px;font-size:11px;background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.3);border-radius:6px;cursor:pointer" title="Supprimer">🗑</button>
     </div>
@@ -5501,7 +5565,42 @@ function selectChannel(ch, el) {
 function sendMessage() {
   const txt = document.getElementById('msg-text').value;
   if(!txt.trim()) { alert('Rédigez un message'); return; }
-  showToast('✅ Message envoyé !');
+  // Detect active channel
+  const isWA = document.querySelector('.channel-btn.wa.active') !== null;
+  const chanLabel = isWA ? 'WhatsApp' : 'Email';
+  const chanIco   = isWA ? '💬' : '📧';
+  // Log in messagerie history
+  if(!window.MSG_HISTORY) window.MSG_HISTORY = [];
+  window.MSG_HISTORY.unshift({
+    date: new Date().toISOString(),
+    canal: chanLabel,
+    ico: chanIco,
+    extrait: txt.trim().substring(0,80) + (txt.length>80?'…':''),
+    commercial: (typeof currentUser !== 'undefined' && currentUser) ? currentUser.nom||currentUser.email||'—' : '—'
+  });
+  showToast('✅ Message ' + chanLabel + ' envoyé et enregistré !');
+  renderMsgHistory();
+}
+
+function renderMsgHistory() {
+  const el = document.getElementById('msg-history-list');
+  if(!el) return;
+  const hist = window.MSG_HISTORY || [];
+  if(!hist.length) {
+    el.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:12px;padding:16px">Aucun message envoyé pour l'instant</div>`;
+    return;
+  }
+  const cntEl = document.getElementById('msg-hist-count');
+  if(cntEl) cntEl.textContent = hist.length;
+  el.innerHTML = hist.slice(0,20).map(m=>`
+    <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);align-items:flex-start">
+      <div style="width:30px;height:30px;border-radius:50%;background:${m.canal==='WhatsApp'?'#25D36622':'var(--primary-l)'};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${m.ico}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;font-weight:700;color:var(--text2)">${m.canal} · ${m.commercial}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.extrait}</div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);flex-shrink:0">${new Date(m.date).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
+    </div>`).join('');
 }
 function saveTemplate() { showToast('✅ Template sauvegardé !'); }
 
@@ -5555,11 +5654,20 @@ function saveDeal() {
   if(!client){ showToast('❌ Nom client obligatoire'); document.getElementById('deal-client').focus(); return; }
   if(editId) {
     var d = DEALS.find(function(x){ return x.id===parseInt(editId)||x.id===editId; });
-    if(d) { d.client=client; d.logiciel=logiciel; d.valeur=valeur; d.commercial=commercial; d.stage=stage; d.notes=notes; }
+    if(d) {
+      const prevStage = d.stage;
+      d.client=client; d.logiciel=logiciel; d.valeur=valeur; d.commercial=commercial; d.stage=stage; d.notes=notes;
+      if(prevStage && prevStage !== stage) {
+        if(!d.history) d.history=[];
+        const stageLabels={prospect:'Prospect',contact:'Contact',demo:'Démo',proposition:'Proposition',negociation:'Négociation',gagne:'Gagné ✓',perdu:'Perdu ✗'};
+        d.history.push({date:new Date().toISOString(),type:'stage_change',ico:'🔄',label:"Changement d'étape",note:`${stageLabels[prevStage]||prevStage} → ${stageLabels[stage]||stage}`,resultat:'',commercial:commercial});
+      }
+    }
     showToast('✅ Deal mis à jour — '+client);
   } else {
     var newId = DEALS.length ? Math.max.apply(null, DEALS.map(function(x){return parseInt(x.id)||0;}))+1 : 1;
-    DEALS.push({id:newId, client:client, logiciel:logiciel, valeur:valeur, commercial:commercial, stage:stage, notes:notes, color:'#2563EB', date:new Date().toLocaleDateString('fr-FR')});
+    const initHistory = [{date:new Date().toISOString(),type:'creation',ico:'🎯',label:'Deal créé',note:'Deal ajouté au pipeline — étape : '+(({prospect:'Prospect',contact:'Contact',demo:'Démo',proposition:'Proposition',negociation:'Négociation',gagne:'Gagné ✓',perdu:'Perdu ✗'})[stage]||stage),resultat:'',commercial:commercial}];
+    DEALS.push({id:newId, client:client, logiciel:logiciel, valeur:valeur, commercial:commercial, stage:stage, notes:notes, color:'#2563EB', date:new Date().toLocaleDateString('fr-FR'), history:initHistory});
     showToast('✅ Deal créé — '+client);
   }
   closeDeal();
@@ -9784,9 +9892,139 @@ function toggleMediaSection() {
   ico.style.transform = hidden ? '' : 'rotate(-90deg)';
 }
 
-// Wrap critical functions to auto-save after changes
+// Wrap critical functions to auto-save after changes + log stage changes
 const _origDropDeal = dropDeal;
-function dropDeal(e, stage) { _origDropDeal(e, stage); saveStore('deals'); }
+function dropDeal(e, stage) {
+  const deal = DEALS.find(d=>d.id===draggedId);
+  const prevStage = deal ? deal.stage : null;
+  _origDropDeal(e, stage);
+  if(deal && prevStage && prevStage !== stage) {
+    if(!deal.history) deal.history = [];
+    const stageLabels = {prospect:'Prospect',contact:'Contact',demo:'Démo',proposition:'Proposition',negociation:'Négociation',gagne:'Gagné ✓',perdu:'Perdu ✗'};
+    deal.history.push({
+      date: new Date().toISOString(),
+      type: 'stage_change',
+      ico: '🔄',
+      label: "Changement d'étape",
+      note: `${stageLabels[prevStage]||prevStage} → ${stageLabels[stage]||stage}`,
+      resultat: '',
+      commercial: (typeof currentUser !== 'undefined' && currentUser) ? currentUser.nom||currentUser.email||'—' : '—'
+    });
+  }
+  saveStore('deals');
+}
+
+
+// ═══════════════════════════════════════
+//  HISTORIQUE DEALS — ÉCHANGES PIPELINE
+// ═══════════════════════════════════════
+let _dhCurrentDealId = null;
+let _dhSelectedType = {type:'appel', ico:'📞'};
+
+function openDealHistory(dealId) {
+  const deal = DEALS.find(d=>d.id===dealId);
+  if(!deal) return;
+  _dhCurrentDealId = dealId;
+  if(!deal.history) deal.history = [];
+
+  const stageLabels = {prospect:'Prospect',contact:'Contact',demo:'Démo',proposition:'Proposition',negociation:'Négociation',gagne:'Gagné ✓',perdu:'Perdu ✗'};
+  const stageCols   = {prospect:'#6366F1',contact:'#3B82F6',demo:'#F59E0B',proposition:'#8B5CF6',negociation:'#EA580C',gagne:'#059669',perdu:'#DC2626'};
+  const stageCol    = stageCols[deal.stage] || '#64748B';
+  const stageLabel  = stageLabels[deal.stage] || deal.stage;
+
+  document.getElementById('dh-title').textContent = deal.client;
+  document.getElementById('dh-sub').textContent   = (deal.logiciel||'') + ' · ' + (deal.commercial||'');
+  document.getElementById('dh-info').innerHTML = `
+    <span class="badge badge-primary" style="background:${stageCol}22;color:${stageCol}">${stageLabel}</span>
+    <span class="badge badge-muted">💰 ${((deal.valeur||0)/1000).toFixed(0)}k FCFA</span>
+    ${deal.date ? `<span class="badge badge-muted">📅 Créé le ${deal.date}</span>` : ''}
+  `;
+
+  // Reset log form
+  document.getElementById('dh-log-note').value = '';
+  document.getElementById('dh-log-resultat').value = '';
+  document.querySelectorAll('#dh-log-types .log-type-btn').forEach(b=>b.classList.remove('active'));
+  const firstBtn = document.querySelector('#dh-log-types .log-type-btn');
+  if(firstBtn) { firstBtn.classList.add('active'); _dhSelectedType = {type:firstBtn.dataset.type, ico:firstBtn.dataset.ico}; }
+
+  dhRenderTimeline(deal);
+  document.getElementById('modal-deal-history').classList.remove('hidden');
+}
+
+function closeDealHistory() {
+  document.getElementById('modal-deal-history').classList.add('hidden');
+  _dhCurrentDealId = null;
+}
+
+function dhSelectType(btn) {
+  document.querySelectorAll('#dh-log-types .log-type-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  _dhSelectedType = {type: btn.dataset.type, ico: btn.dataset.ico};
+}
+
+function dhLogEchange() {
+  const deal = DEALS.find(d=>d.id===_dhCurrentDealId);
+  if(!deal) return;
+  const note     = document.getElementById('dh-log-note').value.trim();
+  const resultat = document.getElementById('dh-log-resultat').value;
+  if(!note) { showToast("❌ Ajoutez une note sur l'échange"); document.getElementById('dh-log-note').focus(); return; }
+  if(!deal.history) deal.history = [];
+  const typeLabels = {appel:'Appel téléphonique',whatsapp:'Message WhatsApp',email:'Email',visite:'Visite terrain',demo:'Démonstration',proposition:'Proposition envoyée',relance:'Relance',autre:'Autre'};
+  const resultatLabels = {'positif':'✅ Positif','neutre':'⏸ Neutre','negatif':'❌ Négatif','rdv':'📅 RDV fixé','commande':'🛒 Commande','':'Sans résultat'};
+  deal.history.push({
+    date:      new Date().toISOString(),
+    type:      _dhSelectedType.type,
+    ico:       _dhSelectedType.ico,
+    label:     typeLabels[_dhSelectedType.type] || _dhSelectedType.type,
+    note:      note,
+    resultat:  resultatLabels[resultat] || '',
+    commercial:(typeof currentUser !== 'undefined' && currentUser) ? currentUser.nom||currentUser.email||'—' : (deal.commercial||'—')
+  });
+  saveStore('deals');
+  document.getElementById('dh-log-note').value = '';
+  document.getElementById('dh-log-resultat').value = '';
+  showToast('✅ Échange enregistré');
+  dhRenderTimeline(deal);
+  // Refresh pipeline badge
+  initPipeline();
+}
+
+function dhRenderTimeline(deal) {
+  const hist    = (deal.history || []).slice().reverse();
+  const countEl = document.getElementById('dh-count');
+  const tlEl    = document.getElementById('dh-timeline');
+  if(countEl) countEl.textContent = `📋 Historique (${hist.length} échange${hist.length>1?'s':''})`;
+  if(!tlEl) return;
+  if(!hist.length) {
+    tlEl.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:24px 0">Aucun échange enregistré. Commencez par logger un appel ou un message.</div>';
+    return;
+  }
+  const typeColors = {
+    creation:'var(--primary)', stage_change:'var(--purple)', appel:'var(--success)', whatsapp:'#25D366',
+    email:'var(--primary)', visite:'var(--teal)', demo:'var(--warning)', proposition:'var(--orange)',
+    relance:'var(--warning)', autre:'var(--muted)'
+  };
+  tlEl.innerHTML = hist.map((h,i)=>{
+    const col   = typeColors[h.type] || 'var(--muted)';
+    const dt    = new Date(h.date);
+    const dateStr = dt.toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit',year:'numeric'});
+    const timeStr = dt.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'});
+    return `<div class="deal-tl-item">
+      <div class="deal-tl-dot" style="background:${col}"></div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="flex:1">
+          <div class="deal-tl-title">${h.ico} ${h.label}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">${h.note}</div>
+          ${h.resultat?`<span style="display:inline-block;margin-top:4px;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:${col}22;color:${col}">${h.resultat}</span>`:''}
+          <div class="deal-tl-time">📅 ${dateStr} à ${timeStr}${h.commercial?' · '+h.commercial:''}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Update renderMsgHistory to also update badge
+const _origRenderMsgHistory = typeof renderMsgHistory === 'function' ? renderMsgHistory : null;
 
 // ═══════════════════════════════════════
 //  INIT ALL
