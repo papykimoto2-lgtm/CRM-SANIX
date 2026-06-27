@@ -5450,7 +5450,18 @@ let leafletMap = null;
 let _mapLayers = { clients:true, prospects:true, commerciaux:true, bureau:true };
 let _mapMarkers = []; // {type, marker, clientId}
 
-const SANIX_OFFICE = { lat:5.3048, lng:-4.0167, nom:'Bureau SANIX Africa', quartier:'Songon Agban, Abidjan' };
+// SANIX_OFFICE est maintenant dynamique — lit CONFIG à chaque appel
+function getSanixOffice() {
+  return {
+    lat : CONFIG.lat       ?? 5.3463,
+    lng : CONFIG.lng       ?? -4.0080,
+    zoom: CONFIG.zoomLevel ?? 14,
+    nom : CONFIG.raisonSociale || CONFIG.appName || 'Bureau SANIX Africa',
+    adresse : CONFIG.adresse   || 'Abidjan, Côte d\'Ivoire'
+  };
+}
+// Alias de compatibilité (lecture seule, non utilisé en écriture)
+const SANIX_OFFICE = { lat:5.3463, lng:-4.0080, nom:'Bureau SANIX Africa', quartier:'Abidjan, Côte d\'Ivoire' };
 
 function initMap() {
   if(typeof L === 'undefined') {
@@ -5464,7 +5475,10 @@ function initMap() {
     refreshMapMarkers();
     return;
   }
-  leafletMap = L.map('leaflet-map').setView([5.3463, -4.0080], 12);
+  leafletMap = L.map('leaflet-map').setView(
+    [CONFIG.lat ?? 5.3463, CONFIG.lng ?? -4.0080],
+    CONFIG.zoomLevel ?? 12
+  );
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(leafletMap);
   refreshMapMarkers();
   initItineraire();
@@ -5476,12 +5490,19 @@ function refreshMapMarkers() {
   _mapMarkers.forEach(m=>{ try{leafletMap.removeLayer(m.marker);}catch(e){} });
   _mapMarkers = [];
 
-  // ── Bureau SANIX (toujours en rouge) ──
+  // ── Bureau SANIX (position depuis CONFIG) ──
   if(_mapLayers.bureau) {
-    const ico = L.divIcon({html:`<div style="width:32px;height:32px;border-radius:8px;background:#DC2626;border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:15px">🏢</div>`,iconSize:[32,32],iconAnchor:[16,16],className:''});
-    const m = L.marker([SANIX_OFFICE.lat,SANIX_OFFICE.lng],{icon:ico})
+    const office = getSanixOffice();
+    const ico = L.divIcon({html:`<div style="width:32px;height:32px;border-radius:8px;background:#DC2626;border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:15px">🏭</div>`,iconSize:[32,32],iconAnchor:[16,16],className:''});
+    const m = L.marker([office.lat, office.lng],{icon:ico})
       .addTo(leafletMap)
-      .bindPopup(`<div style="min-width:160px"><strong style="font-size:13px">🏢 ${SANIX_OFFICE.nom}</strong><br><small style="color:#DC2626">Siège social</small><br><small style="color:#666">${SANIX_OFFICE.quartier}</small></div>`);
+      .bindPopup(`<div style="min-width:180px;font-family:Poppins,sans-serif">
+        <strong style="font-size:13px;color:#0F172A">🏭 ${office.nom}</strong><br>
+        <small style="color:#DC2626;font-weight:600">Siège social</small><br>
+        <small style="color:#64748B">📍 ${office.adresse}</small><br>
+        <small style="color:#94A3B8;font-size:10px">${office.lat.toFixed(5)}, ${office.lng.toFixed(5)}</small>
+        <div style="margin-top:6px;font-size:10px;color:#64748B">⚙️ Modifiable dans Paramétrage → Géolocalisation</div>
+      </div>`);
     _mapMarkers.push({type:'bureau',marker:m,clientId:null});
   }
 
@@ -7747,10 +7768,15 @@ function saveConfigForm() {
   CONFIG.stages = STAGES;
   persistConfig();
   applyConfig();
-  // Mettre à jour la carte si elle existe
+  // Mettre à jour la carte paramétrage si elle existe
   if(_cfgGeoMap) {
     _cfgGeoMap.setView([CONFIG.lat, CONFIG.lng], CONFIG.zoomLevel);
     if(_cfgGeoMarker) _cfgGeoMarker.setLatLng([CONFIG.lat, CONFIG.lng]);
+  }
+  // Mettre à jour la carte principale (Carte & Géoloc) si elle existe
+  if(typeof leafletMap !== 'undefined' && leafletMap) {
+    refreshMapMarkers();
+    leafletMap.setView([CONFIG.lat, CONFIG.lng], CONFIG.zoomLevel);
   }
   if(typeof initPipeline==='function') try{ initPipeline(); }catch(e){}
   renderDiagnostic();
