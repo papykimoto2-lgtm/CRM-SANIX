@@ -113,6 +113,24 @@ input,textarea,select{font-family:var(--font-b);outline:none}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
 .grid-auto{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+/* Tableaux : scroll horizontal fluide sur mobile avec min-width pour lisibilité */
+.client-table{width:100%;border-collapse:collapse}
+@media(max-width:768px){
+  .client-table{min-width:640px}
+  /* Conteneur de table avec ombre indiquant le scroll */
+  .card > div[style*="overflow-x:auto"]{
+    position:relative;
+    -webkit-overflow-scrolling:touch;
+    background:
+      linear-gradient(to right, var(--surface) 30%, rgba(255,255,255,0)),
+      linear-gradient(to left, var(--surface) 30%, rgba(255,255,255,0)) 100% 0,
+      radial-gradient(farthest-side at 0 50%, rgba(0,0,0,.08), transparent),
+      radial-gradient(farthest-side at 100% 50%, rgba(0,0,0,.08), transparent) 100% 0;
+    background-repeat:no-repeat;
+    background-size:40px 100%,40px 100%,14px 100%,14px 100%;
+    background-attachment:local,local,scroll,scroll;
+  }
+}
 
 /* ─── PIPELINE ─────────────────────────────────────── */
 .pipeline-bar{display:flex;gap:0;margin-bottom:20px;border-radius:var(--r-sm);overflow:hidden;height:32px}
@@ -158,7 +176,7 @@ input,textarea,select{font-family:var(--font-b);outline:none}
 .soft-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--sh);overflow:hidden;transition:transform .2s,box-shadow .2s}
 .soft-card:hover{transform:translateY(-3px);box-shadow:var(--sh-lg)}
 .soft-header{padding:20px;position:relative;overflow:hidden}
-.soft-icon{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px;background:rgba(255,255,255,.2);backdrop-filter:blur(8px);margin-bottom:12px}
+.soft-icon{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px;background:rgba(255,255,255,.2);backdrop-filter:blur(8px);margin-bottom:12px;overflow:hidden}
 .soft-name{font-family:var(--font-h);font-weight:800;font-size:16px;color:#fff}
 .soft-cat{font-size:11px;color:rgba(255,255,255,.7);margin-top:2px}
 .soft-body{padding:16px 20px 20px}
@@ -314,8 +332,8 @@ select.form-input{cursor:pointer}
 
 /* ─── RESPONSIVE APP (non-login) ─────────────────────── */
 @media(max-width:768px){
-  .stats-grid{grid-template-columns:1fr 1fr}
-  .grid-2,.grid-3{grid-template-columns:1fr}
+  .stats-grid{grid-template-columns:1fr 1fr !important}
+  .grid-2,.grid-3{grid-template-columns:1fr !important}
   .sidebar{position:fixed;left:0;top:0;bottom:0;transform:translateX(-100%)}
   .sidebar.open{transform:translateX(0)}
   .hamburger{display:flex}
@@ -323,25 +341,84 @@ select.form-input{cursor:pointer}
   .topbar-actions{gap:5px}
   .sync-pill{display:none}
   .kanban-board{min-height:auto}
-  .form-row{grid-template-columns:1fr}
+  .form-row{grid-template-columns:1fr !important}
   .gantt-label{width:100px;font-size:10px}
   .gantt-months{margin-left:100px}
+  /* Forcer TOUTES les grilles inline en colonne unique sur tablette */
+  [style*="grid-template-columns:repeat(3"],
+  [style*="grid-template-columns:repeat(4"],
+  [style*="grid-template-columns:repeat(5"],
+  [style*="grid-template-columns: repeat(3"],
+  [style*="grid-template-columns: repeat(4"],
+  [style*="grid-template-columns: repeat(5"]{
+    grid-template-columns:1fr 1fr !important;
+  }
+  [style*="grid-template-columns:1fr 1fr 1fr"],
+  [style*="grid-template-columns: 1fr 1fr 1fr"]{
+    grid-template-columns:1fr !important;
+  }
+  /* Tableaux scrollables horizontalement */
+  .client-table{font-size:11px}
+  .modal-box{max-width:100% !important}
+  /* Réduire padding cartes */
+  .card{padding:14px}
+}
+@media(max-width:560px){
+  /* SMARTPHONE : tout en une seule colonne */
+  .stats-grid{grid-template-columns:1fr !important}
+  [style*="grid-template-columns:repeat(2"],
+  [style*="grid-template-columns: repeat(2"],
+  [style*="grid-template-columns:1fr 1fr"],
+  [style*="grid-template-columns: 1fr 1fr"],
+  [style*="grid-template-columns:repeat(3"],
+  [style*="grid-template-columns:repeat(4"],
+  [style*="grid-template-columns:repeat(5"]{
+    grid-template-columns:1fr !important;
+  }
+  /* KPI compacts en 2 colonnes max sur smartphone pour gain de place */
+  #dash-kpi-row,#dash-kpi2-row{grid-template-columns:1fr 1fr !important;gap:8px !important}
+  #lic-stats,#pres-stats,#cmd-stats,#contrat-stats,#comm-stats,#user-stats{grid-template-columns:1fr 1fr !important;gap:8px !important}
+  /* Cartes stats plus petites */
+  .stat-card{padding:12px}
+  .stat-val{font-size:22px}
+  .stat-icon{width:36px;height:36px;font-size:18px}
+  /* Onglets scrollables */
+  .tabs{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
+  .tab{white-space:nowrap;flex-shrink:0}
+  /* Boutons d'action empilés */
+  .soft-actions{flex-direction:column}
+  .soft-actions a,.soft-actions button{width:100%;text-align:center}
 }
 @media(max-width:480px){
-  .stats-grid{grid-template-columns:1fr 1fr}
-  .content{padding:14px}
-  .soft-actions{flex-direction:column}
+  .content{padding:12px}
   .page-title{font-size:18px}
-  .topbar{padding:0 14px;gap:10px}
-  .topbar-title{font-size:15px}
+  .topbar{padding:0 12px;gap:8px}
+  .topbar-title{font-size:14px}
+  /* Funnel et listes pleine largeur */
+  .card-header{flex-wrap:wrap;gap:4px}
+  /* Tableau : masquer colonnes secondaires gérées par data-hide-mobile */
+  [data-hide-mobile]{display:none !important}
+  /* Cockpit IA : onglets compacts */
+  .ai-tab-btn{font-size:10px !important;padding:9px 2px !important}
+  /* Boutons tactiles min 40px */
+  .btn,.btn-sm{min-height:38px}
+  /* Modal détail prospect : infos rapides en colonne */
+  #client-detail-body [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr !important}
 }
 /* Kanban touch scroll */
 .kanban-board{-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory}
 .kanban-col{scroll-snap-align:start}
 /* Modals bottom-sheet on small screens */
 @media(max-width:600px){
-  .modal-box{width:100%;max-width:100%;border-radius:var(--r-lg) var(--r-lg) 0 0;position:fixed;bottom:0;left:0;right:0;max-height:92vh;overflow-y:auto;padding:24px 20px}
+  .modal-box{width:100% !important;max-width:100% !important;border-radius:var(--r-lg) var(--r-lg) 0 0;position:fixed;bottom:0;left:0;right:0;max-height:94vh;overflow-y:auto;padding:20px 16px !important}
   .modal-overlay{align-items:flex-end}
+  /* Modal détail prospect padding:0 → garder mais ajuster contenu */
+  #modal-client-detail .modal-box{padding:0 !important}
+  #modal-client-detail .modal-box > div:first-child{padding:18px 16px 0 !important}
+  /* Cockpit IA contenu */
+  #prospect-ai-cockpit > div:last-child{padding:14px 16px 20px !important}
+  /* Form rows toujours en colonne */
+  .form-row{grid-template-columns:1fr !important;gap:10px}
 }
 
 /* ═══ LOGIN — MOBILE FIRST ════════════════════════════════
@@ -613,6 +690,10 @@ select.form-input{cursor:pointer}
     <div class="sb-icon">📋</div><span>Rapports terrain</span>
     <span class="sb-badge warn" id="sb-rapports-badge">0</span>
   </div>
+  <div class="sb-item" onclick="navigate('messagerie',this)">
+    <div class="sb-icon">💬</div><span>Messagerie</span>
+    <span class="sb-badge">5</span>
+  </div>
 
   <div class="sb-divider"></div>
   <div class="sb-section">③ Présentation</div>
@@ -624,13 +705,9 @@ select.form-input{cursor:pointer}
     <div class="sb-icon">🎬</div><span>Présentations & Démos</span>
     <span class="sb-badge" id="sb-pres-badge">0</span>
   </div>
-  <div class="sb-item" onclick="navigate('messagerie',this)">
-    <div class="sb-icon">💬</div><span>Messagerie</span>
-    <span class="sb-badge">5</span>
-  </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section">④ Vente</div>
+  <div class="sb-section">④ Vente & Contractualisation</div>
 
   <div class="sb-item" onclick="navigate('commandes',this)">
     <div class="sb-icon">🛒</div><span>Commandes clients</span>
@@ -644,9 +721,9 @@ select.form-input{cursor:pointer}
     <div class="sb-icon">🔑</div><span>Licences attribuées</span>
     <span class="sb-badge warn" id="sb-lic-badge" style="display:none">0</span>
   </div>
-  <div class="sb-item" id="sb-commissions-item" onclick="navigate('commissions',this)">
-    <div class="sb-icon">💰</div><span>Commissions</span>
-    <span class="sb-badge warn" id="sb-comm-badge" style="display:none">0</span>
+  <div class="sb-item" onclick="navigate('documents',this)">
+    <div class="sb-icon">📄</div><span>Documents & Modèles</span>
+    <span class="sb-badge" id="sb-doc-badge" style="display:none">0</span>
   </div>
 
   <div class="sb-divider"></div>
@@ -657,22 +734,24 @@ select.form-input{cursor:pointer}
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section">⑥ Équipe</div>
+  <div class="sb-section">⑥ Réseau commercial</div>
 
   <div class="sb-item" onclick="navigate('equipe',this)">
-    <div class="sb-icon">🏆</div><span>Équipe commerciale</span>
+    <div class="sb-icon">🏆</div><span>Équipe & Apporteurs</span>
+  </div>
+  <div class="sb-item" onclick="navigate('apporteurs',this)">
+    <div class="sb-icon">🤝</div><span>Apporteurs d'affaires</span>
+    <span class="sb-badge" id="sb-app-badge" style="display:none">0</span>
+  </div>
+  <div class="sb-item" id="sb-commissions-item" onclick="navigate('commissions',this)">
+    <div class="sb-icon">💰</div><span>Commissions</span>
+    <span class="sb-badge warn" id="sb-comm-badge" style="display:none">0</span>
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section" id="sb-admin-section">Administration</div>
-  <div class="sb-item" id="sb-users-item" onclick="navigate('users',this)">
-    <div class="sb-icon">🔐</div><span>Utilisateurs & Accès</span>
-  </div>
+  <div class="sb-section" id="sb-admin-section">⚙️ Administration</div>
   <div class="sb-item" id="sb-parametrage-item" onclick="navigate('parametrage',this)">
-    <div class="sb-icon">🛠️</div><span>Paramétrage</span>
-  </div>
-  <div class="sb-item" id="sb-parametres-item" onclick="navigate('parametres',this)">
-    <div class="sb-icon">⚙️</div><span>Paramètres & Sync</span>
+    <div class="sb-icon">⚙️</div><span>Paramétrage</span>
   </div>
 
   <div class="sb-user" id="sb-user-block">
@@ -698,11 +777,11 @@ select.form-input{cursor:pointer}
       <input type="text" placeholder="Rechercher client, deal, logiciel...">
     </div>
     <div class="topbar-actions">
-      <div id="sync-pill" class="sync-pill offline" onclick="navigate('parametres', document.querySelector('[onclick*=\"parametres\"]'))" title="Statut synchronisation">
+      <div id="sync-pill" class="sync-pill offline" onclick="navigate('parametrage',null);setTimeout(()=>paramTab('sync',document.querySelector('#param-tabs .tab:nth-child(3)')),200)" title="Statut synchronisation">
         <span id="sync-icon">📶</span><span id="sync-label">Local</span>
       </div>
       <div class="notif-btn">🔔<div class="notif-dot"></div></div>
-      <button class="btn btn-outline btn-sm" onclick="navigate('parametres', document.querySelector('[onclick*=\"parametres\"]'))" title="Paramètres">⚙️</button>
+      <button class="btn btn-outline btn-sm" onclick="navigate('parametrage',null)" title="Paramètres">⚙️</button>
       <button class="btn btn-primary btn-sm" onclick="openNewDeal()">+ Nouveau deal</button>
     </div>
   </header>
@@ -731,19 +810,19 @@ select.form-input{cursor:pointer}
 
       <!-- ── LIGNE 1 : KPIs PRINCIPAUX ── -->
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px" id="dash-kpi-row">
-        <div class="stat-card blue" style="cursor:pointer" onclick="navigate('pipeline',document.querySelector('[onclick*=pipeline]'))">
+        <div class="stat-card blue" style="cursor:pointer" onclick="navigate('pipeline',null)">
           <div class="stat-icon" style="background:#EFF6FF">💰</div>
           <div class="stat-val" id="stat-ca">0</div>
           <div class="stat-label">CA réalisé (FCFA)</div>
           <span class="stat-change" id="stat-ca-change"></span>
         </div>
-        <div class="stat-card green" style="cursor:pointer" onclick="navigate('clients',document.querySelector('[onclick*=clients]'))">
+        <div class="stat-card green" style="cursor:pointer" onclick="navigate('clients',null)">
           <div class="stat-icon" style="background:#ECFDF5">🎯</div>
           <div class="stat-val" id="stat-prospects">0</div>
           <div class="stat-label">Prospects actifs</div>
           <span class="stat-change" id="stat-prospects-change"></span>
         </div>
-        <div class="stat-card orange" style="cursor:pointer" onclick="navigate('pipeline',document.querySelector('[onclick*=pipeline]'))">
+        <div class="stat-card orange" style="cursor:pointer" onclick="navigate('pipeline',null)">
           <div class="stat-icon" style="background:#FFFBEB">🤝</div>
           <div class="stat-val" id="stat-deals">0</div>
           <div class="stat-label">Deals en cours</div>
@@ -767,7 +846,7 @@ select.form-input{cursor:pointer}
             <span class="card-title">💰 CA par logiciel</span>
             <span class="badge badge-primary" id="dash-annee">2025</span>
           </div>
-          <canvas id="chart-ca" height="180"></canvas>
+          <div style="position:relative;height:180px"><canvas id="chart-ca"></canvas></div>
         </div>
         <div class="card">
           <div class="card-header">
@@ -984,7 +1063,7 @@ select.form-input{cursor:pointer}
     <div id="view-equipe" class="hidden fade-in">
       <div class="flex items-center justify-between" style="margin-bottom:4px">
         <div>
-          <h1 class="page-title" style="margin-bottom:0">Équipe Commerciale</h1>
+          <h1 class="page-title" style="margin-bottom:0">Équipe & Apporteurs</h1>
           <p class="page-sub">Commerciaux salariés + Apporteurs d'affaires</p>
         </div>
         <button class="btn btn-primary" onclick="openEquipeModal(-1)">&#43; Nouveau membre</button>
@@ -998,6 +1077,39 @@ select.form-input{cursor:pointer}
         <input type="text" class="form-input" id="equipe-search" placeholder="Rechercher..." oninput="filterTeamSearch()" style="width:200px;padding:7px 12px;font-size:12px">
       </div>
       <div class="grid-3" id="team-grid"></div>
+    </div>
+
+    <!-- ══ VIEW: APPORTEURS D'AFFAIRES ══ -->
+    <div id="view-apporteurs" class="hidden fade-in">
+      <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:8px;margin-bottom:6px">
+        <div>
+          <h1 class="page-title" style="margin-bottom:0">Apporteurs d'affaires</h1>
+          <p class="page-sub">Réseau d'apporteurs · Conventions · Commissions sur ventes apportées</p>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openApporteurModal()">🤝 Nouvel apporteur</button>
+      </div>
+
+      <!-- Bandeau marche en avant réseau -->
+      <div style="background:var(--warning-l);border:1px solid rgba(217,119,6,.15);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:16px;font-size:11px;color:var(--warning)">
+        🤝 <strong>Circuit apporteur :</strong> Recrutement → Convention signée → Prospect apporté → Vente conclue → Commission versée
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px" id="app-stats"></div>
+
+      <!-- Filtres -->
+      <div class="flex gap-2" style="margin-bottom:16px;flex-wrap:wrap;align-items:center">
+        <input type="text" class="form-input" id="app-search" placeholder="🔍 Nom, téléphone..." style="flex:1;min-width:180px" oninput="renderApporteurs()">
+        <select class="form-input" id="app-filter-statut" style="width:auto" onchange="renderApporteurs()">
+          <option value="">Tous statuts</option>
+          <option value="actif">✅ Actif</option>
+          <option value="convention_attente">📝 Convention en attente</option>
+          <option value="inactif">⛔ Inactif</option>
+        </select>
+      </div>
+
+      <!-- Liste apporteurs -->
+      <div class="grid-3" id="apporteurs-grid"></div>
     </div>
 
     <!-- ══ VIEW: COMMISSIONS ══ -->
@@ -1261,12 +1373,26 @@ select.form-input{cursor:pointer}
       <div class="grid-3" id="users-grid"></div>
     </div>
 
-    <!-- ══ VIEW: PARAMETRAGE ══ -->
+    <!-- ══ VIEW: PARAMETRAGE UNIFIÉ ══ -->
     <div id="view-parametrage" class="hidden fade-in">
-      <div class="flex justify-between items-center" style="margin-bottom:20px">
+      <div style="margin-bottom:16px">
+        <h1 class="page-title">Paramétrage</h1>
+        <p class="page-sub">Entreprise · Utilisateurs & accès · Synchronisation cloud</p>
+      </div>
+
+      <!-- Onglets paramétrage -->
+      <div class="tabs" id="param-tabs" style="margin-bottom:20px">
+        <div class="tab active" onclick="paramTab('entreprise',this)">🏢 Entreprise</div>
+        <div class="tab" onclick="paramTab('users',this)">🔐 Utilisateurs & Accès</div>
+        <div class="tab" onclick="paramTab('sync',this)">☁️ Synchronisation</div>
+      </div>
+
+      <!-- ── PANEL ENTREPRISE ── -->
+      <div id="param-panel-entreprise">
+      <div class="flex justify-between items-center" style="margin-bottom:20px;flex-wrap:wrap;gap:8px">
         <div>
-          <h1 class="page-title">Paramétrage</h1>
-          <p class="page-sub">Identité, finance, pipeline, listes — paramètres métier persistants</p>
+          <h2 style="font-family:var(--font-h);font-weight:800;font-size:16px;margin:0">Paramètres métier</h2>
+          <p class="page-sub" style="margin:2px 0 0">Identité, finance, pipeline, listes — persistants</p>
         </div>
         <div class="flex gap-2">
           <button class="btn btn-outline btn-sm" onclick="resetConfig()">↺ Valeurs par défaut</button>
@@ -1322,8 +1448,22 @@ select.form-input{cursor:pointer}
               <input type="text" class="form-input" id="cfg-adresse">
             </div>
             <div class="form-group">
-              <label class="form-label">Emoji logo</label>
+              <label class="form-label">Emoji logo (fallback)</label>
               <input type="text" class="form-input" id="cfg-emoji" maxlength="4">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Logo entreprise (image)</label>
+            <div style="display:flex;align-items:center;gap:12px">
+              <div id="cfg-logo-preview" style="width:56px;height:56px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;flex-shrink:0">🏢</div>
+              <div style="flex:1">
+                <label class="btn btn-outline btn-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+                  📤 Choisir un logo
+                  <input type="file" accept="image/*" style="display:none" onchange="uploadCompanyLogo(this)">
+                </label>
+                <button class="btn btn-sm" id="cfg-logo-remove" onclick="removeCompanyLogo()" style="display:none;background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2);margin-left:6px">🗑 Retirer</button>
+                <div style="font-size:10px;color:var(--muted);margin-top:4px">PNG/JPG · carré recommandé · max 1MB · remplace l'emoji partout</div>
+              </div>
             </div>
           </div>
         </div>
@@ -1395,9 +1535,16 @@ select.form-input{cursor:pointer}
         <div class="flex gap-2" style="flex-wrap:wrap">
           <button class="btn btn-outline btn-sm" onclick="exportJson()">📤 Exporter JSON</button>
           <button class="btn btn-outline btn-sm" onclick="forceSaveAll()">💾 Forcer sauvegarde</button>
-          <button class="btn btn-outline btn-sm" onclick="navigate('parametres', document.querySelector('[onclick*=&quot;parametres&quot;]'))">☁️ Aller à Sync cloud</button>
+          <button class="btn btn-outline btn-sm" onclick="paramTab('sync',document.querySelector('#param-tabs .tab:nth-child(3)'))">☁️ Aller à Sync cloud</button>
         </div>
       </div>
+      </div><!-- /param-panel-entreprise -->
+
+      <!-- ── PANEL USERS (rempli par JS depuis view-users) ── -->
+      <div id="param-panel-users" style="display:none"></div>
+
+      <!-- ── PANEL SYNC (rempli par JS depuis view-parametres) ── -->
+      <div id="param-panel-sync" style="display:none"></div>
     </div>
 
     <!-- ══ VIEW: PARAMETRES ══ -->
@@ -1408,9 +1555,21 @@ select.form-input{cursor:pointer}
           <p class="page-sub">LocalStorage persistant + Supabase cloud sync</p>
         </div>
         <div class="flex gap-2">
-          <button class="btn btn-outline btn-sm" onclick="syncPull()">⬇ Pull Supabase</button>
-          <button class="btn btn-primary btn-sm" onclick="syncPush()">⬆ Push Supabase</button>
+          <button class="btn btn-outline btn-sm" onclick="syncPull()">⬇ Pull</button>
+          <button class="btn btn-outline btn-sm" onclick="syncPush()">⬆ Push</button>
+          <button class="btn btn-primary btn-sm" onclick="syncFull()">🔄 Tout synchroniser</button>
         </div>
+      </div>
+
+      <!-- GUIDE SETUP RAPIDE -->
+      <div style="background:var(--primary-l);border:1px solid rgba(37,99,235,.15);border-radius:var(--r-sm);padding:12px 16px;margin-bottom:16px;font-size:12px;color:var(--primary)">
+        <strong>🚀 Connexion en 4 étapes :</strong>
+        <span style="display:inline-block;margin-top:4px;line-height:1.7">
+          ① Créez un projet sur <a href="https://supabase.com" target="_blank" style="color:var(--primary);text-decoration:underline">supabase.com</a> ·
+          ② Copiez le <strong>SQL ci-dessous</strong> dans SQL Editor → Run ·
+          ③ Collez <strong>Project URL + Anon Key</strong> (Settings → API) ·
+          ④ Cliquez <strong>Tester</strong> puis <strong>Tout synchroniser</strong>
+        </span>
       </div>
 
       <div class="grid-2" style="margin-bottom:16px">
@@ -1709,9 +1868,260 @@ select.form-input{cursor:pointer}
       </div>
     </div>
 
+    <!-- ══ VIEW: DOCUMENTS & MODÈLES ══ -->
+    <div id="view-documents" class="hidden fade-in">
+      <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:8px;margin-bottom:6px">
+        <div>
+          <h1 class="page-title" style="margin-bottom:0">Documents & Modèles</h1>
+          <p class="page-sub">Conventions · Factures · Programmes · PV · Listes de présence — générés depuis vos données</p>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openDocGenModal()">📄 Générer un document</button>
+      </div>
+
+      <!-- Onglets -->
+      <div class="tabs" style="margin-bottom:16px">
+        <div class="tab active" onclick="docTab('generes',this)">📁 Documents générés (<span id="doc-cnt-gen">0</span>)</div>
+        <div class="tab" onclick="docTab('modeles',this)">📋 Modèles disponibles (5)</div>
+      </div>
+
+      <!-- PANEL MODÈLES -->
+      <div id="doc-panel-modeles" style="display:none">
+        <div class="grid-3" id="doc-templates-grid"></div>
+      </div>
+
+      <!-- PANEL DOCUMENTS GÉNÉRÉS -->
+      <div id="doc-panel-generes">
+        <div class="flex gap-2" style="margin-bottom:16px;flex-wrap:wrap">
+          <input type="text" class="form-input" id="doc-search" placeholder="🔍 Client, type, référence..." style="flex:1;min-width:180px" oninput="renderDocuments()">
+          <select class="form-input" id="doc-filter-type" style="width:auto" onchange="renderDocuments()">
+            <option value="">Tous types</option>
+            <option value="convention">📜 Convention</option>
+            <option value="facture">🧾 Facture</option>
+            <option value="programme">📅 Programme déploiement</option>
+            <option value="pv_formation">✅ PV Formation</option>
+            <option value="presence">📋 Liste présence</option>
+          </select>
+        </div>
+        <div class="card">
+          <div style="overflow-x:auto">
+            <table class="client-table">
+              <thead>
+                <tr><th>Référence</th><th>Type</th><th>Client</th><th>Date</th><th>Rattaché à</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="doc-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /content -->
 </div><!-- /main -->
 </div><!-- /app -->
+
+<!-- ══ MODAL GÉNÉRATION DOCUMENT ══ -->
+<div id="modal-docgen" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:600px;max-height:92vh;overflow-y:auto">
+    <div class="modal-close" onclick="closeDocGenModal()">✕</div>
+    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:2px">📄 Générer un document</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Sélectionnez un modèle et les données de pré-remplissage</div>
+
+    <!-- Sélection du type -->
+    <div class="form-group">
+      <label class="form-label">Type de document *</label>
+      <select class="form-input" id="dg-type" onchange="dgTypeChange()">
+        <option value="convention">📜 Convention de cession logiciel</option>
+        <option value="facture">🧾 Facture de vente</option>
+        <option value="programme">📅 Programme de déploiement</option>
+        <option value="pv_formation">✅ Procès-verbal de formation</option>
+        <option value="presence">📋 Liste de présence formation</option>
+      </select>
+    </div>
+
+    <!-- Pré-remplissage depuis CRM -->
+    <div class="form-group">
+      <label class="form-label">Pré-remplir depuis</label>
+      <div class="form-row">
+        <select class="form-input" id="dg-source-contrat" onchange="dgFillFromContrat()">
+          <option value="">— Contrat existant —</option>
+        </select>
+        <select class="form-input" id="dg-source-client" onchange="dgFillFromClient()">
+          <option value="">— Client existant —</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--border);margin:14px 0;padding-top:14px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Informations document</div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Référence</label>
+        <input type="text" class="form-input" id="dg-ref" placeholder="CV-SADT-2026-XXX">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date</label>
+        <input type="date" class="form-input" id="dg-date">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Client / Cessionnaire *</label>
+        <input type="text" class="form-input" id="dg-client" placeholder="Ex: MENKO HOLDING">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Représentant client</label>
+        <input type="text" class="form-input" id="dg-client-rep" placeholder="Nom, qualité">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Logiciel(s)</label>
+        <input type="text" class="form-input" id="dg-logiciel" placeholder="Ex: ImmoSuite ERP">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Montant TTC (FCFA)</label>
+        <input type="number" class="form-input" id="dg-montant" placeholder="0">
+      </div>
+    </div>
+
+    <!-- Champs spécifiques (dynamiques) -->
+    <div id="dg-specific-fields"></div>
+
+    <div class="form-group" style="margin-top:12px">
+      <label class="form-label">Rattacher à</label>
+      <div class="form-row">
+        <select class="form-input" id="dg-link-contrat">
+          <option value="">— Aucun contrat —</option>
+        </select>
+        <select class="form-input" id="dg-link-deploiement">
+          <option value="">— Aucun déploiement —</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="flex gap-2" style="margin-top:6px">
+      <button class="btn btn-primary" style="flex:1" onclick="generateDoc()">📄 Générer & Aperçu</button>
+      <button class="btn btn-outline" onclick="closeDocGenModal()">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL APERÇU DOCUMENT ══ -->
+<div id="modal-docpreview" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:780px;max-height:94vh;overflow-y:auto">
+    <div class="modal-close" onclick="document.getElementById('modal-docpreview').classList.add('hidden')">✕</div>
+    <div class="flex justify-between items-center" style="margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div style="font-family:var(--font-h);font-weight:800;font-size:16px" id="docpreview-title">Aperçu</div>
+      <div class="flex gap-2">
+        <button class="btn btn-primary btn-sm" onclick="printDoc()">🖨️ Imprimer / PDF</button>
+        <button class="btn btn-outline btn-sm" onclick="saveDocToLibrary()">💾 Enregistrer</button>
+      </div>
+    </div>
+    <div id="docpreview-content" style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:32px;font-family:Georgia,serif;font-size:13px;line-height:1.7;color:#1a1a1a;max-height:60vh;overflow-y:auto"></div>
+  </div>
+</div>
+
+<!-- ══ MODAL APPORTEUR ══ -->
+<div id="modal-apporteur" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:560px;max-height:92vh;overflow-y:auto">
+    <div class="modal-close" onclick="closeApporteurModal()">✕</div>
+    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:2px" id="app-modal-title">🤝 Nouvel apporteur d'affaires</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Recrutement et convention de partenariat</div>
+    <input type="hidden" id="app-edit-id">
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Nom complet *</label>
+        <input type="text" class="form-input" id="app-nom" placeholder="Ex: Jean KOUASSI">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Téléphone *</label>
+        <input type="tel" class="form-input" id="app-phone" placeholder="07 XX XX XX XX">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" class="form-input" id="app-email" placeholder="email@exemple.ci">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Localité / Zone</label>
+        <input type="text" class="form-input" id="app-zone" placeholder="Ex: Abidjan, Bouaké...">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Profession / Activité</label>
+        <input type="text" class="form-input" id="app-profession" placeholder="Ex: Consultant, Commerçant...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Taux commission (%)</label>
+        <input type="number" class="form-input" id="app-commission" value="10" min="0" max="30" step="0.5">
+      </div>
+    </div>
+
+    <!-- Convention -->
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">📝 Convention de partenariat</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Statut</label>
+          <select class="form-input" id="app-statut">
+            <option value="convention_attente">📝 Convention en attente</option>
+            <option value="actif">✅ Actif (convention signée)</option>
+            <option value="inactif">⛔ Inactif</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Date convention</label>
+          <input type="date" class="form-input" id="app-date-conv">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Mode de paiement commission</label>
+          <select class="form-input" id="app-paiement">
+            <option value="mobile_money">📱 Mobile Money (Wave/Orange/MTN)</option>
+            <option value="virement">🏦 Virement bancaire</option>
+            <option value="especes">💵 Espèces</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">N° CNI / Pièce</label>
+          <input type="text" class="form-input" id="app-cni" placeholder="Pièce d'identité">
+        </div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="genConventionApporteur()" style="width:100%;margin-top:4px">📄 Générer la convention (aperçu)</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Logiciels promus (optionnel)</label>
+      <input type="text" class="form-input" id="app-logiciels" placeholder="Ex: AviNest Pro, ImmoSuite (séparés par virgule)">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes</label>
+      <textarea class="form-input" id="app-notes" rows="2" placeholder="Réseau, spécialité, historique..."></textarea>
+    </div>
+
+    <div class="flex gap-2">
+      <button class="btn btn-primary" style="flex:1" onclick="saveApporteur()">💾 Enregistrer</button>
+      <button class="btn btn-outline" onclick="closeApporteurModal()">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL CONVENTION APPORTEUR (aperçu) ══ -->
+<div id="modal-convention-app" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:600px;max-height:92vh;overflow-y:auto">
+    <div class="modal-close" onclick="document.getElementById('modal-convention-app').classList.add('hidden')">✕</div>
+    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:14px">📄 Convention d'apporteur d'affaires</div>
+    <div id="convention-app-content" style="font-size:12px;line-height:1.8;color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:18px;max-height:50vh;overflow-y:auto"></div>
+    <div class="flex gap-2" style="margin-top:14px">
+      <button class="btn btn-primary btn-sm" onclick="printConventionApp()">🖨️ Imprimer</button>
+      <button class="btn btn-outline btn-sm" onclick="copyConventionApp()">📋 Copier</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══ MODAL IMPORT PROSPECTS ══ -->
 <div id="modal-import-prospects" class="modal-overlay hidden">
@@ -2274,7 +2684,7 @@ select.form-input{cursor:pointer}
       ondrop="mediaDrop(event)">
       <div style="font-size:32px;margin-bottom:6px">📎</div>
       <div style="font-weight:600">Glissez vos fichiers ici</div>
-      <div style="font-size:11px;margin-top:4px">Vidéos, PDF, images, documents Office</div>
+      <div style="font-size:11px;margin-top:4px">Vidéos jusqu'à 500MB · PDF, images, documents Office</div>
       <div class="flex gap-2" style="justify-content:center;margin-top:12px;flex-wrap:wrap">
         <label class="btn btn-primary btn-sm" style="cursor:pointer">🎬 Vidéo<input type="file" accept="video/*" style="display:none" onchange="mediaDropUpload(this,'video')"></label>
         <label class="btn btn-outline btn-sm" style="cursor:pointer">📄 Document<input type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx" multiple style="display:none" onchange="mediaDropUpload(this,'document')"></label>
@@ -2915,8 +3325,26 @@ select.form-input{cursor:pointer}
 
     <!-- ─── Apparence ─── -->
     <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em;margin:14px 0 8px;text-transform:uppercase">Apparence</div>
+
+    <!-- Logo image du logiciel -->
     <div class="form-group">
-      <label class="form-label">Icône (emoji)</label>
+      <label class="form-label">Logo du logiciel (image)</label>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div id="l-logo-preview" style="width:48px;height:48px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:20px;overflow:hidden;flex-shrink:0">📦</div>
+        <div style="flex:1">
+          <label class="btn btn-outline btn-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+            📤 Logo
+            <input type="file" accept="image/*" style="display:none" onchange="uploadLogicielLogo(this)">
+          </label>
+          <button class="btn btn-sm" id="l-logo-remove" onclick="removeLogicielLogo()" style="display:none;background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2);margin-left:6px">🗑</button>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">PNG/JPG · remplace l'emoji ci-dessous</div>
+        </div>
+      </div>
+      <input type="hidden" id="l-logo-data">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Icône (emoji — fallback si pas de logo)</label>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px" id="log-emoji-picker">
         <span style="font-size:22px;cursor:pointer;padding:4px 6px;border-radius:6px;transition:background .15s" onclick="selectEmoji(this,'💻')">💻</span>
         <span style="font-size:22px;cursor:pointer;padding:4px 6px;border-radius:6px;transition:background .15s" onclick="selectEmoji(this,'🏢')">🏢</span>
@@ -3345,6 +3773,7 @@ const CONFIG_DEFAULT = {
   email:'contact@sanix-africa.ci',
   adresse:'Abidjan, Côte d\'Ivoire',
   emoji:'🌍',
+  logo:null,        // logo entreprise (base64)
   devise:'FCFA',
   tva:18,
   timbre:200,
@@ -3391,21 +3820,28 @@ function navigate(view, el) {
   document.querySelectorAll('[id^="view-"]').forEach(v => v.classList.add('hidden'));
   document.getElementById('view-' + view)?.classList.remove('hidden');
   document.querySelectorAll('.sb-item').forEach(i => i.classList.remove('active'));
-  if(el) el.classList.add('active');
+  // Si pas d'élément fourni, retrouver l'item sidebar correspondant
+  if(!el) {
+    el = [...document.querySelectorAll('.sb-item')].find(i => {
+      const oc = i.getAttribute('onclick')||'';
+      return oc.includes(`navigate('${view}'`);
+    });
+  }
+  if(el && el.classList && el.classList.contains('sb-item')) el.classList.add('active');
   document.getElementById('topbar-title').textContent = {
     dashboard:'Tableau de bord',pipeline:'Pipeline Commercial',clients:'Clients & Prospects',
-    logiciels:'Catalogue Logiciels',equipe:'Équipe Commerciale',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
+    logiciels:'Catalogue Logiciels',equipe:'Équipe & Apporteurs',apporteurs:'Apporteurs d\'affaires',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
     planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
-    users:'Utilisateurs & Accès',parametrage:'Paramétrage',parametres:'Paramètres & Sync',
+    parametrage:'Paramétrage',
     presentations:'Présentations & Démos',commandes:'Commandes Clients',contrats:'Contrats & Conventions',
-    licences:'Licences Attribuées'
+    licences:'Licences Attribuées',documents:'Documents & Modèles'
   }[view] || view;
   if(view === 'carte') setTimeout(initMap, 100);
   if(view === 'pipeline') setTimeout(populatePipelineFilters, 60);
   if(view === 'commissions') setTimeout(initCommissions, 50);
   if(view === 'parametrage') setTimeout(initParametrage, 50);
-  if(view === 'parametres') setTimeout(initParametres, 50);
-  if(view === 'users') setTimeout(initUsersView, 50);
+  if(view === 'apporteurs') setTimeout(initApporteurs, 50);
+  if(view === 'documents') setTimeout(initDocuments, 50);
   document.dispatchEvent(new CustomEvent('sanix:navigate', {detail: view}));
   closeSidebar();
 }
@@ -3590,7 +4026,7 @@ function initDashboard360() {
           backgroundColor:logLabels.map((_,i)=>(LOGICIELS[i]||{}).color||'#3B82F6'),
           borderRadius:8,borderSkipped:false}]
       },
-      options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${fv(c.raw)} FCFA`}}},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${fv(c.raw)} FCFA`}}},
         scales:{y:{grid:{color:'#F1F5F9'},beginAtZero:true,ticks:{callback:v=>fv(v)}},x:{grid:{display:false},ticks:{font:{size:9}}}}}
     });
   }
@@ -3998,7 +4434,7 @@ function renderLogiciels() {
     return `
     <div class="soft-card" id="log-card-${l.id}">
       <div class="soft-header" style="background:linear-gradient(135deg,${l.color},${l.color}CC);position:relative">
-        <div class="soft-icon">${l.icon||'📦'}</div>
+        <div class="soft-icon">${l.logo?`<img src="${l.logo}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`:(l.icon||'📦')}</div>
         <div class="soft-name">${l.nom}${l.version?' <span style="font-size:10px;opacity:.75;font-weight:400">'+l.version+'</span>':''}</div>
         <div class="soft-cat">${l.cat} &nbsp;·&nbsp; ${PLAT_ICO[l.plateforme]||'🌐'} ${l.plateforme||'Web'}</div>
         ${l.actif===false?`<div style="position:absolute;top:10px;left:10px;background:rgba(0,0,0,.4);color:rgba(255,255,255,.8);font-size:10px;padding:2px 8px;border-radius:20px">⛔ Inactif</div>`:''}
@@ -4092,6 +4528,14 @@ function openLogicielModal(id=null) {
     setVal('l-prospects', l.prospects||0);
     setVal('l-actif', (l.actif!==false)?'true':'false');
     selectColor(l.color||'#1E3A5F');
+    // Logo
+    _currentLogicielLogo = l.logo||null;
+    setVal('l-logo-data', l.logo||'');
+    const lp = document.getElementById('l-logo-preview');
+    if(lp) {
+      if(l.logo) { lp.innerHTML=`<img src="${l.logo}" style="width:100%;height:100%;object-fit:cover">`; document.getElementById('l-logo-remove').style.display=''; }
+      else { lp.textContent = l.icon||'📦'; document.getElementById('l-logo-remove').style.display='none'; }
+    }
   } else {
     ['l-nom','l-version','l-desc','l-modules','l-demo','l-video','l-doc'].forEach(i=>setVal(i,''));
     setVal('l-prix',''); setVal('l-prix-mensuel',''); setVal('l-remise-max','0');
@@ -4100,6 +4544,12 @@ function openLogicielModal(id=null) {
     setVal('l-type-licence','Annuelle'); setVal('l-support','30j');
     setVal('l-icon','📦'); setVal('l-icon-custom','');
     selectColor('#1E3A5F');
+    // Reset logo
+    _currentLogicielLogo = null;
+    setVal('l-logo-data','');
+    const lp = document.getElementById('l-logo-preview');
+    if(lp) { lp.textContent='📦'; }
+    const lr = document.getElementById('l-logo-remove'); if(lr) lr.style.display='none';
   }
   togglePrixMensuel();
   updateLogPreview();
@@ -4123,6 +4573,103 @@ function selectColor(color) {
   const sw = document.getElementById('swatch-'+color.replace('#',''));
   if(sw) { sw.style.borderColor='var(--text)'; sw.style.transform='scale(1.2)'; }
   updateLogPreview();
+}
+
+// ═══════════════════════════════════════
+//  LOGOS — Entreprise & Logiciels
+// ═══════════════════════════════════════
+// Redimensionne + compresse une image en base64 (max 200px, qualité 0.8)
+function compressImage(file, maxSize, cb) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if(width > height) { if(width > maxSize) { height = height*maxSize/width; width = maxSize; } }
+      else { if(height > maxSize) { width = width*maxSize/height; height = maxSize; } }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      // PNG si transparence probable, sinon JPEG
+      const isPng = file.type.includes('png');
+      cb(canvas.toDataURL(isPng?'image/png':'image/jpeg', 0.85));
+    };
+    img.onerror = () => cb(null);
+    img.src = e.target.result;
+  };
+  reader.onerror = () => cb(null);
+  reader.readAsDataURL(file);
+}
+
+// ─── Logo entreprise ────────────────────
+function uploadCompanyLogo(input) {
+  const file = input.files[0];
+  if(!file) return;
+  if(file.size > 2*1024*1024) { showToast('⚠️ Image trop lourde (max 2MB)'); return; }
+  compressImage(file, 256, dataUrl => {
+    if(!dataUrl) { showToast('❌ Erreur de traitement'); return; }
+    CONFIG.logo = dataUrl;
+    persistConfig();
+    applyCompanyLogo();
+    showToast('✅ Logo entreprise mis à jour');
+  });
+  input.value='';
+}
+
+function removeCompanyLogo() {
+  CONFIG.logo = null;
+  persistConfig();
+  applyCompanyLogo();
+  showToast('🗑 Logo retiré');
+}
+
+function applyCompanyLogo() {
+  // Met à jour le preview dans le paramétrage
+  const prev = document.getElementById('cfg-logo-preview');
+  const rmBtn = document.getElementById('cfg-logo-remove');
+  if(prev) {
+    if(CONFIG.logo) { prev.innerHTML=`<img src="${CONFIG.logo}" style="width:100%;height:100%;object-fit:cover">`; if(rmBtn) rmBtn.style.display=''; }
+    else { prev.textContent = CONFIG.emoji||'🏢'; if(rmBtn) rmBtn.style.display='none'; }
+  }
+  // Met à jour le logo sidebar + login
+  document.querySelectorAll('.sb-logo-icon,.login-brand-icon').forEach(e=>{
+    if(CONFIG.logo) e.innerHTML=`<img src="${CONFIG.logo}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`;
+    else e.textContent = CONFIG.emoji||'🌍';
+  });
+}
+
+// ─── Logo logiciel ──────────────────────
+let _currentLogicielLogo = null;
+
+function uploadLogicielLogo(input) {
+  const file = input.files[0];
+  if(!file) return;
+  if(file.size > 2*1024*1024) { showToast('⚠️ Image trop lourde (max 2MB)'); return; }
+  compressImage(file, 200, dataUrl => {
+    if(!dataUrl) { showToast('❌ Erreur'); return; }
+    _currentLogicielLogo = dataUrl;
+    document.getElementById('l-logo-data').value = dataUrl;
+    const prev = document.getElementById('l-logo-preview');
+    if(prev) prev.innerHTML=`<img src="${dataUrl}" style="width:100%;height:100%;object-fit:cover">`;
+    document.getElementById('l-logo-remove').style.display='';
+    showToast('✅ Logo chargé — pensez à enregistrer');
+  });
+  input.value='';
+}
+
+function removeLogicielLogo() {
+  _currentLogicielLogo = null;
+  document.getElementById('l-logo-data').value='';
+  const prev = document.getElementById('l-logo-preview');
+  if(prev) prev.textContent = document.getElementById('l-icon')?.value||'📦';
+  document.getElementById('l-logo-remove').style.display='none';
+}
+
+// Helper : rend le logo OU l'emoji d'un logiciel
+function logicielLogoHtml(l, size=40) {
+  if(l.logo) return `<img src="${l.logo}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`;
+  return l.icon||'📦';
 }
 
 function selectEmoji(el, emoji) {
@@ -4199,11 +4746,12 @@ function saveLogiciel() {
   const prospects = parseInt(gv('l-prospects'))||0;
   const actif = gv('l-actif') === 'true';
   const editId = gv('log-edit-id');
+  const logo = gv('l-logo-data')||null;
   if(!nom){ showToast('❌ Nom obligatoire'); document.getElementById('l-nom').focus(); return; }
   if(!desc){ showToast('❌ Description obligatoire'); document.getElementById('l-desc').focus(); return; }
   if(!prixNum){ showToast('❌ Prix obligatoire'); document.getElementById('l-prix').focus(); return; }
   const prix = formatPrix(prixNum);
-  const data = {nom,version,cat,plateforme,type_licence,support,desc,modules,prixNum,prix,prixMensuel,remiseMax,demo,video,doc,icon,color,commission,ventes,actif};
+  const data = {nom,version,cat,plateforme,type_licence,support,desc,modules,prixNum,prix,prixMensuel,remiseMax,demo,video,doc,icon,color,commission,ventes,actif,logo};
   if(editId) {
     const l = LOGICIELS.find(x=>x.id===editId);
     if(l) Object.assign(l,data);
@@ -4684,6 +5232,11 @@ function populateCommerciaux() {
 // ═══════════════════════════════════════
 let leafletMap = null;
 function initMap() {
+  if(typeof L === 'undefined') {
+    const el = document.getElementById('leaflet-map');
+    if(el) el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)"><div style="font-size:32px;margin-bottom:8px">🗺️</div>Carte indisponible — vérifiez votre connexion internet<br><button onclick="initMap()" class="btn btn-outline btn-sm" style="margin-top:10px">🔄 Réessayer</button></div>';
+    return;
+  }
   if(leafletMap) { leafletMap.invalidateSize(); return; }
   leafletMap = L.map('leaflet-map').setView([5.3463, -4.0080], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(leafletMap);
@@ -5831,11 +6384,17 @@ function resetUserPass(id) {
 // ═══════════════════════════════════════
 const LS_PREFIX = 'sanix_crm_';
 const LS_STORES = {
-  deals:       { get:()=>DEALS,       set:v=>{ DEALS=v; }      },
-  clients:     { get:()=>CLIENTS,     set:v=>{ CLIENTS=v; }    },
-  deployments: { get:()=>DEPLOYMENTS, set:v=>{ DEPLOYMENTS=v; }},
-  users_data:  { get:()=>USERS,       set:v=>{ USERS=v; }      },
-  logiciels:   { get:()=>LOGICIELS,   set:v=>{ LOGICIELS=v; }  },
+  deals:         { get:()=>DEALS,         set:v=>{ DEALS=v; }         },
+  clients:       { get:()=>CLIENTS,       set:v=>{ CLIENTS=v; }       },
+  deployments:   { get:()=>DEPLOYMENTS,   set:v=>{ DEPLOYMENTS=v; }   },
+  users_data:    { get:()=>USERS,         set:v=>{ USERS=v; }         },
+  logiciels:     { get:()=>LOGICIELS,     set:v=>{ LOGICIELS=v; }     },
+  presentations: { get:()=>PRESENTATIONS, set:v=>{ PRESENTATIONS=v; } },
+  commandes:     { get:()=>COMMANDES,     set:v=>{ COMMANDES=v; }     },
+  contrats:      { get:()=>CONTRATS,      set:v=>{ CONTRATS=v; }      },
+  licences:      { get:()=>LICENCES,      set:v=>{ LICENCES=v; }      },
+  apporteurs:    { get:()=>APPORTEURS,    set:v=>{ APPORTEURS=v; }    },
+  documents:     { get:()=>DOCUMENTS,     set:v=>{ DOCUMENTS=v; }     },
 };
 
 function lsSave(key, data) {
@@ -5960,7 +6519,21 @@ function resetToSeed() {
 // ═══════════════════════════════════════
 let SB_CONFIG = null;
 let autoSyncInterval = null;
-const SB_TABLES = { deals:'crm_deals', clients:'crm_clients', deployments:'crm_deployments', users_data:'crm_users_data' };
+const SB_TABLES = {
+  deals:         'crm_deals',
+  clients:       'crm_clients',
+  deployments:   'crm_deployments',
+  users_data:    'crm_users_data',
+  logiciels:     'crm_logiciels',
+  presentations: 'crm_presentations',
+  commandes:     'crm_commandes',
+  contrats:      'crm_contrats',
+  licences:      'crm_licences',
+  apporteurs:    'crm_apporteurs',
+  documents:     'crm_documents',
+};
+// Tables dont l'ID est une chaîne (pas un entier auto)
+const SB_STRING_ID = new Set(['logiciels','presentations','commandes','contrats','licences','apporteurs','documents']);
 
 async function withTimeout(promise, ms=6000) {
   return Promise.race([
@@ -6044,6 +6617,46 @@ async function testSbConnection() {
   }
 }
 
+// ─── Mappeurs pour tables jsonb ──────────
+// Colonnes "plates" par table jsonb (le reste va dans data)
+const SB_FLAT_COLS = {
+  logiciels:     ['id','nom','version','cat','plateforme','desc','prixNum','logo'],
+  presentations: ['id','client','date','logiciel','statut','commercial','resultat'],
+  commandes:     ['id','ref','client','date','logiciel','ttc','statut','commercial'],
+  contrats:      ['id','ref','type','client','date','logiciel','montant','statut'],
+  licences:      ['id','key','client','logiciel','type','debut','fin','statut'],
+  apporteurs:    ['id','nom','phone','email','zone','statut','commission'],
+  documents:     ['id','ref','type','client','date','contratId','html'],
+};
+const SB_COL_RENAME = { prixNum:'prix_num', contratId:'contrat_id', desc:'description' };
+
+function sbToRow(key, obj) {
+  // Tables classiques (deals, clients, deployments, users_data) → objet brut
+  if(!SB_STRING_ID.has(key)) return {...obj};
+  // Tables jsonb : extraire colonnes plates + tout le reste dans data
+  const flat = SB_FLAT_COLS[key]||['id'];
+  const row = {}; const data = {};
+  Object.entries(obj).forEach(([k,v])=>{
+    if(flat.includes(k)) row[SB_COL_RENAME[k]||k] = v;
+    else data[k] = v;
+  });
+  row.data = data;
+  return row;
+}
+
+function sbFromRow(key, row) {
+  if(!SB_STRING_ID.has(key)) return {...row};
+  // Reconstruire l'objet : colonnes plates + champs du jsonb data
+  const {data, updated_at, ...flat} = row;
+  // Re-renommer snake_case → camelCase
+  const renamed = {};
+  Object.entries(flat).forEach(([k,v])=>{
+    const orig = Object.keys(SB_COL_RENAME).find(o=>SB_COL_RENAME[o]===k);
+    renamed[orig||k] = v;
+  });
+  return {...renamed, ...(data||{})};
+}
+
 async function syncPush() {
   if(!SB_CONFIG){ syncLog('warn','⚠️ Supabase non configuré'); showToast('⚠️ Configurez Supabase d\'abord'); return; }
   if(!navigator.onLine){ syncLog('warn','📡 Hors-ligne — push différé'); showToast('📡 Hors-ligne — push différé'); return; }
@@ -6055,7 +6668,7 @@ async function syncPush() {
     const data = LS_STORES[key]?.get();
     if(!data||!data.length) continue;
     try {
-      const rows = data.map(r=>({...r, updated_at:ts}));
+      const rows = data.map(r=>({...sbToRow(key,r), updated_at:ts}));
       await withTimeout(sbFetch(table,'POST',rows));
       ok++;
       syncLog('ok',`✅ Push ${table}: ${rows.length} lignes`);
@@ -6065,10 +6678,16 @@ async function syncPush() {
     }
   }
   const label = err>0 ? `Push partiel (${err} erreur(s))` : 'Synchronisé';
+  // Push CONFIG entreprise (singleton)
+  try {
+    await withTimeout(sbFetch('crm_config','POST',[{id:1, data:CONFIG, updated_at:ts}]));
+    syncLog('ok','✅ Push config entreprise');
+  } catch(e) { syncLog('warn','⚠️ Push config: '+e.message); }
   updatePill(err>0?'error':'ok', label);
   lsSave('last_sync', {ts, direction:'push', ok, err});
   updateLastSyncInfo();
   syncLog(err>0?'warn':'ok', `⬆ Push terminé — ${ok} OK, ${err} erreur(s)`);
+  if(err===0) showToast(`⬆ Push réussi — ${ok} table(s)`);
 }
 
 async function syncPull() {
@@ -6079,22 +6698,37 @@ async function syncPull() {
   let ok=0;
   for(const [key, table] of Object.entries(SB_TABLES)) {
     try {
-      const rows = await withTimeout(sbFetch(table,'GET',null,'?select=*&order=id'));
+      const rows = await withTimeout(sbFetch(table,'GET',null,'?select=*'));
       if(rows && rows.length) {
-        LS_STORES[key]?.set(rows);
-        lsSave(key, rows);
+        const mapped = rows.map(r=>sbFromRow(key,r));
+        LS_STORES[key]?.set(mapped);
+        lsSave(key, mapped);
         ok++;
         syncLog('ok',`⬇ Pull ${table}: ${rows.length} lignes`);
       }
     } catch(e) { syncLog('err',`❌ Pull ${table}: ${e.message}`); }
   }
   lsSave('last_sync', {ts:new Date().toISOString(), direction:'pull', ok});
+  // Pull CONFIG entreprise
+  try {
+    const rows = await withTimeout(sbFetch('crm_config','GET',null,'?id=eq.1&select=data'));
+    if(rows && rows[0] && rows[0].data) {
+      CONFIG = {...CONFIG_DEFAULT, ...rows[0].data};
+      persistConfig();
+      applyConfig();
+      syncLog('ok','⬇ Pull config entreprise');
+    }
+  } catch(e) { syncLog('warn','⚠️ Pull config: '+e.message); }
   updateLastSyncInfo();
   updatePill('ok','Synchronisé');
   syncLog('ok',`⬇ Pull terminé — ${ok} table(s) mises à jour`);
-  // Refresh active views
-  initPipeline(); initClients(); initPlanning(); initUsersView();
-  showToast(`⬇ Pull complet — ${ok} table(s) mises à jour`);
+  // Refresh toutes les vues
+  try { initPipeline(); }catch(e){}
+  try { initClients(); }catch(e){}
+  try { initPlanning(); }catch(e){}
+  try { initLogiciels(); }catch(e){}
+  try { initDashboard360(); }catch(e){}
+  showToast(`⬇ Pull complet — ${ok} table(s)`);
 }
 
 function toggleAutoSync(el) {
@@ -6108,6 +6742,17 @@ function toggleAutoSync(el) {
     if(autoSyncInterval) { clearInterval(autoSyncInterval); autoSyncInterval=null; }
     syncLog('info','⏹ Auto-sync désactivé');
   }
+}
+
+// Synchronisation bidirectionnelle complète (pull puis push)
+async function syncFull() {
+  if(!SB_CONFIG){ showToast('⚠️ Configurez Supabase d\'abord'); return; }
+  if(!navigator.onLine){ showToast('📡 Hors-ligne'); return; }
+  syncLog('info','🔄 Synchronisation complète démarrée...');
+  await syncPull();
+  await syncPush();
+  syncLog('ok','🔄 Synchronisation complète terminée');
+  showToast('🔄 Synchronisation complète OK');
 }
 function startAutoSync() {
   if(autoSyncInterval) clearInterval(autoSyncInterval);
@@ -6170,34 +6815,46 @@ function setupOfflineDetection() {
 function retryConnection() { if(navigator.onLine) { document.getElementById('offline-banner').classList.remove('show'); if(SB_CONFIG) syncPush(); } else showToast('Toujours hors-ligne...'); }
 
 // ─── SQL SCHEMA ──────────────────────────
-const SQL_SCHEMA = `-- SANIX Africa CRM — Schéma Supabase
--- Exécuter dans : SQL Editor → New query
+const SQL_SCHEMA = `-- ════════════════════════════════════════════════
+-- SANIX Africa CRM Pro — Schéma Supabase COMPLET
+-- Exécuter dans : SQL Editor → New query → Run
+-- ════════════════════════════════════════════════
 
+-- ① DEALS (pipeline)
 create table if not exists crm_deals (
   id          int primary key,
   client      text,
   logiciel    text,
-  valeur      int,
+  valeur      bigint,
   stage       text,
   commercial  text,
   color       text,
-  date_deal   text,
+  date        text,
   updated_at  timestamptz default now()
 );
 
+-- ② CLIENTS & PROSPECTS
 create table if not exists crm_clients (
-  id          int primary key,
-  nom         text,
-  secteur     text,
-  logiciel    text,
-  statut      text,
-  commercial  text,
-  valeur      int,
-  phone       text,
-  email       text,
-  updated_at  timestamptz default now()
+  id            int primary key,
+  nom           text,
+  secteur       text,
+  logiciel      text,
+  statut        text,
+  commercial    text,
+  valeur        bigint,
+  phone         text,
+  email         text,
+  adresse       text,
+  lat           double precision,
+  lng           double precision,
+  notes         text,
+  apporteur     text,
+  interactions  jsonb default '[]'::jsonb,
+  created_at    text,
+  updated_at    timestamptz default now()
 );
 
+-- ③ DÉPLOIEMENTS
 create table if not exists crm_deployments (
   id          int primary key,
   client      text,
@@ -6209,8 +6866,9 @@ create table if not exists crm_deployments (
   updated_at  timestamptz default now()
 );
 
+-- ④ UTILISATEURS
 create table if not exists crm_users_data (
-  id          int primary key,
+  id          bigint primary key,
   nom         text,
   email       text,
   phone       text,
@@ -6220,20 +6878,149 @@ create table if not exists crm_users_data (
   last_login  text,
   init        text,
   color       text,
+  type        text,
+  ca          bigint,
+  deals       int,
+  conv        int,
+  commission  numeric,
   updated_at  timestamptz default now()
 );
 
--- Enable Row Level Security
-alter table crm_deals        enable row level security;
-alter table crm_clients      enable row level security;
-alter table crm_deployments  enable row level security;
-alter table crm_users_data   enable row level security;
+-- ⑤ LOGICIELS (catalogue) — id texte
+create table if not exists crm_logiciels (
+  id          text primary key,
+  nom         text,
+  version     text,
+  cat         text,
+  plateforme  text,
+  description text,
+  prix_num    bigint,
+  logo        text,
+  data        jsonb,            -- modules, couleurs, demo, etc.
+  updated_at  timestamptz default now()
+);
 
--- Anon read/write policy (ajuster selon vos besoins)
-create policy "anon_all_deals"        on crm_deals        for all using (true) with check (true);
-create policy "anon_all_clients"      on crm_clients      for all using (true) with check (true);
-create policy "anon_all_deployments"  on crm_deployments  for all using (true) with check (true);
-create policy "anon_all_users"        on crm_users_data   for all using (true) with check (true);`;
+-- ⑥ PRÉSENTATIONS & DÉMOS
+create table if not exists crm_presentations (
+  id          text primary key,
+  client      text,
+  date        text,
+  logiciel    text,
+  statut      text,
+  commercial  text,
+  resultat    text,
+  data        jsonb,
+  updated_at  timestamptz default now()
+);
+
+-- ⑦ COMMANDES
+create table if not exists crm_commandes (
+  id          text primary key,
+  ref         text,
+  client      text,
+  date        text,
+  logiciel    text,
+  ttc         bigint,
+  statut      text,
+  commercial  text,
+  data        jsonb,
+  updated_at  timestamptz default now()
+);
+
+-- ⑧ CONTRATS & CONVENTIONS
+create table if not exists crm_contrats (
+  id          text primary key,
+  ref         text,
+  type        text,
+  client      text,
+  date        text,
+  logiciel    text,
+  montant     bigint,
+  statut      text,
+  data        jsonb,
+  updated_at  timestamptz default now()
+);
+
+-- ⑨ LICENCES
+create table if not exists crm_licences (
+  id          text primary key,
+  key         text,
+  client      text,
+  logiciel    text,
+  type        text,
+  debut       text,
+  fin         text,
+  statut      text,
+  data        jsonb,
+  updated_at  timestamptz default now()
+);
+
+-- ⑩ APPORTEURS D'AFFAIRES
+create table if not exists crm_apporteurs (
+  id          text primary key,
+  nom         text,
+  phone       text,
+  email       text,
+  zone        text,
+  statut      text,
+  commission  numeric,
+  data        jsonb,
+  updated_at  timestamptz default now()
+);
+
+-- ⑪ DOCUMENTS générés
+create table if not exists crm_documents (
+  id          text primary key,
+  ref         text,
+  type        text,
+  client      text,
+  date        text,
+  contrat_id  text,
+  html        text,
+  data        jsonb,
+  updated_at  timestamptz default now()
+);
+
+-- ⑫ CONFIG entreprise (singleton — 1 ligne)
+create table if not exists crm_config (
+  id          int primary key default 1,
+  data        jsonb,
+  updated_at  timestamptz default now()
+);
+
+-- ════════════════════════════════════════════════
+-- Row Level Security
+-- ════════════════════════════════════════════════
+alter table crm_deals         enable row level security;
+alter table crm_clients       enable row level security;
+alter table crm_deployments   enable row level security;
+alter table crm_users_data    enable row level security;
+alter table crm_logiciels     enable row level security;
+alter table crm_presentations enable row level security;
+alter table crm_commandes     enable row level security;
+alter table crm_contrats      enable row level security;
+alter table crm_licences      enable row level security;
+alter table crm_apporteurs    enable row level security;
+alter table crm_documents     enable row level security;
+alter table crm_config        enable row level security;
+
+-- ════════════════════════════════════════════════
+-- Policies anon (accès via clé anon — ajuster en prod)
+-- ════════════════════════════════════════════════
+do $$
+declare t text;
+begin
+  for t in select unnest(array[
+    'crm_deals','crm_clients','crm_deployments','crm_users_data',
+    'crm_logiciels','crm_presentations','crm_commandes','crm_contrats',
+    'crm_licences','crm_apporteurs','crm_documents','crm_config'])
+  loop
+    execute format('drop policy if exists "anon_all_%s" on %I;', t, t);
+    execute format('create policy "anon_all_%s" on %I for all using (true) with check (true);', t, t);
+  end loop;
+end $$;
+
+-- ✅ Schéma installé. 12 tables synchronisables.`;
 
 function copySql() {
   navigator.clipboard.writeText(SQL_SCHEMA).then(()=>{
@@ -6260,7 +7047,10 @@ function applyConfig() {
   set('brand-login-sub', CONFIG.sub);
   document.title = CONFIG.appName;
   const logoIcons = document.querySelectorAll('.sb-logo-icon,.login-brand-icon');
-  logoIcons.forEach(e=>{ if(CONFIG.emoji) e.textContent = CONFIG.emoji; });
+  logoIcons.forEach(e=>{
+    if(CONFIG.logo) e.innerHTML=`<img src="${CONFIG.logo}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`;
+    else if(CONFIG.emoji) e.textContent = CONFIG.emoji;
+  });
   // Deal-stage select depuis STAGES
   const ds = document.getElementById('deal-stage');
   if(ds) ds.innerHTML = STAGES.filter(s=>!['gagne','perdu'].includes(s.id))
@@ -6274,13 +7064,53 @@ function applyConfig() {
 }
 
 // ─── INIT PARAMETRAGE VIEW ───────────────
+// ═══════════════════════════════════════
+//  PARAMÉTRAGE UNIFIÉ — Onglets
+// ═══════════════════════════════════════
+let _paramDomMoved = false;
+
+function paramMoveContent() {
+  if(_paramDomMoved) return;
+  // Déplacer le contenu interne de view-users vers param-panel-users
+  const usersView = document.getElementById('view-users');
+  const usersPanel = document.getElementById('param-panel-users');
+  if(usersView && usersPanel) {
+    // Déplacer tous les enfants sauf on garde le wrapper
+    while(usersView.firstChild) usersPanel.appendChild(usersView.firstChild);
+  }
+  // Déplacer le contenu de view-parametres vers param-panel-sync
+  const syncView = document.getElementById('view-parametres');
+  const syncPanel = document.getElementById('param-panel-sync');
+  if(syncView && syncPanel) {
+    while(syncView.firstChild) syncPanel.appendChild(syncView.firstChild);
+  }
+  _paramDomMoved = true;
+}
+
+function paramTab(tab, el) {
+  paramMoveContent();
+  ['entreprise','users','sync'].forEach(t=>{
+    const p = document.getElementById('param-panel-'+t);
+    if(p) p.style.display = t===tab ? '' : 'none';
+  });
+  document.querySelectorAll('#param-tabs .tab').forEach(t=>t.classList.remove('active'));
+  if(el) el.classList.add('active');
+  // Init du contenu selon l'onglet
+  if(tab==='users')  setTimeout(initUsersView,30);
+  if(tab==='sync')   setTimeout(initParametres,30);
+  if(tab==='entreprise') setTimeout(initParametrage,30);
+}
+
 function initParametrage() {
+  // Au premier affichage, déplacer le DOM et activer onglet entreprise
+  paramMoveContent();
   const g = id => document.getElementById(id);
   const fields = ['appName','sigle','sub','raisonSociale','rccm','cc','tel','email','adresse','emoji',
                   'devise','tva','timbre','commissionDefaut','objectifDefaut','remiseMaxDefaut'];
   fields.forEach(f=>{ const e=g('cfg-'+f); if(e) e.value = CONFIG[f]; });
   g('cfg-secteurs').value = (CONFIG.secteurs||[]).join('\n');
   g('cfg-categories').value = (CONFIG.categories||[]).join('\n');
+  applyCompanyLogo();
   renderStageRows();
   renderDiagnostic();
 }
@@ -6977,6 +7807,8 @@ const _extendLoadAll = () => {
   const cmds = lsLoad('commandes');     if(cmds&&Array.isArray(cmds))  COMMANDES=cmds;
   const ctrs = lsLoad('contrats');      if(ctrs&&Array.isArray(ctrs))  CONTRATS=ctrs;
   const lics = lsLoad('licences');      if(lics&&Array.isArray(lics))  LICENCES=lics;
+  const apps = lsLoad('apporteurs');    if(apps&&Array.isArray(apps))  APPORTEURS=apps;
+  const docs = lsLoad('documents');     if(docs&&Array.isArray(docs))  DOCUMENTS=docs;
 };
 
 // ─── Navigate extension pour nouveaux modules ─
@@ -6985,6 +7817,8 @@ const _navExtensions = {
   commandes:     ()=>setTimeout(initCommandes,50),
   contrats:      ()=>setTimeout(initContrats,50),
   licences:      ()=>setTimeout(initLicences,50),
+  apporteurs:    ()=>setTimeout(initApporteurs,50),
+  documents:     ()=>setTimeout(initDocuments,50),
 };
 // Hook into existing navigate via event
 document.addEventListener('sanix:navigate', e=>{
@@ -6999,6 +7833,707 @@ document.addEventListener('DOMContentLoaded',()=>{
   setInterval(updateSidebarNotifications, 120000);
 });
 
+
+// ═══════════════════════════════════════
+//  DOCUMENTS & MODÈLES
+// ═══════════════════════════════════════
+let DOCUMENTS = [];
+let _docTab = 'generes';
+let _docCurrentHtml = '';
+let _docCurrentMeta = null;
+
+const DOC_TYPES = {
+  convention:   {ico:'📜', label:'Convention de cession', color:'#1E3A5F'},
+  facture:      {ico:'🧾', label:'Facture de vente',       color:'#065F46'},
+  programme:    {ico:'📅', label:'Programme déploiement',  color:'#7C3AED'},
+  pv_formation: {ico:'✅', label:'PV de formation',         color:'#059669'},
+  presence:     {ico:'📋', label:'Liste de présence',      color:'#D97706'},
+};
+
+const DOC_TEMPLATES = [
+  {type:'convention',   titre:'Convention de cession logiciel', desc:'Cession de droits, code source, dation, formation, redevance. Modèle complet 9 articles (réf. CV-SADT-MENKO).', usage:'Vente importante avec transfert de propriété'},
+  {type:'facture',      titre:'Facture de vente définitive',    desc:'Facture TTC avec TVA 18%, désignation prestations, modalités de règlement (dation + numéraire possible).', usage:'Facturation de toute vente'},
+  {type:'programme',    titre:'Programme de déploiement',       desc:'Planning par vagues et séances, intervenants/rôles (PRI), calendrier, livrables et jalons de recette.', usage:'Déploiement structuré multi-modules'},
+  {type:'pv_formation', titre:'Procès-verbal de formation',     desc:'Constat de réception de formation, modules couverts, réserves, déclenchement du solde financier.', usage:'Clôture de formation client'},
+  {type:'presence',     titre:'Liste de présence formation',    desc:'Fiche d\'émargement par séance : module, date, horaire, formateur, PRI, tableau 12 participants.', usage:'Émargement de chaque séance'},
+];
+
+function initDocuments() {
+  renderDocTemplates();
+  renderDocuments();
+  const cnt = document.getElementById('doc-cnt-gen');
+  if(cnt) cnt.textContent = DOCUMENTS.length;
+  const badge = document.getElementById('sb-doc-badge');
+  if(badge){ badge.textContent=DOCUMENTS.length; badge.style.display=DOCUMENTS.length>0?'':'none'; }
+}
+
+function docTab(tab, el) {
+  _docTab = tab;
+  document.getElementById('doc-panel-generes').style.display = tab==='generes'?'':'none';
+  document.getElementById('doc-panel-modeles').style.display = tab==='modeles'?'':'none';
+  document.querySelectorAll('#view-documents .tab').forEach(t=>t.classList.remove('active'));
+  if(el) el.classList.add('active');
+}
+
+function renderDocTemplates() {
+  const grid = document.getElementById('doc-templates-grid');
+  if(!grid) return;
+  grid.innerHTML = DOC_TEMPLATES.map(t=>{
+    const meta = DOC_TYPES[t.type];
+    return `<div class="card" style="padding:18px;border-top:3px solid ${meta.color}">
+      <div style="font-size:30px;margin-bottom:8px">${meta.ico}</div>
+      <div style="font-weight:800;font-size:14px;font-family:var(--font-h);margin-bottom:6px">${t.titre}</div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.6;margin-bottom:10px">${t.desc}</div>
+      <div style="font-size:10px;color:var(--text2);background:var(--surface2);padding:5px 8px;border-radius:6px;margin-bottom:12px">💡 ${t.usage}</div>
+      <button class="btn btn-primary btn-sm" style="width:100%" onclick="openDocGenModal('${t.type}')">📄 Générer ce document</button>
+    </div>`;
+  }).join('');
+}
+
+function renderDocuments() {
+  const tbody = document.getElementById('doc-tbody');
+  if(!tbody) return;
+  const q  = (document.getElementById('doc-search')?.value||'').toLowerCase();
+  const ty = document.getElementById('doc-filter-type')?.value||'';
+  let list = [...DOCUMENTS].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  if(q)  list = list.filter(d=>(d.ref+d.client+d.type).toLowerCase().includes(q));
+  if(ty) list = list.filter(d=>d.type===ty);
+  if(!list.length){tbody.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Aucun document généré. Cliquez "📄 Générer un document".</td></tr>`;return;}
+  tbody.innerHTML = list.map(d=>{
+    const meta = DOC_TYPES[d.type]||{ico:'📄',label:d.type};
+    let rattache = '—';
+    if(d.contratId){ const c=CONTRATS.find(x=>x.id===d.contratId); rattache=c?'📝 '+c.ref:'Contrat'; }
+    else if(d.deploiementId) rattache='📅 Déploiement';
+    return `<tr>
+      <td style="font-weight:700;color:${meta.color}">${d.ref||'—'}</td>
+      <td><span style="font-size:11px">${meta.ico} ${meta.label}</span></td>
+      <td style="font-weight:600">${d.client}</td>
+      <td style="font-size:12px">${d.date||new Date(d.createdAt).toLocaleDateString('fr-FR')}</td>
+      <td style="font-size:11px">${rattache}</td>
+      <td>
+        <div class="flex gap-1">
+          <button onclick="viewSavedDoc('${d.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px">👁</button>
+          <button onclick="printSavedDoc('${d.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px">🖨️</button>
+          <button onclick="deleteDoc('${d.id}')" class="btn btn-sm" style="padding:3px 8px;font-size:11px;background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2)">🗑</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openDocGenModal(type=null) {
+  if(type) document.getElementById('dg-type').value = type;
+  document.getElementById('dg-date').value = new Date().toISOString().split('T')[0];
+  // Populate sources
+  const ctrSel = document.getElementById('dg-source-contrat');
+  ctrSel.innerHTML='<option value="">— Contrat existant —</option>'+CONTRATS.map(c=>`<option value="${c.id}">${c.ref} — ${c.client}</option>`).join('');
+  const cliSel = document.getElementById('dg-source-client');
+  cliSel.innerHTML='<option value="">— Client existant —</option>'+CLIENTS.map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
+  const linkCtr = document.getElementById('dg-link-contrat');
+  linkCtr.innerHTML='<option value="">— Aucun contrat —</option>'+CONTRATS.map(c=>`<option value="${c.id}">${c.ref}</option>`).join('');
+  const linkDep = document.getElementById('dg-link-deploiement');
+  linkDep.innerHTML='<option value="">— Aucun déploiement —</option>'+DEPLOYMENTS.map((d,i)=>`<option value="${d.id||i}">${d.client||'Déploiement '+(i+1)}</option>`).join('');
+  // Reset fields
+  ['dg-ref','dg-client','dg-client-rep','dg-logiciel','dg-montant'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  // Auto-ref
+  const y = new Date().getFullYear();
+  const tp = document.getElementById('dg-type').value;
+  const prefix = {convention:'CV',facture:'FAC',programme:'PRG',pv_formation:'PV',presence:'PRES'}[tp]||'DOC';
+  document.getElementById('dg-ref').value = `${prefix}-SADT-${y}-${String(DOCUMENTS.length+1).padStart(3,'0')}`;
+  dgTypeChange();
+  document.getElementById('modal-docgen').classList.remove('hidden');
+}
+
+function closeDocGenModal() { document.getElementById('modal-docgen').classList.add('hidden'); }
+
+function dgTypeChange() {
+  const type = document.getElementById('dg-type').value;
+  const box = document.getElementById('dg-specific-fields');
+  const y = new Date().getFullYear();
+  const prefix = {convention:'CV',facture:'FAC',programme:'PRG',pv_formation:'PV',presence:'PRES'}[type]||'DOC';
+  document.getElementById('dg-ref').value = `${prefix}-SADT-${y}-${String(DOCUMENTS.length+1).padStart(3,'0')}`;
+  let html = '';
+  if(type==='convention') {
+    html = `<div class="form-row">
+      <div class="form-group"><label class="form-label">Taux redevance revente (%)</label><input type="number" class="form-input" id="dg-redevance" value="15" min="0" max="50"></div>
+      <div class="form-group"><label class="form-label">Durée garantie (mois)</label><input type="number" class="form-input" id="dg-garantie" value="3" min="0"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Modalité de paiement</label>
+      <select class="form-input" id="dg-modalite">
+        <option value="numeraire">Numéraire intégral</option>
+        <option value="dation">Dation en paiement (terrains/biens)</option>
+        <option value="mixte">Mixte (dation + numéraire)</option>
+      </select></div>`;
+  } else if(type==='facture') {
+    html = `<div class="form-group"><label class="form-label">Désignation prestation</label>
+      <input type="text" class="form-input" id="dg-designation" placeholder="Ex: Licence ERP + déploiement + formation"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Modalité règlement</label>
+        <select class="form-input" id="dg-modalite-fac">
+          <option value="comptant">Comptant</option>
+          <option value="acompte">Acompte + solde</option>
+          <option value="mixte">Dation + numéraire</option>
+        </select></div>
+      <div class="form-group"><label class="form-label">Mode paiement</label>
+        <select class="form-input" id="dg-mode-paie">
+          <option value="mm">Mobile Money (Wave/Orange/MTN)</option>
+          <option value="virement">Virement bancaire</option>
+          <option value="especes">Espèces</option>
+        </select></div>
+    </div>`;
+  } else if(type==='programme') {
+    html = `<div class="form-row">
+      <div class="form-group"><label class="form-label">Nb séances</label><input type="number" class="form-input" id="dg-seances" value="10" min="1"></div>
+      <div class="form-group"><label class="form-label">Créneau horaire</label><input type="text" class="form-input" id="dg-creneau" value="09h00 – 12h00"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Rythme</label><input type="text" class="form-input" id="dg-rythme" value="Lundi, Mercredi, Vendredi (3 séances/semaine)"></div>`;
+  } else if(type==='pv_formation') {
+    html = `<div class="form-row">
+      <div class="form-group"><label class="form-label">Date début formation</label><input type="date" class="form-input" id="dg-debut-form"></div>
+      <div class="form-group"><label class="form-label">Date fin formation</label><input type="date" class="form-input" id="dg-fin-form"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Nb séances réalisées</label><input type="number" class="form-input" id="dg-nb-seances" value="10"></div>
+      <div class="form-group"><label class="form-label">Solde à débloquer (FCFA)</label><input type="number" class="form-input" id="dg-solde" placeholder="0"></div>
+    </div>`;
+  } else if(type==='presence') {
+    html = `<div class="form-row">
+      <div class="form-group"><label class="form-label">N° séance</label><input type="text" class="form-input" id="dg-seance-num" value="S1"></div>
+      <div class="form-group"><label class="form-label">Jour</label><input type="text" class="form-input" id="dg-jour" value="Lundi"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Module / Contenu de la séance</label><input type="text" class="form-input" id="dg-module-seance" placeholder="Ex: Installation, comptes & rôles"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Horaire</label><input type="text" class="form-input" id="dg-horaire" value="09h00 – 12h00"></div>
+      <div class="form-group"><label class="form-label">Formateur (SANIX)</label><input type="text" class="form-input" id="dg-formateur" value="Cyrille KESSIE"></div>
+    </div>`;
+  }
+  box.innerHTML = html;
+}
+
+function dgFillFromContrat() {
+  const id = document.getElementById('dg-source-contrat').value;
+  if(!id) return;
+  const c = CONTRATS.find(x=>x.id===id);
+  if(!c) return;
+  document.getElementById('dg-client').value = c.client||'';
+  document.getElementById('dg-logiciel').value = c.logiciel||'';
+  document.getElementById('dg-montant').value = c.montant||'';
+  document.getElementById('dg-link-contrat').value = id;
+  showToast('✅ Pré-rempli depuis '+c.ref);
+}
+
+function dgFillFromClient() {
+  const id = parseInt(document.getElementById('dg-source-client').value);
+  if(!id) return;
+  const c = CLIENTS.find(x=>x.id===id);
+  if(!c) return;
+  document.getElementById('dg-client').value = c.nom||'';
+  document.getElementById('dg-logiciel').value = c.logiciel||'';
+  if(c.valeur) document.getElementById('dg-montant').value = c.valeur;
+  showToast('✅ Pré-rempli depuis '+c.nom);
+}
+
+// Helpers
+function dgNumToWords(n) {
+  // Conversion simplifiée pour montants courants
+  const units = ['', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix', 'onze', 'douze'];
+  if(n>=1000000 && n%1000000===0) {
+    const m = n/1000000;
+    return (units[m]||m)+' million'+(m>1?'s':'');
+  }
+  return n.toLocaleString('fr-FR');
+}
+function dgFmt(n){ return (parseFloat(n)||0).toLocaleString('fr-FR'); }
+function dgv(id){ return (document.getElementById(id)||{}).value||''; }
+
+function generateDoc() {
+  const type = dgv('dg-type');
+  const client = dgv('dg-client').trim();
+  if(!client){ showToast('❌ Client obligatoire'); return; }
+  const meta = {
+    type, ref:dgv('dg-ref'), date:dgv('dg-date'), client,
+    clientRep:dgv('dg-client-rep'), logiciel:dgv('dg-logiciel'),
+    montant:parseFloat(dgv('dg-montant'))||0,
+    contratId:dgv('dg-link-contrat'), deploiementId:dgv('dg-link-deploiement')
+  };
+  let html = '';
+  if(type==='convention')        html = genConventionHtml(meta);
+  else if(type==='facture')      html = genFactureHtml(meta);
+  else if(type==='programme')    html = genProgrammeHtml(meta);
+  else if(type==='pv_formation') html = genPvFormationHtml(meta);
+  else if(type==='presence')     html = genPresenceHtml(meta);
+  _docCurrentHtml = html;
+  _docCurrentMeta = meta;
+  document.getElementById('docpreview-title').textContent = DOC_TYPES[type].ico+' '+DOC_TYPES[type].label+' — '+client;
+  document.getElementById('docpreview-content').innerHTML = html;
+  closeDocGenModal();
+  document.getElementById('modal-docpreview').classList.remove('hidden');
+}
+
+// ─── GÉNÉRATEURS DE MODÈLES ──────────────
+function docHeader() {
+  const logoHtml = CONFIG.logo
+    ? `<img src="${CONFIG.logo}" style="width:54px;height:54px;object-fit:contain;margin-bottom:6px">`
+    : '';
+  return `<div style="text-align:center;border-bottom:2px solid #1E3A5F;padding-bottom:12px;margin-bottom:20px">
+    ${logoHtml}
+    <div style="font-size:16px;font-weight:800;color:#1E3A5F">${(CONFIG.raisonSociale||'SANIX AFRICA DIVISION TECHNOLOGIES').toUpperCase()}</div>
+    <div style="font-size:11px;color:#666;font-style:italic">Édition de logiciels de gestion — ERP / Industrie 4.0</div>
+    <div style="font-size:10px;color:#888;margin-top:4px">${CONFIG.adresse?'Siège : '+CONFIG.adresse:'Songon Kassamblé, Abidjan'} — Côte d'Ivoire · ${CONFIG.email||'sanixafrica699@gmail.com'}</div>
+  </div>`;
+}
+const DOC_HEADER = ''; // remplacé par docHeader() à l'exécution
+
+function genConventionHtml(m) {
+  const date = m.date ? new Date(m.date).toLocaleDateString('fr-FR') : '___/___/2026';
+  const redevance = dgv('dg-redevance')||'15';
+  const garantie = dgv('dg-garantie')||'3';
+  const modalite = dgv('dg-modalite')||'numeraire';
+  const modaliteTxt = {
+    numeraire:`Le prix est payé intégralement en numéraire par Mobile Money (Wave, Orange Money, MTN) ou virement bancaire.`,
+    dation:`Le prix est acquitté par dation en paiement (cession de biens/terrains en contrepartie), emportant transfert de propriété au profit de l'Éditeur.`,
+    mixte:`Le prix est réglé pour partie en nature (dation en paiement de biens immobiliers) et pour partie en numéraire, selon l'échéancier convenu entre les Parties.`
+  }[modalite];
+  return `${docHeader()}
+  <div style="text-align:center;margin-bottom:20px">
+    <div style="font-size:18px;font-weight:800;color:#1E3A5F">CONVENTION DE CESSION DE LOGICIEL</div>
+    <div style="font-size:12px;color:#666">Réf. : ${m.ref}</div>
+  </div>
+  <p><strong>Article — Entre les soussignés</strong></p>
+  <p><strong>SANIX AFRICA DIVISION TECHNOLOGIES</strong>, société de développement de logiciels, siège à Songon Kassamblé, Abidjan, représentée par KESSIE Cyrille Donatien, Gérant. Ci-après « l'Éditeur ».</p>
+  <p><strong>${m.client.toUpperCase()}</strong>, société de droit ivoirien${m.clientRep?', représentée par '+m.clientRep:''}. Ci-après « le Client » ou « le Cessionnaire ».</p>
+  <p><strong>Article 1 — Objet</strong><br>La présente convention a pour objet la cession définitive et intégrale, par l'Éditeur au Client, des droits patrimoniaux sur le logiciel <strong>${m.logiciel||'[Logiciel]'}</strong>, incluant le code source complet, la documentation technique et les accès aux environnements de déploiement, ainsi que la formation d'un collaborateur du Client.</p>
+  <p><strong>Article 2 — Périmètre de la cession</strong><br>La cession porte sur l'intégralité du logiciel : code source complet, scripts de base de données, documentation technique, guides d'installation et d'administration, accès aux dépôts de versionnement et environnements de déploiement.</p>
+  <p><strong>Article 3 — Prix global</strong><br>Le prix global, forfaitaire et définitif, est fixé à <strong>${dgFmt(m.montant)} FCFA TTC</strong>${m.montant?' ('+dgNumToWords(m.montant)+' de francs CFA)':''}, conformément à la facture annexée. Ce prix rémunère le développement, la cession des droits, la remise du code source, le déploiement et la formation.</p>
+  <p><strong>Article 4 — Modalités de règlement</strong><br>${modaliteTxt}</p>
+  <p><strong>Article 5 — Transfert de propriété</strong><br>La propriété du logiciel et la remise du code source sont subordonnées au complet règlement du prix. À complet règlement, l'Éditeur remet l'intégralité du code source, la documentation et les accès administrateurs.</p>
+  <p><strong>Article 6 — Formation</strong><br>L'Éditeur dispense une formation technique à un collaborateur désigné (le « Bénéficiaire ») portant sur l'architecture, la maintenance corrective et évolutive, le déploiement et les bonnes pratiques. La formation est sanctionnée par un procès-verbal de réception.</p>
+  <p><strong>Article 7 — Partage de revenus sur reventes</strong><br>En cas de commercialisation du logiciel auprès de tiers, le Client verse à l'Éditeur une redevance de <strong>${redevance}%</strong> du chiffre d'affaires HT encaissé. Déclaration trimestrielle dans les 15 jours suivant chaque trimestre. Droit d'audit annuel de l'Éditeur.</p>
+  <p><strong>Article 8 — Liberté commerciale de l'Éditeur</strong><br>Le Client reconnaît expressément que la présente convention ne confère aucune exclusivité. L'Éditeur demeure libre de développer, commercialiser et licencier l'ensemble de ses produits (ImmoSuite ERP, AviNest Pro, DistriPro, MediCore Suite, et tout le portefeuille SANIX) auprès de tout tiers, sans restriction.</p>
+  <p><strong>Article 9 — Propriété intellectuelle</strong><br>L'Éditeur conserve ses droits moraux d'auteur (loi n° 2016-555 du 26 juillet 2016, conventions OAPI). Le Client s'engage à mentionner la paternité de SANIX AFRICA DIVISION TECHNOLOGIES.</p>
+  <p><strong>Article 10 — Garantie</strong><br>L'Éditeur garantit le bon fonctionnement du logiciel pendant <strong>${garantie} mois</strong> à compter de la livraison, contre les anomalies non imputables à une modification du Client.</p>
+  <p><strong>Article 11 — Droit applicable</strong><br>La convention est régie par le droit ivoirien et les actes uniformes OHADA. Tout différend relève des tribunaux compétents d'Abidjan, sans préjudice du recours à l'arbitrage CCJA.</p>
+  <p style="margin-top:24px">Fait à Abidjan, le ${date}, en deux (2) exemplaires originaux.</p>
+  <table style="width:100%;margin-top:30px"><tr>
+    <td style="width:50%;vertical-align:top"><strong>Pour l'Éditeur</strong><br>SANIX AFRICA DIVISION TECHNOLOGIES<br>KESSIE Cyrille Donatien, Gérant<br><br>Signature & Cachet</td>
+    <td style="width:50%;vertical-align:top"><strong>Pour le Client</strong><br>${m.client.toUpperCase()}<br>${m.clientRep||'[Nom et qualité]'}<br><br>Signature & Cachet</td>
+  </tr></table>`;
+}
+
+function genFactureHtml(m) {
+  const date = m.date ? new Date(m.date).toLocaleDateString('fr-FR') : '___/___/2026';
+  const designation = dgv('dg-designation')||'Licence logiciel ERP + déploiement + formation';
+  const ttc = m.montant||0;
+  const tva = Math.round(ttc - (ttc/1.18));
+  const ht = ttc - tva;
+  return `${docHeader()}
+  <div style="text-align:center;margin-bottom:16px">
+    <div style="font-size:17px;font-weight:800;color:#065F46">FACTURE DE VENTE DÉFINITIVE</div>
+    <div style="font-size:11px;color:#666">N° ${m.ref} · Date : ${date}</div>
+  </div>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+    <tr><td style="border:1px solid #ccc;padding:8px;background:#f5f5f5;width:50%"><strong>CLIENT</strong><br>${m.client.toUpperCase()}<br>${m.clientRep||''}<br>Abidjan — Côte d'Ivoire</td>
+    <td style="border:1px solid #ccc;padding:8px;background:#f5f5f5"><strong>Réf. :</strong> ${m.ref}<br><strong>Devise :</strong> FCFA (XOF)<br><strong>Référentiel :</strong> SYSCOHADA révisé</td></tr>
+  </table>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+    <thead><tr style="background:#065F46;color:#fff"><th style="padding:8px;text-align:left">Désignation</th><th style="padding:8px;text-align:right">Montant TTC (FCFA)</th></tr></thead>
+    <tbody>
+      <tr><td style="border:1px solid #ccc;padding:8px">${designation}</td><td style="border:1px solid #ccc;padding:8px;text-align:right;font-weight:700">${dgFmt(ttc)}</td></tr>
+      <tr style="background:#f0f0f0"><td style="border:1px solid #ccc;padding:8px;font-weight:700">TOTAL TTC</td><td style="border:1px solid #ccc;padding:8px;text-align:right;font-weight:800">${dgFmt(ttc)}</td></tr>
+      <tr><td style="border:1px solid #ccc;padding:8px;font-size:11px;color:#666">dont TVA 18% incluse</td><td style="border:1px solid #ccc;padding:8px;text-align:right;font-size:11px;color:#666">${dgFmt(tva)}</td></tr>
+    </tbody>
+  </table>
+  <p style="font-style:italic"><strong>Arrêtée à la somme de : ${m.montant?dgNumToWords(ttc)+' de francs CFA TTC':'[montant] FCFA TTC'}.</strong></p>
+  <p style="font-size:11px;color:#444;margin-top:12px"><strong>Conditions :</strong> Référentiel comptable SYSCOHADA révisé. TVA au taux en vigueur (18%) incluse dans le prix TTC. Hébergement, noms de domaine et abonnements de base de données à la charge exclusive du client. Le transfert de propriété du logiciel devient effectif au complet règlement.</p>
+  <table style="width:100%;margin-top:30px"><tr>
+    <td style="width:50%"><strong>Le Client (bon pour accord)</strong><br><br>Nom / signature / cachet</td>
+    <td style="width:50%"><strong>Pour SANIX Africa Division Technologies</strong><br><br>Nom / signature / cachet</td>
+  </tr></table>`;
+}
+
+function genProgrammeHtml(m) {
+  const seances = dgv('dg-seances')||'10';
+  const creneau = dgv('dg-creneau')||'09h00 – 12h00';
+  const rythme = dgv('dg-rythme')||'Lundi, Mercredi, Vendredi';
+  return `${docHeader()}
+  <div style="text-align:center;margin-bottom:16px">
+    <div style="font-size:17px;font-weight:800;color:#7C3AED">PROGRAMME DE DÉPLOIEMENT</div>
+    <div style="font-size:11px;color:#666">Réf. : ${m.ref} · ${m.logiciel||'[Logiciel]'}</div>
+  </div>
+  <p><strong>1. Cadre et objectifs</strong><br>Le présent programme organise le déploiement et la formation de la solution ERP de ${m.client} par SANIX Africa Division Technologies, visant une montée en compétence progressive des équipes et une reprise de données maîtrisée jusqu'à la recette de chaque module.</p>
+  <p><strong>2. Rythme des séances</strong><br>${rythme}. Créneau indicatif : ${creneau} sur le site du Client. Durée : ${seances} séances.</p>
+  <p><strong>3. Intervenants et rôles</strong></p>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px">
+    <tr style="background:#7C3AED;color:#fff"><th style="padding:6px;text-align:left">Acteur</th><th style="padding:6px;text-align:left">Responsabilités</th></tr>
+    <tr><td style="border:1px solid #ccc;padding:6px"><strong>SANIX ADT</strong></td><td style="border:1px solid #ccc;padding:6px">Déploiement, paramétrage, formation, reprise de données, correction des anomalies (garantie).</td></tr>
+    <tr><td style="border:1px solid #ccc;padding:6px"><strong>PRI (${m.client})</strong></td><td style="border:1px solid #ccc;padding:6px">Point de contact unique ; met à disposition postes/réseau/accès ; prépare les données à reprendre ; support de niveau 1 ; co-signe les PV.</td></tr>
+    <tr><td style="border:1px solid #ccc;padding:6px"><strong>Utilisateurs métiers</strong></td><td style="border:1px solid #ccc;padding:6px">Participation aux séances de leur périmètre.</td></tr>
+  </table>
+  <p><strong>4. Séquencement des séances</strong></p>
+  <table style="width:100%;border-collapse:collapse;font-size:11px">
+    <tr style="background:#f0f0f0"><th style="border:1px solid #ccc;padding:5px">Séance</th><th style="border:1px solid #ccc;padding:5px">Jour</th><th style="border:1px solid #ccc;padding:5px">Contenu</th><th style="border:1px solid #ccc;padding:5px">Livrable</th></tr>
+    <tr><td style="border:1px solid #ccc;padding:5px">S1</td><td style="border:1px solid #ccc;padding:5px">Lundi</td><td style="border:1px solid #ccc;padding:5px">Installation, comptes & rôles, paramétrage, accès</td><td style="border:1px solid #ccc;padding:5px">Environnement opérationnel</td></tr>
+    <tr><td style="border:1px solid #ccc;padding:5px">S2</td><td style="border:1px solid #ccc;padding:5px">Mercredi</td><td style="border:1px solid #ccc;padding:5px">Référentiels métier (clients, produits…)</td><td style="border:1px solid #ccc;padding:5px">Référentiels saisis</td></tr>
+    <tr><td style="border:1px solid #ccc;padding:5px">S3</td><td style="border:1px solid #ccc;padding:5px">Vendredi</td><td style="border:1px solid #ccc;padding:5px">Cycle opérationnel principal</td><td style="border:1px solid #ccc;padding:5px">Cycle maîtrisé</td></tr>
+    <tr><td style="border:1px solid #ccc;padding:5px">…</td><td style="border:1px solid #ccc;padding:5px">…</td><td style="border:1px solid #ccc;padding:5px">Comptabilité SYSCOHADA, reporting, synchro cloud</td><td style="border:1px solid #ccc;padding:5px">PV de recette</td></tr>
+  </table>
+  <p style="margin-top:20px;font-size:11px;color:#666">Séquencement strict : chaque vague entièrement réceptionnée (PV de recette) avant le lancement de la suivante.</p>
+  <table style="width:100%;margin-top:24px"><tr>
+    <td style="width:50%"><strong>Pour SANIX ADT</strong><br><br>Signature</td>
+    <td style="width:50%"><strong>Pour ${m.client}</strong><br><br>La PRI — Signature</td>
+  </tr></table>`;
+}
+
+function genPvFormationHtml(m) {
+  const debut = dgv('dg-debut-form') ? new Date(dgv('dg-debut-form')).toLocaleDateString('fr-FR') : '___/___/2026';
+  const fin = dgv('dg-fin-form') ? new Date(dgv('dg-fin-form')).toLocaleDateString('fr-FR') : '___/___/2026';
+  const nbSeances = dgv('dg-nb-seances')||'10';
+  const solde = dgv('dg-solde')||'0';
+  return `${docHeader()}
+  <div style="text-align:center;margin-bottom:16px">
+    <div style="font-size:17px;font-weight:800;color:#059669">PROCÈS-VERBAL DE FORMATION</div>
+    <div style="font-size:11px;color:#666">Réf. convention : ${m.ref} · ${m.logiciel||'[Logiciel]'}</div>
+  </div>
+  <p><strong>Parties</strong><br>D'une part, SANIX Africa Division Technologies (« l'Éditeur »), représentée par Cyrille KESSIE, Gérant ;<br>D'autre part, ${m.client} (« le Client »)${m.clientRep?', représentée par '+m.clientRep:''}, assistée de la Personne Ressource Informatique (PRI).</p>
+  <p><strong>Objet</strong><br>Le présent procès-verbal constate la réalisation et la réception de la formation des utilisateurs et administrateurs de ${m.client} à la solution ${m.logiciel||'[Logiciel]'}, conformément au programme de déploiement et à la convention référencée.</p>
+  <p><strong>Période et déroulement</strong><br>Période : du ${debut} au ${fin}. Nombre de séances réalisées : ${nbSeances}. Présence des participants attestée par les fiches d'émargement annexées.</p>
+  <p><strong>Appréciation et réception</strong><br>À l'issue des séances, les Parties constatent que la formation a été dispensée conformément au programme et que les utilisateurs sont en mesure d'exploiter la solution.</p>
+  <p style="margin-left:12px">☐ Réceptionnée sans réserve&nbsp;&nbsp;&nbsp;&nbsp;☐ Réceptionnée avec réserves</p>
+  <p style="font-size:11px">Réserves éventuelles : _________________________________________________________________</p>
+  <p><strong>Conséquence financière</strong><br>La signature du présent procès-verbal, sans réserve majeure, vaut réception de la formation et déclenche l'exigibilité du solde de <strong>${dgFmt(solde)} FCFA</strong>${solde&&solde!=='0'?' ('+dgNumToWords(parseInt(solde))+' de francs CFA)':''} prévu à la convention.</p>
+  <p style="margin-top:20px">Fait à Abidjan, le ___/___/2026, en deux (2) exemplaires originaux.</p>
+  <table style="width:100%;margin-top:24px"><tr>
+    <td style="width:50%"><strong>Pour SANIX ADT (formateur)</strong><br><br>Nom / signature / date</td>
+    <td style="width:50%"><strong>Pour ${m.client}</strong><br><br>Nom / qualité / signature / date</td>
+  </tr></table>
+  <p style="margin-top:12px;font-size:11px">La PRI (${m.client}) : _________________________ &nbsp; signature : _______________</p>`;
+}
+
+function genPresenceHtml(m) {
+  const seanceNum = dgv('dg-seance-num')||'S1';
+  const jour = dgv('dg-jour')||'Lundi';
+  const moduleSeance = dgv('dg-module-seance')||'[Module de la séance]';
+  const horaire = dgv('dg-horaire')||'09h00 – 12h00';
+  const formateur = dgv('dg-formateur')||'Cyrille KESSIE';
+  const date = m.date ? new Date(m.date).toLocaleDateString('fr-FR') : '___/___/2026';
+  let rows = '';
+  for(let i=1;i<=12;i++){
+    rows += `<tr><td style="border:1px solid #ccc;padding:8px;text-align:center">${i}</td><td style="border:1px solid #ccc;padding:8px">&nbsp;</td><td style="border:1px solid #ccc;padding:8px">&nbsp;</td><td style="border:1px solid #ccc;padding:8px">&nbsp;</td></tr>`;
+  }
+  return `${docHeader()}
+  <div style="text-align:center;margin-bottom:16px">
+    <div style="font-size:17px;font-weight:800;color:#D97706">FICHE DE PRÉSENCE — FORMATION</div>
+    <div style="font-size:11px;color:#666">${m.logiciel||'[Logiciel]'} · Séance ${seanceNum} (${jour})</div>
+  </div>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px">
+    <tr><td style="border:1px solid #ccc;padding:6px;background:#f5f5f5;font-weight:700;width:25%">Module</td><td style="border:1px solid #ccc;padding:6px" colspan="3">${moduleSeance}</td></tr>
+    <tr><td style="border:1px solid #ccc;padding:6px;background:#f5f5f5;font-weight:700">Date</td><td style="border:1px solid #ccc;padding:6px">${date}</td><td style="border:1px solid #ccc;padding:6px;background:#f5f5f5;font-weight:700">Horaire</td><td style="border:1px solid #ccc;padding:6px">${horaire}</td></tr>
+    <tr><td style="border:1px solid #ccc;padding:6px;background:#f5f5f5;font-weight:700">Client</td><td style="border:1px solid #ccc;padding:6px">${m.client}</td><td style="border:1px solid #ccc;padding:6px;background:#f5f5f5;font-weight:700">Formateur</td><td style="border:1px solid #ccc;padding:6px">${formateur}</td></tr>
+  </table>
+  <table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="background:#D97706;color:#fff"><th style="padding:6px;width:8%">N°</th><th style="padding:6px">Nom & prénoms</th><th style="padding:6px">Fonction / Service</th><th style="padding:6px">Émargement</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <p style="margin-top:12px">Nombre de présents : ______ / ______</p>
+  <table style="width:100%;margin-top:20px"><tr>
+    <td style="width:50%"><strong>Signature du formateur (SANIX)</strong></td>
+    <td style="width:50%"><strong>Signature de la PRI (${m.client})</strong></td>
+  </tr></table>`;
+}
+
+function printDoc() {
+  const html = _docCurrentHtml || document.getElementById('docpreview-content').innerHTML;
+  const w = window.open('','_blank','width=900,height=1000');
+  if(!w) return;
+  w.document.write(`<!DOCTYPE html><html><head><title>${_docCurrentMeta?_docCurrentMeta.ref:'Document'}</title>
+    <style>@page{margin:2cm}body{font-family:Georgia,serif;font-size:13px;line-height:1.7;color:#1a1a1a;max-width:800px;margin:0 auto;padding:20px}table{border-collapse:collapse}p{margin:10px 0}</style>
+    </head><body>${html}</body></html>`);
+  w.document.close();
+  setTimeout(()=>w.print(),400);
+}
+
+function saveDocToLibrary() {
+  if(!_docCurrentMeta){ showToast('❌ Rien à enregistrer'); return; }
+  DOCUMENTS.push({
+    id:'doc_'+Date.now(),
+    ...(_docCurrentMeta),
+    html:_docCurrentHtml,
+    createdAt:new Date().toISOString()
+  });
+  lsSave('documents', DOCUMENTS);
+  showToast('💾 Document enregistré dans la bibliothèque');
+  document.getElementById('modal-docpreview').classList.add('hidden');
+  initDocuments();
+}
+
+function viewSavedDoc(id) {
+  const d = DOCUMENTS.find(x=>x.id===id);
+  if(!d) return;
+  _docCurrentHtml = d.html;
+  _docCurrentMeta = d;
+  document.getElementById('docpreview-title').textContent = DOC_TYPES[d.type].ico+' '+DOC_TYPES[d.type].label+' — '+d.client;
+  document.getElementById('docpreview-content').innerHTML = d.html;
+  document.getElementById('modal-docpreview').classList.remove('hidden');
+}
+
+function printSavedDoc(id) {
+  const d = DOCUMENTS.find(x=>x.id===id);
+  if(!d) return;
+  _docCurrentHtml = d.html;
+  _docCurrentMeta = d;
+  printDoc();
+}
+
+function deleteDoc(id) {
+  const d = DOCUMENTS.find(x=>x.id===id);
+  if(!d||!confirm(`Supprimer le document "${d.ref}" ?`)) return;
+  DOCUMENTS = DOCUMENTS.filter(x=>x.id!==id);
+  lsSave('documents', DOCUMENTS);
+  initDocuments();
+  showToast('🗑 Document supprimé');
+}
+
+// ═══════════════════════════════════════
+//  APPORTEURS D'AFFAIRES
+// ═══════════════════════════════════════
+let APPORTEURS = [];
+
+const APP_STATUT = {
+  actif:              {lbl:'Actif',                cls:'badge-success', ico:'✅'},
+  convention_attente: {lbl:'Convention en attente',cls:'badge-warning', ico:'📝'},
+  inactif:            {lbl:'Inactif',              cls:'badge-muted',   ico:'⛔'},
+};
+
+function initApporteurs() {
+  renderAppStats();
+  renderApporteurs();
+}
+
+function renderAppStats() {
+  const el = document.getElementById('app-stats');
+  if(!el) return;
+  const total   = APPORTEURS.length;
+  const actifs  = APPORTEURS.filter(a=>a.statut==='actif').length;
+  const attente = APPORTEURS.filter(a=>a.statut==='convention_attente').length;
+  // CA généré par apporteurs (via commissions)
+  const caApporte = COMMISSIONS.filter(c=>c.type==='apporteur').reduce((s,c)=>s+(c.montantVente||c.base||0),0);
+  const commsVersees = COMMISSIONS.filter(c=>c.type==='apporteur'&&c.statut==='paye').reduce((s,c)=>s+(c.montant||0),0);
+  const fv = v=>v>=1000000?(v/1000000).toFixed(1)+'M':v>=1000?(v/1000).toFixed(0)+'k':v||'0';
+  el.innerHTML = [
+    {ico:'🤝',v:total,    lbl:'Apporteurs',          c:'var(--primary)', bg:'var(--primary-l)'},
+    {ico:'✅',v:actifs,   lbl:'Actifs (convention)', c:'var(--success)', bg:'var(--success-l)'},
+    {ico:'📝',v:attente,  lbl:'Convention en attente',c:'var(--warning)',bg:'var(--warning-l)'},
+    {ico:'💰',v:fv(commsVersees),lbl:'Commissions versées',c:'var(--purple)',bg:'var(--purple-l)'},
+  ].map(s=>`
+    <div class="stat-card" style="--accent:${s.c}">
+      <div class="stat-icon" style="background:${s.bg}">${s.ico}</div>
+      <div class="stat-val" style="color:${s.c}">${s.v}</div>
+      <div class="stat-label">${s.lbl}</div>
+    </div>`).join('');
+  const b = document.getElementById('sb-app-badge');
+  if(b) { b.textContent=attente; b.style.display=attente>0?'':'none'; }
+}
+
+function renderApporteurs() {
+  const grid = document.getElementById('apporteurs-grid');
+  if(!grid) return;
+  const q  = (document.getElementById('app-search')?.value||'').toLowerCase();
+  const st = document.getElementById('app-filter-statut')?.value||'';
+  let list = [...APPORTEURS];
+  if(q)  list = list.filter(a=>(a.nom+a.phone+a.zone).toLowerCase().includes(q));
+  if(st) list = list.filter(a=>a.statut===st);
+  if(!list.length){grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:30px">Aucun apporteur. Cliquez "🤝 Nouvel apporteur" pour commencer.</div>';return;}
+  const fv = v=>v>=1000?(v/1000).toFixed(0)+'k':v||'0';
+  grid.innerHTML = list.map(a=>{
+    const s = APP_STATUT[a.statut]||{lbl:a.statut,cls:'badge-muted',ico:'?'};
+    // Stats apporteur
+    const prospectsApportes = CLIENTS.filter(c=>c.apporteur===a.id).length;
+    const ventesApportees = COMMISSIONS.filter(c=>c.apporteurId===a.id).length;
+    const commsApporteur = COMMISSIONS.filter(c=>c.apporteurId===a.id).reduce((sum,c)=>sum+(c.montant||0),0);
+    const init = a.nom.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+    return `<div class="card" style="padding:16px">
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
+        <div style="width:44px;height:44px;border-radius:12px;background:var(--warning);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:15px;flex-shrink:0">${init}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.nom}</div>
+          <div style="font-size:11px;color:var(--muted)">${a.profession||'Apporteur'} · ${a.zone||'—'}</div>
+          <span class="badge ${s.cls}" style="margin-top:4px;font-size:10px">${s.ico} ${s.lbl}</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;text-align:center">
+        <div style="background:var(--surface2);border-radius:6px;padding:6px"><div style="font-weight:800;font-size:15px;color:var(--primary)">${prospectsApportes}</div><div style="font-size:9px;color:var(--muted)">Prospects</div></div>
+        <div style="background:var(--surface2);border-radius:6px;padding:6px"><div style="font-weight:800;font-size:15px;color:var(--success)">${ventesApportees}</div><div style="font-size:9px;color:var(--muted)">Ventes</div></div>
+        <div style="background:var(--surface2);border-radius:6px;padding:6px"><div style="font-weight:800;font-size:13px;color:var(--purple)">${fv(commsApporteur)}</div><div style="font-size:9px;color:var(--muted)">Comm.</div></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">
+        💰 ${a.commission||10}% commission · ${a.paiement==='mobile_money'?'📱 Mobile Money':a.paiement==='virement'?'🏦 Virement':'💵 Espèces'}
+        ${a.phone?`<br>📞 ${a.phone}`:''}
+      </div>
+      <div class="flex gap-1" style="flex-wrap:wrap">
+        ${a.phone?`<a href="https://wa.me/225${a.phone.replace(/\\D/g,'')}" target="_blank" class="btn btn-sm" style="background:#25D366;color:#fff;font-size:10px;padding:5px 8px;text-decoration:none">📱</a>`:''}
+        <button onclick="editApporteur('${a.id}')" class="btn btn-outline btn-sm" style="font-size:10px;padding:5px 8px">✏️</button>
+        <button onclick="viewConventionApporteur('${a.id}')" class="btn btn-outline btn-sm" style="font-size:10px;padding:5px 8px">📄 Conv.</button>
+        <button onclick="deleteApporteur('${a.id}')" class="btn btn-sm" style="font-size:10px;padding:5px 8px;background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2)">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openApporteurModal(id=null) {
+  document.getElementById('app-edit-id').value = id||'';
+  document.getElementById('app-modal-title').textContent = id ? '✏️ Modifier apporteur' : '🤝 Nouvel apporteur d\'affaires';
+  document.getElementById('app-date-conv').value = new Date().toISOString().split('T')[0];
+  if(id) {
+    const a = APPORTEURS.find(x=>x.id===id);
+    if(!a) return;
+    const sv=(elId,v)=>{ const e=document.getElementById(elId); if(e) e.value=v||''; };
+    sv('app-nom',a.nom); sv('app-phone',a.phone); sv('app-email',a.email);
+    sv('app-zone',a.zone); sv('app-profession',a.profession); sv('app-commission',a.commission||10);
+    sv('app-statut',a.statut); sv('app-date-conv',a.dateConv); sv('app-paiement',a.paiement);
+    sv('app-cni',a.cni); sv('app-logiciels',a.logiciels); sv('app-notes',a.notes);
+  } else {
+    ['app-nom','app-phone','app-email','app-zone','app-profession','app-cni','app-logiciels','app-notes'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});
+    document.getElementById('app-commission').value='10';
+    document.getElementById('app-statut').value='convention_attente';
+    document.getElementById('app-paiement').value='mobile_money';
+  }
+  document.getElementById('modal-apporteur').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('app-nom').focus(),100);
+}
+
+function closeApporteurModal() { document.getElementById('modal-apporteur').classList.add('hidden'); }
+
+function saveApporteur() {
+  const gv=id=>(document.getElementById(id)||{}).value||'';
+  const nom = gv('app-nom').trim();
+  const phone = gv('app-phone').trim();
+  if(!nom||!phone) { showToast('❌ Nom et téléphone obligatoires'); return; }
+  const id = gv('app-edit-id');
+  const data = {
+    nom, phone, email:gv('app-email').trim(), zone:gv('app-zone').trim(),
+    profession:gv('app-profession').trim(), commission:parseFloat(gv('app-commission'))||10,
+    statut:gv('app-statut'), dateConv:gv('app-date-conv'), paiement:gv('app-paiement'),
+    cni:gv('app-cni').trim(), logiciels:gv('app-logiciels').trim(), notes:gv('app-notes').trim()
+  };
+  if(id) {
+    const a = APPORTEURS.find(x=>x.id===id);
+    if(a) Object.assign(a,data);
+    showToast('✅ Apporteur mis à jour');
+  } else {
+    APPORTEURS.push({id:'app_'+Date.now(),createdAt:new Date().toISOString(),...data});
+    showToast('🤝 Apporteur enregistré');
+    // Ajouter aussi dans EQUIPE pour les commissions
+    EQUIPE.push({
+      id:Date.now(), nom:data.nom, type:'apporteur', role:'Apporteur d\'affaires',
+      init:data.nom.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase(),
+      color:'#D97706', ca:0, deals:0, conv:0, commission:data.commission, phone:data.phone
+    });
+    saveStore('users_data');
+  }
+  lsSave('apporteurs', APPORTEURS);
+  closeApporteurModal();
+  initApporteurs();
+  updateSidebarBadges();
+}
+
+function editApporteur(id) { openApporteurModal(id); }
+
+function deleteApporteur(id) {
+  const a = APPORTEURS.find(x=>x.id===id);
+  if(!a||!confirm(`Supprimer l'apporteur "${a.nom}" ?`)) return;
+  APPORTEURS = APPORTEURS.filter(x=>x.id!==id);
+  lsSave('apporteurs', APPORTEURS);
+  initApporteurs();
+  showToast('🗑 Apporteur supprimé');
+}
+
+// ─── Convention ─────────────────────────
+function buildConventionText(a) {
+  const date = a.dateConv ? new Date(a.dateConv).toLocaleDateString('fr-FR') : new Date().toLocaleDateString('fr-FR');
+  return `CONVENTION D'APPORTEUR D'AFFAIRES
+
+ENTRE LES SOUSSIGNÉS :
+
+SANIX AFRICA DIVISION TECHNOLOGIES
+Représentée par Cyrille KESSIE, Gérant
+Ci-après dénommée « LA SOCIÉTÉ »
+
+ET
+
+${(a.nom||'').toUpperCase()}
+${a.profession?'Profession : '+a.profession:''}
+${a.cni?'Pièce d\'identité N° : '+a.cni:''}
+Téléphone : ${a.phone||'—'}
+Zone d'activité : ${a.zone||'—'}
+Ci-après dénommé(e) « L'APPORTEUR »
+
+IL A ÉTÉ CONVENU CE QUI SUIT :
+
+ARTICLE 1 — OBJET
+La présente convention a pour objet de définir les conditions dans lesquelles l'Apporteur met en relation la Société avec des clients potentiels intéressés par les solutions logicielles SANIX${a.logiciels?' ('+a.logiciels+')':''}.
+
+ARTICLE 2 — MISSION DE L'APPORTEUR
+L'Apporteur s'engage à présenter et recommander les produits de la Société, et à transmettre les coordonnées de prospects qualifiés.
+
+ARTICLE 3 — COMMISSION
+En contrepartie de chaque vente effectivement conclue et payée grâce à son intervention, l'Apporteur perçoit une commission de ${a.commission||10}% du montant HT de la vente.
+
+ARTICLE 4 — MODALITÉS DE PAIEMENT
+Le règlement de la commission s'effectue par ${a.paiement==='mobile_money'?'Mobile Money (Wave / Orange Money / MTN)':a.paiement==='virement'?'virement bancaire':'espèces'}, dans un délai de 30 jours après encaissement intégral du paiement client.
+
+ARTICLE 5 — NON-EXCLUSIVITÉ
+La présente convention n'est pas exclusive. L'Apporteur conserve sa liberté d'exercer toute autre activité.
+
+ARTICLE 6 — DURÉE
+La présente convention est conclue pour une durée d'un (1) an renouvelable par tacite reconduction.
+
+ARTICLE 7 — CONFIDENTIALITÉ
+L'Apporteur s'engage à respecter la confidentialité des informations commerciales de la Société.
+
+Fait à Abidjan, le ${date}
+En deux (2) exemplaires originaux.
+
+LA SOCIÉTÉ                          L'APPORTEUR
+SANIX Africa Division              ${a.nom||''}
+(signature et cachet)              (signature précédée de
+                                   « Lu et approuvé »)`;
+}
+
+function genConventionApporteur() {
+  // Construit depuis le formulaire actuel
+  const gv=id=>(document.getElementById(id)||{}).value||'';
+  const a = {
+    nom:gv('app-nom'), phone:gv('app-phone'), profession:gv('app-profession'),
+    cni:gv('app-cni'), zone:gv('app-zone'), commission:gv('app-commission'),
+    paiement:gv('app-paiement'), dateConv:gv('app-date-conv'), logiciels:gv('app-logiciels')
+  };
+  if(!a.nom){ showToast('❌ Renseignez au moins le nom'); return; }
+  document.getElementById('convention-app-content').textContent = buildConventionText(a);
+  document.getElementById('modal-convention-app').classList.remove('hidden');
+}
+
+function viewConventionApporteur(id) {
+  const a = APPORTEURS.find(x=>x.id===id);
+  if(!a) return;
+  document.getElementById('convention-app-content').textContent = buildConventionText(a);
+  document.getElementById('modal-convention-app').classList.remove('hidden');
+}
+
+function printConventionApp() {
+  const content = document.getElementById('convention-app-content').textContent;
+  const w = window.open('','_blank','width=800,height=900');
+  if(!w) return;
+  w.document.write(`<!DOCTYPE html><html><head><title>Convention Apporteur</title>
+    <style>body{font-family:Georgia,serif;padding:40px;line-height:1.8;font-size:13px;white-space:pre-wrap}</style>
+    </head><body>${content.replace(/</g,'&lt;')}</body></html>`);
+  w.document.close();
+  setTimeout(()=>w.print(),300);
+}
+
+function copyConventionApp() {
+  const content = document.getElementById('convention-app-content').textContent;
+  navigator.clipboard.writeText(content).then(()=>showToast('📋 Convention copiée'));
+}
 
 // ═══════════════════════════════════════
 //  MOTEUR IA — TRANSFORMATION PROSPECT
@@ -8002,11 +9537,12 @@ async function mediaGetByLogId(logId) {
   });
 }
 
-async function mediaSaveFile(logId, name, type, mimeType, dataUrl, sizeBytes) {
+async function mediaSaveFile(logId, name, type, mimeType, blob, sizeBytes) {
   const db = await mediaOpenDB();
   return new Promise((res, rej) => {
     const tx = db.transaction('files','readwrite');
-    const req = tx.objectStore('files').add({logId, name, type, mimeType, dataUrl, sizeBytes, uploadedAt: new Date().toISOString()});
+    // Stocke le Blob brut (pas de base64 → +33% économisés, pas de surcharge mémoire)
+    const req = tx.objectStore('files').add({logId, name, type, mimeType, blob, sizeBytes, uploadedAt: new Date().toISOString()});
     req.onsuccess = () => res(req.result);
     req.onerror   = () => rej(req.error);
   });
@@ -8056,6 +9592,10 @@ function mediaFormatSize(bytes) {
   return (bytes/1048576).toFixed(1)+'MB';
 }
 
+// Limites par type (vidéos beaucoup plus larges)
+const MEDIA_LIMITS = { video: 500*1024*1024, document: 50*1024*1024, catalogue: 50*1024*1024 };
+function mediaLimitFor(type){ return MEDIA_LIMITS[type] || 100*1024*1024; }
+
 // ─── Upload depuis modal logiciel ────────
 async function mediaUpload(input, forcedType) {
   const logId = document.getElementById('log-edit-id').value;
@@ -8064,19 +9604,21 @@ async function mediaUpload(input, forcedType) {
   if(!files.length) return;
   const listEl = document.getElementById('media-upload-list');
   for(const file of files) {
-    if(file.size > 100 * 1024 * 1024) { showToast(`⚠️ ${file.name} trop lourd (max 100MB)`); continue; }
+    const type = mediaGuessType(file, forcedType);
+    const limit = mediaLimitFor(type);
+    if(file.size > limit) { showToast(`⚠️ ${file.name} trop lourd (max ${Math.round(limit/1048576)}MB pour ce type)`); continue; }
     const rowId = 'mu_'+Date.now()+Math.random().toString(36).slice(2,6);
-    listEl.insertAdjacentHTML('beforeend',`<div id="${rowId}" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px"><div style="width:14px;height:14px;border:2px solid var(--primary);border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;flex-shrink:0"></div><span>${file.name}</span></div>`);
+    listEl.insertAdjacentHTML('beforeend',`<div id="${rowId}" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px"><div style="width:14px;height:14px;border:2px solid var(--primary);border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;flex-shrink:0"></div><span>${file.name}</span><span style="color:var(--muted);margin-left:auto">${mediaFormatSize(file.size)}</span></div>`);
     try {
-      const dataUrl = await mediaReadFile(file);
-      const type = mediaGuessType(file, forcedType);
-      await mediaSaveFile(logId, file.name, type, file.type, dataUrl, file.size);
-      document.getElementById(rowId).innerHTML = `<span style="color:var(--success)">✅</span><span>${file.name}</span><span style="color:var(--muted)">${mediaFormatSize(file.size)}</span>`;
+      // Stocke le Blob brut directement — pas de base64
+      await mediaSaveFile(logId, file.name, type, file.type, file, file.size);
+      document.getElementById(rowId).innerHTML = `<span style="color:var(--success)">✅</span><span>${file.name}</span><span style="color:var(--muted);margin-left:auto">${mediaFormatSize(file.size)}</span>`;
       setTimeout(()=>{ const el=document.getElementById(rowId); if(el) el.remove(); }, 2500);
-      showToast(`✅ ${file.name} uploadé`);
+      showToast(`✅ ${file.name} ajouté`);
       await mediaUpdateCardBadge(logId);
     } catch(err) {
-      document.getElementById(rowId).innerHTML = `<span style="color:var(--danger)">❌</span><span>${file.name} — erreur</span>`;
+      const msg = (err&&err.name==='QuotaExceededError') ? 'espace insuffisant' : 'erreur';
+      document.getElementById(rowId).innerHTML = `<span style="color:var(--danger)">❌</span><span>${file.name} — ${msg}</span>`;
     }
   }
   input.value='';
@@ -8088,13 +9630,12 @@ async function mediaDropUpload(input, forcedType) {
   if(!logId) return;
   const files = Array.from(input.files);
   for(const file of files) {
-    if(file.size > 100 * 1024 * 1024) { showToast(`⚠️ ${file.name} > 100MB`); continue; }
+    const type = mediaGuessType(file, forcedType);
+    if(file.size > mediaLimitFor(type)) { showToast(`⚠️ ${file.name} dépasse la limite`); continue; }
     try {
-      const dataUrl = await mediaReadFile(file);
-      const type = mediaGuessType(file, forcedType);
-      await mediaSaveFile(logId, file.name, type, file.type, dataUrl, file.size);
+      await mediaSaveFile(logId, file.name, type, file.type, file, file.size);
       showToast(`✅ ${file.name}`);
-    } catch(err) { showToast(`❌ Erreur: ${file.name}`); }
+    } catch(err) { showToast(`❌ ${file.name}: ${err.name==='QuotaExceededError'?'espace insuffisant':'erreur'}`); }
   }
   input.value='';
   await mediaRenderList();
@@ -8110,13 +9651,12 @@ async function mediaDrop(event) {
   if(!logId) return;
   const files = Array.from(event.dataTransfer.files);
   for(const file of files) {
-    if(file.size > 100 * 1024 * 1024) { showToast(`⚠️ ${file.name} > 100MB`); continue; }
+    const type = mediaGuessType(file);
+    if(file.size > mediaLimitFor(type)) { showToast(`⚠️ ${file.name} dépasse la limite`); continue; }
     try {
-      const dataUrl = await mediaReadFile(file);
-      const type = mediaGuessType(file);
-      await mediaSaveFile(logId, file.name, type, file.type, dataUrl, file.size);
+      await mediaSaveFile(logId, file.name, type, file.type, file, file.size);
       showToast(`✅ ${file.name}`);
-    } catch(err) { showToast(`❌ ${file.name}`); }
+    } catch(err) { showToast(`❌ ${file.name}: ${err.name==='QuotaExceededError'?'espace insuffisant':'erreur'}`); }
   }
   await mediaRenderList();
   await mediaUpdateCardBadge(logId);
@@ -8153,16 +9693,23 @@ async function mediaRenderList() {
   }
   const TYPE_ICO = {video:'🎬',document:'📄',catalogue:'📚'};
   const TYPE_LBL = {video:'Vidéo',document:'Document',catalogue:'Catalogue'};
+  // Révoquer les anciennes URLs objet pour libérer la mémoire
+  if(window._mediaObjectURLs) window._mediaObjectURLs.forEach(u=>{ try{URL.revokeObjectURL(u);}catch(e){} });
+  window._mediaObjectURLs = [];
   listEl.innerHTML = files.map(f => {
     const ico = TYPE_ICO[f.type]||'📁';
     const lbl = TYPE_LBL[f.type]||f.type;
     const isImg = f.mimeType && f.mimeType.startsWith('image/');
     const isVid = f.mimeType && f.mimeType.startsWith('video/');
     const date = f.uploadedAt ? new Date(f.uploadedAt).toLocaleDateString('fr-FR') : '—';
+    // Crée une URL objet depuis le Blob (ou rétro-compatibilité dataUrl)
+    let src = '';
+    if(f.blob) { src = URL.createObjectURL(f.blob); window._mediaObjectURLs.push(src); }
+    else if(f.dataUrl) { src = f.dataUrl; }
     const previewHtml = isImg
-      ? `<img src="${f.dataUrl}" style="width:56px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0" alt="${f.name}">`
+      ? `<img src="${src}" style="width:56px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0" alt="${f.name}">`
       : isVid
-      ? `<video src="${f.dataUrl}" style="width:56px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0" muted></video>`
+      ? `<video src="${src}" style="width:56px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0" muted preload="metadata"></video>`
       : `<div style="width:56px;height:42px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${ico}</div>`;
     return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
       ${previewHtml}
@@ -8171,7 +9718,7 @@ async function mediaRenderList() {
         <div style="font-size:11px;color:var(--muted)">${ico} ${lbl} · ${mediaFormatSize(f.sizeBytes)} · ${date}</div>
       </div>
       <div class="flex gap-2" style="flex-shrink:0">
-        <a href="${f.dataUrl}" download="${f.name}" class="btn btn-outline btn-sm" title="Télécharger">⬇</a>
+        <a href="${src}" download="${f.name}" class="btn btn-outline btn-sm" title="Télécharger">⬇</a>
         ${isVid||isImg ? `<button onclick="mediaPreview(${f.id})" class="btn btn-outline btn-sm" title="Aperçu">👁</button>` : ''}
         <button onclick="mediaDelete(${f.id})" class="btn btn-sm" style="background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2)" title="Supprimer">🗑</button>
       </div>
@@ -8198,11 +9745,12 @@ async function mediaPreview(id) {
   if(!file) return;
   const isImg = file.mimeType&&file.mimeType.startsWith('image/');
   const isVid = file.mimeType&&file.mimeType.startsWith('video/');
+  const src = file.blob ? URL.createObjectURL(file.blob) : (file.dataUrl||'');
   const w = window.open('','_blank','width=900,height=650');
-  if(!w) return;
+  if(!w) { showToast('⚠️ Autorisez les popups pour l\'aperçu'); return; }
   w.document.write(`<!DOCTYPE html><html><head><title>${file.name}</title><style>body{margin:0;background:#111;display:flex;align-items:center;justify-content:center;height:100vh}</style></head><body>`);
-  if(isImg) w.document.write(`<img src="${file.dataUrl}" style="max-width:100%;max-height:100%;object-fit:contain">`);
-  else if(isVid) w.document.write(`<video src="${file.dataUrl}" controls autoplay style="max-width:100%;max-height:100%"></video>`);
+  if(isImg) w.document.write(`<img src="${src}" style="max-width:100%;max-height:100%;object-fit:contain">`);
+  else if(isVid) w.document.write(`<video src="${src}" controls autoplay style="max-width:100%;max-height:100%"></video>`);
   w.document.write('</body></html>');
   w.document.close();
 }
