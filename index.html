@@ -640,6 +640,10 @@ select.form-input{cursor:pointer}
     <div class="sb-icon">📝</div><span>Contrats & Conventions</span>
     <span class="sb-badge" id="sb-contrat-badge">0</span>
   </div>
+  <div class="sb-item" onclick="navigate('licences',this)">
+    <div class="sb-icon">🔑</div><span>Licences attribuées</span>
+    <span class="sb-badge warn" id="sb-lic-badge" style="display:none">0</span>
+  </div>
   <div class="sb-item" id="sb-commissions-item" onclick="navigate('commissions',this)">
     <div class="sb-icon">💰</div><span>Commissions</span>
     <span class="sb-badge warn" id="sb-comm-badge" style="display:none">0</span>
@@ -707,36 +711,45 @@ select.form-input{cursor:pointer}
 
     <!-- ══ VIEW: DASHBOARD ══ -->
     <div id="view-dashboard" class="fade-in">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-        <h1 class="page-title">Vue d'ensemble</h1>
-        <span class="live-dot"></span><span class="text-sm muted">Live</span>
+      <!-- EN-TÊTE -->
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <h1 class="page-title" style="margin:0">Vue d'ensemble</h1>
+          <span class="live-dot"></span><span class="text-sm muted">Live</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;color:var(--muted)" id="dashboard-date"></span>
+          <button onclick="initDashboard360()" style="padding:5px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);font-size:11px;cursor:pointer">🔄 Actualiser</button>
+        </div>
       </div>
-      <p class="page-sub" id="dashboard-date"></p>
 
-      <!-- ALERTS -->
-      <div id="alert-zone"></div>
+      <!-- ALERTES CRITIQUES -->
+      <div id="alert-zone" style="margin-bottom:12px"></div>
 
-      <!-- STATS -->
-      <div class="stats-grid" style="margin-top:16px">
-        <div class="stat-card blue">
+      <!-- NOTIFICATIONS URGENTES (bandeau) -->
+      <div id="dash-notif-banner" style="display:none;margin-bottom:16px"></div>
+
+      <!-- ── LIGNE 1 : KPIs PRINCIPAUX ── -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px" id="dash-kpi-row">
+        <div class="stat-card blue" style="cursor:pointer" onclick="navigate('pipeline',document.querySelector('[onclick*=pipeline]'))">
           <div class="stat-icon" style="background:#EFF6FF">💰</div>
           <div class="stat-val" id="stat-ca">0</div>
-          <div class="stat-label">CA cumulé (FCFA)</div>
+          <div class="stat-label">CA réalisé (FCFA)</div>
           <span class="stat-change" id="stat-ca-change"></span>
         </div>
-        <div class="stat-card green">
+        <div class="stat-card green" style="cursor:pointer" onclick="navigate('clients',document.querySelector('[onclick*=clients]'))">
           <div class="stat-icon" style="background:#ECFDF5">🎯</div>
           <div class="stat-val" id="stat-prospects">0</div>
           <div class="stat-label">Prospects actifs</div>
           <span class="stat-change" id="stat-prospects-change"></span>
         </div>
-        <div class="stat-card orange">
+        <div class="stat-card orange" style="cursor:pointer" onclick="navigate('pipeline',document.querySelector('[onclick*=pipeline]'))">
           <div class="stat-icon" style="background:#FFFBEB">🤝</div>
           <div class="stat-val" id="stat-deals">0</div>
           <div class="stat-label">Deals en cours</div>
           <span class="stat-change" id="stat-deals-change"></span>
         </div>
-        <div class="stat-card purple">
+        <div class="stat-card purple" style="cursor:pointer">
           <div class="stat-icon" style="background:#F5F3FF">📈</div>
           <div class="stat-val" id="stat-conv">0%</div>
           <div class="stat-label">Taux conversion</div>
@@ -744,38 +757,77 @@ select.form-input{cursor:pointer}
         </div>
       </div>
 
-      <!-- CHARTS ROW -->
-      <div class="grid-2" style="margin-bottom:16px">
+      <!-- ── LIGNE 2 : KPIs MÉTIER ── -->
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px" id="dash-kpi2-row"></div>
+
+      <!-- ── LIGNE 3 : CHARTS ── -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
         <div class="card">
           <div class="card-header">
-            <span class="card-title">CA par logiciel (FCFA)</span>
-            <span class="badge badge-primary">2025</span>
+            <span class="card-title">💰 CA par logiciel</span>
+            <span class="badge badge-primary" id="dash-annee">2025</span>
           </div>
-          <canvas id="chart-ca" height="200"></canvas>
+          <canvas id="chart-ca" height="180"></canvas>
         </div>
         <div class="card">
           <div class="card-header">
-            <span class="card-title">Activité pipeline mensuelle</span>
+            <span class="card-title">📊 Funnel de transformation</span>
           </div>
-          <canvas id="chart-pipeline" height="200"></canvas>
+          <div id="dash-funnel" style="padding:8px 0"></div>
         </div>
       </div>
 
-      <!-- BOTTOM ROW -->
-      <div class="grid-2">
-        <!-- TOP COMMERCIAUX -->
+      <!-- ── LIGNE 4 : ANALYSE 360° ── -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
+        <!-- Santé pipeline -->
         <div class="card">
-          <div class="card-header">
-            <span class="card-title">🏆 Top commerciaux</span>
-          </div>
+          <div class="card-header"><span class="card-title">🩺 Santé pipeline</span></div>
+          <div id="dash-sante-pipeline"></div>
+        </div>
+        <!-- Logiciels performance -->
+        <div class="card">
+          <div class="card-header"><span class="card-title">💻 Performance logiciels</span></div>
+          <div id="dash-logiciels-perf"></div>
+        </div>
+        <!-- Licences & Contrats -->
+        <div class="card">
+          <div class="card-header"><span class="card-title">🔑 Licences & Contrats</span></div>
+          <div id="dash-licences-status"></div>
+        </div>
+      </div>
+
+      <!-- ── LIGNE 5 : ÉQUIPE + ACTIVITÉ ── -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+        <div class="card">
+          <div class="card-header"><span class="card-title">🏆 Top commerciaux</span></div>
           <div id="top-commerciaux"></div>
         </div>
-        <!-- ACTIVITÉ RÉCENTE -->
         <div class="card">
           <div class="card-header">
-            <span class="card-title">📡 Activité récente</span>
+            <span class="card-title">📡 Flux d'activité</span>
+            <span class="badge badge-muted" id="dash-activite-count">0</span>
           </div>
-          <div id="activity-feed"></div>
+          <div id="activity-feed" style="max-height:280px;overflow-y:auto"></div>
+        </div>
+      </div>
+
+      <!-- ── LIGNE 6 : ALERTES MÉTIER ── -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <!-- Prospects à relancer -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">🔔 Prospects à relancer</span>
+            <span class="badge badge-warning" id="dash-relance-count">0</span>
+          </div>
+          <div id="dash-relances" style="max-height:200px;overflow-y:auto"></div>
+        </div>
+        <!-- Licences expirant bientôt -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">⚠️ Licences & échéances</span>
+            <span class="badge badge-warning" id="dash-echeance-count">0</span>
+          </div>
+          <div id="dash-echeances" style="max-height:200px;overflow-y:auto"></div>
         </div>
       </div>
     </div>
@@ -808,13 +860,14 @@ select.form-input{cursor:pointer}
 
     <!-- ══ VIEW: CLIENTS ══ -->
     <div id="view-clients" class="hidden fade-in">
-      <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:8px">
+      <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:8px;margin-bottom:6px">
         <div>
           <h1 class="page-title">Clients & Prospects</h1>
           <p class="page-sub">Fiches clients avec cartes QR</p>
         </div>
-        <div class="flex gap-2">
+        <div class="flex gap-2" style="flex-wrap:wrap">
           <button class="btn btn-outline btn-sm" id="btn-view-toggle" onclick="toggleClientView()">⊞ Cartes</button>
+          <button class="btn btn-outline btn-sm" onclick="openImportProspectsModal()" style="color:var(--success);border-color:var(--success)">📲 Importer contacts</button>
           <button class="btn btn-primary btn-sm" onclick="openNewClient()">+ Nouveau client</button>
         </div>
       </div>
@@ -1589,9 +1642,333 @@ select.form-input{cursor:pointer}
       </div>
     </div>
 
+    <!-- ══ VIEW: LICENCES ══ -->
+    <div id="view-licences" class="hidden fade-in">
+      <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:8px;margin-bottom:6px">
+        <div>
+          <h1 class="page-title">Licences Attribuées</h1>
+          <p class="page-sub">Clés · Validité · Renouvellements · Alertes expiration</p>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openLicenceModal()">🔑 Nouvelle licence</button>
+      </div>
+
+      <!-- Barre marche en avant -->
+      <div style="display:flex;gap:0;border-radius:var(--r-sm);overflow:hidden;margin-bottom:20px;height:28px">
+        <div style="flex:1;background:#94A3B840;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#64748B">④ COMMANDE</div>
+        <div style="flex:1;background:#94A3B840;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#64748B">⑤ CONTRAT</div>
+        <div style="flex:1;background:#7C3AED;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">🔑 LICENCE ◀ ICI</div>
+        <div style="flex:1;background:#94A3B840;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#64748B">⑥ DEPLOY</div>
+      </div>
+
+      <!-- Alertes expiration -->
+      <div id="lic-alerts-zone" style="margin-bottom:16px"></div>
+
+      <!-- Stats -->
+      <div class="stats-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px" id="lic-stats"></div>
+
+      <!-- Filtres + recherche -->
+      <div class="flex gap-2" style="margin-bottom:16px;flex-wrap:wrap;align-items:center">
+        <input type="text" class="form-input" id="lic-search" placeholder="🔍 Clé, client, logiciel..." style="flex:1;min-width:180px" oninput="renderLicences()">
+        <select class="form-input" id="lic-filter-statut" style="width:auto" onchange="renderLicences()">
+          <option value="">Tous statuts</option>
+          <option value="active">✅ Active</option>
+          <option value="expiree">🔴 Expirée</option>
+          <option value="suspendue">⛔ Suspendue</option>
+          <option value="renouvellement">🔄 En renouvellement</option>
+          <option value="essai">🕐 Essai/Démo</option>
+        </select>
+        <select class="form-input" id="lic-filter-log" style="width:auto" onchange="renderLicences()">
+          <option value="">Tous logiciels</option>
+        </select>
+        <button class="btn btn-outline btn-sm" onclick="licCheckExpirations()">🔔 Vérifier expirations</button>
+      </div>
+
+      <!-- Onglets -->
+      <div class="tabs" style="margin-bottom:16px">
+        <div class="tab active" onclick="licTabSwitch('all',this)">Toutes (<span id="lic-cnt-all">0</span>)</div>
+        <div class="tab" onclick="licTabSwitch('active',this)">✅ Actives (<span id="lic-cnt-active">0</span>)</div>
+        <div class="tab" onclick="licTabSwitch('expiree',this)">🔴 Expirées (<span id="lic-cnt-expiree">0</span>)</div>
+        <div class="tab" onclick="licTabSwitch('renouvellement',this)">🔄 Renouvellement (<span id="lic-cnt-renouv">0</span>)</div>
+        <div class="tab" onclick="licTabSwitch('essai',this)">🕐 Essai (<span id="lic-cnt-essai">0</span>)</div>
+      </div>
+
+      <!-- Table -->
+      <div class="card">
+        <div style="overflow-x:auto">
+          <table class="client-table">
+            <thead>
+              <tr>
+                <th>Clé de licence</th><th>Client</th><th>Logiciel</th><th>Type</th>
+                <th>Début</th><th>Fin / Expiration</th><th>Jours restants</th>
+                <th>Statut</th><th>Lié contrat</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="lic-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /content -->
 </div><!-- /main -->
 </div><!-- /app -->
+
+<!-- ══ MODAL IMPORT PROSPECTS ══ -->
+<div id="modal-import-prospects" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:640px;max-height:94vh;overflow-y:auto">
+    <div class="modal-close" onclick="document.getElementById('modal-import-prospects').classList.add('hidden')">✕</div>
+    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:2px">📲 Importer des prospects</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:20px">Depuis WhatsApp · Répertoire Android/iPhone · CSV Google Contacts</div>
+
+    <!-- Onglets méthodes -->
+    <div class="tabs" id="import-tabs" style="margin-bottom:20px">
+      <div class="tab active" onclick="importTabSwitch('rapide',this)">⚡ Saisie rapide</div>
+      <div class="tab" onclick="importTabSwitch('vcf',this)">📇 vCard (.vcf)</div>
+      <div class="tab" onclick="importTabSwitch('csv',this)">📊 CSV Google</div>
+      <div class="tab" onclick="importTabSwitch('whatsapp',this)">💬 WhatsApp</div>
+    </div>
+
+    <!-- ① SAISIE RAPIDE ──────────────────── -->
+    <div id="import-panel-rapide">
+      <div style="background:var(--primary-l);border:1px solid rgba(37,99,235,.15);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:16px;font-size:11px;color:var(--primary)">
+        ⚡ Collez ou tapez une liste de contacts — un par ligne.<br>
+        Format accepté : <strong>Nom ; Téléphone ; Secteur ; Logiciel</strong> (séparateur ; ou , ou tab)
+      </div>
+      <textarea id="import-rapide-text" class="form-input" rows="10" style="font-family:monospace;font-size:12px;resize:vertical"
+        placeholder="ABou Elevage ; 05 05 75 81 59 ; Aviculture ; AviNest Pro&#10;Koné Distribution ; 07 12 34 56 78 ; Distribution ; DistriPro ERP&#10;Fatou COULIBALY ; +225 01 23 45 67 ; Immobilier ; ImmoSuite ERP&#10;..."></textarea>
+      <div class="flex gap-2" style="margin-top:10px">
+        <button class="btn btn-outline btn-sm" onclick="importRapidePreview()">👁 Prévisualiser</button>
+        <button class="btn btn-primary btn-sm" onclick="importRapideConfirm()">✅ Importer tout</button>
+        <span style="font-size:11px;color:var(--muted);align-self:center" id="import-rapide-count"></span>
+      </div>
+      <div id="import-rapide-preview" style="margin-top:12px"></div>
+    </div>
+
+    <!-- ② vCard (.vcf) ──────────────────── -->
+    <div id="import-panel-vcf" style="display:none">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px;margin-bottom:16px;font-size:12px;line-height:1.7">
+        <strong>📱 Comment exporter vos contacts Android :</strong><br>
+        1. Ouvrir <strong>Contacts</strong> → Menu ⋮ → <strong>Gérer les contacts</strong><br>
+        2. <strong>Exporter</strong> → choisir <em>Stockage interne</em> → fichier <strong>.vcf</strong><br>
+        3. Transférer le fichier sur votre PC et l'importer ici<br><br>
+        <strong>📱 iPhone :</strong> Paramètres → Contacts → Exporter au format vCard
+      </div>
+      <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px dashed var(--border);border-radius:var(--r);padding:32px;cursor:pointer;background:var(--surface2);transition:all .2s"
+        ondragover="event.preventDefault();this.style.borderColor='var(--primary)';this.style.background='var(--primary-l)'"
+        ondragleave="this.style.borderColor='';this.style.background='var(--surface2)'"
+        ondrop="vcfDrop(event)">
+        <div style="font-size:40px;margin-bottom:8px">📇</div>
+        <div style="font-weight:700;font-size:14px;color:var(--text2)">Glissez votre fichier .vcf ici</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">ou cliquez pour sélectionner</div>
+        <input type="file" accept=".vcf,text/vcard" style="display:none" onchange="vcfFileLoad(this)">
+      </label>
+      <div id="vcf-parse-status" style="margin-top:12px;font-size:12px"></div>
+      <div id="vcf-preview" style="margin-top:12px"></div>
+    </div>
+
+    <!-- ③ CSV Google Contacts ────────────── -->
+    <div id="import-panel-csv" style="display:none">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px;margin-bottom:16px;font-size:12px;line-height:1.7">
+        <strong>📊 Exporter depuis Google Contacts :</strong><br>
+        1. Ouvrir <a href="https://contacts.google.com" target="_blank" style="color:var(--primary)">contacts.google.com</a><br>
+        2. Cocher les contacts → <strong>Exporter</strong> → format <strong>Google CSV</strong><br>
+        3. Uploader le fichier .csv ici<br><br>
+        <strong>Colonnes reconnues :</strong> Name, Phone 1 - Value, Organization 1 - Name, Email 1 - Value
+      </div>
+      <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px dashed var(--border);border-radius:var(--r);padding:32px;cursor:pointer;background:var(--surface2);transition:all .2s"
+        ondragover="event.preventDefault();this.style.borderColor='var(--primary)';this.style.background='var(--primary-l)'"
+        ondragleave="this.style.borderColor='';this.style.background='var(--surface2)'"
+        ondrop="csvContactsDrop(event)">
+        <div style="font-size:40px;margin-bottom:8px">📊</div>
+        <div style="font-weight:700;font-size:14px;color:var(--text2)">Glissez votre fichier .csv ici</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">Google CSV · Contacts exportés</div>
+        <input type="file" accept=".csv,text/csv" style="display:none" onchange="csvContactsLoad(this)">
+      </label>
+      <div id="csv-contacts-status" style="margin-top:12px;font-size:12px"></div>
+      <div id="csv-contacts-preview" style="margin-top:12px"></div>
+    </div>
+
+    <!-- ④ WhatsApp ───────────────────────── -->
+    <div id="import-panel-whatsapp" style="display:none">
+      <div style="background:#e8f5e9;border:1px solid #c8e6c9;border-radius:var(--r-sm);padding:14px;margin-bottom:16px;font-size:12px;line-height:1.7;color:#1b5e20">
+        <strong>💬 3 méthodes pour importer depuis WhatsApp :</strong>
+      </div>
+
+      <!-- Méthode A : Coller numéro -->
+      <div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:14px;margin-bottom:12px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">A · Coller un numéro WhatsApp directement</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Nom / Entreprise *</label>
+            <input type="text" class="form-input" id="wa-nom" placeholder="ABou Elevage">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Numéro WhatsApp *</label>
+            <input type="tel" class="form-input" id="wa-phone" placeholder="+225 07 XX XX XX">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Logiciel intéressé</label>
+            <select class="form-input" id="wa-logiciel">
+              <option value="">— Non défini —</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Secteur</label>
+            <select class="form-input" id="wa-secteur">
+              <option>Aviculture</option><option>Immobilier</option><option>Distribution</option>
+              <option>Agriculture</option><option>Commerce</option><option>Industrie</option>
+              <option>Santé</option><option>Ressources Humaines</option><option>Autre</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="importFromWA()">➕ Ajouter comme prospect</button>
+      </div>
+
+      <!-- Méthode B : Coller liste numéros -->
+      <div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:14px;margin-bottom:12px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:6px">B · Coller une liste de numéros (depuis carnet)</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Un numéro par ligne, avec ou sans nom. Format: <code>Nom : +225XXXXXXXXX</code> ou juste <code>+225XXXXXXXXX</code></div>
+        <textarea id="wa-liste" class="form-input" rows="5" style="font-family:monospace;font-size:12px"
+          placeholder="+225 07 12 34 56&#10;ABou Elevage : 05 05 75 81 59&#10;Ferme Koffi : +225 01 98 76 54&#10;..."></textarea>
+        <div class="flex gap-2" style="margin-top:8px">
+          <button class="btn btn-outline btn-sm" onclick="parseWAListe()">👁 Analyser</button>
+          <button class="btn btn-primary btn-sm" onclick="importWAListe()">✅ Tout importer</button>
+          <span id="wa-liste-count" style="font-size:11px;color:var(--muted);align-self:center"></span>
+        </div>
+        <div id="wa-liste-preview" style="margin-top:10px"></div>
+      </div>
+
+      <!-- Méthode C : Instructions partage -->
+      <div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:14px;background:var(--surface2)">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">C · Depuis WhatsApp → Partager contact</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.7">
+          Dans WhatsApp : ouvrez un chat → appuyez sur le nom → <strong>Partager</strong> → 
+          sélectionnez <strong>SANIX CRM</strong> (si installé en PWA)<br>
+          <em>Ou</em> : exportez la fiche contact → envoyez-vous le fichier .vcf → importez via l'onglet vCard
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ MODAL LICENCE ══ -->
+<div id="modal-licence" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:560px;max-height:92vh;overflow-y:auto">
+    <div class="modal-close" onclick="closeLicenceModal()">✕</div>
+    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:2px" id="lic-modal-title">🔑 Nouvelle licence</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Attribution et activation d'une clé de licence SANIX</div>
+    <input type="hidden" id="lic-edit-id">
+
+    <!-- Clé générée -->
+    <div style="background:linear-gradient(135deg,#1E3A5F,#2563EB);border-radius:var(--r);padding:16px 20px;margin-bottom:18px">
+      <div style="font-size:10px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Clé de licence</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div id="lic-key-display" style="font-family:monospace;font-size:16px;font-weight:800;color:#fff;letter-spacing:2px;flex:1">SANIX-XXXX-XXXX-XXXX</div>
+        <button onclick="genLicKey()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);border-radius:6px;color:#fff;padding:5px 10px;font-size:11px;cursor:pointer;font-weight:600">🔄 Générer</button>
+        <button onclick="copyLicKey()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);border-radius:6px;color:#fff;padding:5px 10px;font-size:11px;cursor:pointer">📋</button>
+      </div>
+      <input type="hidden" id="lic-key">
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Client *</label>
+        <input type="text" class="form-input" id="lic-client" placeholder="Raison sociale" list="lic-client-list">
+        <datalist id="lic-client-list"></datalist>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Logiciel *</label>
+        <select class="form-input" id="lic-logiciel" onchange="licAutoFillDates()"></select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Type de licence</label>
+        <select class="form-input" id="lic-type" onchange="licAutoFillDates()">
+          <option value="Annuelle">📅 Annuelle (1 an)</option>
+          <option value="Mensuelle">🔄 Mensuelle</option>
+          <option value="Perpetuelle">♾️ Perpétuelle</option>
+          <option value="SaaS">☁️ SaaS mensuel</option>
+          <option value="Essai">🕐 Essai / Démo (15 jours)</option>
+          <option value="Triennale">📆 Triennale (3 ans)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nombre de postes</label>
+        <input type="number" class="form-input" id="lic-postes" value="1" min="1" max="999">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Date d'activation *</label>
+        <input type="date" class="form-input" id="lic-debut" oninput="licAutoFillDates()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date d'expiration</label>
+        <input type="date" class="form-input" id="lic-fin">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Statut</label>
+        <select class="form-input" id="lic-statut">
+          <option value="active">✅ Active</option>
+          <option value="essai">🕐 Essai/Démo</option>
+          <option value="suspendue">⛔ Suspendue</option>
+          <option value="renouvellement">🔄 En renouvellement</option>
+          <option value="expiree">🔴 Expirée</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Environnement</label>
+        <select class="form-input" id="lic-env">
+          <option value="production">🟢 Production</option>
+          <option value="demo">🔵 Démo / Test</option>
+          <option value="formation">🟡 Formation</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Lié à contrat</label>
+        <select class="form-input" id="lic-contrat-link">
+          <option value="">— Aucun —</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Commercial</label>
+        <select class="form-input" id="lic-commercial"></select>
+      </div>
+    </div>
+
+    <!-- Alerte renouvellement -->
+    <div style="background:var(--warning-l);border:1px solid rgba(217,119,6,.2);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--warning);margin-bottom:6px">🔔 Rappels automatiques</div>
+      <div class="flex gap-3" style="flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="lic-alerte30" checked> J-30</label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="lic-alerte7" checked> J-7</label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="lic-alerte1" checked> J-1</label>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Notes / Restrictions</label>
+      <textarea class="form-input" id="lic-notes" rows="2" placeholder="Domaine autorisé, IP, nombre d'utilisateurs, restrictions..."></textarea>
+    </div>
+
+    <div class="flex gap-2">
+      <button class="btn btn-primary" style="flex:1" onclick="saveLicence()">🔑 Attribuer la licence</button>
+      <button class="btn btn-outline" onclick="closeLicenceModal()">Annuler</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══ MODAL PRÉSENTATION ══ -->
 <div id="modal-pres" class="modal-overlay hidden">
@@ -2326,9 +2703,67 @@ select.form-input{cursor:pointer}
 
 <!-- ══ MODAL FICHE CLIENT DÉTAIL ══ -->
 <div id="modal-client-detail" class="modal-overlay hidden">
-  <div class="modal-box" style="max-width:480px">
-    <div class="modal-close" onclick="document.getElementById('modal-client-detail').classList.add('hidden')">✕</div>
-    <div id="client-detail-body"></div>
+  <div class="modal-box" style="max-width:720px;max-height:94vh;overflow-y:auto;padding:0">
+    <div style="padding:20px 24px 0">
+      <div class="modal-close" onclick="document.getElementById('modal-client-detail').classList.add('hidden')" style="top:16px;right:16px">✕</div>
+      <div id="client-detail-body"></div>
+    </div>
+    <!-- IA COCKPIT -->
+    <div id="prospect-ai-cockpit" style="display:none;border-top:2px solid var(--border);margin-top:16px">
+      <!-- Header IA -->
+      <div style="background:linear-gradient(135deg,#1E3A5F,#2563EB);padding:14px 24px;display:flex;align-items:center;gap:10px">
+        <div style="width:32px;height:32px;background:rgba(255,255,255,.15);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px">🤖</div>
+        <div>
+          <div style="color:#fff;font-weight:800;font-size:14px;font-family:var(--font-h)">Assistant IA — Moteur de transformation</div>
+          <div style="color:rgba(255,255,255,.6);font-size:11px">Stratégies · Messages · Relances · Objections · Scoring</div>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:6px">
+          <span id="ai-score-badge" style="background:rgba(255,255,255,.15);color:#fff;border-radius:20px;padding:3px 12px;font-size:11px;font-weight:700">Score: —</span>
+        </div>
+      </div>
+      <!-- Onglets IA -->
+      <div style="display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--surface)">
+        <button onclick="aiTab('strategie',this)" class="ai-tab-btn active" style="flex:1;padding:10px 4px;font-size:11px;font-weight:700;border:none;background:none;cursor:pointer;border-bottom:2px solid var(--primary);color:var(--primary)">🎯 Stratégie</button>
+        <button onclick="aiTab('message',this)" class="ai-tab-btn" style="flex:1;padding:10px 4px;font-size:11px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;color:var(--muted)">💬 Message WA</button>
+        <button onclick="aiTab('objections',this)" class="ai-tab-btn" style="flex:1;padding:10px 4px;font-size:11px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;color:var(--muted)">🛡 Objections</button>
+        <button onclick="aiTab('relance',this)" class="ai-tab-btn" style="flex:1;padding:10px 4px;font-size:11px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;color:var(--muted)">🔔 Relance</button>
+        <button onclick="aiTab('closing',this)" class="ai-tab-btn" style="flex:1;padding:10px 4px;font-size:11px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;color:var(--muted)">🏆 Closing</button>
+      </div>
+      <!-- Zone contenu IA -->
+      <div style="padding:16px 24px 24px">
+        <!-- Contexte sélectable -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+          <span style="font-size:11px;color:var(--muted);font-weight:600">Contexte :</span>
+          <select id="ai-etape" style="font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface)">
+            <option value="premier_contact">1er contact</option>
+            <option value="apres_demo">Après démo</option>
+            <option value="apres_relance">Après relance sans réponse</option>
+            <option value="objection_prix">Objection prix</option>
+            <option value="objection_concurrent">Objection concurrent</option>
+            <option value="decision_imminente">Décision imminente</option>
+            <option value="deal_chaud">Deal très chaud</option>
+          </select>
+          <button onclick="aiGenerate()" style="padding:5px 14px;background:var(--primary);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">
+            <span id="ai-gen-ico">✨</span> <span id="ai-gen-lbl">Générer</span>
+          </button>
+          <button onclick="aiGenerate(true)" style="padding:5px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer" title="Régénérer">🔄</button>
+        </div>
+        <!-- Output IA -->
+        <div id="ai-output" style="min-height:120px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px;font-size:12px;line-height:1.7;color:var(--text2)">
+          <div style="color:var(--muted);text-align:center;padding:24px 0">
+            <div style="font-size:28px;margin-bottom:6px">🤖</div>
+            Sélectionnez un onglet et cliquez <strong>Générer</strong>
+          </div>
+        </div>
+        <!-- Actions post-génération -->
+        <div id="ai-actions" style="display:none;margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="aiCopyOutput()" class="btn btn-outline btn-sm">📋 Copier</button>
+          <button onclick="aiSendWA()" class="btn btn-outline btn-sm" style="color:#25D366;border-color:#25D366">📱 Envoyer WA</button>
+          <button onclick="aiSaveNote()" class="btn btn-outline btn-sm">💾 Sauvegarder note</button>
+          <button onclick="aiCreateRelance()" class="btn btn-outline btn-sm" style="color:var(--warning);border-color:var(--warning)">🔔 Créer relance</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -2962,7 +3397,8 @@ function navigate(view, el) {
     logiciels:'Catalogue Logiciels',equipe:'Équipe Commerciale',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
     planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
     users:'Utilisateurs & Accès',parametrage:'Paramétrage',parametres:'Paramètres & Sync',
-    presentations:'Présentations & Démos',commandes:'Commandes Clients',contrats:'Contrats & Conventions'
+    presentations:'Présentations & Démos',commandes:'Commandes Clients',contrats:'Contrats & Conventions',
+    licences:'Licences Attribuées'
   }[view] || view;
   if(view === 'carte') setTimeout(initMap, 100);
   if(view === 'pipeline') setTimeout(populatePipelineFilters, 60);
@@ -2985,123 +3421,412 @@ function closeSidebar(){
 // ═══════════════════════════════════════
 //  DASHBOARD CHARTS
 // ═══════════════════════════════════════
-function initCharts() {
-  // ── Date dynamique
+// ═══════════════════════════════════════
+//  NOTIFICATIONS ENGINE
+// ═══════════════════════════════════════
+let _notifications = [];
+
+function buildNotifications() {
+  _notifications = [];
+  const now = new Date();
+
+  // 1. Prospects sans contact depuis > 7 jours
+  CLIENTS.filter(c=>c.statut==='prospect').forEach(c=>{
+    const ints = c.interactions||[];
+    const last = ints.length ? new Date(ints[ints.length-1].date) : (c.created_at ? new Date(c.created_at) : null);
+    if(!last) { _notifications.push({type:'warn',ico:'🔔',msg:`${c.nom} — jamais contacté`,module:'clients',urgence:2}); return; }
+    const days = Math.floor((now-last)/86400000);
+    if(days>=14) _notifications.push({type:'danger',ico:'🚨',msg:`${c.nom} — ${days}j sans contact`,module:'clients',urgence:3});
+    else if(days>=7) _notifications.push({type:'warn',ico:'⚠️',msg:`${c.nom} — ${days}j sans contact`,module:'clients',urgence:2});
+  });
+
+  // 2. Licences expirant ≤ 30 jours
+  LICENCES.filter(l=>l.statut==='active'&&l.fin).forEach(l=>{
+    const fin = new Date(l.fin); fin.setHours(0,0,0,0);
+    const days = Math.ceil((fin-now)/86400000);
+    if(days<0) _notifications.push({type:'danger',ico:'🔴',msg:`Licence ${l.client} (${l.logiciel}) — Expirée`,module:'licences',urgence:4});
+    else if(days<=7) _notifications.push({type:'danger',ico:'🔑',msg:`Licence ${l.client} — Expire dans ${days}j`,module:'licences',urgence:3});
+    else if(days<=30) _notifications.push({type:'warn',ico:'🔑',msg:`Licence ${l.client} — Expire dans ${days}j`,module:'licences',urgence:2});
+  });
+
+  // 3. Contrats non signés > 14 jours
+  CONTRATS.filter(c=>c.statut==='envoye'&&c.date).forEach(c=>{
+    const days = Math.floor((now-new Date(c.date))/86400000);
+    if(days>=14) _notifications.push({type:'warn',ico:'📝',msg:`Contrat ${c.ref} (${c.client}) — En attente ${days}j`,module:'contrats',urgence:2});
+  });
+
+  // 4. Commandes non livrées > 30 jours
+  COMMANDES.filter(c=>c.statut==='confirmee'&&c.date).forEach(c=>{
+    const days = Math.floor((now-new Date(c.date))/86400000);
+    if(days>=30) _notifications.push({type:'warn',ico:'🛒',msg:`Commande ${c.ref} — Non livrée (${days}j)`,module:'commandes',urgence:2});
+  });
+
+  // 5. Présentations planifiées aujourd'hui / demain
+  const todayStr = now.toISOString().split('T')[0];
+  const tom = new Date(now); tom.setDate(tom.getDate()+1);
+  const tomStr = tom.toISOString().split('T')[0];
+  PRESENTATIONS.filter(p=>p.statut==='planifiee').forEach(p=>{
+    if(p.date===todayStr) _notifications.push({type:'info',ico:'🎬',msg:`Démo aujourd'hui — ${p.client} (${p.logiciel})`,module:'presentations',urgence:3});
+    else if(p.date===tomStr) _notifications.push({type:'info',ico:'📅',msg:`Démo demain — ${p.client} (${p.logiciel})`,module:'presentations',urgence:1});
+  });
+
+  // 6. Deals en négociation > 21 jours
+  DEALS.filter(d=>d.stage==='negociation').forEach(d=>{
+    if(d.date) {
+      const days = Math.floor((now-new Date(d.date.split('/').reverse().join('-')))/86400000);
+      if(days>=21) _notifications.push({type:'warn',ico:'🤝',msg:`Deal ${d.client} en négociation depuis ${days}j`,module:'pipeline',urgence:2});
+    }
+  });
+
+  // Trier par urgence
+  _notifications.sort((a,b)=>b.urgence-a.urgence);
+  return _notifications;
+}
+
+function updateSidebarNotifications() {
+  buildNotifications();
+  const total = _notifications.length;
+  const critical = _notifications.filter(n=>n.urgence>=3).length;
+
+  // Badge notif topbar
+  const notifDot = document.querySelector('.notif-dot');
+  if(notifDot) notifDot.style.display = total>0?'':'none';
+
+  // Badge sidebar sections
+  const pipelineBadge = document.getElementById('sb-pipeline-badge');
+  const dealsN = DEALS.filter(d=>d.stage!=='gagne'&&d.stage!=='perdu').length;
+  if(pipelineBadge) pipelineBadge.textContent=dealsN;
+
+  const prospectsN = CLIENTS.filter(c=>c.statut==='prospect').length;
+  const sbProspects = document.getElementById('sb-prospects-badge');
+  if(sbProspects) { sbProspects.textContent=prospectsN; sbProspects.style.display=prospectsN>0?'':'none'; }
+
+  const presN = PRESENTATIONS.filter(p=>p.statut==='planifiee').length;
+  const sbPres = document.getElementById('sb-pres-badge');
+  if(sbPres) { sbPres.textContent=presN; sbPres.style.display=presN>0?'':'none'; }
+
+  const cmdN = COMMANDES.filter(c=>c.statut==='brouillon'||c.statut==='confirmee').length;
+  const sbCmd = document.getElementById('sb-cmd-badge');
+  if(sbCmd) { sbCmd.textContent=cmdN; sbCmd.style.display=cmdN>0?'':'none'; }
+
+  const licUrgent = LICENCES.filter(l=>{ const d=typeof licDaysLeft==='function'?licDaysLeft(l.fin):null; return (d!==null&&d>=0&&d<=30&&l.statut==='active')||l.statut==='expiree'; }).length;
+  const sbLic = document.getElementById('sb-lic-badge');
+  if(sbLic) { sbLic.textContent=licUrgent; sbLic.style.display=licUrgent>0?'':'none'; }
+
+  return {total, critical};
+}
+
+// ═══════════════════════════════════════
+//  DASHBOARD 360°
+// ═══════════════════════════════════════
+function initCharts() { initDashboard360(); } // alias
+
+function initDashboard360() {
   const now = new Date();
   const jours = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   const moisNoms = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
   const dateEl = document.getElementById('dashboard-date');
-  if(dateEl) dateEl.textContent = jours[now.getDay()] + ' ' + now.getDate() + ' ' + moisNoms[now.getMonth()] + ' ' + now.getFullYear();
+  if(dateEl) dateEl.textContent = jours[now.getDay()]+' '+now.getDate()+' '+moisNoms[now.getMonth()]+' '+now.getFullYear();
+  const anneeEl = document.getElementById('dash-annee');
+  if(anneeEl) anneeEl.textContent = now.getFullYear();
 
-  // ── Stats calculées depuis les données réelles
-  const totalCA = DEALS.filter(d=>d.stage==='gagne').reduce((s,d)=>s+(d.valeur||0),0);
-  const nbProspects = CLIENTS.filter(c=>c.statut==='prospect').length;
+  const fv = v=>v>=1000000?(v/1000000).toFixed(1)+'M':v>=1000?(v/1000).toFixed(0)+'k':v||'0';
+  const setEl=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+
+  // ─── Calculs centraux ───────────────────────
+  const totalCA       = DEALS.filter(d=>d.stage==='gagne').reduce((s,d)=>s+(d.valeur||0),0);
+  const nbProspects   = CLIENTS.filter(c=>c.statut==='prospect').length;
+  const nbClients     = CLIENTS.filter(c=>c.statut==='client').length;
   const nbDealsActifs = DEALS.filter(d=>d.stage!=='gagne'&&d.stage!=='perdu').length;
-  const nbGagnes = DEALS.filter(d=>d.stage==='gagne').length;
-  const tauxConv = DEALS.length>0 ? Math.round(nbGagnes/DEALS.length*100) : 0;
+  const nbGagnes      = DEALS.filter(d=>d.stage==='gagne').length;
+  const nbPerdus      = DEALS.filter(d=>d.stage==='perdu').length;
+  const tauxConv      = DEALS.length>0?Math.round(nbGagnes/DEALS.length*100):0;
+  const nbLicences    = LICENCES.filter(l=>l.statut==='active').length;
+  const nbContrats    = CONTRATS.filter(c=>c.statut==='signe'||c.statut==='en_cours').length;
+  const nbPres        = PRESENTATIONS.filter(p=>p.statut==='planifiee').length;
+  const valeurPipeline= DEALS.filter(d=>d.stage!=='gagne'&&d.stage!=='perdu').reduce((s,d)=>s+(d.valeur||0),0);
 
-  const fmtCA = v => v>=1000000 ? (v/1000000).toFixed(1)+'M' : v>=1000 ? (v/1000).toFixed(0)+'k' : v;
-  const setEl = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
-  setEl('stat-ca', fmtCA(totalCA));
+  // KPIs principaux
+  setEl('stat-ca', fv(totalCA));
   setEl('stat-prospects', nbProspects);
   setEl('stat-deals', nbDealsActifs);
   setEl('stat-conv', tauxConv+'%');
 
-  // ── CA par logiciel (données réelles)
-  const caParLog = {};
-  DEALS.filter(d=>d.stage==='gagne').forEach(d=>{ caParLog[d.logiciel]=(caParLog[d.logiciel]||0)+(d.valeur||0); });
-  const logLabels = Object.keys(caParLog);
-  const logData   = logLabels.map(l=>Math.round(caParLog[l]/1000));
-  const logColors = LOGICIELS.map(l=>l.color);
+  const convColor = tauxConv>=60?'up':tauxConv>=30?'':' down';
+  setEl('stat-conv-change', tauxConv>=60?'🔥 Excellent':tauxConv>=30?'📈 Bon':'⚠️ À améliorer');
+  const ccEl=document.getElementById('stat-conv-change');
+  if(ccEl){ccEl.className='stat-change'+(tauxConv>=60?' up':tauxConv>=30?' up':' down');}
 
-  const ctxCA = document.getElementById('chart-ca');
-  if(ctxCA) {
+  const caChange=document.getElementById('stat-ca-change');
+  if(caChange){caChange.textContent=`Pipeline: ${fv(valeurPipeline)} FCFA`;caChange.className='stat-change up';}
+
+  // ─── KPIs métier ligne 2 ──────────────────
+  const kpi2=document.getElementById('dash-kpi2-row');
+  if(kpi2) kpi2.innerHTML=[
+    {ico:'👥',v:nbClients,     lbl:'Clients actifs',  c:'var(--success)',  bg:'var(--success-l)',  mod:'clients'},
+    {ico:'🔑',v:nbLicences,    lbl:'Licences actives',c:'var(--purple)',   bg:'var(--purple-l)',   mod:'licences'},
+    {ico:'📝',v:nbContrats,    lbl:'Contrats actifs', c:'var(--teal)',     bg:'var(--teal-l)',     mod:'contrats'},
+    {ico:'🎬',v:nbPres,        lbl:'Démos planifiées',c:'var(--warning)',  bg:'var(--warning-l)',  mod:'presentations'},
+    {ico:'💼',v:fv(valeurPipeline),lbl:'Valeur pipeline',c:'var(--primary)',bg:'var(--primary-l)',mod:'pipeline'},
+  ].map(s=>`
+    <div style="background:${s.bg};border:1px solid var(--border);border-radius:var(--r-sm);padding:12px 10px;cursor:pointer" onclick="navigate('${s.mod}',null)">
+      <div style="font-size:18px;margin-bottom:4px">${s.ico}</div>
+      <div style="font-family:var(--font-h);font-weight:800;font-size:18px;color:${s.c}">${s.v}</div>
+      <div style="font-size:10px;color:var(--muted);font-weight:600">${s.lbl}</div>
+    </div>`).join('');
+
+  // ─── Chart CA par logiciel ───────────────
+  const caParLog={};
+  DEALS.filter(d=>d.stage==='gagne').forEach(d=>{caParLog[d.logiciel]=(caParLog[d.logiciel]||0)+(d.valeur||0);});
+  const logLabels=Object.keys(caParLog);
+  const ctxCA=document.getElementById('chart-ca');
+  if(ctxCA){
     if(ctxCA._chart) ctxCA._chart.destroy();
-    ctxCA._chart = new Chart(ctxCA, {
+    ctxCA._chart=new Chart(ctxCA,{
       type:'bar',
       data:{
-        labels: logLabels.length ? logLabels : ['Aucune vente'],
-        datasets:[{
-          label:'CA (000 FCFA)',
-          data: logData.length ? logData : [0],
-          backgroundColor: logLabels.map((_,i)=>logColors[i]||'#3B82F6'),
-          borderRadius:8, borderSkipped:false
-        }]
+        labels:logLabels.length?logLabels:['Aucune vente'],
+        datasets:[{label:'CA (FCFA)',data:logLabels.length?logLabels.map(l=>caParLog[l]):[0],
+          backgroundColor:logLabels.map((_,i)=>(LOGICIELS[i]||{}).color||'#3B82F6'),
+          borderRadius:8,borderSkipped:false}]
       },
-      options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{grid:{color:'#F1F5F9'},beginAtZero:true},x:{grid:{display:false}}}}
+      options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${fv(c.raw)} FCFA`}}},
+        scales:{y:{grid:{color:'#F1F5F9'},beginAtZero:true,ticks:{callback:v=>fv(v)}},x:{grid:{display:false},ticks:{font:{size:9}}}}}
     });
   }
 
-  // ── Pipeline mensuel (deals créés par mois)
-  const ctxP = document.getElementById('chart-pipeline');
-  if(ctxP) {
-    const moisCourts = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
-    const moisActuel = now.getMonth();
-    const derniersMois = [];
-    for(let i=5;i>=0;i--) {
-      const m = (moisActuel-i+12)%12;
-      derniersMois.push({label:moisCourts[m], index:m, year:now.getFullYear()-(moisActuel-i<0?1:0)});
-    }
-    const countByMonth = (arr, stageFn) => derniersMois.map(m =>
-      arr.filter(d => { const dt=new Date(d.date||d.dateVente||''); return dt.getMonth()===m.index && stageFn(d); }).length
-    );
-    if(ctxP._chart) ctxP._chart.destroy();
-    ctxP._chart = new Chart(ctxP, {
-      type:'line',
-      data:{
-        labels: derniersMois.map(m=>m.label),
-        datasets:[
-          {label:'Prospects',data:countByMonth(CLIENTS,c=>c.statut==='prospect'),borderColor:'#94A3B8',tension:.4,fill:false,borderWidth:2,pointRadius:4},
-          {label:'Deals actifs',data:countByMonth(DEALS,d=>d.stage!=='gagne'&&d.stage!=='perdu'),borderColor:'#3B82F6',tension:.4,fill:false,borderWidth:2,pointRadius:4},
-          {label:'Gagnés',data:countByMonth(DEALS,d=>d.stage==='gagne'),borderColor:'#10B981',tension:.4,fill:false,borderWidth:2,pointRadius:4},
-        ]
-      },
-      options:{responsive:true,plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}}},scales:{y:{grid:{color:'#F1F5F9'},beginAtZero:true,ticks:{precision:0}},x:{grid:{display:false}}}}
-    });
+  // ─── Funnel transformation ──────────────
+  const funnelEl=document.getElementById('dash-funnel');
+  if(funnelEl){
+    const stages=[
+      {lbl:'Prospects',n:nbProspects,color:'#94A3B8'},
+      {lbl:'Contactés',n:CLIENTS.filter(c=>c.statut==='prospect'&&(c.interactions||[]).length>0).length,color:'#3B82F6'},
+      {lbl:'Démos',n:PRESENTATIONS.filter(p=>p.statut==='realisee').length,color:'#8B5CF6'},
+      {lbl:'Propositions',n:DEALS.filter(d=>d.stage==='proposition'||d.stage==='negociation').length,color:'#F59E0B'},
+      {lbl:'Clients',n:nbClients,color:'#10B981'},
+    ];
+    const max=Math.max(...stages.map(s=>s.n),1);
+    funnelEl.innerHTML=stages.map((s,i)=>{
+      const pct=Math.round(s.n/max*100);
+      const convRate=i>0&&stages[i-1].n>0?Math.round(s.n/stages[i-1].n*100):100;
+      return `<div style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+          <span style="font-size:11px;font-weight:600;color:var(--text2)">${s.lbl}</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            ${i>0?`<span style="font-size:10px;color:var(--muted)">${convRate}% conv.</span>`:''}
+            <span style="font-family:var(--font-h);font-weight:700;font-size:13px;color:${s.color}">${s.n}</span>
+          </div>
+        </div>
+        <div style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${s.color};border-radius:4px;transition:width .6s"></div>
+        </div>
+      </div>`;
+    }).join('');
   }
 
-  // ── Top commerciaux (calculé depuis EQUIPE)
-  const tc = document.getElementById('top-commerciaux');
-  if(tc) {
-    const sorted = [...EQUIPE].sort((a,b)=>b.ca-a.ca).slice(0,5);
-    if(sorted.length===0) {
-      tc.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:20px">Aucun membre d\'équipe</div>';
-    } else {
-      const maxCA = sorted[0].ca || 1;
-      tc.innerHTML = sorted.map(m=>`
-        <div style="margin-bottom:12px">
-          <div class="flex items-center gap-3" style="margin-bottom:4px">
-            <div class="deal-avatar" style="background:${m.color}">${m.init}</div>
+  // ─── Santé pipeline ─────────────────────
+  const santeEl=document.getElementById('dash-sante-pipeline');
+  if(santeEl){
+    const dealsParStage={};
+    STAGES.forEach(s=>{dealsParStage[s.id]={n:DEALS.filter(d=>d.stage===s.id).length,label:s.label,color:s.color};});
+    const valeurGagnable=DEALS.filter(d=>d.stage!=='perdu').reduce((s,d)=>s+(d.valeur||0),0);
+    santeEl.innerHTML=`
+      <div style="margin-bottom:10px;padding:8px;background:var(--success-l);border-radius:var(--r-sm);text-align:center">
+        <div style="font-size:10px;color:var(--muted);font-weight:600">Valeur gagnable</div>
+        <div style="font-weight:800;font-size:18px;color:var(--success)">${fv(valeurGagnable)} FCFA</div>
+      </div>
+      ${Object.entries(dealsParStage).filter(([k])=>k!=='gagne'&&k!=='perdu').map(([k,s])=>`
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div style="width:10px;height:10px;border-radius:50%;background:${s.color};flex-shrink:0"></div>
+          <span style="font-size:11px;flex:1;color:var(--text2)">${s.label}</span>
+          <span style="font-weight:700;font-size:12px">${s.n}</span>
+        </div>`).join('')}
+      <div style="margin-top:8px;padding:6px;background:var(--danger-l);border-radius:var(--r-sm);display:flex;justify-content:space-between;font-size:11px">
+        <span style="color:var(--muted)">Perdus</span>
+        <span style="font-weight:700;color:var(--danger)">${nbPerdus}</span>
+      </div>`;
+  }
+
+  // ─── Performance logiciels ───────────────
+  const logPerfEl=document.getElementById('dash-logiciels-perf');
+  if(logPerfEl){
+    const logStats=LOGICIELS.map(l=>({
+      nom:l.nom, icon:l.icon||'💻', color:l.color||'#3B82F6',
+      prospects:CLIENTS.filter(c=>c.logiciel===l.nom).length,
+      deals:DEALS.filter(d=>d.logiciel===l.nom).length,
+      gagne:DEALS.filter(d=>d.logiciel===l.nom&&d.stage==='gagne').length,
+      licences:LICENCES.filter(x=>x.logiciel===l.nom&&x.statut==='active').length,
+    })).filter(l=>l.prospects+l.deals+l.licences>0).sort((a,b)=>b.gagne-a.gagne).slice(0,5);
+    if(!logStats.length){logPerfEl.innerHTML='<div style="text-align:center;color:var(--muted);font-size:12px;padding:16px">Aucune donnée</div>';return;}
+    logPerfEl.innerHTML=logStats.map(l=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+        <div style="width:28px;height:28px;border-radius:8px;background:${l.color};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${l.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${l.nom}</div>
+          <div style="font-size:10px;color:var(--muted)">${l.prospects} prosp. · ${l.deals} deals · ${l.licences} lic.</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-weight:800;font-size:14px;color:var(--success)">${l.gagne}</div>
+          <div style="font-size:9px;color:var(--muted)">ventes</div>
+        </div>
+      </div>`).join('');
+  }
+
+  // ─── Licences & Contrats status ─────────
+  const licStatusEl=document.getElementById('dash-licences-status');
+  if(licStatusEl){
+    const licActives=LICENCES.filter(l=>l.statut==='active').length;
+    const licExpirant=LICENCES.filter(l=>{const d=typeof licDaysLeft==='function'?licDaysLeft(l.fin):null;return d!==null&&d>=0&&d<=30;}).length;
+    const licExpirees=LICENCES.filter(l=>l.statut==='expiree').length;
+    const ctrSignes=CONTRATS.filter(c=>c.statut==='signe'||c.statut==='en_cours').length;
+    const ctrEnAttente=CONTRATS.filter(c=>c.statut==='envoye').length;
+    const revMensuel=LICENCES.filter(l=>l.statut==='active'&&l.type==='SaaS').length*0; // placeholder
+    licStatusEl.innerHTML=`
+      ${[
+        {ico:'✅',lbl:'Licences actives',v:licActives,c:'var(--success)',bg:'var(--success-l)'},
+        {ico:'⚠️',lbl:'Expirant ≤ 30j',v:licExpirant,c:'var(--warning)',bg:'var(--warning-l)'},
+        {ico:'🔴',lbl:'Expirées',v:licExpirees,c:'var(--danger)',bg:'var(--danger-l)'},
+        {ico:'✅',lbl:'Contrats actifs',v:ctrSignes,c:'var(--teal)',bg:'var(--teal-l)'},
+        {ico:'📤',lbl:'En attente signature',v:ctrEnAttente,c:'var(--primary)',bg:'var(--primary-l)'},
+      ].map(s=>`
+        <div style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:${s.bg};border-radius:var(--r-sm);margin-bottom:6px;cursor:pointer" onclick="navigate('licences',null)">
+          <span style="font-size:14px">${s.ico}</span>
+          <span style="font-size:11px;flex:1;color:var(--text2)">${s.lbl}</span>
+          <span style="font-weight:800;font-size:14px;color:${s.c}">${s.v}</span>
+        </div>`).join('')}`;
+  }
+
+  // ─── Top commerciaux ────────────────────
+  const tc=document.getElementById('top-commerciaux');
+  if(tc){
+    const sorted=[...EQUIPE].sort((a,b)=>b.ca-a.ca).slice(0,5);
+    if(!sorted.length){tc.innerHTML='<div style="text-align:center;color:var(--muted);font-size:12px;padding:20px">Aucun membre d\'équipe</div>';}
+    else{
+      const maxCA=sorted[0].ca||1;
+      tc.innerHTML=sorted.map(m=>`
+        <div style="margin-bottom:10px">
+          <div class="flex items-center gap-3" style="margin-bottom:3px">
+            <div class="deal-avatar" style="background:${m.color};width:30px;height:30px;font-size:11px">${m.init}</div>
             <div style="flex:1">
               <div style="font-size:12px;font-weight:600">${m.nom}</div>
-              <div style="font-size:10px;color:var(--muted)">${m.role}</div>
+              <div style="font-size:10px;color:var(--muted)">${m.type==='apporteur'?'Apporteur':'Commercial'} · ${m.conv||0}% conv.</div>
             </div>
-            <div style="font-family:var(--font-h);font-weight:700;font-size:13px">${(m.ca/1000).toFixed(0)}k</div>
+            <div>
+              <div style="font-family:var(--font-h);font-weight:700;font-size:12px">${fv(m.ca)} FCFA</div>
+              <div style="font-size:10px;color:var(--muted);text-align:right">${m.deals||0} deals</div>
+            </div>
           </div>
-          <div class="progress"><div class="progress-bar" style="width:${Math.round(m.ca/maxCA*100)}%;background:${m.color}"></div></div>
+          <div style="height:5px;background:var(--border);border-radius:3px"><div style="height:5px;border-radius:3px;background:${m.color};width:${Math.round(m.ca/maxCA*100)}%"></div></div>
         </div>`).join('');
     }
   }
 
-  // ── Activité récente (basée sur les données réelles)
-  const af = document.getElementById('activity-feed');
-  if(af) {
-    const recentDeals = [...DEALS].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,6);
-    if(recentDeals.length===0) {
-      af.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:20px">Aucune activité récente</div>';
-    } else {
-      af.innerHTML = recentDeals.map(d=>{
-        const stageLabels = {prospect:'Prospect',contact:'Contact',demo:'Démo',proposition:'Proposition',negociation:'Négociation',gagne:'Gagné ✓',perdu:'Perdu ✗'};
-        const icons = {gagne:{icon:'🎯',bg:'#ECFDF5'},perdu:{icon:'❌',bg:'#FEF2F2'},negociation:{icon:'🤝',bg:'#FFFBEB'},proposition:{icon:'📧',bg:'#F5F3FF'},demo:{icon:'🖥️',bg:'#EFF6FF'},contact:{icon:'📞',bg:'#F0FDFA'},prospect:{icon:'👤',bg:'#F8FAFF'}};
-        const s=icons[d.stage]||{icon:'📌',bg:'#F8FAFF'};
-        return `<div class="activity-item">
-          <div class="activity-icon" style="background:${s.bg}">${s.icon}</div>
-          <div><div class="activity-text"><strong>${d.client}</strong> — ${stageLabels[d.stage]||d.stage} (${d.logiciel})</div><div class="activity-time">${d.date||''} · ${d.commercial||''}</div></div>
-        </div>`;
-      }).join('');
-    }
+  // ─── Flux d'activité 360° ───────────────
+  const af=document.getElementById('activity-feed');
+  if(af){
+    const activities=[];
+    // Deals récents
+    [...DEALS].sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)).slice(0,4).forEach(d=>{
+      const stageIco={gagne:'🎯',perdu:'❌',negociation:'🤝',proposition:'📄',demo:'🎬',contact:'📞',prospect:'👤'};
+      activities.push({date:d.date||'',ico:stageIco[d.stage]||'📌',msg:`<strong>${d.client}</strong> — ${d.logiciel} · ${d.stage}`,sub:d.commercial||''});
+    });
+    // Clients récents
+    [...CLIENTS].filter(c=>c.created_at).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,3).forEach(c=>{
+      activities.push({date:new Date(c.created_at).toLocaleDateString('fr-FR'),ico:'👤',msg:`<strong>${c.nom}</strong> ajouté — ${c.secteur}`,sub:c.logiciel||''});
+    });
+    // Licences récentes
+    [...LICENCES].filter(l=>l.createdAt).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,2).forEach(l=>{
+      activities.push({date:new Date(l.createdAt).toLocaleDateString('fr-FR'),ico:'🔑',msg:`Licence <strong>${l.client}</strong> — ${l.logiciel}`,sub:l.type||''});
+    });
+    // Présentations récentes
+    [...PRESENTATIONS].filter(p=>p.statut==='realisee').slice(-2).forEach(p=>{
+      activities.push({date:p.date||'',ico:'🎬',msg:`Démo réalisée — <strong>${p.client}</strong>`,sub:`${p.logiciel} · ${p.resultat||''}`});
+    });
+    activities.sort((a,b)=>b.date.localeCompare(a.date));
+    const ac=document.getElementById('dash-activite-count');
+    if(ac) ac.textContent=activities.length;
+    af.innerHTML=activities.length?activities.slice(0,12).map(a=>`
+      <div class="activity-item" style="padding:8px 0;border-bottom:1px solid var(--border)">
+        <div class="activity-icon" style="background:var(--surface2);font-size:14px">${a.ico}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px">${a.msg}</div>
+          <div style="font-size:10px;color:var(--muted)">${a.date}${a.sub?' · '+a.sub:''}</div>
+        </div>
+      </div>`).join('')
+    :'<div style="text-align:center;color:var(--muted);font-size:12px;padding:20px">Aucune activité</div>';
   }
+
+  // ─── Prospects à relancer ───────────────
+  const relanceEl=document.getElementById('dash-relances');
+  const relanceCnt=document.getElementById('dash-relance-count');
+  if(relanceEl){
+    const toRelance=CLIENTS.filter(c=>c.statut==='prospect').map(c=>{
+      const ints=c.interactions||[];
+      const last=ints.length?new Date(ints[ints.length-1].date):(c.created_at?new Date(c.created_at):null);
+      const days=last?Math.floor((Date.now()-last)/86400000):999;
+      return {...c,daysSince:days};
+    }).filter(c=>c.daysSince>=7).sort((a,b)=>b.daysSince-a.daysSince).slice(0,8);
+    if(relanceCnt) relanceCnt.textContent=toRelance.length;
+    relanceEl.innerHTML=toRelance.length?toRelance.map(c=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
+        <div style="width:28px;height:28px;border-radius:50%;background:${clientColor(c.id)};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px;flex-shrink:0">${clientInitials(c.nom)}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.nom}</div>
+          <div style="font-size:10px;color:${c.daysSince>=14?'var(--danger)':'var(--warning)'}">${c.daysSince>=14?'🚨':'⚠️'} J-${c.daysSince} · ${c.logiciel||'—'}</div>
+        </div>
+        <div class="flex gap-1">
+          ${c.phone?`<a href="https://wa.me/225${c.phone.replace(/\D/g,'')}" target="_blank" style="padding:3px 6px;background:#25D366;color:#fff;border-radius:4px;font-size:10px;text-decoration:none">WA</a>`:''}
+          <button onclick="showClientDetail(${c.id})" style="padding:3px 6px;background:var(--primary-l);color:var(--primary);border:none;border-radius:4px;font-size:10px;cursor:pointer">IA</button>
+        </div>
+      </div>`).join('')
+    :'<div style="text-align:center;color:var(--success);font-size:12px;padding:16px">✅ Tous les prospects ont été contactés récemment</div>';
+  }
+
+  // ─── Licences & Échéances urgentes ──────
+  const echeanceEl=document.getElementById('dash-echeances');
+  const echeanceCnt=document.getElementById('dash-echeance-count');
+  if(echeanceEl){
+    const urgent=[];
+    LICENCES.filter(l=>l.fin&&l.statut==='active').forEach(l=>{
+      const days=typeof licDaysLeft==='function'?licDaysLeft(l.fin):null;
+      if(days!==null&&days<=30) urgent.push({type:'licence',label:`🔑 ${l.client}`,sub:`${l.logiciel} · exp. ${l.fin}`,days,color:days<=7?'var(--danger)':'var(--warning)',id:l.id});
+    });
+    CONTRATS.filter(c=>c.statut==='envoye'&&c.date).forEach(c=>{
+      const d=Math.floor((Date.now()-new Date(c.date))/86400000);
+      if(d>=14) urgent.push({type:'contrat',label:`📝 ${c.client}`,sub:`${c.ref} · envoyé il y a ${d}j`,days:-d,color:'var(--warning)'});
+    });
+    urgent.sort((a,b)=>a.days-b.days);
+    if(echeanceCnt) echeanceCnt.textContent=urgent.length;
+    echeanceEl.innerHTML=urgent.length?urgent.map(u=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:600">${u.label}</div>
+          <div style="font-size:10px;color:var(--muted)">${u.sub}</div>
+        </div>
+        <span style="font-weight:800;font-size:12px;color:${u.color}">${u.days>=0?`J-${u.days}`:`+${Math.abs(u.days)}j`}</span>
+      </div>`).join('')
+    :'<div style="text-align:center;color:var(--success);font-size:12px;padding:16px">✅ Aucune échéance urgente</div>';
+  }
+
+  // ─── Notifications banner ────────────────
+  const {total,critical}=updateSidebarNotifications();
+  const bannerEl=document.getElementById('dash-notif-banner');
+  if(bannerEl&&_notifications.length>0){
+    const critiques=_notifications.filter(n=>n.urgence>=3).slice(0,3);
+    bannerEl.style.display='';
+    bannerEl.innerHTML=`
+      <div style="background:${critical>0?'var(--danger-l)':'var(--warning-l)'};border:1px solid ${critical>0?'rgba(220,38,38,.2)':'rgba(217,119,6,.2)'};border-radius:var(--r-sm);padding:10px 14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${critiques.length?'8px':'0'}">
+          <strong style="font-size:12px;color:${critical>0?'var(--danger)':'var(--warning)'}">
+            ${critical>0?'🚨':'⚠️'} ${total} notification(s) — ${critical} critique(s)
+          </strong>
+          <button onclick="this.closest('[id=dash-notif-banner]').style.display='none'" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px">✕</button>
+        </div>
+        ${critiques.map(n=>`<div style="font-size:11px;padding:3px 0;color:var(--text2)">${n.ico} ${n.msg} <button onclick="navigate('${n.module}',null)" style="background:none;border:none;font-size:10px;color:var(--primary);cursor:pointer;text-decoration:underline">→ Voir</button></div>`).join('')}
+      </div>`;
+  } else if(bannerEl) bannerEl.style.display='none';
 }
+
 
 // ═══════════════════════════════════════
 //  PIPELINE KANBAN
@@ -4525,52 +5250,111 @@ function convertProspectToClient(id) {
 function showClientDetail(id) {
   const c = CLIENTS.find(x=>x.id===id);
   if(!c) return;
+  _aiCurrentClientId = id;
   const badge = STATUT_BADGE[c.statut]||'badge-muted';
   const label = STATUT_LABEL[c.statut]||c.statut;
+  const score = aiProspectScore(c);
+  const scoreColor = score>=70?'var(--success)':score>=40?'var(--warning)':'var(--danger)';
+  // Historique interactions
+  const interactions = (c.interactions||[]);
+  const lastInteraction = interactions.length ? interactions[interactions.length-1] : null;
+  const daysSinceLast = lastInteraction ? Math.floor((Date.now()-new Date(lastInteraction.date))/(86400000)) : null;
+
   document.getElementById('client-detail-body').innerHTML = `
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-      <div style="width:56px;height:56px;border-radius:14px;background:${clientColor(c.id)};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:20px;flex-shrink:0">${clientInitials(c.nom)}</div>
-      <div>
-        <div style="font-family:var(--font-h);font-weight:800;font-size:18px">${c.nom}</div>
-        <span class="badge ${badge}">${label}</span>
+    <!-- EN-TÊTE PROSPECT -->
+    <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px">
+      <div style="width:52px;height:52px;border-radius:14px;background:${clientColor(c.id)};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px;flex-shrink:0">${clientInitials(c.nom)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-family:var(--font-h);font-weight:800;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.nom}</div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:3px">
+          <span class="badge ${badge}">${label}</span>
+          ${c.secteur?`<span class="badge badge-muted">${c.secteur}</span>`:''}
+          ${c.logiciel?`<span class="badge badge-primary" style="font-size:10px">${c.logiciel}</span>`:''}
+        </div>
+      </div>
+      <!-- Score transformation -->
+      <div style="flex-shrink:0;text-align:center;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 12px;min-width:70px">
+        <div style="font-size:20px;font-weight:800;color:${scoreColor}">${score}%</div>
+        <div style="font-size:9px;color:var(--muted);font-weight:600;text-transform:uppercase">Score transfo</div>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-      ${[['📞','Téléphone',c.phone],['📧','Email',c.email||'—'],['🏢','Secteur',c.secteur],['💻','Logiciel',c.logiciel],['👤','Commercial',c.commercial],['💰','Valeur',c.valeur?(c.valeur/1000).toFixed(0)+'k FCFA':'—'],['📍','Adresse',c.adresse||'—']].map(([ico,lbl,val])=>`
-      <div style="background:var(--surface2);border-radius:var(--r-sm);padding:10px">
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">${ico} ${lbl}</div>
-        <div style="font-size:13px;font-weight:600">${val||'—'}</div>
-      </div>`).join('')}
+
+    <!-- INFOS RAPIDES -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+      ${c.phone?`<a href="tel:${c.phone}" style="text-decoration:none"><div style="background:var(--surface2);border-radius:var(--r-sm);padding:8px 10px;display:flex;align-items:center;gap:7px"><span style="font-size:16px">📞</span><div><div style="font-size:10px;color:var(--muted)">Téléphone</div><div style="font-size:12px;font-weight:600">${c.phone}</div></div></div></a>`:''}
+      ${c.email?`<a href="mailto:${c.email}" style="text-decoration:none"><div style="background:var(--surface2);border-radius:var(--r-sm);padding:8px 10px;display:flex;align-items:center;gap:7px"><span style="font-size:16px">📧</span><div><div style="font-size:10px;color:var(--muted)">Email</div><div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px">${c.email}</div></div></div></a>`:''}
+      ${c.adresse?`<div style="background:var(--surface2);border-radius:var(--r-sm);padding:8px 10px;display:flex;align-items:center;gap:7px;grid-column:1/-1"><span style="font-size:16px">📍</span><div style="font-size:12px;font-weight:600">${c.adresse}</div></div>`:''}
     </div>
-    ${c.notes?`<div style="background:var(--warning-l);border-radius:var(--r-sm);padding:10px;margin-bottom:12px;font-size:12px"><strong>📝 Notes :</strong> ${c.notes}</div>`:''}
-    ${c.lat&&c.lng?`
+
+    <!-- PIPELINE TRANSFORMATION -->
     <div style="margin-bottom:12px">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">📍 Localisation GPS</div>
-      <div style="background:var(--teal-l);border:1px solid rgba(13,148,136,.2);border-radius:var(--r-sm);padding:8px 12px;font-size:11px;color:var(--teal);font-weight:600;display:flex;align-items:center;justify-content:space-between">
-        <span>📍 ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}</span>
-        <a href="https://www.google.com/maps?q=${c.lat},${c.lng}" target="_blank" class="btn btn-outline btn-sm" style="font-size:10px;text-decoration:none;padding:3px 8px">🗺️ Google Maps</a>
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">📈 Étape de transformation</div>
+      <div style="display:flex;gap:2px;border-radius:6px;overflow:hidden;height:24px">
+        ${['Prospect','Contact','Démo','Proposition','Négociation','✅ Converti'].map((e,i)=>{
+          const current = interactions.filter(x=>x.etape===i).length > 0 || i===0;
+          const done = i < aiGetEtape(c);
+          const active = i === aiGetEtape(c);
+          const bg = done?'var(--success)':active?'var(--primary)':'var(--border)';
+          const tc = done||active?'#fff':'var(--muted)';
+          return `<div style="flex:1;background:${bg};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${tc};cursor:pointer" onclick="aiSetEtape(${id},${i})" title="${e}">${i+1}</div>`;
+        }).join('')}
       </div>
-      <div id="detail-geo-map-${c.id}" style="height:140px;border-radius:var(--r-sm);border:1px solid var(--border);overflow:hidden;margin-top:6px"></div>
-    </div>`:''}
-    <div class="flex gap-2" style="flex-wrap:wrap">
-      <button class="btn btn-primary btn-sm" onclick="editClient(${c.id});document.getElementById('modal-client-detail').classList.add('hidden')">✏️ Modifier</button>
-      ${c.statut==='prospect'?`<button class="btn btn-outline btn-sm" style="color:var(--success);border-color:var(--success)" onclick="convertProspectToClient(${c.id});document.getElementById('modal-client-detail').classList.add('hidden')">✅ Convertir en Client</button>`:''}
-      <button class="btn btn-outline btn-sm" onclick="showQR(${c.id});document.getElementById('modal-client-detail').classList.add('hidden')">🪪 Carte QR</button>
-      <button class="btn btn-outline btn-sm" onclick="whatsappClient(${c.id})">📱 WhatsApp</button>
-      <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="document.getElementById('modal-client-detail').classList.add('hidden');deleteClient(${c.id})">🗑 Supprimer</button>
-    </div>`;
+      <div style="display:flex;justify-content:space-between;margin-top:2px">
+        ${['Prospect','Contact','Démo','Prop.','Négo','Client'].map(e=>`<div style="font-size:8px;color:var(--muted);flex:1;text-align:center">${e}</div>`).join('')}
+      </div>
+    </div>
+
+    <!-- HISTORIQUE INTERACTIONS -->
+    <div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">📋 Historique (${interactions.length})</div>
+        ${daysSinceLast!==null?`<span style="font-size:10px;color:${daysSinceLast>7?'var(--danger)':daysSinceLast>3?'var(--warning)':'var(--success)'};font-weight:600">Dernier contact : J-${daysSinceLast}</span>`:''}
+      </div>
+      <div style="max-height:90px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-sm)">
+        ${interactions.length?interactions.slice(-5).reverse().map(x=>`
+          <div style="display:flex;gap:8px;align-items:flex-start;padding:6px 10px;border-bottom:1px solid var(--border);font-size:11px">
+            <span style="flex-shrink:0">${x.ico||'💬'}</span>
+            <div style="flex:1"><span style="font-weight:600">${x.type}</span> — ${x.note||''}</div>
+            <span style="color:var(--muted);font-size:10px;flex-shrink:0">${new Date(x.date).toLocaleDateString('fr-FR')}</span>
+          </div>`).join(''):
+          '<div style="padding:10px;text-align:center;color:var(--muted);font-size:11px">Aucune interaction enregistrée</div>'}
+      </div>
+    </div>
+
+    <!-- ACTIONS RAPIDES -->
+    <div style="display:flex;gap-6px;flex-wrap:wrap;gap:6px;margin-bottom:4px">
+      ${c.phone?`<a href="https://wa.me/225${c.phone.replace(/\D/g,'')}" target="_blank" class="btn btn-sm" style="background:#25D366;color:#fff;font-size:11px;padding:6px 10px;text-decoration:none">📱 WhatsApp</a>`:''}
+      ${c.phone?`<a href="tel:${c.phone}" class="btn btn-outline btn-sm" style="font-size:11px;text-decoration:none">📞 Appel</a>`:''}
+      <button onclick="aiLogInteraction(${id},'appel','📞')" class="btn btn-outline btn-sm" style="font-size:11px">📞 Logger appel</button>
+      <button onclick="aiLogInteraction(${id},'message_wa','💬')" class="btn btn-outline btn-sm" style="font-size:11px">💬 Logger WA</button>
+      <button onclick="aiLogInteraction(${id},'demo','🎬')" class="btn btn-outline btn-sm" style="font-size:11px">🎬 Logger démo</button>
+      <button onclick="editClient(${c.id});document.getElementById('modal-client-detail').classList.add('hidden')" class="btn btn-outline btn-sm" style="font-size:11px">✏️</button>
+      ${c.statut==='prospect'?`<button class="btn btn-sm" style="background:var(--success);color:#fff;font-size:11px" onclick="convertProspectToClient(${c.id});document.getElementById('modal-client-detail').classList.add('hidden')">✅ Convertir</button>`:''}
+    </div>
+    ${c.notes?`<div style="background:var(--warning-l);border-radius:var(--r-sm);padding:8px 10px;margin-top:8px;font-size:11px"><strong>📝</strong> ${c.notes}</div>`:''}
+  `;
+
+  // Afficher cockpit IA si prospect
+  const cockpit = document.getElementById('prospect-ai-cockpit');
+  if(cockpit) cockpit.style.display = c.statut==='prospect' ? '' : 'none';
+  // Score badge
+  const sb = document.getElementById('ai-score-badge');
+  if(sb) { sb.textContent=`Score: ${score}%`; sb.style.background=score>=70?'rgba(5,150,105,.3)':score>=40?'rgba(217,119,6,.3)':'rgba(220,38,38,.3)'; }
+  // Reset IA
+  document.getElementById('ai-output').innerHTML='<div style="color:var(--muted);text-align:center;padding:24px 0"><div style="font-size:28px;margin-bottom:6px">🤖</div>Sélectionnez un onglet et cliquez <strong>Générer</strong></div>';
+  document.getElementById('ai-actions').style.display='none';
+
   document.getElementById('modal-client-detail').classList.remove('hidden');
-  // Init mini-map dans détail si GPS dispo
-  if(c.lat && c.lng) {
+  if(c.lat&&c.lng){
     setTimeout(()=>{
-      const mapEl = document.getElementById('detail-geo-map-'+c.id);
-      if(mapEl && typeof L !== 'undefined') {
-        const m = L.map(mapEl, {zoomControl:true, scrollWheelZoom:false}).setView([c.lat, c.lng], 15);
+      const mapEl=document.getElementById('detail-geo-map-'+c.id);
+      if(mapEl&&typeof L!=='undefined'){
+        const m=L.map(mapEl,{zoomControl:true,scrollWheelZoom:false}).setView([c.lat,c.lng],15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(m);
-        const ico = L.divIcon({html:'<div style="background:var(--primary);color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.3)">👤</div>',iconSize:[28,28],iconAnchor:[14,14],className:''});
-        L.marker([c.lat, c.lng], {icon:ico}).addTo(m).bindPopup(`<b>${c.nom}</b><br>${c.adresse||''}`).openPopup();
+        const ico=L.divIcon({html:'<div style="background:var(--primary);color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.3)">👤</div>',iconSize:[28,28],iconAnchor:[14,14],className:''});
+        L.marker([c.lat,c.lng],{icon:ico}).addTo(m).bindPopup(`<b>${c.nom}</b><br>${c.adresse||''}`).openPopup();
       }
-    }, 200);
+    },200);
   }
 }
 
@@ -6192,6 +6976,7 @@ const _extendLoadAll = () => {
   const pres = lsLoad('presentations'); if(pres&&Array.isArray(pres)) PRESENTATIONS=pres;
   const cmds = lsLoad('commandes');     if(cmds&&Array.isArray(cmds))  COMMANDES=cmds;
   const ctrs = lsLoad('contrats');      if(ctrs&&Array.isArray(ctrs))  CONTRATS=ctrs;
+  const lics = lsLoad('licences');      if(lics&&Array.isArray(lics))  LICENCES=lics;
 };
 
 // ─── Navigate extension pour nouveaux modules ─
@@ -6199,6 +6984,7 @@ const _navExtensions = {
   presentations: ()=>setTimeout(initPresentations,50),
   commandes:     ()=>setTimeout(initCommandes,50),
   contrats:      ()=>setTimeout(initContrats,50),
+  licences:      ()=>setTimeout(initLicences,50),
 };
 // Hook into existing navigate via event
 document.addEventListener('sanix:navigate', e=>{
@@ -6208,9 +6994,882 @@ document.addEventListener('sanix:navigate', e=>{
 
 // ─── Init badges au démarrage ────────────
 document.addEventListener('DOMContentLoaded',()=>{
-  setTimeout(()=>{ _extendLoadAll(); updateSidebarBadges(); }, 900);
+  setTimeout(()=>{ _extendLoadAll(); updateSidebarBadges(); updateSidebarNotifications(); }, 900);
+  // Refresh notifications toutes les 2 minutes
+  setInterval(updateSidebarNotifications, 120000);
 });
 
+
+// ═══════════════════════════════════════
+//  MOTEUR IA — TRANSFORMATION PROSPECT
+// ═══════════════════════════════════════
+let _aiCurrentClientId = null;
+let _aiCurrentTab = 'strategie';
+let _aiLastOutput = '';
+
+const AI_TABS = {
+  strategie:  {ico:'🎯', label:'Stratégie'},
+  message:    {ico:'💬', label:'Message WhatsApp'},
+  objections: {ico:'🛡', label:'Objections'},
+  relance:    {ico:'🔔', label:'Relance'},
+  closing:    {ico:'🏆', label:'Closing'},
+};
+
+function aiTab(tab, el) {
+  _aiCurrentTab = tab;
+  document.querySelectorAll('.ai-tab-btn').forEach(b=>{
+    b.style.borderBottomColor='transparent';
+    b.style.color='var(--muted)';
+    b.style.fontWeight='600';
+  });
+  if(el) {
+    el.style.borderBottomColor='var(--primary)';
+    el.style.color='var(--primary)';
+    el.style.fontWeight='700';
+  }
+  document.getElementById('ai-output').innerHTML='<div style="color:var(--muted);text-align:center;padding:20px 0"><div style="font-size:24px;margin-bottom:6px">'+AI_TABS[tab].ico+'</div>Cliquez <strong>Générer</strong> pour '+AI_TABS[tab].label+'</div>';
+  document.getElementById('ai-actions').style.display='none';
+}
+
+// Score de transformation (0-100)
+function aiProspectScore(c) {
+  let score = 10; // base
+  if(c.phone) score += 15;
+  if(c.email) score += 10;
+  if(c.logiciel) score += 15;
+  if(c.valeur > 0) score += 10;
+  if(c.adresse) score += 5;
+  const interactions = c.interactions||[];
+  score += Math.min(interactions.length * 8, 24);
+  const hasDemo = interactions.find(x=>x.etape>=2);
+  if(hasDemo) score += 10;
+  const hasProp = interactions.find(x=>x.etape>=3);
+  if(hasProp) score += 10;
+  // Pénalité si pas de contact depuis longtemps
+  if(interactions.length > 0) {
+    const last = new Date(interactions[interactions.length-1].date);
+    const days = Math.floor((Date.now()-last)/86400000);
+    if(days > 30) score -= 15;
+    else if(days > 14) score -= 8;
+  }
+  return Math.min(Math.max(score,5),99);
+}
+
+function aiGetEtape(c) {
+  const interactions = c.interactions||[];
+  if(!interactions.length) return 0;
+  return Math.max(...interactions.map(x=>x.etape||0));
+}
+
+function aiSetEtape(clientId, etape) {
+  const c = CLIENTS.find(x=>x.id===clientId);
+  if(!c) return;
+  if(!c.interactions) c.interactions=[];
+  const labels=['Prospect','Contact établi','Démo réalisée','Proposition envoyée','En négociation','Converti'];
+  const icons=['👤','📞','🎬','📄','🤝','✅'];
+  c.interactions.push({date:new Date().toISOString(), type:labels[etape], note:'Étape mise à jour manuellement', etape, ico:icons[etape]});
+  saveStore('clients');
+  showToast('📈 Étape → '+labels[etape]);
+  showClientDetail(clientId);
+}
+
+function aiLogInteraction(clientId, type, ico) {
+  const c = CLIENTS.find(x=>x.id===clientId);
+  if(!c) return;
+  const note = prompt(`Note pour "${type}" avec ${c.nom} :`, '');
+  if(note === null) return;
+  if(!c.interactions) c.interactions=[];
+  const etapes = {appel:1, message_wa:1, demo:2, proposition:3, negociation:4};
+  c.interactions.push({
+    date:new Date().toISOString(),
+    type:{appel:'Appel téléphonique',message_wa:'Message WhatsApp',demo:'Démonstration',proposition:'Proposition envoyée',negociation:'Négociation'}[type]||type,
+    note, etape:etapes[type]||1, ico
+  });
+  saveStore('clients');
+  showToast('✅ Interaction enregistrée');
+  showClientDetail(clientId);
+}
+
+async function aiGenerate(regen=false) {
+  const c = CLIENTS.find(x=>x.id===_aiCurrentClientId);
+  if(!c) return;
+  const etape   = document.getElementById('ai-etape')?.value||'premier_contact';
+  const outEl   = document.getElementById('ai-output');
+  const actEl   = document.getElementById('ai-actions');
+  const genLbl  = document.getElementById('ai-gen-lbl');
+  const genIco  = document.getElementById('ai-gen-ico');
+
+  // Loading
+  genLbl.textContent='En cours…'; genIco.textContent='⏳';
+  outEl.innerHTML=`<div style="display:flex;align-items:center;gap:10px;color:var(--primary);padding:16px">
+    <div style="width:18px;height:18px;border:2px solid var(--primary);border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite"></div>
+    <span style="font-size:12px">L'IA analyse le profil de ${c.nom}…</span>
+  </div>`;
+
+  const logiciel = LOGICIELS.find(x=>x.nom===c.logiciel);
+  const interactions = (c.interactions||[]);
+  const etapeLabel = aiGetEtape(c);
+  const score = aiProspectScore(c);
+  const jours = interactions.length && interactions[interactions.length-1]?.date
+    ? Math.floor((Date.now()-new Date(interactions[interactions.length-1].date))/86400000) : null;
+
+  const prompts = {
+    strategie: `Tu es un expert en vente de logiciels ERP en Afrique de l'Ouest (Côte d'Ivoire). 
+Analyse ce prospect et propose une stratégie concrète de transformation :
+
+PROSPECT : ${c.nom}
+Secteur : ${c.secteur||'Non défini'}
+Logiciel visé : ${c.logiciel||'Non défini'}
+${logiciel?`Description produit : ${logiciel.desc}\nModules : ${logiciel.modules}\nPrix : ${logiciel.prix} FCFA/an`:''}
+Étape actuelle : ${['Prospect','Contact','Démo','Proposition','Négociation','Converti'][etapeLabel]||'Prospect'}
+Score transformation : ${score}%
+Interactions : ${interactions.length} (dernier contact : ${jours!==null?'J-'+jours:'jamais'})
+Adresse : ${c.adresse||'Non renseignée'}
+Contexte : ${etape}
+Notes : ${c.notes||'Aucune'}
+
+Fournis :
+1. ANALYSE DU PROFIL (2-3 phrases)
+2. STRATÉGIE EN 3 ÉTAPES concrètes et datées
+3. POINTS DE DOULEUR probables dans son secteur
+4. ARGUMENT CLÉ différenciateur à utiliser
+5. PROCHAINE ACTION précise à faire aujourd'hui
+
+Réponds en français, style direct, opérationnel. Pas de blabla.`,
+
+    message: `Tu es un expert commercial en Afrique de l'Ouest. Rédige un message WhatsApp de prospection/suivi pour ce prospect.
+
+PROSPECT : ${c.nom}
+Secteur : ${c.secteur||'Non défini'}  
+Logiciel : ${c.logiciel||'Non défini'}
+${logiciel?`Avantages clés : ${logiciel.desc}`:''}
+Contexte : ${etape}
+Interactions passées : ${interactions.length}
+Dernier contact : ${jours!==null?'il y a '+jours+' jours':'jamais'}
+
+Règles du message WhatsApp :
+- Commencer par "Bonjour [Prénom]" ou "Bonjour M./Mme [Nom]"
+- Ton chaleureux mais professionnel, adapté à la culture ivoirienne
+- Maximum 4-5 lignes
+- 1 question ouverte finale pour garder le dialogue
+- Inclure un emoji pertinent (pas excessif)
+- Si premier contact : se présenter brièvement (SANIX Africa)
+- Si relance : faire référence à l'échange précédent
+- Terminer par "Bien cordialement" et le prénom du commercial
+
+Rédige UNIQUEMENT le message, prêt à copier-coller.`,
+
+    objections: `Tu es un coach commercial expert en vente de logiciels ERP en Côte d'Ivoire.
+    
+Prépare les réponses aux 5 objections les plus probables pour ce prospect :
+
+PROSPECT : ${c.nom} (${c.secteur||'secteur inconnu'})
+Logiciel : ${c.logiciel||'ERP SANIX'}
+${logiciel?`Prix : ${logiciel.prix} FCFA/an\nModules : ${logiciel.modules}`:''}
+Contexte : ${etape}
+
+Pour chaque objection, donne :
+OBJECTION : [ce que dit le prospect]
+RÉPONSE : [ce que dit le commercial — 2-3 phrases max, direct, avec preuve ou chiffre si possible]
+
+Format clair, pratique, mémorisable sur le terrain.`,
+
+    relance: `Tu es expert en relance commerciale B2B en Afrique de l'Ouest.
+
+Crée un plan de relance multicanal pour ce prospect :
+
+PROSPECT : ${c.nom}
+Secteur : ${c.secteur||'Non défini'}
+Logiciel : ${c.logiciel||'ERP SANIX'}
+Dernière interaction : ${jours!==null?'J-'+jours:'jamais'}
+Interactions totales : ${interactions.length}
+Contexte : ${etape}
+
+Fournis :
+1. CALENDRIER DE RELANCE (J+1, J+3, J+7, J+14, J+30)
+2. CANAL recommandé pour chaque relance (WA / Appel / Email / Visite terrain)
+3. MESSAGE court pour chaque étape
+4. SIGNAL D'ABANDON : quand arrêter les relances
+
+Format opérationnel, le commercial doit pouvoir l'exécuter directement.`,
+
+    closing: `Tu es un expert closing en vente de logiciels en Côte d'Ivoire.
+
+Ce prospect est chaud. Aide à conclure la vente :
+
+PROSPECT : ${c.nom} (${c.secteur||'secteur'})
+Logiciel : ${c.logiciel||'ERP SANIX'}
+${logiciel?`Prix : ${logiciel.prix} FCFA | Commission apporteur : ${logiciel.commission||10}%`:''}
+Score transformation : ${score}%
+Étape : ${['Prospect','Contact','Démo','Proposition','Négociation','Converti'][etapeLabel]||'Avancé'}
+Contexte : ${etape}
+
+Fournis :
+1. TECHNIQUE DE CLOSING recommandée (urgence / preuve sociale / alternative / essai)
+2. SCRIPT DE CLOSING mot-à-mot (version appel téléphonique)
+3. CONCESSION MAXIMALE acceptable (remise, délai, formation offerte)
+4. RÉPONSE si le prospect demande "encore du temps"
+5. MESSAGE de confirmation de commande à envoyer immédiatement après accord
+
+Style direct, percutant, adapté au marché ivoirien.`
+  };
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-6',
+        max_tokens:1000,
+        messages:[{role:'user',content:prompts[_aiCurrentTab]||prompts.strategie}]
+      })
+    });
+    const data = await resp.json();
+    const text = data.content?.map(x=>x.text||'').join('')||'Erreur de génération.';
+    _aiLastOutput = text;
+    // Formatter la réponse
+    outEl.innerHTML = '<div style="font-size:12px;line-height:1.8;white-space:pre-wrap;color:var(--text)">'+
+      text.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
+          .replace(/^(\d+\.)/gm,'<br><strong>$1</strong>')
+          .replace(/^(OBJECTION|RÉPONSE|STRATÉGIE|ANALYSE|ACTION|SIGNAL|CALENDRIER|TECHNIQUE|SCRIPT|CONCESSION)(.*)$/gm,
+            '<div style="margin-top:10px"><span style="background:var(--primary-l);color:var(--primary);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:800">$1</span>$2</div>')
+      +'</div>';
+    actEl.style.display='flex';
+    genLbl.textContent='Régénérer'; genIco.textContent='✨';
+  } catch(err) {
+    outEl.innerHTML=`<div style="color:var(--danger);font-size:12px;padding:12px">❌ Erreur API : ${err.message}<br><small>Vérifiez votre connexion ou la configuration API.</small></div>`;
+    genLbl.textContent='Réessayer'; genIco.textContent='⚡';
+  }
+}
+
+function aiCopyOutput() {
+  if(!_aiLastOutput) return;
+  navigator.clipboard.writeText(_aiLastOutput).then(()=>showToast('📋 Copié !'));
+}
+
+function aiSendWA() {
+  const c = CLIENTS.find(x=>x.id===_aiCurrentClientId);
+  if(!c||!c.phone) { showToast('❌ Numéro manquant'); return; }
+  const msg = _aiLastOutput || '';
+  const num = c.phone.replace(/\D/g,'');
+  const prefix = num.startsWith('225')?num:'225'+num;
+  window.open(`https://wa.me/${prefix}?text=${encodeURIComponent(msg)}`,'_blank');
+  // Logger automatiquement
+  if(!c.interactions) c.interactions=[];
+  c.interactions.push({date:new Date().toISOString(),type:'Message WhatsApp (IA)',note:msg.substring(0,100)+'…',etape:1,ico:'🤖'});
+  saveStore('clients');
+}
+
+function aiSaveNote() {
+  const c = CLIENTS.find(x=>x.id===_aiCurrentClientId);
+  if(!c||!_aiLastOutput) return;
+  if(!c.interactions) c.interactions=[];
+  c.interactions.push({date:new Date().toISOString(),type:'Note IA — '+AI_TABS[_aiCurrentTab].label,note:_aiLastOutput.substring(0,200)+'…',etape:aiGetEtape(c),ico:'🤖'});
+  saveStore('clients');
+  showToast('💾 Note sauvegardée dans l\'historique');
+}
+
+function aiCreateRelance() {
+  const c = CLIENTS.find(x=>x.id===_aiCurrentClientId);
+  if(!c) return;
+  // Créer une présentation planifiée comme relance
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+7);
+  PRESENTATIONS.push({
+    id:'pres_'+Date.now(),
+    client:c.nom, date:tomorrow.toISOString().split('T')[0],
+    logiciel:c.logiciel||'', type:'demo_video',
+    commercial:c.commercial||'', duree:30,
+    statut:'planifiee', resultat:'', suite:'',
+    notes:'🤖 Relance IA auto-planifiée — '+_aiCurrentTab
+  });
+  lsSave('presentations',PRESENTATIONS);
+  showToast('🔔 Relance planifiée dans 7 jours — module Présentations');
+}
+
+// ═══════════════════════════════════════
+//  IMPORT PROSPECTS — WhatsApp / vCard / CSV
+// ═══════════════════════════════════════
+let _importPending = []; // contacts parsés en attente de confirmation
+
+function openImportProspectsModal() {
+  // Peupler select logiciel WhatsApp
+  const waLog = document.getElementById('wa-logiciel');
+  if(waLog) waLog.innerHTML='<option value="">— Non défini —</option>'+LOGICIELS.map(l=>`<option value="${l.nom}">${l.icon||'💻'} ${l.nom}</option>`).join('');
+  importTabSwitch('rapide', document.querySelector('#import-tabs .tab'));
+  document.getElementById('modal-import-prospects').classList.remove('hidden');
+}
+
+function importTabSwitch(tab, el) {
+  ['rapide','vcf','csv','whatsapp'].forEach(t=>{
+    const p=document.getElementById('import-panel-'+t);
+    if(p) p.style.display = t===tab ? '' : 'none';
+  });
+  document.querySelectorAll('#import-tabs .tab').forEach(t=>t.classList.remove('active'));
+  if(el) el.classList.add('active');
+}
+
+// ─── Utilitaires ────────────────────────
+function importNormalizePhone(raw) {
+  if(!raw) return '';
+  let n = raw.replace(/[\s\-\.\(\)]/g,'');
+  // CI : convertir 07XXXXXXXX → +22507XXXXXXXX
+  if(/^0[0-9]{9}$/.test(n)) n = '+225'+n;
+  if(/^225[0-9]{10}$/.test(n)) n = '+'+n;
+  return n;
+}
+
+function importGuessSecteur(nom, phone) {
+  const n = (nom||'').toLowerCase();
+  if(n.includes('avicol')||n.includes('poulet')||n.includes('elevage')||n.includes('ferme')||n.includes('coq')) return 'Aviculture';
+  if(n.includes('immo')||n.includes('logement')||n.includes('résidence')||n.includes('villa')) return 'Immobilier';
+  if(n.includes('distrib')||n.includes('commerce')||n.includes('store')||n.includes('market')) return 'Distribution';
+  if(n.includes('agri')||n.includes('cacao')||n.includes('café')||n.includes('palm')) return 'Agriculture';
+  if(n.includes('pharma')||n.includes('clinic')||n.includes('hopital')||n.includes('sante')) return 'Santé';
+  if(n.includes('factory')||n.includes('usine')||n.includes('industrie')||n.includes('sachet')) return 'Industrie';
+  return 'Autre';
+}
+
+function importGuessLogiciel(secteur) {
+  const map = {
+    'Aviculture':'AviNest Pro','Immobilier':'ImmoSuite ERP','Distribution':'DistriPro ERP',
+    'Agriculture':'Menko Agro','Santé':'MediCore Suite','Industrie':'SANIX Factory 4.0',
+    'Commerce':'SANIX EasyStock'
+  };
+  return map[secteur]||'';
+}
+
+function importContactsToClients(contacts, source='Import') {
+  let added=0, skipped=0;
+  contacts.forEach(c=>{
+    const phone = importNormalizePhone(c.phone);
+    if(!c.nom||!phone) { skipped++; return; }
+    // Doublon : même téléphone
+    if(CLIENTS.find(x=>importNormalizePhone(x.phone)===phone)) { skipped++; return; }
+    const secteur  = c.secteur || importGuessSecteur(c.nom,'');
+    const logiciel = c.logiciel || importGuessLogiciel(secteur);
+    const newId = Math.max(0,...CLIENTS.map(x=>x.id||0))+1+added;
+    CLIENTS.push({
+      id:newId, nom:c.nom.trim(), phone, email:c.email||'',
+      secteur, logiciel, statut:'prospect', commercial:'',
+      valeur:0, adresse:c.adresse||'', notes:`📲 Importé via ${source} · ${new Date().toLocaleDateString('fr-FR')}`,
+      lat:null, lng:null,
+      created_at:new Date().toISOString(), updated_at:new Date().toISOString()
+    });
+    added++;
+  });
+  saveStore('clients');
+  renderClients(getFilteredClients());
+  updateSidebarBadges();
+  return {added, skipped};
+}
+
+function importShowPreviewTable(contacts, containerId, onConfirm) {
+  const el = document.getElementById(containerId);
+  if(!el||!contacts.length) return;
+  const dupes = contacts.filter(c=>CLIENTS.find(x=>importNormalizePhone(x.phone)===importNormalizePhone(c.phone)));
+  el.innerHTML = `
+    <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--text2)">
+      ${contacts.length} contact(s) détecté(s) · <span style="color:var(--warning)">${dupes.length} doublon(s)</span>
+    </div>
+    <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-sm)">
+      <table class="client-table" style="font-size:11px">
+        <thead><tr><th><input type="checkbox" id="imp-check-all" onchange="importToggleAll(this,'${containerId}')" checked></th><th>Nom</th><th>Téléphone</th><th>Secteur</th><th>Logiciel</th><th>Statut</th></tr></thead>
+        <tbody>${contacts.map((c,i)=>{
+          const dup = !!CLIENTS.find(x=>importNormalizePhone(x.phone)===importNormalizePhone(c.phone));
+          return `<tr style="${dup?'opacity:.5':''}">
+            <td><input type="checkbox" class="imp-row-check" data-idx="${i}" ${dup?'':'checked'}></td>
+            <td style="font-weight:600">${c.nom||'—'}</td>
+            <td style="font-family:monospace">${c.phone||'—'}</td>
+            <td>${c.secteur||'—'}</td>
+            <td style="font-size:10px">${c.logiciel||'—'}</td>
+            <td>${dup?'<span style="color:var(--warning)">⚠️ Doublon</span>':'<span style="color:var(--success)">✅ Nouveau</span>'}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>
+    <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="${onConfirm}">✅ Importer les sélectionnés</button>`;
+}
+
+function importToggleAll(cb, containerId) {
+  document.querySelectorAll(`#${containerId} .imp-row-check`).forEach(c=>c.checked=cb.checked);
+}
+
+function importGetSelected(contacts, containerId) {
+  const checked = [...document.querySelectorAll(`#${containerId} .imp-row-check`)].filter(c=>c.checked).map(c=>parseInt(c.dataset.idx));
+  return contacts.filter((_,i)=>checked.includes(i));
+}
+
+// ─── ① SAISIE RAPIDE ────────────────────
+function importRapideParse() {
+  const text = document.getElementById('import-rapide-text').value;
+  const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
+  return lines.map(line=>{
+    const parts = line.split(/[;,\t]/).map(p=>p.trim());
+    const nom     = parts[0]||'';
+    const phone   = parts[1]||'';
+    const secteur = parts[2] ? (parts[2].charAt(0).toUpperCase()+parts[2].slice(1)) : importGuessSecteur(nom,'');
+    const logiciel= parts[3]||importGuessLogiciel(secteur);
+    return {nom, phone, secteur, logiciel};
+  }).filter(c=>c.nom||c.phone);
+}
+
+function importRapidePreview() {
+  const contacts = importRapideParse();
+  _importPending = contacts;
+  document.getElementById('import-rapide-count').textContent = contacts.length+' ligne(s)';
+  importShowPreviewTable(contacts,'import-rapide-preview','importRapideConfirm()');
+}
+
+function importRapideConfirm() {
+  let contacts = _importPending.length ? importGetSelected(_importPending,'import-rapide-preview') : importRapideParse();
+  if(!contacts.length) contacts = importRapideParse();
+  const {added, skipped} = importContactsToClients(contacts,'Saisie rapide');
+  showToast(`✅ ${added} prospect(s) importé(s) · ${skipped} ignoré(s) (doublons)`);
+  document.getElementById('modal-import-prospects').classList.add('hidden');
+  navigate('clients', document.querySelector('[onclick*="clients"]'));
+}
+
+// ─── ② vCard (.vcf) ─────────────────────
+function vcfDrop(event) {
+  event.preventDefault();
+  const file = event.dataTransfer.files[0];
+  if(file) vcfParseFile(file);
+}
+function vcfFileLoad(input) {
+  if(input.files[0]) vcfParseFile(input.files[0]);
+}
+function vcfParseFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => vcfParseText(e.target.result);
+  reader.readAsText(file, 'UTF-8');
+}
+function vcfParseText(text) {
+  const cards = text.split(/BEGIN:VCARD/i).slice(1);
+  const contacts = [];
+  cards.forEach(card=>{
+    const get = (key) => {
+      const m = card.match(new RegExp(key+'[^:]*:(.+)','i'));
+      return m ? m[1].replace(/\\n/g,'\n').replace(/\\,/g,',').trim() : '';
+    };
+    const nom   = get('FN') || get('N').split(';').filter(Boolean).reverse().join(' ');
+    const phone = get('TEL');
+    const email = get('EMAIL');
+    const org   = get('ORG');
+    const adr   = get('ADR').replace(/;+/g,' ').trim();
+    if(!nom&&!phone) return;
+    const displayNom = nom || org || phone;
+    const secteur = importGuessSecteur(displayNom,'');
+    contacts.push({nom:displayNom, phone, email, adresse:adr, secteur, logiciel:importGuessLogiciel(secteur)});
+  });
+  _importPending = contacts;
+  document.getElementById('vcf-parse-status').innerHTML =
+    `<span style="color:var(--success);font-weight:600">✅ ${contacts.length} contact(s) parsé(s)</span>`;
+  importShowPreviewTable(contacts,'vcf-preview','vcfConfirmImport()');
+}
+function vcfConfirmImport() {
+  const sel = importGetSelected(_importPending,'vcf-preview');
+  const {added,skipped} = importContactsToClients(sel.length?sel:_importPending,'vCard');
+  showToast(`✅ ${added} prospect(s) · ${skipped} doublon(s)`);
+  document.getElementById('modal-import-prospects').classList.add('hidden');
+  navigate('clients', document.querySelector('[onclick*="clients"]'));
+}
+
+// ─── ③ CSV Google Contacts ──────────────
+function csvContactsDrop(event) {
+  event.preventDefault();
+  const file = event.dataTransfer.files[0];
+  if(file) csvContactsParseFile(file);
+}
+function csvContactsLoad(input) {
+  if(input.files[0]) csvContactsParseFile(input.files[0]);
+}
+function csvContactsParseFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => csvContactsParseText(e.target.result);
+  reader.readAsText(file,'UTF-8');
+}
+function csvContactsParseText(text) {
+  const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
+  if(!lines.length) return;
+  // Détecter séparateur
+  const sep = lines[0].includes('\t') ? '\t' : ',';
+  const headers = lines[0].split(sep).map(h=>h.replace(/"/g,'').toLowerCase().trim());
+  const idx = (keys)=>{ for(const k of keys){ const i=headers.findIndex(h=>h.includes(k)); if(i>=0) return i; } return -1; };
+  const iNom   = idx(['name','nom','prénom','first name']);
+  const iPhone  = idx(['phone 1 - value','phone','téléphone','mobile','tel']);
+  const iEmail  = idx(['email 1 - value','email','courriel']);
+  const iOrg    = idx(['organization 1 - name','company','entreprise','organization','org']);
+  const iAdr    = idx(['address 1 - formatted','address','adresse']);
+  const contacts = [];
+  lines.slice(1).forEach(line=>{
+    const cols = line.split(sep).map(c=>c.replace(/"/g,'').trim());
+    const nom   = (iNom>=0?cols[iNom]:'') || (iOrg>=0?cols[iOrg]:'');
+    const phone = iPhone>=0?cols[iPhone]:'';
+    const email = iEmail>=0?cols[iEmail]:'';
+    const adr   = iAdr>=0?cols[iAdr]:'';
+    if(!nom&&!phone) return;
+    const secteur = importGuessSecteur(nom,'');
+    contacts.push({nom:nom||phone, phone, email, adresse:adr, secteur, logiciel:importGuessLogiciel(secteur)});
+  });
+  _importPending = contacts;
+  document.getElementById('csv-contacts-status').innerHTML =
+    `<span style="color:var(--success);font-weight:600">✅ ${contacts.length} ligne(s) détectée(s)</span>`;
+  importShowPreviewTable(contacts,'csv-contacts-preview','csvContactsConfirm()');
+}
+function csvContactsConfirm() {
+  const sel = importGetSelected(_importPending,'csv-contacts-preview');
+  const {added,skipped} = importContactsToClients(sel.length?sel:_importPending,'Google CSV');
+  showToast(`✅ ${added} prospect(s) · ${skipped} doublon(s)`);
+  document.getElementById('modal-import-prospects').classList.add('hidden');
+  navigate('clients', document.querySelector('[onclick*="clients"]'));
+}
+
+// ─── ④ WhatsApp ──────────────────────────
+function importFromWA() {
+  const nom    = (document.getElementById('wa-nom')?.value||'').trim();
+  const phone  = (document.getElementById('wa-phone')?.value||'').trim();
+  const log    = document.getElementById('wa-logiciel')?.value||'';
+  const sect   = document.getElementById('wa-secteur')?.value||'Autre';
+  if(!nom||!phone) { showToast('❌ Nom et numéro obligatoires'); return; }
+  const {added,skipped} = importContactsToClients([{nom,phone,secteur:sect,logiciel:log}],'WhatsApp');
+  if(added) {
+    showToast(`✅ ${nom} ajouté comme prospect`);
+    document.getElementById('wa-nom').value='';
+    document.getElementById('wa-phone').value='';
+  } else {
+    showToast(`⚠️ ${nom} déjà dans les contacts (doublon)`);
+  }
+}
+
+function parseWAListe() {
+  const text = document.getElementById('wa-liste')?.value||'';
+  const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
+  const contacts = lines.map(line=>{
+    // Formats: "Nom : +225XXXXXXXXX" ou "+225XXXXXXXXX" ou "Nom +225XXXXXXXXX"
+    const phoneMatch = line.match(/(\+?[\d][\d\s\-\.]{7,})/);
+    if(!phoneMatch) return null;
+    const phone = phoneMatch[1].trim();
+    const nom   = line.replace(phoneMatch[0],'').replace(/[:·\-]/g,'').trim() || 'Contact WhatsApp';
+    const secteur  = importGuessSecteur(nom,'');
+    return {nom, phone, secteur, logiciel:importGuessLogiciel(secteur)};
+  }).filter(Boolean);
+  _importPending = contacts;
+  document.getElementById('wa-liste-count').textContent = contacts.length+' numéro(s) détecté(s)';
+  importShowPreviewTable(contacts,'wa-liste-preview','importWAListe()');
+}
+
+function importWAListe() {
+  const sel = importGetSelected(_importPending,'wa-liste-preview');
+  const {added,skipped} = importContactsToClients(sel.length?sel:_importPending,'WhatsApp Liste');
+  showToast(`✅ ${added} prospect(s) · ${skipped} doublon(s)`);
+  document.getElementById('modal-import-prospects').classList.add('hidden');
+  navigate('clients', document.querySelector('[onclick*="clients"]'));
+}
+
+// ═══════════════════════════════════════
+//  LICENCES ATTRIBUÉES
+// ═══════════════════════════════════════
+let LICENCES = [];
+let _licTab = 'all';
+
+const LIC_STATUT = {
+  active:        {lbl:'Active',          cls:'badge-success',  ico:'✅'},
+  expiree:       {lbl:'Expirée',         cls:'badge-warning',  ico:'🔴'},
+  suspendue:     {lbl:'Suspendue',       cls:'badge-muted',    ico:'⛔'},
+  renouvellement:{lbl:'Renouvellement',  cls:'badge-primary',  ico:'🔄'},
+  essai:         {lbl:'Essai/Démo',      cls:'badge-purple',   ico:'🕐'},
+};
+const LIC_TYPE_JOURS = {Annuelle:365, Mensuelle:30, Perpetuelle:null, SaaS:30, Essai:15, Triennale:1095};
+
+// Génère clé SANIX-XXXX-XXXX-XXXX
+function genLicKeyStr() {
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const seg=()=>Array.from({length:4},()=>chars[Math.floor(Math.random()*chars.length)]).join('');
+  return `SANIX-${seg()}-${seg()}-${seg()}`;
+}
+
+function genLicKey() {
+  const key = genLicKeyStr();
+  document.getElementById('lic-key').value = key;
+  document.getElementById('lic-key-display').textContent = key;
+}
+
+function copyLicKey() {
+  const key = document.getElementById('lic-key').value;
+  if(!key) { showToast('⚠️ Générez d\'abord une clé'); return; }
+  navigator.clipboard.writeText(key).then(()=>showToast('📋 Clé copiée : '+key));
+}
+
+function licAutoFillDates() {
+  const debut = document.getElementById('lic-debut').value;
+  const type  = document.getElementById('lic-type').value;
+  const jours = LIC_TYPE_JOURS[type];
+  if(!debut || jours === null) return; // Perpétuelle = pas de fin
+  const d = new Date(debut);
+  d.setDate(d.getDate() + jours);
+  document.getElementById('lic-fin').value = d.toISOString().split('T')[0];
+}
+
+function licDaysLeft(finDate) {
+  if(!finDate) return null;
+  const now  = new Date(); now.setHours(0,0,0,0);
+  const fin  = new Date(finDate); fin.setHours(0,0,0,0);
+  return Math.ceil((fin - now) / 86400000);
+}
+
+function licDaysLeftHtml(days, type) {
+  if(type === 'Perpetuelle') return '<span style="color:var(--success);font-weight:700">♾️ Perpétuelle</span>';
+  if(days === null) return '—';
+  if(days < 0)  return `<span style="color:var(--danger);font-weight:700">Expirée (${Math.abs(days)}j)</span>`;
+  if(days <= 7) return `<span style="color:var(--danger);font-weight:800;animation:pulse 1s infinite">🔴 ${days}j</span>`;
+  if(days <= 30) return `<span style="color:var(--warning);font-weight:700">⚠️ ${days}j</span>`;
+  return `<span style="color:var(--success);font-weight:600">✅ ${days}j</span>`;
+}
+
+function initLicences() {
+  renderLicStats();
+  renderLicences();
+  populateLicFilters();
+  licCheckExpirations();
+}
+
+function renderLicStats() {
+  const el = document.getElementById('lic-stats');
+  if(!el) return;
+  const total    = LICENCES.length;
+  const actives  = LICENCES.filter(l=>l.statut==='active').length;
+  const expirees = LICENCES.filter(l=>l.statut==='expiree'||licDaysLeft(l.fin)<0).length;
+  const j30      = LICENCES.filter(l=>{ const d=licDaysLeft(l.fin); return d!==null&&d>=0&&d<=30&&l.statut==='active'; }).length;
+  const essais   = LICENCES.filter(l=>l.statut==='essai').length;
+  const renouv   = LICENCES.filter(l=>l.statut==='renouvellement').length;
+  el.innerHTML = [
+    {ico:'🔑',v:total,    lbl:'Total licences',  c:'var(--primary)', bg:'var(--primary-l)'},
+    {ico:'✅',v:actives,  lbl:'Actives',          c:'var(--success)', bg:'var(--success-l)'},
+    {ico:'⚠️',v:j30,     lbl:'Exp. ≤ 30 jours',  c:'var(--warning)', bg:'var(--warning-l)'},
+    {ico:'🔴',v:expirees, lbl:'Expirées',         c:'var(--danger)',  bg:'var(--danger-l)'},
+    {ico:'🔄',v:renouv,   lbl:'Renouvellement',   c:'var(--purple)',  bg:'var(--purple-l)'},
+  ].map(s=>`
+    <div class="stat-card" style="--accent:${s.c}">
+      <div class="stat-icon" style="background:${s.bg}">${s.ico}</div>
+      <div class="stat-val" style="color:${s.c}">${s.v}</div>
+      <div class="stat-label">${s.lbl}</div>
+    </div>`).join('');
+  // Badge sidebar
+  const urgent = LICENCES.filter(l=>{ const d=licDaysLeft(l.fin); return (d!==null&&d>=0&&d<=30&&l.statut==='active')||l.statut==='expiree'; }).length;
+  const b = document.getElementById('sb-lic-badge');
+  if(b) { b.textContent=urgent; b.style.display=urgent>0?'':'none'; }
+  // Onglets counts
+  const setN=(id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=v; };
+  setN('lic-cnt-all',total);
+  setN('lic-cnt-active',actives);
+  setN('lic-cnt-expiree',expirees);
+  setN('lic-cnt-renouv',renouv);
+  setN('lic-cnt-essai',essais);
+}
+
+function populateLicFilters() {
+  const logSel = document.getElementById('lic-filter-log');
+  if(logSel) {
+    logSel.innerHTML='<option value="">Tous logiciels</option>'+
+      LOGICIELS.map(l=>`<option value="${l.nom}">${l.icon||'💻'} ${l.nom}</option>`).join('');
+  }
+}
+
+function licTabSwitch(tab, el) {
+  _licTab=tab;
+  document.querySelectorAll('#view-licences .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  renderLicences();
+}
+
+function renderLicences() {
+  const tbody = document.getElementById('lic-tbody');
+  if(!tbody) return;
+  const q   = (document.getElementById('lic-search')?.value||'').toLowerCase();
+  const st  = document.getElementById('lic-filter-statut')?.value||'';
+  const log = document.getElementById('lic-filter-log')?.value||'';
+  let list  = [...LICENCES].sort((a,b)=>a.fin&&b.fin?a.fin.localeCompare(b.fin):0);
+  if(_licTab!=='all') list=list.filter(l=>l.statut===_licTab||(l.statut==='active'&&_licTab==='expiree'&&licDaysLeft(l.fin)<0));
+  if(q)   list=list.filter(l=>(l.key+l.client+l.logiciel).toLowerCase().includes(q));
+  if(st)  list=list.filter(l=>l.statut===st);
+  if(log) list=list.filter(l=>l.logiciel===log);
+  if(!list.length){tbody.innerHTML=`<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px">Aucune licence</td></tr>`;return;}
+  tbody.innerHTML = list.map(l=>{
+    const s    = LIC_STATUT[l.statut]||{lbl:l.statut,cls:'badge-muted',ico:'?'};
+    const days = licDaysLeft(l.fin);
+    const ctrRef = l.contratId ? (CONTRATS.find(c=>c.id===l.contratId)?.ref||'—') : '—';
+    return `<tr>
+      <td>
+        <div style="font-family:monospace;font-size:12px;font-weight:800;color:var(--primary);letter-spacing:1px">${l.key}</div>
+        <div style="font-size:10px;color:var(--muted)">${l.postes||1} poste(s) · ${l.env==='production'?'🟢 Prod':l.env==='demo'?'🔵 Démo':'🟡 Formation'}</div>
+      </td>
+      <td style="font-weight:600">${l.client}</td>
+      <td>${l.logiciel}</td>
+      <td style="font-size:11px">${l.type||'Annuelle'}</td>
+      <td style="font-size:12px">${l.debut||'—'}</td>
+      <td style="font-size:12px">${l.type==='Perpetuelle'?'♾️':l.fin||'—'}</td>
+      <td>${licDaysLeftHtml(days,l.type)}</td>
+      <td><span class="badge ${s.cls}">${s.ico} ${s.lbl}</span></td>
+      <td style="font-size:11px;color:var(--success)">${ctrRef}</td>
+      <td>
+        <div class="flex gap-1">
+          <button onclick="copyClientLicKey('${l.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px" title="Copier clé">📋</button>
+          <button onclick="editLicence('${l.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px">✏️</button>
+          <button onclick="renewLicence('${l.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;color:var(--success)" title="Renouveler">🔄</button>
+          <button onclick="deleteLicence('${l.id}')" class="btn btn-sm" style="padding:3px 8px;font-size:11px;background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2)">🗑</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function licCheckExpirations() {
+  const zone = document.getElementById('lic-alerts-zone');
+  if(!zone) return;
+  const urgent = LICENCES.filter(l=>{
+    if(l.statut==='suspendue'||l.statut==='expiree') return false;
+    const d = licDaysLeft(l.fin);
+    return d!==null && d<=30 && d>=0;
+  }).sort((a,b)=>licDaysLeft(a.fin)-licDaysLeft(b.fin));
+  const expirees = LICENCES.filter(l=>{ const d=licDaysLeft(l.fin); return d!==null&&d<0&&l.statut!=='expiree'; });
+  // Auto-marquer expirées
+  expirees.forEach(l=>{ l.statut='expiree'; });
+  if(expirees.length) { lsSave('licences',LICENCES); renderLicStats(); }
+  if(!urgent.length&&!expirees.length) { zone.innerHTML=''; return; }
+  let html='';
+  if(expirees.length) html+=`<div style="background:var(--danger-l);border:1px solid rgba(220,38,38,.2);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:8px;font-size:12px">
+    <strong style="color:var(--danger)">🔴 ${expirees.length} licence(s) marquée(s) expirée(s)</strong> — ${expirees.map(l=>l.client+' ('+l.logiciel+')').join(', ')}
+  </div>`;
+  if(urgent.length) html+=`<div style="background:var(--warning-l);border:1px solid rgba(217,119,6,.2);border-radius:var(--r-sm);padding:10px 14px;font-size:12px">
+    <strong style="color:var(--warning)">⚠️ ${urgent.length} licence(s) expirent dans ≤ 30 jours</strong>
+    <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">
+      ${urgent.map(l=>{
+        const d=licDaysLeft(l.fin);
+        return `<span style="background:${d<=7?'var(--danger-l)':'var(--warning-l)'};border:1px solid ${d<=7?'rgba(220,38,38,.3)':'rgba(217,119,6,.2)'};border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600;color:${d<=7?'var(--danger)':'var(--warning)'}">
+          ${l.client} · ${l.logiciel} · J-${d}
+          <button onclick="renewLicence('${l.id}')" style="background:none;border:none;cursor:pointer;font-size:11px;margin-left:4px" title="Renouveler">🔄</button>
+        </span>`;
+      }).join('')}
+    </div>
+  </div>`;
+  zone.innerHTML=html;
+}
+
+function openLicenceModal(id=null) {
+  document.getElementById('lic-edit-id').value=id||'';
+  document.getElementById('lic-modal-title').textContent = id?'✏️ Modifier licence':'🔑 Nouvelle licence';
+  // Populate selects
+  const logSel=document.getElementById('lic-logiciel');
+  logSel.innerHTML='<option value="">— Sélectionner —</option>'+LOGICIELS.map(l=>`<option value="${l.nom}">${l.icon||'💻'} ${l.nom}</option>`).join('');
+  const commSel=document.getElementById('lic-commercial');
+  commSel.innerHTML='<option value="">— —</option>'+EQUIPE.filter(m=>m.type==='salarie').map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('');
+  const ctrSel=document.getElementById('lic-contrat-link');
+  ctrSel.innerHTML='<option value="">— Aucun —</option>'+CONTRATS.map(c=>`<option value="${c.id}">${c.ref} — ${c.client}</option>`).join('');
+  document.getElementById('lic-client-list').innerHTML=CLIENTS.map(c=>`<option value="${c.nom}">`).join('');
+  if(id) {
+    const l=LICENCES.find(x=>x.id===id);
+    if(!l) return;
+    document.getElementById('lic-key').value=l.key;
+    document.getElementById('lic-key-display').textContent=l.key;
+    const sv=(elId,v)=>{ const e=document.getElementById(elId); if(e) e.value=v||''; };
+    sv('lic-client',l.client); sv('lic-logiciel',l.logiciel); sv('lic-type',l.type||'Annuelle');
+    sv('lic-postes',l.postes||1); sv('lic-debut',l.debut); sv('lic-fin',l.fin||'');
+    sv('lic-statut',l.statut); sv('lic-env',l.env||'production');
+    sv('lic-contrat-link',l.contratId||''); sv('lic-commercial',l.commercial||'');
+    sv('lic-notes',l.notes||'');
+    document.getElementById('lic-alerte30').checked=l.alerte30!==false;
+    document.getElementById('lic-alerte7').checked=l.alerte7!==false;
+    document.getElementById('lic-alerte1').checked=l.alerte1!==false;
+  } else {
+    genLicKey();
+    document.getElementById('lic-debut').value=new Date().toISOString().split('T')[0];
+    document.getElementById('lic-fin').value='';
+    document.getElementById('lic-type').value='Annuelle';
+    document.getElementById('lic-statut').value='active';
+    document.getElementById('lic-env').value='production';
+    document.getElementById('lic-postes').value='1';
+    ['lic-client','lic-notes','lic-contrat-link','lic-commercial'].forEach(i=>{ const e=document.getElementById(i); if(e) e.value=''; });
+    document.getElementById('lic-alerte30').checked=true;
+    document.getElementById('lic-alerte7').checked=true;
+    document.getElementById('lic-alerte1').checked=true;
+    setTimeout(licAutoFillDates,50);
+  }
+  document.getElementById('modal-licence').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('lic-client').focus(),100);
+}
+
+function closeLicenceModal() { document.getElementById('modal-licence').classList.add('hidden'); }
+
+function saveLicence() {
+  const gv=id=>(document.getElementById(id)||{}).value||'';
+  const key    = gv('lic-key');
+  const client = gv('lic-client').trim();
+  const logiciel=gv('lic-logiciel');
+  if(!key||!client||!logiciel) { showToast('❌ Clé, client et logiciel obligatoires'); return; }
+  const editId = gv('lic-edit-id');
+  const data = {
+    key, client, logiciel, type:gv('lic-type'),
+    postes:parseInt(gv('lic-postes'))||1,
+    debut:gv('lic-debut'), fin:gv('lic-fin')||null,
+    statut:gv('lic-statut'), env:gv('lic-env'),
+    contratId:gv('lic-contrat-link')||null, commercial:gv('lic-commercial'),
+    notes:gv('lic-notes').trim(),
+    alerte30:document.getElementById('lic-alerte30')?.checked!==false,
+    alerte7: document.getElementById('lic-alerte7')?.checked!==false,
+    alerte1: document.getElementById('lic-alerte1')?.checked!==false,
+    updatedAt:new Date().toISOString()
+  };
+  if(editId) {
+    const l=LICENCES.find(x=>x.id===editId);
+    if(l) Object.assign(l,data);
+    showToast('✅ Licence mise à jour — '+key);
+  } else {
+    // Vérifier doublons clé
+    if(LICENCES.find(x=>x.key===key)) { showToast('⚠️ Cette clé existe déjà — régénérez'); return; }
+    LICENCES.push({id:'lic_'+Date.now(),createdAt:new Date().toISOString(),...data});
+    showToast('🔑 Licence attribuée — '+key);
+    // Mettre à jour compteur ventes logiciel
+    const log=LOGICIELS.find(x=>x.nom===logiciel);
+    if(log&&data.statut==='active') { log.ventes=(log.ventes||0)+1; saveStore('logiciels'); }
+  }
+  lsSave('licences',LICENCES);
+  closeLicenceModal();
+  initLicences();
+  updateSidebarBadges();
+}
+
+function editLicence(id) { openLicenceModal(id); }
+
+function renewLicence(id) {
+  const l=LICENCES.find(x=>x.id===id);
+  if(!l) return;
+  openLicenceModal(id);
+  setTimeout(()=>{
+    // Nouvelle clé + dates repoussées
+    genLicKey();
+    const debut=new Date().toISOString().split('T')[0];
+    document.getElementById('lic-debut').value=debut;
+    document.getElementById('lic-statut').value='active';
+    document.getElementById('lic-modal-title').textContent='🔄 Renouvellement — '+l.client;
+    licAutoFillDates();
+    showToast('🔄 Renouvellement pré-rempli — vérifiez et enregistrez');
+  },100);
+}
+
+function copyClientLicKey(id) {
+  const l=LICENCES.find(x=>x.id===id);
+  if(!l) return;
+  navigator.clipboard.writeText(l.key).then(()=>showToast('📋 Clé copiée : '+l.key));
+}
+
+function deleteLicence(id) {
+  const l=LICENCES.find(x=>x.id===id);
+  if(!l||!confirm(`Supprimer la licence "${l.key}" pour ${l.client} ?`)) return;
+  LICENCES=LICENCES.filter(x=>x.id!==id);
+  lsSave('licences',LICENCES);
+  initLicences();
+  showToast('🗑 Licence supprimée');
+}
 
 // ═══════════════════════════════════════
 //  GÉOLOCALISATION CLIENT
