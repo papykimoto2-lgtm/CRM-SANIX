@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SANIX CRM Pro — Africa Division Technologies</title>
+<title>SANIX CRM Pro v4 — Africa Division Technologies</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -204,6 +204,8 @@ input,textarea,select{font-family:var(--font-b);outline:none}
 
 /* ─── MAP ─────────────────────────────────────── */
 #leaflet-map{height:450px;border-radius:var(--r);border:1px solid var(--border);overflow:hidden}
+.carte-layer-btn{transition:opacity .2s,background .2s}
+.carte-layer-btn:not(.active){opacity:.45;text-decoration:line-through}
 .itineraire-item{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)}
 .itineraire-step{width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
 
@@ -614,7 +616,7 @@ select.form-input{cursor:pointer}
       </div>
     </div>
     <h1 class="login-headline">Pilotez vos ventes<br><span>intelligemment.</span></h1>
-    <p class="login-desc">La plateforme CRM conçue pour les équipes commerciales d'Afrique. Pipeline, géolocalisation, rapports automatiques et bien plus.</p>
+    <p class="login-desc">La plateforme CRM conçue pour les équipes commerciales d'Afrique. Pipeline interconnecté aux clients, carte géo dynamique, rapports automatiques et bien plus.</p>
     <div class="login-feat"><div class="login-feat-icon">📊</div><div class="login-feat-text">Tableau de bord temps réel avec KPIs</div></div>
     <div class="login-feat"><div class="login-feat-icon">🎯</div><div class="login-feat-text">Pipeline Kanban drag-and-drop</div></div>
     <div class="login-feat"><div class="login-feat-icon">🗺️</div><div class="login-feat-text">Géolocalisation et itinéraires terrain</div></div>
@@ -1186,19 +1188,56 @@ select.form-input{cursor:pointer}
       <h1 class="page-title">Carte & Géolocalisation</h1>
       <p class="page-sub">Clients, prospects, commerciaux — Abidjan & environs</p>
 
-      <div class="grid-2" style="margin-bottom:16px">
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="chip" onclick="toggleLayer('clients')">🔵 Clients (18)</button>
-          <button class="chip" onclick="toggleLayer('prospects')">🟡 Prospects (14)</button>
-          <button class="chip" onclick="toggleLayer('commerciaux')">🟢 Commerciaux (3)</button>
-          <button class="chip" onclick="toggleLayer('bureau')">🔴 Bureau SANIX</button>
+      <!-- Stats géo -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px" id="carte-stats-row">
+        <div class="stat-card blue" style="padding:14px">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Clients géolocalisés</div>
+          <div style="font-size:22px;font-weight:800" id="carte-stat-clients">0</div>
         </div>
-        <div style="text-align:right">
+        <div class="stat-card orange" style="padding:14px">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Prospects géolocalisés</div>
+          <div style="font-size:22px;font-weight:800" id="carte-stat-prospects">0</div>
+        </div>
+        <div class="stat-card green" style="padding:14px">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Total sur carte</div>
+          <div style="font-size:22px;font-weight:800" id="carte-stat-total">0</div>
+        </div>
+        <div class="stat-card" style="padding:14px;--accent:#DC2626">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Sans GPS</div>
+          <div style="font-size:22px;font-weight:800;color:var(--danger)" id="carte-stat-manquants">0</div>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:12px;align-items:center">
+        <div style="display:flex;gap:8px;flex-wrap:wrap" id="carte-layer-btns">
+          <button class="chip carte-layer-btn active" id="lyr-btn-clients" onclick="toggleLayer('clients',this)">🔵 Clients (<span id="lyr-cnt-clients">0</span>)</button>
+          <button class="chip carte-layer-btn active" id="lyr-btn-prospects" onclick="toggleLayer('prospects',this)">🟡 Prospects (<span id="lyr-cnt-prospects">0</span>)</button>
+          <button class="chip carte-layer-btn active" id="lyr-btn-commerciaux" onclick="toggleLayer('commerciaux',this)">🟢 Commerciaux</button>
+          <button class="chip carte-layer-btn active" id="lyr-btn-bureau" onclick="toggleLayer('bureau',this)">🔴 Bureau SANIX</button>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-outline btn-sm" onclick="refreshMap()">🔄 Actualiser</button>
           <button class="btn btn-primary btn-sm" onclick="planItineraire()">🗺️ Planifier itinéraire</button>
         </div>
       </div>
 
+      <!-- Alerte sans GPS -->
+      <div id="carte-alert-nogeo" style="display:none;background:var(--warning-l);border:1px solid rgba(217,119,6,.25);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--warning);display:flex;align-items:center;gap:8px">
+        <span>⚠️</span>
+        <span id="carte-alert-text">Certains clients n'ont pas de coordonnées GPS. Ouvrez leur fiche pour les géolocaliser.</span>
+        <button onclick="gotoClientsMissingGeo()" class="btn btn-sm" style="margin-left:auto;background:var(--warning);color:#fff;padding:4px 10px;font-size:11px">Voir la liste →</button>
+      </div>
+
       <div id="leaflet-map"></div>
+
+      <!-- Clients sans GPS -->
+      <div class="card" style="margin-top:16px;display:none" id="carte-missing-geo-card">
+        <div class="card-header">
+          <span class="card-title">📍 Clients sans coordonnées GPS</span>
+          <span class="badge badge-warning" id="carte-missing-count">0</span>
+        </div>
+        <div id="carte-missing-list" style="max-height:200px;overflow-y:auto"></div>
+      </div>
 
       <div class="card" style="margin-top:16px">
         <div class="card-header">
@@ -2844,15 +2883,30 @@ select.form-input{cursor:pointer}
 
 <!-- ══ MODAL DEAL CRÉER / MODIFIER ══ -->
 <div id="modal-deal" class="modal-overlay hidden">
-  <div class="modal-box" style="max-width:480px">
+  <div class="modal-box" style="max-width:520px;max-height:92vh;overflow-y:auto">
     <div class="modal-close" onclick="closeDeal()">✕</div>
     <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:4px" id="deal-modal-title">➕ Nouveau Deal</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:16px" id="deal-modal-sub">Créer une opportunité commerciale</div>
     <input type="hidden" id="deal-edit-id" value="">
+    <input type="hidden" id="deal-client-id" value="">
+
+    <!-- Sélecteur client CRM -->
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">🔗 Client / Prospect CRM</label>
+      <select class="form-input" id="deal-client-sel" onchange="onDealClientSelect(this.value)">
+        <option value="">— Sélectionner dans la base CRM —</option>
+      </select>
+      <div style="margin-top:6px;display:flex;align-items:center;gap:6px">
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+        <span style="font-size:10px;color:var(--muted)">ou saisir manuellement</span>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+      </div>
+    </div>
+
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">Client / Prospect *</label>
-        <input type="text" class="form-input" id="deal-client" placeholder="Nom ou entreprise">
+        <label class="form-label">Nom / Entreprise *</label>
+        <input type="text" class="form-input" id="deal-client" placeholder="Nom ou entreprise" oninput="document.getElementById('deal-client-id').value='';document.getElementById('deal-client-sel').value=''">
       </div>
       <div class="form-group">
         <label class="form-label">Logiciel</label>
@@ -2883,6 +2937,13 @@ select.form-input{cursor:pointer}
         <option value="perdu">Perdu ✗</option>
       </select>
     </div>
+
+    <!-- Infos du client sélectionné -->
+    <div id="deal-client-info" style="display:none;background:var(--primary-l);border:1px solid rgba(37,99,235,.2);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:12px;font-size:12px">
+      <div style="font-weight:700;margin-bottom:4px;color:var(--primary)">📋 Infos client lié</div>
+      <div id="deal-client-info-body"></div>
+    </div>
+
     <div class="form-group">
       <label class="form-label">Notes</label>
       <textarea class="form-input" id="deal-notes" placeholder="Contexte, besoins..." rows="2"></textarea>
@@ -3476,7 +3537,7 @@ const LOGICIELS_SEED = [
   {
     id:'log_immo',
     nom:'ImmoSuite ERP',
-    version:'v3.2',
+    version:'v4.0',
     cat:'Immobilier',
     plateforme:'Web',
     type_licence:'Annuelle',
@@ -3899,7 +3960,7 @@ function navigate(view, el) {
     presentations:'Présentations & Démos',commandes:'Commandes Clients',contrats:'Contrats & Conventions',
     licences:'Licences Attribuées',documents:'Documents & Modèles'
   }[view] || view;
-  if(view === 'carte') setTimeout(initMap, 100);
+  if(view === 'carte') setTimeout(()=>{ initMap(); updateCarteStats(); }, 100);
   if(view === 'pipeline') setTimeout(populatePipelineFilters, 60);
   if(view === 'commissions') setTimeout(initCommissions, 50);
   if(view === 'parametrage') setTimeout(initParametrage, 50);
@@ -4368,13 +4429,17 @@ function initPipeline() {
 function dealCard(d) {
   const ini = (d.commercial||'?').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
   const logTag = (d.logiciel||'—').split(' ')[0];
+  const linkedClient = d.clientId ? CLIENTS.find(c=>c.id===d.clientId) : CLIENTS.find(c=>c.nom===d.client);
+  const geoTag = linkedClient&&linkedClient.lat&&linkedClient.lng?`<span style="font-size:9px;background:var(--teal-l);color:var(--teal);padding:1px 5px;border-radius:8px;font-weight:600">📍 GPS</span>`:'';
+  const crmTag = linkedClient?`<span style="font-size:9px;background:var(--primary-l);color:var(--primary);padding:1px 5px;border-radius:8px;font-weight:600" title="Lié à la fiche CRM">🔗 CRM</span>`:'';
   return `
   <div class="deal-card" draggable="true" id="deal-${d.id}"
     ondragstart="startDrag(event,${d.id})"
     ondragend="endDrag(event)">
     <div class="deal-tag" style="background:${d.color||'#2563EB'}22;color:${d.color||'#2563EB'}">${logTag}</div>
-    <div class="deal-name">${d.client}</div>
+    <div class="deal-name" ${linkedClient?`onclick="event.stopPropagation();showClientDetail(${linkedClient.id})" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Ouvrir fiche CRM"`:''}>${d.client}</div>
     <div class="deal-sub">📅 ${d.date||''}</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin:4px 0">${crmTag}${geoTag}</div>
     <div class="deal-footer">
       <span class="deal-val">${((d.valeur||0)/1000).toFixed(0)}k FCFA</span>
       <div class="deal-avatar" style="background:${d.color||'#2563EB'}" title="${d.commercial||''}">${ini}</div>
@@ -4395,7 +4460,31 @@ function dropDeal(e,stage) {
   document.getElementById('col-'+stage).classList.remove('drag-active');
   if(!draggedId) return;
   const deal = DEALS.find(d=>d.id===draggedId);
-  if(deal){ deal.stage=stage; initPipeline(); }
+  if(deal){
+    const prevStage = deal.stage;
+    deal.stage = stage;
+    // Enregistrer dans l'historique du deal
+    if(prevStage && prevStage !== stage) {
+      if(!deal.history) deal.history=[];
+      const stageLabels={prospect:'Prospect',contact:'Contact',demo:'Démo',proposition:'Proposition',negociation:'Négociation',gagne:'Gagné ✓',perdu:'Perdu ✗'};
+      deal.history.push({date:new Date().toISOString(),type:'stage_change',ico:'🔄',label:"Glissement pipeline",note:`${stageLabels[prevStage]||prevStage} → ${stageLabels[stage]||stage}`,resultat:'',commercial:deal.commercial||''});
+    }
+    // Si passé en Gagné et lié à un prospect, proposer conversion
+    if(stage==='gagne' && deal.clientId) {
+      const linked = CLIENTS.find(c=>c.id===deal.clientId);
+      if(linked && linked.statut==='prospect') {
+        setTimeout(()=>{
+          if(confirm(`🎉 Deal "${deal.client}" passé en Gagné !\n\nConvertir "${linked.nom}" de Prospect en Client actif ?`)) {
+            linked.statut='client'; linked.updated_at=new Date().toISOString();
+            saveStore('clients'); renderClients(getFilteredClients());
+            showToast('✅ '+linked.nom+' converti en Client actif !');
+          }
+        }, 200);
+      }
+    }
+    saveStore('deals');
+    initPipeline();
+  }
 }
 
 // ═══════════════════════════════════════
@@ -5292,32 +5381,187 @@ function populateCommerciaux() {
 }
 
 // ═══════════════════════════════════════
-//  MAP LEAFLET
+//  MAP LEAFLET — DYNAMIC WITH REAL CLIENTS
 // ═══════════════════════════════════════
 let leafletMap = null;
+let _mapLayers = { clients:true, prospects:true, commerciaux:true, bureau:true };
+let _mapMarkers = []; // {type, marker, clientId}
+
+const SANIX_OFFICE = { lat:5.3048, lng:-4.0167, nom:'Bureau SANIX Africa', quartier:'Songon Agban, Abidjan' };
+
 function initMap() {
   if(typeof L === 'undefined') {
     const el = document.getElementById('leaflet-map');
     if(el) el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)"><div style="font-size:32px;margin-bottom:8px">🗺️</div>Carte indisponible — vérifiez votre connexion internet<br><button onclick="initMap()" class="btn btn-outline btn-sm" style="margin-top:10px">🔄 Réessayer</button></div>';
     return;
   }
-  if(leafletMap) { leafletMap.invalidateSize(); return; }
+  updateCarteStats();
+  if(leafletMap) {
+    leafletMap.invalidateSize();
+    refreshMapMarkers();
+    return;
+  }
   leafletMap = L.map('leaflet-map').setView([5.3463, -4.0080], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(leafletMap);
-  const colors = {bureau:'#DC2626',client:'#2563EB',prospect:'#D97706',commercial:'#059669'};
-  ABIDJAN_LOCS.forEach(loc=>{
-    const color = colors[loc.type]||'#6B7280';
-    const icon = L.divIcon({html:`<div style="width:28px;height:28px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-size:12px">${loc.icon}</div>`,iconSize:[28,28],className:''});
-    L.marker([loc.lat,loc.lng],{icon}).addTo(leafletMap).bindPopup(`<strong>${loc.nom}</strong><br><small style="color:${color}">${loc.type}</small>`);
-  });
-  // Itinéraire
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(leafletMap);
+  refreshMapMarkers();
   initItineraire();
 }
+
+function refreshMapMarkers() {
+  if(!leafletMap) return;
+  // Supprimer anciens marqueurs
+  _mapMarkers.forEach(m=>{ try{leafletMap.removeLayer(m.marker);}catch(e){} });
+  _mapMarkers = [];
+
+  // ── Bureau SANIX (toujours en rouge) ──
+  if(_mapLayers.bureau) {
+    const ico = L.divIcon({html:`<div style="width:32px;height:32px;border-radius:8px;background:#DC2626;border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:15px">🏢</div>`,iconSize:[32,32],iconAnchor:[16,16],className:''});
+    const m = L.marker([SANIX_OFFICE.lat,SANIX_OFFICE.lng],{icon:ico})
+      .addTo(leafletMap)
+      .bindPopup(`<div style="min-width:160px"><strong style="font-size:13px">🏢 ${SANIX_OFFICE.nom}</strong><br><small style="color:#DC2626">Siège social</small><br><small style="color:#666">${SANIX_OFFICE.quartier}</small></div>`);
+    _mapMarkers.push({type:'bureau',marker:m,clientId:null});
+  }
+
+  // ── Clients avec GPS ──
+  const clients = CLIENTS.filter(c=>c.statut==='client'&&c.lat&&c.lng);
+  if(_mapLayers.clients) {
+    clients.forEach(c=>{
+      const ico = L.divIcon({html:`<div style="width:30px;height:30px;border-radius:50%;background:#2563EB;border:3px solid #fff;box-shadow:0 2px 6px rgba(37,99,235,.4);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff">${clientInitials(c.nom)}</div>`,iconSize:[30,30],iconAnchor:[15,15],className:''});
+      const deals = DEALS.filter(d=>d.clientId===c.id||d.client===c.nom);
+      const dealsHtml = deals.length?`<div style="margin-top:6px;padding-top:6px;border-top:1px solid #eee"><small style="font-weight:700">Deals:</small> ${deals.map(d=>`<small style="color:${STAGES.find(s=>s.id===d.stage)?.color||'#666'}">${d.logiciel||d.client} · ${(d.valeur/1000).toFixed(0)}k</small>`).join('<br>')}</div>`:'';
+      const m = L.marker([c.lat,c.lng],{icon:ico})
+        .addTo(leafletMap)
+        .bindPopup(`<div style="min-width:180px">
+          <strong style="font-size:13px">✅ ${c.nom}</strong><br>
+          <small style="color:#2563EB">Client actif</small><br>
+          ${c.secteur?`<small style="color:#666">📁 ${c.secteur}</small><br>`:''}
+          ${c.phone?`<small>📞 ${c.phone}</small><br>`:''}
+          ${c.adresse?`<small>📍 ${c.adresse}</small>`:''}
+          ${dealsHtml}
+          <div style="margin-top:8px"><button onclick="leafletMap.closePopup();showClientDetail(${c.id})" style="padding:4px 10px;background:#2563EB;color:#fff;border:none;border-radius:5px;font-size:11px;cursor:pointer;width:100%">Ouvrir fiche →</button></div>
+        </div>`);
+      _mapMarkers.push({type:'client',marker:m,clientId:c.id});
+    });
+  }
+
+  // ── Prospects avec GPS ──
+  const prospects = CLIENTS.filter(c=>c.statut==='prospect'&&c.lat&&c.lng);
+  if(_mapLayers.prospects) {
+    prospects.forEach(c=>{
+      const score = aiProspectScore(c);
+      const sColor = score>=70?'#059669':score>=40?'#D97706':'#DC2626';
+      const ico = L.divIcon({html:`<div style="width:30px;height:30px;border-radius:50%;background:#D97706;border:3px solid #fff;box-shadow:0 2px 6px rgba(217,119,6,.4);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff">🎯</div>`,iconSize:[30,30],iconAnchor:[15,15],className:''});
+      const m = L.marker([c.lat,c.lng],{icon:ico})
+        .addTo(leafletMap)
+        .bindPopup(`<div style="min-width:180px">
+          <strong style="font-size:13px">🎯 ${c.nom}</strong><br>
+          <small style="color:#D97706">Prospect actif</small>
+          <span style="float:right;background:${sColor};color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700">${score}%</span><br>
+          ${c.secteur?`<small style="color:#666">📁 ${c.secteur}</small><br>`:''}
+          ${c.phone?`<small>📞 ${c.phone}</small><br>`:''}
+          ${c.adresse?`<small>📍 ${c.adresse}</small>`:''}
+          <div style="margin-top:8px;display:flex;gap:4px">
+            <button onclick="leafletMap.closePopup();showClientDetail(${c.id})" style="flex:1;padding:4px 6px;background:#D97706;color:#fff;border:none;border-radius:5px;font-size:11px;cursor:pointer">Voir fiche</button>
+            <button onclick="leafletMap.closePopup();openDealFromClient(${c.id})" style="flex:1;padding:4px 6px;background:#2563EB;color:#fff;border:none;border-radius:5px;font-size:11px;cursor:pointer">+ Deal</button>
+          </div>
+        </div>`);
+      _mapMarkers.push({type:'prospect',marker:m,clientId:c.id});
+    });
+  }
+
+  // ── Équipe commerciale ──
+  if(_mapLayers.commerciaux) {
+    EQUIPE.filter(m=>m.lat&&m.lng).forEach(membre=>{
+      const ico = L.divIcon({html:`<div style="width:30px;height:30px;border-radius:8px;background:#059669;border:3px solid #fff;box-shadow:0 2px 6px rgba(5,150,105,.4);display:flex;align-items:center;justify-content:center;font-size:13px">👤</div>`,iconSize:[30,30],iconAnchor:[15,15],className:''});
+      const m = L.marker([membre.lat,membre.lng],{icon:ico})
+        .addTo(leafletMap)
+        .bindPopup(`<strong>👤 ${membre.nom}</strong><br><small style="color:#059669">${membre.role||'Commercial'}</small>`);
+      _mapMarkers.push({type:'commercial',marker:m,clientId:null});
+    });
+  }
+
+  updateCarteStats();
+  initItineraire();
+}
+
+function refreshMap() {
+  if(leafletMap) {
+    leafletMap.invalidateSize();
+    refreshMapMarkers();
+    showToast('🗺️ Carte mise à jour — '+_mapMarkers.length+' marqueur(s)');
+  } else {
+    initMap();
+  }
+}
+
+function toggleLayer(type, btn) {
+  _mapLayers[type] = !_mapLayers[type];
+  if(btn) btn.classList.toggle('active', _mapLayers[type]);
+  refreshMapMarkers();
+}
+
+function updateCarteStats() {
+  const geoClients   = CLIENTS.filter(c=>c.statut==='client'&&c.lat&&c.lng).length;
+  const geoProspects = CLIENTS.filter(c=>c.statut==='prospect'&&c.lat&&c.lng).length;
+  const total = geoClients + geoProspects;
+  const manquants = CLIENTS.filter(c=>c.statut!=='inactif'&&(!c.lat||!c.lng)).length;
+
+  const _s=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  _s('carte-stat-clients',   geoClients);
+  _s('carte-stat-prospects', geoProspects);
+  _s('carte-stat-total',     total);
+  _s('carte-stat-manquants', manquants);
+  _s('lyr-cnt-clients',  CLIENTS.filter(c=>c.statut==='client'&&c.lat&&c.lng).length);
+  _s('lyr-cnt-prospects',CLIENTS.filter(c=>c.statut==='prospect'&&c.lat&&c.lng).length);
+
+  // Alerte clients sans GPS
+  const alertDiv = document.getElementById('carte-alert-nogeo');
+  if(alertDiv) {
+    if(manquants>0) {
+      alertDiv.style.display='flex';
+      document.getElementById('carte-alert-text').textContent=`${manquants} contact(s) sans coordonnées GPS. Ouvrez leur fiche pour les géolocaliser.`;
+    } else {
+      alertDiv.style.display='none';
+    }
+  }
+
+  // Liste clients sans GPS
+  const missingCard = document.getElementById('carte-missing-geo-card');
+  const missingList = document.getElementById('carte-missing-list');
+  const missingCount= document.getElementById('carte-missing-count');
+  if(missingCard&&missingList) {
+    const missing = CLIENTS.filter(c=>c.statut!=='inactif'&&(!c.lat||!c.lng));
+    if(missing.length>0) {
+      missingCard.style.display='';
+      if(missingCount) missingCount.textContent = missing.length;
+      missingList.innerHTML = missing.map(c=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border)">
+          <div style="width:32px;height:32px;border-radius:8px;background:${clientColor(c.id)};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px;flex-shrink:0">${clientInitials(c.nom)}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.nom}</div>
+            <div style="font-size:11px;color:var(--muted)">${c.adresse||'Adresse non renseignée'} · ${c.phone||''}</div>
+          </div>
+          <button onclick="editClient(${c.id})" style="flex-shrink:0;padding:5px 10px;background:var(--teal-l);color:var(--teal);border:1px solid rgba(13,148,136,.25);border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">📍 Géolocaliser</button>
+        </div>`).join('');
+    } else {
+      missingCard.style.display='none';
+    }
+  }
+}
+
+function gotoClientsMissingGeo() {
+  const missingCard = document.getElementById('carte-missing-geo-card');
+  if(missingCard) { missingCard.style.display=''; missingCard.scrollIntoView({behavior:'smooth',block:'start'}); }
+}
+
 function initItineraire() {
   const el = document.getElementById('itineraire-list');
+  const cntEl = document.getElementById('itin-count');
   if(!el) return;
-  // Itinéraire basé sur clients prospects actifs
-  const prospects = CLIENTS.filter(c=>c.statut==='prospect').slice(0,5);
+  // Prospects avec GPS en priorité, puis sans GPS
+  const withGeo = CLIENTS.filter(c=>c.statut==='prospect'&&c.lat&&c.lng);
+  const prospects = withGeo.length ? withGeo.slice(0,5) : CLIENTS.filter(c=>c.statut==='prospect').slice(0,5);
+  if(cntEl) cntEl.textContent = prospects.length+' visite(s)';
   if(prospects.length===0) {
     el.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:16px">Aucun prospect actif pour planifier un itinéraire</div>';
     return;
@@ -5326,17 +5570,29 @@ function initItineraire() {
   const badges = ['badge-primary','badge-warning','badge-warning','badge-success','badge-primary'];
   const types  = ['Démo','Relance','1ère visite','Signature','Suivi'];
   el.innerHTML = prospects.map((c,i)=>`
-    <div class="itineraire-item">
+    <div class="itineraire-item" onclick="showClientDetail(${c.id})" style="cursor:pointer">
       <div class="itineraire-step">${i+1}</div>
-      <div>
+      <div style="flex:1;min-width:0">
         <div style="font-weight:600;font-size:13px">${c.nom}</div>
-        <div style="font-size:11px;color:var(--muted)">${heures[i]||'—'} — ${c.commercial||''}</div>
+        <div style="font-size:11px;color:var(--muted)">${heures[i]||'—'} — ${c.commercial||''} ${c.adresse?'· '+c.adresse.split(',')[0]:''}</div>
       </div>
-      <span class="badge ${badges[i]||'badge-muted'}" style="margin-left:auto">${types[i]||'Visite'}</span>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        <span class="badge ${badges[i]||'badge-muted'}">${types[i]||'Visite'}</span>
+        ${c.lat&&c.lng?`<button onclick="event.stopPropagation();leafletMap&&leafletMap.flyTo([${c.lat},${c.lng}],16)" style="font-size:10px;padding:2px 6px;background:var(--teal-l);color:var(--teal);border:1px solid rgba(13,148,136,.3);border-radius:4px;cursor:pointer">📍 Voir sur carte</button>`:`<span style="font-size:10px;color:var(--danger)">⚠️ Sans GPS</span>`}
+      </div>
     </div>`).join('');
 }
-function toggleLayer(type) { showToast('Filtre '+type+' — Disponible en version connectée'); }
-function planItineraire() { showToast('⏳ Optimisation itinéraire IA — Bientôt disponible'); }
+
+function planItineraire() {
+  const withGeo = CLIENTS.filter(c=>c.statut==='prospect'&&c.lat&&c.lng);
+  if(withGeo.length===0) { showToast('⚠️ Aucun prospect géolocalisé — ajoutez des coordonnées GPS'); return; }
+  showToast(`🗺️ Itinéraire optimisé — ${withGeo.length} prospect(s) géolocalisé(s)`);
+  initItineraire();
+  if(leafletMap&&withGeo.length>0) {
+    const group = L.featureGroup(withGeo.map(c=>L.marker([c.lat,c.lng])));
+    leafletMap.fitBounds(group.getBounds().pad(.15));
+  }
+}
 
 // ═══════════════════════════════════════
 //  PLANNING / GANTT
@@ -5605,29 +5861,92 @@ function renderMsgHistory() {
 function saveTemplate() { showToast('✅ Template sauvegardé !'); }
 
 // ─── DEAL MODAL ─────────────────────────
-function openNewDeal() {
+// ─── POPULATE DEAL CLIENT SELECT ────────
+function populateDealClientSelect(selectedId) {
+  const sel = document.getElementById('deal-client-sel');
+  if(!sel) return;
+  const sorted = [...CLIENTS].sort((a,b)=>a.nom.localeCompare(b.nom));
+  sel.innerHTML = '<option value="">— Sélectionner dans la base CRM —</option>' +
+    sorted.map(c=>{
+      const ico = c.statut==='client'?'✅':'🎯';
+      const geo = c.lat&&c.lng?' 📍':'';
+      return `<option value="${c.id}"${c.id===selectedId?' selected':''}>${ico} ${c.nom}${geo} — ${c.secteur||c.statut}</option>`;
+    }).join('');
+}
+
+function onDealClientSelect(clientIdStr) {
+  const clientId = parseInt(clientIdStr)||null;
+  const infoDiv = document.getElementById('deal-client-info');
+  const infoBody = document.getElementById('deal-client-info-body');
+  document.getElementById('deal-client-id').value = clientId||'';
+  if(!clientId||clientId==='') { if(infoDiv) infoDiv.style.display='none'; return; }
+  const c = CLIENTS.find(x=>x.id===clientId);
+  if(!c) { if(infoDiv) infoDiv.style.display='none'; return; }
+  // Auto-remplissage
+  document.getElementById('deal-client').value = c.nom;
+  if(c.logiciel) { const ls=document.getElementById('deal-logiciel'); if(ls) ls.value=c.logiciel; }
+  if(c.commercial) { const cs=document.getElementById('deal-commercial'); if(cs) cs.value=c.commercial; }
+  if(c.valeur) { const vs=document.getElementById('deal-val'); if(vs&&!vs.value) vs.value=c.valeur; }
+  // Stage auto selon statut
+  const stageEl = document.getElementById('deal-stage');
+  if(stageEl && !document.getElementById('deal-edit-id').value) {
+    const stageMap = {prospect:'prospect',client:'gagne'};
+    stageEl.value = stageMap[c.statut]||'prospect';
+  }
+  // Infos client
+  const existingDeals = DEALS.filter(d=>d.clientId===c.id||d.client===c.nom);
+  if(infoDiv&&infoBody) {
+    infoDiv.style.display='';
+    infoBody.innerHTML = `
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        ${c.phone?`<span>📞 ${c.phone}</span>`:''}
+        ${c.email?`<span>📧 ${c.email}</span>`:''}
+        ${c.adresse?`<span>📍 ${c.adresse.split(',')[0]}</span>`:''}
+        ${c.lat&&c.lng?`<span style="color:var(--teal)">🛰️ GPS disponible</span>`:`<span style="color:var(--danger)">⚠️ Pas de GPS</span>`}
+      </div>
+      ${existingDeals.length?`<div style="margin-top:6px;color:var(--muted)">Deals existants : ${existingDeals.map(d=>`<strong>${STAGES.find(s=>s.id===d.stage)?.label||d.stage}</strong> · ${(d.valeur/1000).toFixed(0)}k`).join(' | ')}</div>`:''}`;
+  }
+}
+
+function openNewDeal(preClientId) {
   // Reset formulaire
   document.getElementById('deal-edit-id').value = '';
+  document.getElementById('deal-client-id').value = '';
   document.getElementById('deal-modal-title').textContent = '➕ Nouveau Deal';
   document.getElementById('deal-modal-sub').textContent = 'Créer une opportunité commerciale';
   document.getElementById('deal-save-btn').textContent = '💾 Enregistrer';
   ['deal-client','deal-notes'].forEach(id=>{ var e=document.getElementById(id); if(e) e.value=''; });
   var dv = document.getElementById('deal-val'); if(dv) dv.value='';
   var dstage = document.getElementById('deal-stage'); if(dstage) dstage.value='prospect';
+  const infoDiv = document.getElementById('deal-client-info'); if(infoDiv) infoDiv.style.display='none';
+  populateDealClientSelect(preClientId||null);
   document.getElementById('modal-deal').classList.remove('hidden');
-  setTimeout(function(){ var e=document.getElementById('deal-client'); if(e) e.focus(); }, 100);
+  if(preClientId) {
+    document.getElementById('deal-client-sel').value = preClientId;
+    onDealClientSelect(preClientId);
+  } else {
+    setTimeout(function(){ var e=document.getElementById('deal-client'); if(e) e.focus(); }, 100);
+  }
+}
+
+// Helper: ouvrir un deal pré-rempli depuis une fiche client
+function openDealFromClient(clientId) {
+  navigate('pipeline', null);
+  setTimeout(()=>openNewDeal(clientId), 200);
 }
 
 function editDeal(id) {
   var d = DEALS.find(function(x){ return x.id===id; });
   if(!d) return;
   document.getElementById('deal-edit-id').value = id;
+  document.getElementById('deal-client-id').value = d.clientId||'';
   document.getElementById('deal-modal-title').textContent = '✏️ Modifier le Deal';
   document.getElementById('deal-modal-sub').textContent = 'Mettre à jour l\'opportunité';
   document.getElementById('deal-save-btn').textContent = '💾 Mettre à jour';
   document.getElementById('deal-client').value = d.client||'';
   document.getElementById('deal-val').value = d.valeur||'';
   document.getElementById('deal-notes').value = d.notes||'';
+  const infoDiv = document.getElementById('deal-client-info'); if(infoDiv) infoDiv.style.display='none';
   // Logiciel
   var logSel = document.getElementById('deal-logiciel');
   if(logSel) { logSel.value = d.logiciel||''; }
@@ -5637,6 +5956,12 @@ function editDeal(id) {
   // Stage
   var stageSel = document.getElementById('deal-stage');
   if(stageSel) { stageSel.value = d.stage||'prospect'; }
+  // Client CRM select
+  populateDealClientSelect(d.clientId||null);
+  if(d.clientId) {
+    document.getElementById('deal-client-sel').value = d.clientId;
+    onDealClientSelect(d.clientId);
+  }
   document.getElementById('modal-deal').classList.remove('hidden');
   setTimeout(function(){ var e=document.getElementById('deal-client'); if(e) e.focus(); }, 100);
 }
@@ -5645,6 +5970,7 @@ function closeDeal() { document.getElementById('modal-deal').classList.add('hidd
 
 function saveDeal() {
   var client     = document.getElementById('deal-client').value.trim();
+  var clientId   = parseInt(document.getElementById('deal-client-id').value)||null;
   var logiciel   = document.getElementById('deal-logiciel').value;
   var valeur     = parseInt(document.getElementById('deal-val').value)||500000;
   var commercial = document.getElementById('deal-commercial').value;
@@ -5652,11 +5978,24 @@ function saveDeal() {
   var notes      = document.getElementById('deal-notes').value.trim();
   var editId     = document.getElementById('deal-edit-id').value;
   if(!client){ showToast('❌ Nom client obligatoire'); document.getElementById('deal-client').focus(); return; }
+
+  // Si client sélectionné depuis CRM, mettre à jour son statut si deal gagné
+  if(clientId && stage==='gagne') {
+    const c = CLIENTS.find(x=>x.id===clientId);
+    if(c && c.statut==='prospect') {
+      if(confirm(`Convertir "${c.nom}" de Prospect en Client actif ?`)) {
+        c.statut='client'; c.updated_at=new Date().toISOString();
+        saveStore('clients');
+        showToast('✅ '+c.nom+' converti en Client actif !');
+      }
+    }
+  }
+
   if(editId) {
     var d = DEALS.find(function(x){ return x.id===parseInt(editId)||x.id===editId; });
     if(d) {
       const prevStage = d.stage;
-      d.client=client; d.logiciel=logiciel; d.valeur=valeur; d.commercial=commercial; d.stage=stage; d.notes=notes;
+      d.client=client; d.clientId=clientId; d.logiciel=logiciel; d.valeur=valeur; d.commercial=commercial; d.stage=stage; d.notes=notes;
       if(prevStage && prevStage !== stage) {
         if(!d.history) d.history=[];
         const stageLabels={prospect:'Prospect',contact:'Contact',demo:'Démo',proposition:'Proposition',negociation:'Négociation',gagne:'Gagné ✓',perdu:'Perdu ✗'};
@@ -5667,7 +6006,7 @@ function saveDeal() {
   } else {
     var newId = DEALS.length ? Math.max.apply(null, DEALS.map(function(x){return parseInt(x.id)||0;}))+1 : 1;
     const initHistory = [{date:new Date().toISOString(),type:'creation',ico:'🎯',label:'Deal créé',note:'Deal ajouté au pipeline — étape : '+(({prospect:'Prospect',contact:'Contact',demo:'Démo',proposition:'Proposition',negociation:'Négociation',gagne:'Gagné ✓',perdu:'Perdu ✗'})[stage]||stage),resultat:'',commercial:commercial}];
-    DEALS.push({id:newId, client:client, logiciel:logiciel, valeur:valeur, commercial:commercial, stage:stage, notes:notes, color:'#2563EB', date:new Date().toLocaleDateString('fr-FR'), history:initHistory});
+    DEALS.push({id:newId, client:client, clientId:clientId, logiciel:logiciel, valeur:valeur, commercial:commercial, stage:stage, notes:notes, color:'#2563EB', date:new Date().toLocaleDateString('fr-FR'), history:initHistory});
     showToast('✅ Deal créé — '+client);
   }
   closeDeal();
@@ -5780,6 +6119,7 @@ function renderClients(list) {
         <div class="client-card-actions" onclick="event.stopPropagation()">
           <button onclick="showQR(${c.id})">🪪 QR</button>
           <button onclick="editClient(${c.id})">✏️ Modifier</button>
+          <button onclick="openDealFromClient(${c.id})" style="color:var(--primary)">💼 Deal</button>
           <button onclick="whatsappClient(${c.id})">📱 WA</button>
           <button onclick="deleteClient(${c.id})" style="color:var(--danger)">🗑</button>
         </div>
@@ -5883,6 +6223,8 @@ function saveClient() {
   closeClientModal();
   renderClients(getFilteredClients());
   showToast(`✅ ${editId?'Client mis à jour':'Nouveau client ajouté'} — ${nom}`);
+  // Rafraîchir carte si ouverte
+  if(lat&&lng&&leafletMap) { setTimeout(refreshMapMarkers, 300); }
 }
 
 function deleteClient(id) {
@@ -5905,6 +6247,7 @@ function convertProspectToClient(id) {
   c.updated_at = new Date().toISOString();
   saveStore('clients');
   renderClients(getFilteredClients());
+  if(leafletMap) setTimeout(refreshMapMarkers, 200);
   showToast(`✅ "${c.nom}" converti en Client actif !`);
 }
 
@@ -5981,6 +6324,49 @@ function showClientDetail(id) {
           '<div style="padding:10px;text-align:center;color:var(--muted);font-size:11px">Aucune interaction enregistrée</div>'}
       </div>
     </div>
+
+    <!-- PIPELINE DEALS LIÉS -->
+    ${(()=>{
+      const linkedDeals = DEALS.filter(d=>d.clientId===c.id||(d.client&&d.client.toLowerCase()===c.nom.toLowerCase()));
+      if(!linkedDeals.length) return `
+        <div style="margin-bottom:12px;padding:10px 12px;background:var(--surface2);border-radius:var(--r-sm);border:1px dashed var(--border);display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:12px;color:var(--muted)">💼 Aucun deal dans le pipeline</div>
+          <button onclick="document.getElementById('modal-client-detail').classList.add('hidden');openDealFromClient(${c.id})" class="btn btn-sm" style="background:var(--primary);color:#fff;font-size:11px;padding:5px 10px">+ Créer deal</button>
+        </div>`;
+      return `
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">💼 Pipeline (${linkedDeals.length} deal${linkedDeals.length>1?'s':''})</div>
+            <button onclick="document.getElementById('modal-client-detail').classList.add('hidden');openDealFromClient(${c.id})" style="font-size:10px;padding:3px 8px;background:var(--primary-l);color:var(--primary);border:1px solid rgba(37,99,235,.3);border-radius:4px;cursor:pointer">+ Nouveau deal</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            ${linkedDeals.map(d=>{
+              const st=STAGES.find(s=>s.id===d.stage)||{label:d.stage,color:'#6B7280'};
+              return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface2);border-radius:var(--r-sm);border-left:3px solid ${st.color}">
+                <span style="font-size:11px;flex:1;font-weight:600">${d.logiciel||d.client}</span>
+                <span style="font-size:11px;font-weight:700">${((d.valeur||0)/1000).toFixed(0)}k FCFA</span>
+                <span style="font-size:10px;background:${st.color}22;color:${st.color};padding:2px 7px;border-radius:10px;font-weight:600">${st.label}</span>
+                <button onclick="editDeal(${d.id});document.getElementById('modal-client-detail').classList.add('hidden')" style="font-size:10px;padding:2px 7px;background:var(--primary-l);color:var(--primary);border:none;border-radius:4px;cursor:pointer">✏️</button>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+    })()}
+
+    <!-- GÉOLOCALISATION -->
+    ${c.lat&&c.lng?`
+      <div style="margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">🛰️ Position GPS</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+          <span style="font-size:11px;color:var(--teal);font-weight:600">📍 ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}</span>
+          <button onclick="navigate('carte',null);document.getElementById('modal-client-detail').classList.add('hidden');setTimeout(()=>{if(leafletMap)leafletMap.flyTo([${c.lat},${c.lng}],16)},400)" style="font-size:10px;padding:3px 9px;background:var(--teal-l);color:var(--teal);border:1px solid rgba(13,148,136,.3);border-radius:4px;cursor:pointer">🗺️ Voir sur carte</button>
+        </div>
+        <div id="detail-geo-map-${c.id}" style="height:150px;border-radius:var(--r-sm);border:1px solid var(--border);overflow:hidden"></div>
+      </div>`:`
+      <div style="margin-bottom:12px;padding:8px 12px;background:var(--danger-l);border-radius:var(--r-sm);border:1px solid rgba(220,38,38,.15);display:flex;align-items:center;gap:8px;font-size:12px">
+        <span>⚠️</span><span style="flex:1;color:var(--danger)">Pas de coordonnées GPS — ce contact n'apparaît pas sur la carte</span>
+        <button onclick="document.getElementById('modal-client-detail').classList.add('hidden');editClient(${c.id})" style="font-size:10px;padding:3px 9px;background:var(--danger);color:#fff;border:none;border-radius:4px;cursor:pointer">📍 Géolocaliser</button>
+      </div>`}
 
     <!-- ACTIONS RAPIDES -->
     <div style="display:flex;gap-6px;flex-wrap:wrap;gap:6px;margin-bottom:4px">
@@ -6059,6 +6445,8 @@ function populatePipelineFilters() {
       logs.map(l=>`<option value="${l}">${l}</option>`).join('');
   }
   updatePipelineTotal(DEALS);
+  // Synchroniser la liste clients pour le formulaire deal
+  populateDealClientSelect(null);
 }
 
 // ─── INIT CLIENTS ───────────────────────
