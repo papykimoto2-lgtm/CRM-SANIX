@@ -202,18 +202,6 @@ input,textarea,select{font-family:var(--font-b);outline:none}
 .team-kpi-val{font-family:var(--font-h);font-weight:700;font-size:16px}
 .team-kpi-lbl{font-size:10px;color:var(--muted)}
 
-/* ─── MAP PARAMETRAGE ─────────────────────────────────── */
-#cfg-geo-map .leaflet-container { font-family: var(--font-b); }
-#cfg-geo-map { transition: border-color .2s; }
-#cfg-geo-map:hover { border-color: var(--primary) !important; }
-#cfg-geo-results > div:hover { background: var(--primary-l) !important; }
-.cfg-geo-badge {
-  display:inline-flex;align-items:center;gap:5px;
-  background:var(--primary-l);color:var(--primary);
-  border:1px solid rgba(37,99,235,.2);
-  border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700
-}
-
 /* ─── MAP ─────────────────────────────────────── */
 #leaflet-map{height:450px;border-radius:var(--r);border:1px solid var(--border);overflow:hidden}
 .carte-layer-btn{transition:opacity .2s,background .2s}
@@ -773,6 +761,14 @@ select.form-input{cursor:pointer}
   <div class="sb-item" id="sb-commissions-item" onclick="navigate('commissions',this)">
     <div class="sb-icon">💰</div><span>Commissions</span>
     <span class="sb-badge warn" id="sb-comm-badge" style="display:none">0</span>
+  </div>
+
+  <div class="sb-divider"></div>
+  <div class="sb-section">⑦ Comptabilité SYSCOHADA</div>
+
+  <div class="sb-item" onclick="navigate('comptabilite',this)">
+    <div class="sb-icon">📒</div><span>Comptabilité</span>
+    <span class="sb-badge" id="sb-compta-badge" style="display:none">0</span>
   </div>
 
   <div class="sb-divider"></div>
@@ -1611,54 +1607,6 @@ select.form-input{cursor:pointer}
           <button class="btn btn-outline btn-sm" onclick="paramTab('sync',document.querySelector('#param-tabs .tab:nth-child(3)'))">☁️ Aller à Sync cloud</button>
         </div>
       </div>
-
-      <!-- GEOLOCALISATION ENTREPRISE -->
-      <div class="sync-section" style="margin-bottom:16px" id="cfg-geo-section">
-        <h3>📍 Géolocalisation de l'entreprise</h3>
-        <p style="font-size:11px;color:var(--muted);margin-bottom:14px">
-          Positionnez votre siège sur la carte. Glissez le marqueur <span style="color:var(--danger)">🔴</span> pour affiner, ou utilisez la détection automatique.
-        </p>
-        <div class="form-row" style="margin-bottom:12px">
-          <div class="form-group">
-            <label class="form-label">🌐 Latitude</label>
-            <input type="number" class="form-input" id="cfg-lat" step="0.000001" placeholder="ex : 5.3463">
-          </div>
-          <div class="form-group">
-            <label class="form-label">🌐 Longitude</label>
-            <input type="number" class="form-input" id="cfg-lng" step="0.000001" placeholder="ex : -4.0080">
-          </div>
-          <div class="form-group">
-            <label class="form-label">🔍 Zoom (1–18)</label>
-            <input type="number" class="form-input" id="cfg-zoomLevel" min="1" max="18" step="1" placeholder="14">
-          </div>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-          <button class="btn btn-primary btn-sm" onclick="cfgGeoLocate()">📡 Détecter ma position GPS</button>
-          <button class="btn btn-outline btn-sm" onclick="cfgGeoSearch()">🔍 Chercher une adresse</button>
-          <button class="btn btn-outline btn-sm" onclick="cfgGeoReset()">↺ Abidjan (défaut)</button>
-        </div>
-        <!-- Champ de recherche d'adresse -->
-        <div id="cfg-geo-search-box" style="display:none;margin-bottom:10px">
-          <div style="display:flex;gap:8px">
-            <input type="text" class="form-input" id="cfg-geo-query" placeholder="Ex : Zone Industrielle Yopougon, Abidjan" style="flex:1" onkeydown="if(event.key==='Enter')cfgGeoDoSearch()">
-            <button class="btn btn-primary btn-sm" onclick="cfgGeoDoSearch()">🔍 Rechercher</button>
-          </div>
-          <div id="cfg-geo-results" style="margin-top:8px;max-height:160px;overflow-y:auto"></div>
-        </div>
-        <!-- Carte de prévisualisation -->
-        <div style="position:relative">
-          <div id="cfg-geo-map" style="height:360px;border-radius:var(--r);border:2px solid var(--border);overflow:hidden;background:#E8F0FE"></div>
-          <div id="cfg-geo-map-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#EFF6FF;z-index:500;border-radius:var(--r);pointer-events:none">
-            <div style="text-align:center"><div style="font-size:32px;margin-bottom:8px">🗺️</div><span style="font-size:13px;color:var(--muted)">Initialisation de la carte…</span></div>
-          </div>
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:8px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;align-items:center">
-          <span>🖱️ Glissez le marqueur rouge pour affiner la position exacte</span>
-          <span id="cfg-geo-coords-display" style="font-weight:700;color:var(--primary);font-size:12px"></span>
-        </div>
-      </div>
-      <!-- /GEOLOCALISATION -->
-
       </div><!-- /param-panel-entreprise -->
 
       <!-- ── PANEL USERS (rempli par JS depuis view-users) ── -->
@@ -2036,9 +1984,111 @@ select.form-input{cursor:pointer}
       </div>
     </div>
 
+    <!-- ══ VIEW: COMPTABILITÉ SYSCOHADA ══ -->
+    <div id="view-comptabilite" class="hidden fade-in">
+      <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:8px;margin-bottom:6px">
+        <div>
+          <h1 class="page-title" style="margin-bottom:0">Comptabilité SYSCOHADA</h1>
+          <p class="page-sub">Journal · Grand livre · Balance · SIG · TVA · FEC — généré depuis vos ventes</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-outline btn-sm" onclick="comptaRegenerate()">🔄 Régénérer écritures</button>
+          <button class="btn btn-primary btn-sm" onclick="openEcritureModal()">+ Écriture manuelle</button>
+        </div>
+      </div>
+
+      <!-- Bandeau info -->
+      <div style="background:var(--primary-l);border:1px solid rgba(37,99,235,.15);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:16px;font-size:11px;color:var(--primary)">
+        📒 <strong>Comptabilité auto :</strong> chaque commande/contrat encaissé génère ses écritures SYSCOHADA (ventes 70x, TVA collectée 4431, clients 411, trésorerie 52x/57x). Référentiel : SYSCOHADA révisé · TVA 18% · Côte d'Ivoire (DGI).
+      </div>
+
+      <!-- Onglets -->
+      <div class="tabs" id="compta-tabs" style="margin-bottom:16px;overflow-x:auto;flex-wrap:nowrap">
+        <div class="tab active" onclick="comptaTab('journal',this)">📓 Journal</div>
+        <div class="tab" onclick="comptaTab('grandlivre',this)">📚 Grand livre</div>
+        <div class="tab" onclick="comptaTab('balance',this)">⚖️ Balance</div>
+        <div class="tab" onclick="comptaTab('sig',this)">📊 Compte de résultat (SIG)</div>
+        <div class="tab" onclick="comptaTab('tva',this)">🧾 Déclaration TVA</div>
+        <div class="tab" onclick="comptaTab('fec',this)">📤 Export FEC</div>
+      </div>
+
+      <!-- Filtre exercice -->
+      <div class="flex gap-2" style="margin-bottom:16px;flex-wrap:wrap;align-items:center">
+        <label style="font-size:12px;color:var(--muted);font-weight:600">Exercice :</label>
+        <select class="form-input" id="compta-exercice" style="width:auto" onchange="comptaRender()"></select>
+        <select class="form-input" id="compta-journal-filter" style="width:auto" onchange="comptaRender()">
+          <option value="">Tous journaux</option>
+          <option value="VE">VE — Ventes</option>
+          <option value="AC">AC — Achats</option>
+          <option value="BQ">BQ — Banque</option>
+          <option value="CA">CA — Caisse</option>
+          <option value="OD">OD — Opérations diverses</option>
+        </select>
+        <input type="text" class="form-input" id="compta-search" placeholder="🔍 Compte, libellé, pièce..." style="flex:1;min-width:160px" oninput="comptaRender()">
+      </div>
+
+      <!-- Stats compta -->
+      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px" id="compta-stats"></div>
+
+      <!-- Zone de contenu -->
+      <div id="compta-content"></div>
+    </div>
+
   </div><!-- /content -->
 </div><!-- /main -->
 </div><!-- /app -->
+
+<!-- ══ MODAL ÉCRITURE MANUELLE ══ -->
+<div id="modal-ecriture" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:640px;max-height:92vh;overflow-y:auto">
+    <div class="modal-close" onclick="closeEcritureModal()">✕</div>
+    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:2px">📝 Écriture comptable manuelle</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Saisie en partie double — le total débit doit égaler le total crédit</div>
+    <input type="hidden" id="ec-edit-id">
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Date *</label>
+        <input type="date" class="form-input" id="ec-date">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Journal *</label>
+        <select class="form-input" id="ec-journal">
+          <option value="OD">OD — Opérations diverses</option>
+          <option value="VE">VE — Ventes</option>
+          <option value="AC">AC — Achats</option>
+          <option value="BQ">BQ — Banque</option>
+          <option value="CA">CA — Caisse</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">N° Pièce</label>
+        <input type="text" class="form-input" id="ec-piece" placeholder="Ex: OD-2026-001">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Libellé *</label>
+        <input type="text" class="form-input" id="ec-libelle" placeholder="Description de l'opération">
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--border);margin:14px 0 10px;padding-top:10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Lignes d'écriture</div>
+    <div id="ec-lignes"></div>
+    <button class="btn btn-outline btn-sm" onclick="ecAddLigne()" style="margin-top:8px">+ Ajouter une ligne</button>
+
+    <!-- Totaux -->
+    <div style="display:flex;justify-content:flex-end;gap:20px;margin-top:14px;padding:10px;background:var(--surface2);border-radius:var(--r-sm)">
+      <div style="text-align:right"><div style="font-size:10px;color:var(--muted)">Total Débit</div><div id="ec-total-debit" style="font-weight:800;font-size:15px;color:var(--primary)">0</div></div>
+      <div style="text-align:right"><div style="font-size:10px;color:var(--muted)">Total Crédit</div><div id="ec-total-credit" style="font-weight:800;font-size:15px;color:var(--success)">0</div></div>
+      <div style="text-align:right"><div style="font-size:10px;color:var(--muted)">Équilibre</div><div id="ec-equilibre" style="font-weight:800;font-size:15px">⚠️</div></div>
+    </div>
+
+    <div class="flex gap-2" style="margin-top:14px">
+      <button class="btn btn-primary" style="flex:1" onclick="saveEcriture()">💾 Enregistrer l'écriture</button>
+      <button class="btn btn-outline" onclick="closeEcritureModal()">Annuler</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══ MODAL GÉNÉRATION DOCUMENT ══ -->
 <div id="modal-docgen" class="modal-overlay hidden">
@@ -3956,9 +4006,6 @@ const CONFIG_DEFAULT = {
   tel:'+225 ',
   email:'contact@sanix-africa.ci',
   adresse:'Abidjan, Côte d\'Ivoire',
-  lat:5.3463,       // latitude siège entreprise
-  lng:-4.0080,      // longitude siège entreprise
-  zoomLevel:14,     // niveau de zoom carte entreprise
   emoji:'🌍',
   logo:null,        // logo entreprise (base64)
   devise:'FCFA',
@@ -4021,7 +4068,7 @@ function navigate(view, el) {
     planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
     parametrage:'Paramétrage',
     presentations:'Présentations & Démos',commandes:'Commandes Clients',contrats:'Contrats & Conventions',
-    licences:'Licences Attribuées',documents:'Documents & Modèles'
+    licences:'Licences Attribuées',documents:'Documents & Modèles',comptabilite:'Comptabilité SYSCOHADA'
   }[view] || view;
   if(view === 'carte') setTimeout(()=>{ initMap(); updateCarteStats(); }, 100);
   if(view === 'pipeline') setTimeout(populatePipelineFilters, 60);
@@ -5450,18 +5497,7 @@ let leafletMap = null;
 let _mapLayers = { clients:true, prospects:true, commerciaux:true, bureau:true };
 let _mapMarkers = []; // {type, marker, clientId}
 
-// SANIX_OFFICE est maintenant dynamique — lit CONFIG à chaque appel
-function getSanixOffice() {
-  return {
-    lat : CONFIG.lat       ?? 5.3463,
-    lng : CONFIG.lng       ?? -4.0080,
-    zoom: CONFIG.zoomLevel ?? 14,
-    nom : CONFIG.raisonSociale || CONFIG.appName || 'Bureau SANIX Africa',
-    adresse : CONFIG.adresse   || 'Abidjan, Côte d\'Ivoire'
-  };
-}
-// Alias de compatibilité (lecture seule, non utilisé en écriture)
-const SANIX_OFFICE = { lat:5.3463, lng:-4.0080, nom:'Bureau SANIX Africa', quartier:'Abidjan, Côte d\'Ivoire' };
+const SANIX_OFFICE = { lat:5.3048, lng:-4.0167, nom:'Bureau SANIX Africa', quartier:'Songon Agban, Abidjan' };
 
 function initMap() {
   if(typeof L === 'undefined') {
@@ -5475,10 +5511,7 @@ function initMap() {
     refreshMapMarkers();
     return;
   }
-  leafletMap = L.map('leaflet-map').setView(
-    [CONFIG.lat ?? 5.3463, CONFIG.lng ?? -4.0080],
-    CONFIG.zoomLevel ?? 12
-  );
+  leafletMap = L.map('leaflet-map').setView([5.3463, -4.0080], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(leafletMap);
   refreshMapMarkers();
   initItineraire();
@@ -5490,19 +5523,12 @@ function refreshMapMarkers() {
   _mapMarkers.forEach(m=>{ try{leafletMap.removeLayer(m.marker);}catch(e){} });
   _mapMarkers = [];
 
-  // ── Bureau SANIX (position depuis CONFIG) ──
+  // ── Bureau SANIX (toujours en rouge) ──
   if(_mapLayers.bureau) {
-    const office = getSanixOffice();
-    const ico = L.divIcon({html:`<div style="width:32px;height:32px;border-radius:8px;background:#DC2626;border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:15px">🏭</div>`,iconSize:[32,32],iconAnchor:[16,16],className:''});
-    const m = L.marker([office.lat, office.lng],{icon:ico})
+    const ico = L.divIcon({html:`<div style="width:32px;height:32px;border-radius:8px;background:#DC2626;border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:15px">🏢</div>`,iconSize:[32,32],iconAnchor:[16,16],className:''});
+    const m = L.marker([SANIX_OFFICE.lat,SANIX_OFFICE.lng],{icon:ico})
       .addTo(leafletMap)
-      .bindPopup(`<div style="min-width:180px;font-family:Poppins,sans-serif">
-        <strong style="font-size:13px;color:#0F172A">🏭 ${office.nom}</strong><br>
-        <small style="color:#DC2626;font-weight:600">Siège social</small><br>
-        <small style="color:#64748B">📍 ${office.adresse}</small><br>
-        <small style="color:#94A3B8;font-size:10px">${office.lat.toFixed(5)}, ${office.lng.toFixed(5)}</small>
-        <div style="margin-top:6px;font-size:10px;color:#64748B">⚙️ Modifiable dans Paramétrage → Géolocalisation</div>
-      </div>`);
+      .bindPopup(`<div style="min-width:160px"><strong style="font-size:13px">🏢 ${SANIX_OFFICE.nom}</strong><br><small style="color:#DC2626">Siège social</small><br><small style="color:#666">${SANIX_OFFICE.quartier}</small></div>`);
     _mapMarkers.push({type:'bureau',marker:m,clientId:null});
   }
 
@@ -6975,6 +7001,7 @@ const LS_STORES = {
   licences:      { get:()=>LICENCES,      set:v=>{ LICENCES=v; }      },
   apporteurs:    { get:()=>APPORTEURS,    set:v=>{ APPORTEURS=v; }    },
   documents:     { get:()=>DOCUMENTS,     set:v=>{ DOCUMENTS=v; }     },
+  ecritures:     { get:()=>ECRITURES,     set:v=>{ ECRITURES=v; }     },
 };
 
 function lsSave(key, data) {
@@ -7111,9 +7138,10 @@ const SB_TABLES = {
   licences:      'crm_licences',
   apporteurs:    'crm_apporteurs',
   documents:     'crm_documents',
+  ecritures:     'crm_ecritures',
 };
 // Tables dont l'ID est une chaîne (pas un entier auto)
-const SB_STRING_ID = new Set(['logiciels','presentations','commandes','contrats','licences','apporteurs','documents']);
+const SB_STRING_ID = new Set(['logiciels','presentations','commandes','contrats','licences','apporteurs','documents','ecritures']);
 
 async function withTimeout(promise, ms=6000) {
   return Promise.race([
@@ -7207,6 +7235,7 @@ const SB_FLAT_COLS = {
   licences:      ['id','key','client','logiciel','type','debut','fin','statut'],
   apporteurs:    ['id','nom','phone','email','zone','statut','commission'],
   documents:     ['id','ref','type','client','date','contratId','html'],
+  ecritures:     ['id','date','journal','piece','libelle'],
 };
 const SB_COL_RENAME = { prixNum:'prix_num', contratId:'contrat_id', desc:'description' };
 
@@ -7561,6 +7590,17 @@ create table if not exists crm_documents (
   updated_at  timestamptz default now()
 );
 
+-- ⑫bis ÉCRITURES comptables SYSCOHADA (manuelles)
+create table if not exists crm_ecritures (
+  id          text primary key,
+  date        text,
+  journal     text,
+  piece       text,
+  libelle     text,
+  data        jsonb,            -- lignes d'écriture (compte, débit, crédit)
+  updated_at  timestamptz default now()
+);
+
 -- ⑫ CONFIG entreprise (singleton — 1 ligne)
 create table if not exists crm_config (
   id          int primary key default 1,
@@ -7582,6 +7622,7 @@ alter table crm_contrats      enable row level security;
 alter table crm_licences      enable row level security;
 alter table crm_apporteurs    enable row level security;
 alter table crm_documents     enable row level security;
+alter table crm_ecritures     enable row level security;
 alter table crm_config        enable row level security;
 
 -- ════════════════════════════════════════════════
@@ -7593,14 +7634,14 @@ begin
   for t in select unnest(array[
     'crm_deals','crm_clients','crm_deployments','crm_users_data',
     'crm_logiciels','crm_presentations','crm_commandes','crm_contrats',
-    'crm_licences','crm_apporteurs','crm_documents','crm_config'])
+    'crm_licences','crm_apporteurs','crm_documents','crm_ecritures','crm_config'])
   loop
     execute format('drop policy if exists "anon_all_%s" on %I;', t, t);
     execute format('create policy "anon_all_%s" on %I for all using (true) with check (true);', t, t);
   end loop;
 end $$;
 
--- ✅ Schéma installé. 12 tables synchronisables.`;
+-- ✅ Schéma installé. 13 tables synchronisables.`;
 
 function copySql() {
   navigator.clipboard.writeText(SQL_SCHEMA).then(()=>{
@@ -7688,17 +7729,11 @@ function initParametrage() {
   const fields = ['appName','sigle','sub','raisonSociale','rccm','cc','tel','email','adresse','emoji',
                   'devise','tva','timbre','commissionDefaut','objectifDefaut','remiseMaxDefaut'];
   fields.forEach(f=>{ const e=g('cfg-'+f); if(e) e.value = CONFIG[f]; });
-  // Géolocalisation
-  if(g('cfg-lat'))       g('cfg-lat').value       = CONFIG.lat       ?? 5.3463;
-  if(g('cfg-lng'))       g('cfg-lng').value       = CONFIG.lng       ?? -4.0080;
-  if(g('cfg-zoomLevel')) g('cfg-zoomLevel').value = CONFIG.zoomLevel ?? 14;
   g('cfg-secteurs').value = (CONFIG.secteurs||[]).join('\n');
   g('cfg-categories').value = (CONFIG.categories||[]).join('\n');
   applyCompanyLogo();
   renderStageRows();
   renderDiagnostic();
-  // Init carte géo paramétrage (délai pour que le DOM soit rendu)
-  setTimeout(initCfgGeoMap, 120);
 }
 function renderStageRows() {
   const box = document.getElementById('cfg-stages-list');
@@ -7754,12 +7789,6 @@ function saveConfigForm() {
   strs.forEach(f=>{ CONFIG[f] = g('cfg-'+f).value.trim(); });
   nums.forEach(f=>{ CONFIG[f] = parseFloat(g('cfg-'+f).value)||0; });
   if(!CONFIG.appName){ showToast('❌ Nom application obligatoire'); g('cfg-appName').focus(); return; }
-  // Géolocalisation
-  const lat = parseFloat(g('cfg-lat')?.value);
-  const lng = parseFloat(g('cfg-lng')?.value);
-  if(!isNaN(lat) && lat>=-90 && lat<=90)   CONFIG.lat = lat;
-  if(!isNaN(lng) && lng>=-180 && lng<=180) CONFIG.lng = lng;
-  CONFIG.zoomLevel = parseInt(g('cfg-zoomLevel')?.value)||14;
   CONFIG.secteurs = g('cfg-secteurs').value.split('\n').map(x=>x.trim()).filter(Boolean);
   CONFIG.categories = g('cfg-categories').value.split('\n').map(x=>x.trim()).filter(Boolean);
   const newStages = collectStages();
@@ -7768,16 +7797,6 @@ function saveConfigForm() {
   CONFIG.stages = STAGES;
   persistConfig();
   applyConfig();
-  // Mettre à jour la carte paramétrage si elle existe
-  if(_cfgGeoMap) {
-    _cfgGeoMap.setView([CONFIG.lat, CONFIG.lng], CONFIG.zoomLevel);
-    if(_cfgGeoMarker) _cfgGeoMarker.setLatLng([CONFIG.lat, CONFIG.lng]);
-  }
-  // Mettre à jour la carte principale (Carte & Géoloc) si elle existe
-  if(typeof leafletMap !== 'undefined' && leafletMap) {
-    refreshMapMarkers();
-    leafletMap.setView([CONFIG.lat, CONFIG.lng], CONFIG.zoomLevel);
-  }
   if(typeof initPipeline==='function') try{ initPipeline(); }catch(e){}
   renderDiagnostic();
   showToast('✅ Paramétrage enregistré');
@@ -8411,6 +8430,7 @@ const _extendLoadAll = () => {
   const lics = lsLoad('licences');      if(lics&&Array.isArray(lics))  LICENCES=lics;
   const apps = lsLoad('apporteurs');    if(apps&&Array.isArray(apps))  APPORTEURS=apps;
   const docs = lsLoad('documents');     if(docs&&Array.isArray(docs))  DOCUMENTS=docs;
+  const ecr  = lsLoad('ecritures');     if(ecr&&Array.isArray(ecr))   ECRITURES=ecr;
 };
 
 // ─── Navigate extension pour nouveaux modules ─
@@ -8421,6 +8441,7 @@ const _navExtensions = {
   licences:      ()=>setTimeout(initLicences,50),
   apporteurs:    ()=>setTimeout(initApporteurs,50),
   documents:     ()=>setTimeout(initDocuments,50),
+  comptabilite:  ()=>setTimeout(initComptabilite,50),
 };
 // Hook into existing navigate via event
 document.addEventListener('sanix:navigate', e=>{
@@ -8435,6 +8456,518 @@ document.addEventListener('DOMContentLoaded',()=>{
   setInterval(updateSidebarNotifications, 120000);
 });
 
+
+// ═══════════════════════════════════════
+//  COMPTABILITÉ SYSCOHADA
+// ═══════════════════════════════════════
+let ECRITURES = [];          // écritures manuelles (les auto sont régénérées)
+let _comptaTab = 'journal';
+let _comptaExercice = new Date().getFullYear();
+let _ecLignes = [];
+
+// Plan comptable SYSCOHADA — comptes utilisés par un éditeur de logiciels
+const PLAN_COMPTABLE = {
+  '411000':'Clients',
+  '401000':'Fournisseurs',
+  '4431':  'TVA facturée (collectée)',
+  '4452':  'TVA récupérable sur achats',
+  '4441':  'État, impôt sur les bénéfices',
+  '521000':'Banque',
+  '531000':'Mobile Money (Wave/Orange/MTN)',
+  '571000':'Caisse',
+  '701000':'Ventes de marchandises',
+  '706000':'Services vendus (licences, prestations)',
+  '707000':'Ventes de logiciels / produits accessoires',
+  '622000':'Rémunérations d\'intermédiaires (commissions apporteurs)',
+  '627000':'Services bancaires',
+  '6311':  'Frais sur effets / Mobile Money',
+  '445':   'État, TVA',
+};
+
+const JOURNAUX = { VE:'Ventes', AC:'Achats', BQ:'Banque', CA:'Caisse', OD:'Opérations diverses' };
+
+function comptaCompteLib(num){
+  return PLAN_COMPTABLE[num] || PLAN_COMPTABLE[num.substring(0,3)] || 'Compte '+num;
+}
+
+// ─── Génération automatique des écritures depuis les ventes ───
+function comptaGenerateAuto() {
+  const auto = [];
+  const tvaRate = (CONFIG.tva||18)/100;
+
+  // 1. COMMANDES confirmées/livrées → écriture de vente
+  COMMANDES.filter(c=>c.statut==='confirmee'||c.statut==='livree'||c.statut==='en_cours').forEach(c=>{
+    const ttc = c.ttc||0;
+    const ht  = c.htNet || Math.round(ttc/(1+tvaRate));
+    const tva = c.tva || (ttc - ht);
+    const date = c.date || new Date().toISOString().split('T')[0];
+    const piece = c.ref || 'CMD';
+    // Vente : Débit 411 Client / Crédit 706 Service + 4431 TVA
+    auto.push({
+      id:'auto_ve_'+c.id, auto:true, date, journal:'VE', piece,
+      libelle:`Vente ${c.logiciel||''} — ${c.client}`,
+      lignes:[
+        {compte:'411000', libelle:c.client, debit:ttc, credit:0},
+        {compte:'706000', libelle:'Licence/prestation '+(c.logiciel||''), debit:0, credit:ht},
+        {compte:'4431',   libelle:'TVA collectée 18%', debit:0, credit:tva},
+      ]
+    });
+    // Encaissement acompte si présent
+    if(c.acompte && c.acompte>0){
+      const cpt = '531000'; // Mobile Money par défaut
+      auto.push({
+        id:'auto_enc_'+c.id, auto:true, date, journal:'BQ', piece:piece+'-ENC',
+        libelle:`Encaissement acompte — ${c.client}`,
+        lignes:[
+          {compte:cpt,     libelle:'Encaissement '+c.client, debit:c.acompte, credit:0},
+          {compte:'411000',libelle:c.client, debit:0, credit:c.acompte},
+        ]
+      });
+    }
+  });
+
+  // 2. CONTRATS signés non liés à une commande → vente
+  CONTRATS.filter(c=>(c.statut==='signe'||c.statut==='en_cours')&&!c.cmdId).forEach(c=>{
+    const ttc = c.montant||0;
+    const ht  = Math.round(ttc/(1+tvaRate));
+    const tva = ttc - ht;
+    const date = c.date || new Date().toISOString().split('T')[0];
+    auto.push({
+      id:'auto_ctr_'+c.id, auto:true, date, journal:'VE', piece:c.ref||'CTR',
+      libelle:`${c.type==='convention'?'Convention':'Contrat'} ${c.logiciel||''} — ${c.client}`,
+      lignes:[
+        {compte:'411000', libelle:c.client, debit:ttc, credit:0},
+        {compte:'706000', libelle:'Contrat '+(c.logiciel||''), debit:0, credit:ht},
+        {compte:'4431',   libelle:'TVA collectée 18%', debit:0, credit:tva},
+      ]
+    });
+  });
+
+  // 3. COMMISSIONS apporteurs → charge + dette
+  if(typeof COMMISSIONS!=='undefined'){
+    COMMISSIONS.filter(cm=>cm.type==='apporteur').forEach(cm=>{
+      const mt = cm.montant||0;
+      if(mt<=0) return;
+      const date = cm.date || new Date().toISOString().split('T')[0];
+      auto.push({
+        id:'auto_com_'+(cm.id||Math.random()), auto:true, date, journal:'OD', piece:'COM-'+(cm.id||''),
+        libelle:`Commission apporteur ${cm.apporteur||''}`,
+        lignes:[
+          {compte:'622000', libelle:'Commission '+(cm.apporteur||''), debit:mt, credit:0},
+          {compte:'401000', libelle:'Apporteur '+(cm.apporteur||''), debit:0, credit:mt},
+        ]
+      });
+    });
+  }
+
+  return auto;
+}
+
+// Toutes les écritures (auto + manuelles)
+function comptaAllEcritures() {
+  return [...comptaGenerateAuto(), ...ECRITURES];
+}
+
+function comptaExercices() {
+  const years = new Set();
+  comptaAllEcritures().forEach(e=>{ if(e.date) years.add(parseInt(e.date.substring(0,4))); });
+  years.add(new Date().getFullYear());
+  return [...years].sort((a,b)=>b-a);
+}
+
+function initComptabilite() {
+  // Peupler exercices
+  const sel = document.getElementById('compta-exercice');
+  if(sel){
+    const ex = comptaExercices();
+    sel.innerHTML = ex.map(y=>`<option value="${y}">${y}</option>`).join('');
+    if(!ex.includes(_comptaExercice)) _comptaExercice = ex[0];
+    sel.value = _comptaExercice;
+  }
+  comptaRenderStats();
+  comptaRender();
+  // Badge
+  const n = comptaAllEcritures().filter(e=>(e.date||'').startsWith(_comptaExercice)).length;
+  const b = document.getElementById('sb-compta-badge');
+  if(b){ b.textContent=n; b.style.display=n>0?'':'none'; }
+}
+
+function comptaTab(tab, el){
+  _comptaTab = tab;
+  document.querySelectorAll('#compta-tabs .tab').forEach(t=>t.classList.remove('active'));
+  if(el) el.classList.add('active');
+  comptaRender();
+}
+
+function comptaFilteredEcritures() {
+  _comptaExercice = parseInt(document.getElementById('compta-exercice')?.value||_comptaExercice);
+  const jf = document.getElementById('compta-journal-filter')?.value||'';
+  const q  = (document.getElementById('compta-search')?.value||'').toLowerCase();
+  let list = comptaAllEcritures().filter(e=>(e.date||'').startsWith(''+_comptaExercice));
+  if(jf) list = list.filter(e=>e.journal===jf);
+  if(q)  list = list.filter(e=>(e.libelle+e.piece+e.lignes.map(l=>l.compte+l.libelle).join('')).toLowerCase().includes(q));
+  return list.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+}
+
+function comptaFmt(n){ return Math.round(n||0).toLocaleString('fr-FR'); }
+
+function comptaRenderStats() {
+  const el = document.getElementById('compta-stats');
+  if(!el) return;
+  const list = comptaAllEcritures().filter(e=>(e.date||'').startsWith(''+_comptaExercice));
+  let ca=0, tvaColl=0, charges=0;
+  list.forEach(e=>e.lignes.forEach(l=>{
+    if(l.compte.startsWith('70')) ca += l.credit;
+    if(l.compte==='4431') tvaColl += l.credit;
+    if(l.compte.startsWith('6')) charges += l.debit;
+  }));
+  const resultat = ca - charges;
+  el.innerHTML = [
+    {ico:'💰',v:comptaFmt(ca),     lbl:"Chiffre d'affaires HT", c:'var(--primary)', bg:'var(--primary-l)'},
+    {ico:'🧾',v:comptaFmt(tvaColl),lbl:'TVA collectée',          c:'var(--warning)', bg:'var(--warning-l)'},
+    {ico:'📉',v:comptaFmt(charges),lbl:'Charges',                c:'var(--danger)',  bg:'var(--danger-l)'},
+    {ico:'📈',v:comptaFmt(resultat),lbl:'Résultat',              c:resultat>=0?'var(--success)':'var(--danger)', bg:resultat>=0?'var(--success-l)':'var(--danger-l)'},
+  ].map(s=>`<div class="stat-card" style="--accent:${s.c}"><div class="stat-icon" style="background:${s.bg}">${s.ico}</div><div class="stat-val" style="color:${s.c};font-size:18px">${s.v}</div><div class="stat-label">${s.lbl}</div></div>`).join('');
+}
+
+function comptaRender() {
+  comptaRenderStats();
+  const el = document.getElementById('compta-content');
+  if(!el) return;
+  if(_comptaTab==='journal')      el.innerHTML = comptaRenderJournal();
+  else if(_comptaTab==='grandlivre') el.innerHTML = comptaRenderGrandLivre();
+  else if(_comptaTab==='balance')    el.innerHTML = comptaRenderBalance();
+  else if(_comptaTab==='sig')        el.innerHTML = comptaRenderSIG();
+  else if(_comptaTab==='tva')        el.innerHTML = comptaRenderTVA();
+  else if(_comptaTab==='fec')        el.innerHTML = comptaRenderFEC();
+}
+
+// ─── JOURNAL ─────────────────────────────
+function comptaRenderJournal() {
+  const list = comptaFilteredEcritures();
+  if(!list.length) return '<div class="card"><div style="text-align:center;color:var(--muted);padding:30px">Aucune écriture pour cet exercice. Les ventes confirmées génèrent automatiquement leurs écritures.</div></div>';
+  let totalD=0, totalC=0;
+  const rows = list.map(e=>{
+    const lignesHtml = e.lignes.map((l,i)=>{
+      totalD+=l.debit; totalC+=l.credit;
+      return `<tr style="${i===0?'border-top:2px solid var(--border)':''}">
+        ${i===0?`<td rowspan="${e.lignes.length}" style="vertical-align:top;font-size:11px;border-right:1px solid var(--border)"><strong>${e.date}</strong><br><span style="color:var(--muted)">${e.journal}</span><br><span style="color:var(--primary);font-size:10px">${e.piece||''}</span>${e.auto?'<br><span style="font-size:9px;background:var(--primary-l);color:var(--primary);padding:1px 4px;border-radius:3px">AUTO</span>':''}</td>`:''}
+        <td style="font-family:monospace;font-size:11px;font-weight:600">${l.compte}</td>
+        <td style="font-size:11px">${l.libelle||comptaCompteLib(l.compte)}</td>
+        <td style="text-align:right;font-size:12px">${l.debit?comptaFmt(l.debit):''}</td>
+        <td style="text-align:right;font-size:12px">${l.credit?comptaFmt(l.credit):''}</td>
+        ${i===0?`<td rowspan="${e.lignes.length}" style="vertical-align:top;text-align:center">${e.auto?'':`<button onclick="deleteEcriture('${e.id}')" class="btn btn-sm" style="padding:2px 6px;font-size:10px;background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2)">🗑</button>`}</td>`:''}
+      </tr>`;
+    }).join('');
+    return lignesHtml;
+  }).join('');
+  return `<div class="card"><div style="overflow-x:auto"><table class="client-table" style="min-width:680px">
+    <thead><tr><th>Date / Journal</th><th>Compte</th><th>Libellé</th><th style="text-align:right">Débit</th><th style="text-align:right">Crédit</th><th></th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr style="border-top:2px solid var(--text);font-weight:800;background:var(--surface2)">
+      <td colspan="3" style="text-align:right">TOTAUX</td>
+      <td style="text-align:right">${comptaFmt(totalD)}</td>
+      <td style="text-align:right">${comptaFmt(totalC)}</td><td></td>
+    </tr></tfoot>
+  </table></div></div>`;
+}
+
+// ─── GRAND LIVRE ─────────────────────────
+function comptaRenderGrandLivre() {
+  const list = comptaFilteredEcritures();
+  const comptes = {};
+  list.forEach(e=>e.lignes.forEach(l=>{
+    if(!comptes[l.compte]) comptes[l.compte]={debit:0,credit:0,lignes:[]};
+    comptes[l.compte].debit+=l.debit;
+    comptes[l.compte].credit+=l.credit;
+    comptes[l.compte].lignes.push({date:e.date,piece:e.piece,libelle:l.libelle||e.libelle,debit:l.debit,credit:l.credit});
+  }));
+  const sorted = Object.keys(comptes).sort();
+  if(!sorted.length) return '<div class="card"><div style="text-align:center;color:var(--muted);padding:30px">Aucun mouvement</div></div>';
+  return sorted.map(num=>{
+    const c = comptes[num];
+    const solde = c.debit - c.credit;
+    return `<div class="card" style="margin-bottom:12px">
+      <div class="card-header"><span class="card-title" style="font-family:monospace">${num} — ${comptaCompteLib(num)}</span>
+        <span class="badge ${solde>=0?'badge-primary':'badge-success'}">Solde : ${comptaFmt(Math.abs(solde))} ${solde>=0?'D':'C'}</span></div>
+      <div style="overflow-x:auto"><table class="client-table" style="min-width:500px;font-size:11px">
+        <thead><tr><th>Date</th><th>Pièce</th><th>Libellé</th><th style="text-align:right">Débit</th><th style="text-align:right">Crédit</th></tr></thead>
+        <tbody>${c.lignes.map(l=>`<tr><td>${l.date}</td><td style="color:var(--primary)">${l.piece||''}</td><td>${l.libelle}</td><td style="text-align:right">${l.debit?comptaFmt(l.debit):''}</td><td style="text-align:right">${l.credit?comptaFmt(l.credit):''}</td></tr>`).join('')}</tbody>
+        <tfoot><tr style="font-weight:700;background:var(--surface2)"><td colspan="3" style="text-align:right">Totaux</td><td style="text-align:right">${comptaFmt(c.debit)}</td><td style="text-align:right">${comptaFmt(c.credit)}</td></tr></tfoot>
+      </table></div>
+    </div>`;
+  }).join('');
+}
+
+// ─── BALANCE ─────────────────────────────
+function comptaRenderBalance() {
+  const list = comptaFilteredEcritures();
+  const comptes = {};
+  list.forEach(e=>e.lignes.forEach(l=>{
+    if(!comptes[l.compte]) comptes[l.compte]={debit:0,credit:0};
+    comptes[l.compte].debit+=l.debit;
+    comptes[l.compte].credit+=l.credit;
+  }));
+  const sorted = Object.keys(comptes).sort();
+  if(!sorted.length) return '<div class="card"><div style="text-align:center;color:var(--muted);padding:30px">Aucun mouvement</div></div>';
+  let tD=0,tC=0,tSD=0,tSC=0;
+  const rows = sorted.map(num=>{
+    const c=comptes[num];
+    const solde=c.debit-c.credit;
+    const sd=solde>0?solde:0, sc=solde<0?-solde:0;
+    tD+=c.debit; tC+=c.credit; tSD+=sd; tSC+=sc;
+    return `<tr><td style="font-family:monospace;font-weight:600">${num}</td><td>${comptaCompteLib(num)}</td>
+      <td style="text-align:right">${comptaFmt(c.debit)}</td><td style="text-align:right">${comptaFmt(c.credit)}</td>
+      <td style="text-align:right;font-weight:600">${sd?comptaFmt(sd):''}</td><td style="text-align:right;font-weight:600">${sc?comptaFmt(sc):''}</td></tr>`;
+  }).join('');
+  const equilibre = (Math.round(tSD)===Math.round(tSC));
+  return `<div class="card"><div style="overflow-x:auto"><table class="client-table" style="min-width:620px">
+    <thead><tr><th>Compte</th><th>Intitulé</th><th style="text-align:right">Mvt Débit</th><th style="text-align:right">Mvt Crédit</th><th style="text-align:right">Solde Débit</th><th style="text-align:right">Solde Crédit</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr style="font-weight:800;background:var(--surface2);border-top:2px solid var(--text)">
+      <td colspan="2" style="text-align:right">TOTAUX</td>
+      <td style="text-align:right">${comptaFmt(tD)}</td><td style="text-align:right">${comptaFmt(tC)}</td>
+      <td style="text-align:right">${comptaFmt(tSD)}</td><td style="text-align:right">${comptaFmt(tSC)}</td>
+    </tr></tfoot>
+  </table></div>
+  <div style="margin-top:12px;padding:8px 12px;background:${equilibre?'var(--success-l)':'var(--danger-l)'};border-radius:var(--r-sm);font-size:12px;color:${equilibre?'var(--success)':'var(--danger)'};font-weight:600">
+    ${equilibre?'✅ Balance équilibrée (Débit = Crédit)':'⚠️ Balance déséquilibrée — vérifiez les écritures manuelles'}
+  </div></div>`;
+}
+
+// ─── SIG / COMPTE DE RÉSULTAT ────────────
+function comptaRenderSIG() {
+  const list = comptaFilteredEcritures();
+  let ventes=0, achats=0, services=0, commissions=0, autresCharges=0;
+  list.forEach(e=>e.lignes.forEach(l=>{
+    if(l.compte.startsWith('70')) ventes += l.credit;
+    if(l.compte.startsWith('60')) achats += l.debit;
+    if(l.compte==='622000') commissions += l.debit;
+    else if(l.compte.startsWith('6')&&!l.compte.startsWith('60')) autresCharges += l.debit;
+  }));
+  const margeBrute = ventes - achats;
+  const valeurAjoutee = margeBrute - commissions - autresCharges;
+  const resultat = valeurAjoutee;
+  const row=(lbl,val,bold,color)=>`<tr style="${bold?'font-weight:800;background:var(--surface2)':''}"><td style="padding:8px">${lbl}</td><td style="text-align:right;padding:8px;${color?'color:'+color:''}">${comptaFmt(val)} FCFA</td></tr>`;
+  return `<div class="card"><div style="overflow-x:auto"><table class="client-table" style="min-width:420px">
+    <thead><tr><th>Soldes Intermédiaires de Gestion (SIG)</th><th style="text-align:right">Montant</th></tr></thead>
+    <tbody>
+      ${row("Chiffre d'affaires (ventes 70x)", ventes, true, 'var(--primary)')}
+      ${row("— Achats consommés (60x)", -achats, false)}
+      ${row("= Marge brute", margeBrute, true)}
+      ${row("— Commissions apporteurs (622)", -commissions, false)}
+      ${row("— Autres charges (61x-68x)", -autresCharges, false)}
+      ${row("= Valeur ajoutée", valeurAjoutee, true)}
+      ${row("= RÉSULTAT NET de l'exercice", resultat, true, resultat>=0?'var(--success)':'var(--danger)')}
+    </tbody>
+  </table></div>
+  <div style="margin-top:10px;font-size:11px;color:var(--muted)">SIG simplifié — référentiel SYSCOHADA. Pour un compte de résultat complet (amortissements, impôts), exportez vers votre logiciel comptable via le FEC.</div>
+  </div>`;
+}
+
+// ─── DÉCLARATION TVA ─────────────────────
+function comptaRenderTVA() {
+  const list = comptaFilteredEcritures();
+  // Par mois
+  const mois = {};
+  list.forEach(e=>{
+    const m = (e.date||'').substring(0,7);
+    if(!mois[m]) mois[m]={collectee:0, deductible:0, baseHT:0};
+    e.lignes.forEach(l=>{
+      if(l.compte==='4431') mois[m].collectee += l.credit;
+      if(l.compte==='4452') mois[m].deductible += l.debit;
+      if(l.compte.startsWith('70')) mois[m].baseHT += l.credit;
+    });
+  });
+  const moisKeys = Object.keys(mois).sort();
+  if(!moisKeys.length) return '<div class="card"><div style="text-align:center;color:var(--muted);padding:30px">Aucune TVA collectée sur cet exercice</div></div>';
+  let totColl=0, totDed=0;
+  const rows = moisKeys.map(m=>{
+    const d=mois[m]; const net=d.collectee-d.deductible;
+    totColl+=d.collectee; totDed+=d.deductible;
+    const moisNom = new Date(m+'-01').toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+    return `<tr><td style="text-transform:capitalize">${moisNom}</td>
+      <td style="text-align:right">${comptaFmt(d.baseHT)}</td>
+      <td style="text-align:right">${comptaFmt(d.collectee)}</td>
+      <td style="text-align:right">${comptaFmt(d.deductible)}</td>
+      <td style="text-align:right;font-weight:700;color:${net>=0?'var(--danger)':'var(--success)'}">${comptaFmt(net)}</td></tr>`;
+  }).join('');
+  const totNet = totColl-totDed;
+  return `<div class="card"><div style="overflow-x:auto"><table class="client-table" style="min-width:560px">
+    <thead><tr><th>Période</th><th style="text-align:right">Base HT</th><th style="text-align:right">TVA collectée</th><th style="text-align:right">TVA déductible</th><th style="text-align:right">TVA à payer</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr style="font-weight:800;background:var(--surface2);border-top:2px solid var(--text)">
+      <td>TOTAL EXERCICE</td><td></td>
+      <td style="text-align:right">${comptaFmt(totColl)}</td>
+      <td style="text-align:right">${comptaFmt(totDed)}</td>
+      <td style="text-align:right;color:${totNet>=0?'var(--danger)':'var(--success)'}">${comptaFmt(totNet)}</td>
+    </tr></tfoot>
+  </table></div>
+  <div style="margin-top:12px;padding:10px 14px;background:var(--warning-l);border-radius:var(--r-sm);font-size:11px;color:var(--warning)">
+    🧾 <strong>TVA à reverser à la DGI :</strong> ${comptaFmt(totNet)} FCFA. Déclaration mensuelle au plus tard le 15 du mois suivant (régime du réel normal en CI). TVA = 18%.
+  </div></div>`;
+}
+
+// ─── EXPORT FEC ──────────────────────────
+function comptaRenderFEC() {
+  const list = comptaFilteredEcritures();
+  return `<div class="card">
+    <div style="text-align:center;padding:20px">
+      <div style="font-size:40px;margin-bottom:10px">📤</div>
+      <div style="font-weight:700;font-size:15px;margin-bottom:6px">Fichier des Écritures Comptables (FEC)</div>
+      <div style="font-size:12px;color:var(--muted);max-width:480px;margin:0 auto 16px">
+        Le FEC est le format normalisé d'export des écritures, exigé en cas de contrôle fiscal et importable dans tout logiciel comptable (Sage, Ciel, etc.). ${list.length} écriture(s) sur l'exercice ${_comptaExercice}.
+      </div>
+      <div class="flex gap-2" style="justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" onclick="comptaExportFEC()">📥 Télécharger FEC (.txt)</button>
+        <button class="btn btn-outline btn-sm" onclick="comptaExportCSV()">📊 Export CSV (Excel)</button>
+      </div>
+    </div>
+    <div style="margin-top:16px;padding:12px;background:var(--surface2);border-radius:var(--r-sm);font-size:11px;color:var(--muted);line-height:1.7">
+      <strong>Colonnes FEC :</strong> JournalCode · JournalLib · EcritureNum · EcritureDate · CompteNum · CompteLib · PieceRef · PieceDate · EcritureLib · Debit · Credit · ValidDate
+    </div>
+  </div>`;
+}
+
+function comptaExportFEC() {
+  const list = comptaFilteredEcritures();
+  const sep = '\t';
+  const header = ['JournalCode','JournalLib','EcritureNum','EcritureDate','CompteNum','CompteLib','PieceRef','PieceDate','EcritureLib','Debit','Credit','ValidDate'].join(sep);
+  const lines = [header];
+  let num=0;
+  list.forEach(e=>{
+    num++;
+    const dt = (e.date||'').replace(/-/g,'');
+    e.lignes.forEach(l=>{
+      lines.push([
+        e.journal, JOURNAUX[e.journal]||e.journal, 'EC'+String(num).padStart(5,'0'), dt,
+        l.compte, comptaCompteLib(l.compte), e.piece||'', dt,
+        (l.libelle||e.libelle||'').replace(/\t/g,' '),
+        (l.debit||0).toFixed(2).replace('.',','), (l.credit||0).toFixed(2).replace('.',','), dt
+      ].join(sep));
+    });
+  });
+  const blob = new Blob([lines.join('\n')], {type:'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `FEC_SANIX_${_comptaExercice}.txt`;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  showToast('📥 FEC exporté');
+}
+
+function comptaExportCSV() {
+  const list = comptaFilteredEcritures();
+  const rows = [['Date','Journal','Pièce','Compte','Intitulé','Libellé','Débit','Crédit']];
+  list.forEach(e=>e.lignes.forEach(l=>{
+    rows.push([e.date,e.journal,e.piece||'',l.compte,comptaCompteLib(l.compte),l.libelle||e.libelle||'',l.debit||0,l.credit||0]);
+  }));
+  const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';')).join('\n');
+  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `Comptabilite_SANIX_${_comptaExercice}.csv`;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  showToast('📊 CSV exporté');
+}
+
+function comptaRegenerate() {
+  comptaRender();
+  showToast('🔄 Écritures régénérées depuis les ventes');
+}
+
+// ─── ÉCRITURE MANUELLE ───────────────────
+function openEcritureModal(id=null) {
+  document.getElementById('ec-edit-id').value = id||'';
+  document.getElementById('ec-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('ec-journal').value = 'OD';
+  document.getElementById('ec-piece').value = 'OD-'+_comptaExercice+'-'+String(ECRITURES.length+1).padStart(3,'0');
+  document.getElementById('ec-libelle').value = '';
+  if(id){
+    const e = ECRITURES.find(x=>x.id===id);
+    if(e){
+      document.getElementById('ec-date').value=e.date;
+      document.getElementById('ec-journal').value=e.journal;
+      document.getElementById('ec-piece').value=e.piece;
+      document.getElementById('ec-libelle').value=e.libelle;
+      _ecLignes = e.lignes.map(l=>({...l}));
+    }
+  } else {
+    _ecLignes = [{compte:'',libelle:'',debit:0,credit:0},{compte:'',libelle:'',debit:0,credit:0}];
+  }
+  ecRenderLignes();
+  document.getElementById('modal-ecriture').classList.remove('hidden');
+}
+
+function closeEcritureModal(){ document.getElementById('modal-ecriture').classList.add('hidden'); }
+
+function ecRenderLignes() {
+  const el = document.getElementById('ec-lignes');
+  const comptesOpts = Object.keys(PLAN_COMPTABLE).map(c=>`<option value="${c}">${c} — ${PLAN_COMPTABLE[c]}</option>`).join('');
+  el.innerHTML = _ecLignes.map((l,i)=>`
+    <div style="display:grid;grid-template-columns:1.4fr 1.2fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center">
+      <input list="ec-comptes-${i}" class="form-input" style="font-size:11px;padding:6px" placeholder="Compte" value="${l.compte}" onchange="ecUpdate(${i},'compte',this.value)">
+      <datalist id="ec-comptes-${i}">${comptesOpts}</datalist>
+      <input type="text" class="form-input" style="font-size:11px;padding:6px" placeholder="Libellé" value="${l.libelle}" onchange="ecUpdate(${i},'libelle',this.value)">
+      <input type="number" class="form-input" style="font-size:11px;padding:6px;text-align:right" placeholder="Débit" value="${l.debit||''}" oninput="ecUpdate(${i},'debit',this.value)">
+      <input type="number" class="form-input" style="font-size:11px;padding:6px;text-align:right" placeholder="Crédit" value="${l.credit||''}" oninput="ecUpdate(${i},'credit',this.value)">
+      <button onclick="ecRemoveLigne(${i})" style="background:var(--danger-l);color:var(--danger);border:none;border-radius:6px;width:28px;height:28px;cursor:pointer">✕</button>
+    </div>`).join('');
+  ecUpdateTotals();
+}
+
+function ecUpdate(i, field, val) {
+  if(field==='debit'||field==='credit') _ecLignes[i][field] = parseFloat(val)||0;
+  else _ecLignes[i][field] = val;
+  // Auto-libellé depuis compte
+  if(field==='compte' && !_ecLignes[i].libelle && PLAN_COMPTABLE[val]) {
+    _ecLignes[i].libelle = PLAN_COMPTABLE[val];
+  }
+  ecUpdateTotals();
+}
+
+function ecAddLigne(){ _ecLignes.push({compte:'',libelle:'',debit:0,credit:0}); ecRenderLignes(); }
+function ecRemoveLigne(i){ if(_ecLignes.length<=2){showToast('⚠️ Minimum 2 lignes');return;} _ecLignes.splice(i,1); ecRenderLignes(); }
+
+function ecUpdateTotals() {
+  const tD = _ecLignes.reduce((s,l)=>s+(l.debit||0),0);
+  const tC = _ecLignes.reduce((s,l)=>s+(l.credit||0),0);
+  document.getElementById('ec-total-debit').textContent = comptaFmt(tD);
+  document.getElementById('ec-total-credit').textContent = comptaFmt(tC);
+  const eq = document.getElementById('ec-equilibre');
+  if(Math.round(tD)===Math.round(tC) && tD>0){ eq.textContent='✅'; eq.style.color='var(--success)'; }
+  else { eq.textContent='⚠️'; eq.style.color='var(--danger)'; }
+}
+
+function saveEcriture() {
+  const date = document.getElementById('ec-date').value;
+  const journal = document.getElementById('ec-journal').value;
+  const piece = document.getElementById('ec-piece').value;
+  const libelle = document.getElementById('ec-libelle').value.trim();
+  if(!date||!libelle){ showToast('❌ Date et libellé obligatoires'); return; }
+  const lignes = _ecLignes.filter(l=>l.compte&&(l.debit||l.credit));
+  if(lignes.length<2){ showToast('❌ Au moins 2 lignes avec compte et montant'); return; }
+  const tD = lignes.reduce((s,l)=>s+(l.debit||0),0);
+  const tC = lignes.reduce((s,l)=>s+(l.credit||0),0);
+  if(Math.round(tD)!==Math.round(tC)){ showToast('❌ Écriture déséquilibrée : Débit ≠ Crédit'); return; }
+  const id = document.getElementById('ec-edit-id').value;
+  const data = {date, journal, piece, libelle, lignes, auto:false};
+  if(id){ const e=ECRITURES.find(x=>x.id===id); if(e) Object.assign(e,data); showToast('✅ Écriture modifiée'); }
+  else { ECRITURES.push({id:'ec_'+Date.now(),...data}); showToast('✅ Écriture enregistrée'); }
+  lsSave('ecritures', ECRITURES);
+  closeEcritureModal();
+  initComptabilite();
+}
+
+function deleteEcriture(id) {
+  const e = ECRITURES.find(x=>x.id===id);
+  if(!e||!confirm('Supprimer cette écriture manuelle ?')) return;
+  ECRITURES = ECRITURES.filter(x=>x.id!==id);
+  lsSave('ecritures', ECRITURES);
+  initComptabilite();
+  showToast('🗑 Écriture supprimée');
+}
 
 // ═══════════════════════════════════════
 //  DOCUMENTS & MODÈLES
@@ -10519,212 +11052,6 @@ function dhRenderTimeline(deal) {
 
 // Update renderMsgHistory to also update badge
 const _origRenderMsgHistory = typeof renderMsgHistory === 'function' ? renderMsgHistory : null;
-
-
-// ═══════════════════════════════════════
-//  GÉOLOCALISATION PARAMÉTRAGE ENTREPRISE
-// ═══════════════════════════════════════
-let _cfgGeoMap    = null;
-let _cfgGeoMarker = null;
-
-function initCfgGeoMap() {
-  const el = document.getElementById('cfg-geo-map');
-  if(!el) return;
-  const loading = document.getElementById('cfg-geo-map-loading');
-
-  const lat  = parseFloat(document.getElementById('cfg-lat')?.value)  || CONFIG.lat  || 5.3463;
-  const lng  = parseFloat(document.getElementById('cfg-lng')?.value)  || CONFIG.lng  || -4.0080;
-  const zoom = parseInt(document.getElementById('cfg-zoomLevel')?.value) || CONFIG.zoomLevel || 14;
-
-  // Détruire instance précédente si elle existe
-  if(_cfgGeoMap) { try{ _cfgGeoMap.remove(); }catch(e){} _cfgGeoMap = null; _cfgGeoMarker = null; }
-
-  _cfgGeoMap = L.map('cfg-geo-map').setView([lat, lng], zoom);
-
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
-    maxZoom: 19
-  }).addTo(_cfgGeoMap);
-
-  // Marqueur entreprise draggable
-  const companyIcon = L.divIcon({
-    html: `<div style="
-      background:linear-gradient(135deg,#DC2626,#991B1B);
-      width:36px;height:36px;border-radius:50% 50% 50% 0;
-      transform:rotate(-45deg);
-      border:3px solid #fff;
-      box-shadow:0 2px 12px rgba(220,38,38,.5);
-      display:flex;align-items:center;justify-content:center">
-      <span style="transform:rotate(45deg);font-size:16px">🏭</span>
-    </div>`,
-    className: '',
-    iconSize: [36, 36],
-    iconAnchor: [18, 36],
-    popupAnchor: [0, -38]
-  });
-
-  _cfgGeoMarker = L.marker([lat, lng], {
-    icon: companyIcon,
-    draggable: true,
-    title: CONFIG.raisonSociale || CONFIG.appName || 'Siège entreprise'
-  }).addTo(_cfgGeoMap);
-
-  // Popup riche
-  _cfgGeoUpdatePopup();
-
-  // Mise à jour coordonnées au drag
-  _cfgGeoMarker.on('dragend', function(e) {
-    const pos = e.target.getLatLng();
-    _cfgGeoSetCoords(pos.lat, pos.lng);
-    _cfgGeoUpdatePopup();
-  });
-
-  // Clic sur la carte pour déplacer le marqueur
-  _cfgGeoMap.on('click', function(e) {
-    _cfgGeoMarker.setLatLng(e.latlng);
-    _cfgGeoSetCoords(e.latlng.lat, e.latlng.lng);
-    _cfgGeoUpdatePopup();
-  });
-
-  // Zoom change → mettre à jour le champ zoom
-  _cfgGeoMap.on('zoomend', function() {
-    const zEl = document.getElementById('cfg-zoomLevel');
-    if(zEl) zEl.value = _cfgGeoMap.getZoom();
-  });
-
-  // Masquer le loading
-  if(loading) loading.style.display = 'none';
-
-  // Anneau de rayon indicatif (500m)
-  L.circle([lat, lng], {
-    radius: 500,
-    color: '#2563EB',
-    fillColor: '#2563EB',
-    fillOpacity: 0.05,
-    weight: 1.5,
-    dashArray: '6 4'
-  }).addTo(_cfgGeoMap);
-
-  _cfgGeoUpdateDisplay(lat, lng);
-}
-
-function _cfgGeoUpdatePopup() {
-  if(!_cfgGeoMarker) return;
-  const pos  = _cfgGeoMarker.getLatLng();
-  const name = CONFIG.raisonSociale || CONFIG.appName || 'Siège entreprise';
-  const addr = CONFIG.adresse || '';
-  _cfgGeoMarker.bindPopup(`
-    <div style="min-width:180px;font-family:Poppins,sans-serif">
-      <div style="font-weight:800;font-size:13px;color:#0F172A;margin-bottom:4px">🏭 ${name}</div>
-      ${addr ? `<div style="font-size:11px;color:#64748B;margin-bottom:5px">📍 ${addr}</div>` : ''}
-      <div style="font-size:10px;background:#EFF6FF;color:#2563EB;padding:4px 8px;border-radius:6px;font-weight:700;margin-bottom:6px">
-        ${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}
-      </div>
-      <div style="font-size:10px;color:#64748B">🖱️ Glissez le marqueur ou cliquez sur la carte pour repositionner</div>
-    </div>
-  `).openPopup();
-}
-
-function _cfgGeoSetCoords(lat, lng) {
-  const latEl = document.getElementById('cfg-lat');
-  const lngEl = document.getElementById('cfg-lng');
-  if(latEl) latEl.value = lat.toFixed(6);
-  if(lngEl) lngEl.value = lng.toFixed(6);
-  _cfgGeoUpdateDisplay(lat, lng);
-}
-
-function _cfgGeoUpdateDisplay(lat, lng) {
-  const el = document.getElementById('cfg-geo-coords-display');
-  if(el) el.textContent = `📌 ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-}
-
-// Détecter position GPS du navigateur
-function cfgGeoLocate() {
-  if(!navigator.geolocation) { showToast('❌ Géolocalisation non supportée'); return; }
-  showToast('📡 Détection GPS en cours…');
-  navigator.geolocation.getCurrentPosition(
-    pos => {
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-      _cfgGeoSetCoords(lat, lng);
-      if(_cfgGeoMap) {
-        _cfgGeoMap.setView([lat, lng], 16);
-        if(_cfgGeoMarker) { _cfgGeoMarker.setLatLng([lat, lng]); _cfgGeoUpdatePopup(); }
-      }
-      showToast('✅ Position détectée : ' + lat.toFixed(4) + ', ' + lng.toFixed(4));
-    },
-    err => {
-      const msgs = {1:'Permission refusée',2:'Position indisponible',3:'Délai dépassé'};
-      showToast('⚠️ GPS : ' + (msgs[err.code]||err.message));
-    },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-  );
-}
-
-// Afficher/masquer le champ de recherche d'adresse
-function cfgGeoSearch() {
-  const box = document.getElementById('cfg-geo-search-box');
-  if(!box) return;
-  box.style.display = box.style.display === 'none' ? '' : 'none';
-  if(box.style.display !== 'none') setTimeout(()=>document.getElementById('cfg-geo-query')?.focus(), 80);
-}
-
-// Recherche d'adresse via Nominatim (OpenStreetMap)
-async function cfgGeoDoSearch() {
-  const q = document.getElementById('cfg-geo-query')?.value.trim();
-  if(!q) return;
-  const resBox = document.getElementById('cfg-geo-results');
-  if(resBox) resBox.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px">🔍 Recherche en cours…</div>';
-  try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&countrycodes=ci,sn,ml,bf,gn,tg,bj,ng,gh`;
-    const res = await fetch(url, { headers: { 'Accept-Language': 'fr' } });
-    const data = await res.json();
-    if(!data.length) {
-      if(resBox) resBox.innerHTML = '<div style="font-size:12px;color:var(--danger);padding:6px">❌ Aucun résultat. Essayez une adresse plus précise.</div>';
-      return;
-    }
-    if(resBox) resBox.innerHTML = data.map((r,i)=>`
-      <div onclick="cfgGeoSelectResult(${r.lat},${r.lon},'${r.display_name.replace(/'/g,'\\\'').substring(0,60)}')"
-           style="padding:8px 10px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--surface);cursor:pointer;margin-bottom:5px;font-size:12px;transition:background .15s"
-           onmouseover="this.style.background='var(--primary-l)'" onmouseout="this.style.background='var(--surface)'">
-        📍 ${r.display_name.substring(0,80)}${r.display_name.length>80?'…':''}
-      </div>`).join('');
-  } catch(e) {
-    if(resBox) resBox.innerHTML = '<div style="font-size:12px;color:var(--danger);padding:6px">❌ Erreur réseau. Vérifiez votre connexion.</div>';
-  }
-}
-
-// Sélectionner un résultat de recherche
-function cfgGeoSelectResult(lat, lng, label) {
-  lat = parseFloat(lat); lng = parseFloat(lng);
-  _cfgGeoSetCoords(lat, lng);
-  if(_cfgGeoMap) {
-    _cfgGeoMap.setView([lat, lng], 16);
-    if(_cfgGeoMarker) { _cfgGeoMarker.setLatLng([lat, lng]); _cfgGeoUpdatePopup(); }
-  }
-  const box = document.getElementById('cfg-geo-search-box');
-  if(box) box.style.display = 'none';
-  const resBox = document.getElementById('cfg-geo-results');
-  if(resBox) resBox.innerHTML = '';
-  showToast('📍 Position sélectionnée : ' + label);
-}
-
-// Réinitialiser à Abidjan par défaut
-function cfgGeoReset() {
-  const lat = 5.3463, lng = -4.0080, zoom = 14;
-  const latEl = document.getElementById('cfg-lat');
-  const lngEl = document.getElementById('cfg-lng');
-  const zEl   = document.getElementById('cfg-zoomLevel');
-  if(latEl) latEl.value = lat;
-  if(lngEl) lngEl.value = lng;
-  if(zEl)   zEl.value   = zoom;
-  if(_cfgGeoMap) {
-    _cfgGeoMap.setView([lat, lng], zoom);
-    if(_cfgGeoMarker) { _cfgGeoMarker.setLatLng([lat, lng]); _cfgGeoUpdatePopup(); }
-  }
-  _cfgGeoUpdateDisplay(lat, lng);
-  showToast('↺ Réinitialisé sur Abidjan, Côte d\'Ivoire');
-}
 
 // ═══════════════════════════════════════
 //  INIT ALL
