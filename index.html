@@ -2102,7 +2102,8 @@ select.form-input{cursor:pointer}
       <label class="form-label">Type de document *</label>
       <select class="form-input" id="dg-type" onchange="dgTypeChange()">
         <option value="convention">📜 Convention de cession logiciel</option>
-        <option value="facture">🧾 Facture de vente</option>
+        <option value="facture">🧾 Facture (Simple / FNE)</option>
+        <option value="proforma">📄 Facture proforma (devis)</option>
         <option value="programme">📅 Programme de déploiement</option>
         <option value="pv_formation">✅ Procès-verbal de formation</option>
         <option value="presence">📋 Liste de présence formation</option>
@@ -2730,6 +2731,7 @@ select.form-input{cursor:pointer}
     </div>
     <div class="flex gap-2" style="margin-top:6px">
       <button class="btn btn-primary" style="flex:1" onclick="saveCommande()">💾 Enregistrer</button>
+      <button class="btn btn-outline" id="cmd-print-btn" onclick="imprimerBonCommandeFromModal()" style="display:none">🖨️ Bon</button>
       <button class="btn btn-outline" onclick="closeCommandeModal()">Annuler</button>
     </div>
   </div>
@@ -8101,6 +8103,7 @@ function renderCommandes() {
       <td>${c.commercial||'—'}</td>
       <td>
         <div class="flex gap-1">
+          <button onclick="imprimerBonCommande('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;color:var(--primary)" title="Bon de commande">🖨️</button>
           <button onclick="editCommande('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px">✏️</button>
           <button onclick="creerContratFromCmd('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;color:var(--success)" title="Créer contrat">📝</button>
           <button onclick="deleteCommande('${c.id}')" class="btn btn-sm" style="padding:3px 8px;font-size:11px;background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2)">🗑</button>
@@ -8113,6 +8116,8 @@ function renderCommandes() {
 function openCommandeModal(id=null, presId=null) {
   document.getElementById('cmd-edit-id').value = id||'';
   document.getElementById('cmd-modal-title').textContent = id ? '✏️ Modifier commande' : '🛒 Nouvelle commande';
+  const printBtn = document.getElementById('cmd-print-btn');
+  if(printBtn) printBtn.style.display = id ? '' : 'none';
   const ref = id ? (COMMANDES.find(x=>x.id===id)?.ref||'') : cmdNumero();
   document.getElementById('cmd-modal-ref').textContent = '📋 Réf : '+ref;
   document.getElementById('cmd-date').value = new Date().toISOString().split('T')[0];
@@ -8195,6 +8200,102 @@ function saveCommande() {
 }
 
 function editCommande(id) { openCommandeModal(id); }
+
+function imprimerBonCommandeFromModal() {
+  const id = document.getElementById('cmd-edit-id').value;
+  if(id) imprimerBonCommande(id);
+}
+
+// ─── BON DE COMMANDE imprimable ──────────
+function imprimerBonCommande(id) {
+  const c = COMMANDES.find(x=>x.id===id);
+  if(!c) { showToast('❌ Commande introuvable'); return; }
+  const fv = n=>(n||0).toLocaleString('fr-FR');
+  const date = c.date ? new Date(c.date).toLocaleDateString('fr-FR') : new Date().toLocaleDateString('fr-FR');
+  const log = LOGICIELS.find(l=>l.nom===c.logiciel);
+  const tauxLicence = {Annuelle:'Licence annuelle',Mensuelle:'Abonnement mensuel',Perpetuelle:'Licence perpétuelle',SaaS:'Abonnement SaaS'}[c.typeLicence]||c.typeLicence||'Licence';
+  const remiseLine = c.remise>0 ? `<tr><td style="border:1px solid #ccc;padding:8px;color:#666">Remise commerciale (${c.remise}%)</td><td style="border:1px solid #ccc;padding:8px;text-align:right;color:#666">− ${fv(Math.round((c.htBrut||0)*c.remise/100))}</td></tr>` : '';
+  const acompteLine = c.acompte>0 ? `
+    <tr><td style="border:1px solid #ccc;padding:8px">Acompte versé</td><td style="border:1px solid #ccc;padding:8px;text-align:right;color:#059669">− ${fv(c.acompte)}</td></tr>
+    <tr style="background:#FFF7ED"><td style="border:1px solid #ccc;padding:8px;font-weight:700">SOLDE À RÉGLER</td><td style="border:1px solid #ccc;padding:8px;text-align:right;font-weight:800;color:#D97706">${fv(c.solde||0)}</td></tr>` : '';
+
+  const html = `${docHeader()}
+  <div style="text-align:center;margin-bottom:18px">
+    <div style="font-size:18px;font-weight:800;color:#1E3A5F;letter-spacing:1px">BON DE COMMANDE</div>
+    <div style="font-size:12px;color:#666;margin-top:2px">N° ${c.ref} · Date : ${date}</div>
+  </div>
+
+  <table style="width:100%;border-collapse:collapse;margin-bottom:18px">
+    <tr>
+      <td style="border:1px solid #ccc;padding:10px;background:#f5f7fa;width:50%;vertical-align:top">
+        <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Fournisseur</div>
+        <strong>${(CONFIG.raisonSociale||'SANIX Africa Division Technologies')}</strong><br>
+        <span style="font-size:11px;color:#555">${CONFIG.adresse||'Songon Kassamblé, Abidjan'}<br>
+        ${CONFIG.tel||''} · ${CONFIG.email||'sanixafrica699@gmail.com'}<br>
+        ${CONFIG.rccm?'RCCM : '+CONFIG.rccm:''} ${CONFIG.cc?'· NCC : '+CONFIG.cc:''}</span>
+      </td>
+      <td style="border:1px solid #ccc;padding:10px;background:#f5f7fa;vertical-align:top">
+        <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Client</div>
+        <strong>${c.client}</strong><br>
+        <span style="font-size:11px;color:#555">Abidjan — Côte d'Ivoire<br>Commercial : ${c.commercial||'—'}</span>
+      </td>
+    </tr>
+  </table>
+
+  <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+    <thead><tr style="background:#1E3A5F;color:#fff">
+      <th style="padding:8px;text-align:left">Désignation</th>
+      <th style="padding:8px;text-align:center">Type</th>
+      <th style="padding:8px;text-align:right">Montant HT</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td style="border:1px solid #ccc;padding:10px">
+          <strong>${c.logiciel||'Logiciel'}</strong>
+          ${log&&log.version?' '+log.version:''}
+          ${log&&log.desc?`<br><span style="font-size:10px;color:#777">${log.desc.substring(0,120)}</span>`:''}
+        </td>
+        <td style="border:1px solid #ccc;padding:10px;text-align:center;font-size:11px">${tauxLicence}</td>
+        <td style="border:1px solid #ccc;padding:10px;text-align:right;font-weight:600">${fv(c.htBrut||c.htNet)}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <table style="width:55%;border-collapse:collapse;margin-left:auto;margin-bottom:16px">
+    ${remiseLine}
+    <tr><td style="border:1px solid #ccc;padding:8px">Total HT net</td><td style="border:1px solid #ccc;padding:8px;text-align:right;font-weight:600">${fv(c.htNet)}</td></tr>
+    <tr><td style="border:1px solid #ccc;padding:8px">TVA (${CONFIG.tva||18}%)</td><td style="border:1px solid #ccc;padding:8px;text-align:right">${fv(c.tva)}</td></tr>
+    <tr style="background:#EFF6FF"><td style="border:1px solid #ccc;padding:8px;font-weight:800">TOTAL TTC</td><td style="border:1px solid #ccc;padding:8px;text-align:right;font-weight:800;color:#1E3A5F">${fv(c.ttc)} FCFA</td></tr>
+    ${acompteLine}
+  </table>
+
+  <p style="font-size:11px;color:#444;line-height:1.7;margin-bottom:6px">
+    <strong>Conditions :</strong> Prix en francs CFA (XOF), TVA ${CONFIG.tva||18}% incluse. Référentiel SYSCOHADA révisé.
+    Le présent bon de commande vaut engagement ferme du client. La livraison/déploiement intervient après réception de l'acompte.
+    ${c.notes?'<br><strong>Notes :</strong> '+c.notes:''}
+  </p>
+
+  <table style="width:100%;margin-top:30px"><tr>
+    <td style="width:50%;vertical-align:top">
+      <strong>Le Client (bon pour accord)</strong><br>
+      <span style="font-size:10px;color:#888">Date, nom, signature et cachet précédés de la mention « Bon pour commande »</span>
+    </td>
+    <td style="width:50%;vertical-align:top">
+      <strong>Pour ${CONFIG.sigle||'SANIX'}</strong><br>
+      <span style="font-size:10px;color:#888">Signature et cachet</span>
+    </td>
+  </tr></table>`;
+
+  // Imprimer dans une fenêtre dédiée
+  const w = window.open('','_blank','width=900,height=1000');
+  if(!w) { showToast('⚠️ Autorisez les popups pour imprimer'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><title>Bon de commande ${c.ref}</title>
+    <style>@page{margin:1.5cm}body{font-family:Georgia,serif;font-size:13px;line-height:1.6;color:#1a1a1a;max-width:800px;margin:0 auto;padding:20px}table{border-collapse:collapse}p{margin:8px 0}</style>
+    </head><body>${html}<div style="margin-top:30px;text-align:center" class="no-print"><button onclick="window.print()" style="padding:10px 24px;background:#1E3A5F;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer">🖨️ Imprimer / Enregistrer en PDF</button></div>
+    <style>@media print{.no-print{display:none}}</style></body></html>`);
+  w.document.close();
+  showToast('🖨️ Bon de commande généré');
+}
 function deleteCommande(id) {
   const c = COMMANDES.find(x=>x.id===id);
   if(!c||!confirm(`Supprimer commande "${c.ref}" ?`)) return;
@@ -8979,7 +9080,8 @@ let _docCurrentMeta = null;
 
 const DOC_TYPES = {
   convention:   {ico:'📜', label:'Convention de cession', color:'#1E3A5F'},
-  facture:      {ico:'🧾', label:'Facture de vente',       color:'#065F46'},
+  facture:      {ico:'🧾', label:'Facture',                color:'#065F46'},
+  proforma:     {ico:'📄', label:'Facture proforma',       color:'#0D9488'},
   programme:    {ico:'📅', label:'Programme déploiement',  color:'#7C3AED'},
   pv_formation: {ico:'✅', label:'PV de formation',         color:'#059669'},
   presence:     {ico:'📋', label:'Liste de présence',      color:'#D97706'},
@@ -8987,10 +9089,25 @@ const DOC_TYPES = {
 
 const DOC_TEMPLATES = [
   {type:'convention',   titre:'Convention de cession logiciel', desc:'Cession de droits, code source, dation, formation, redevance. Modèle complet 9 articles (réf. CV-SADT-MENKO).', usage:'Vente importante avec transfert de propriété'},
-  {type:'facture',      titre:'Facture de vente définitive',    desc:'Facture TTC avec TVA 18%, désignation prestations, modalités de règlement (dation + numéraire possible).', usage:'Facturation de toute vente'},
+  {type:'facture',      titre:'Facture (Simple ou FNE)',        desc:'Facture multi-lignes (modules, formation, hébergement, cloud…). Choix format Simple ou FNE normalisée DGI avec numéro et zone QR.', usage:'Facturation détaillée de toute vente'},
+  {type:'proforma',     titre:'Facture proforma',              desc:'Devis/proforma multi-lignes, même structure que la facture, mention « Ne vaut pas facture ». Pour validation client avant commande.', usage:'Devis détaillé avant engagement'},
   {type:'programme',    titre:'Programme de déploiement',       desc:'Planning par vagues et séances, intervenants/rôles (PRI), calendrier, livrables et jalons de recette.', usage:'Déploiement structuré multi-modules'},
   {type:'pv_formation', titre:'Procès-verbal de formation',     desc:'Constat de réception de formation, modules couverts, réserves, déclenchement du solde financier.', usage:'Clôture de formation client'},
   {type:'presence',     titre:'Liste de présence formation',    desc:'Fiche d\'émargement par séance : module, date, horaire, formateur, PRI, tableau 12 participants.', usage:'Émargement de chaque séance'},
+];
+
+// Catalogue de prestations pré-proposées pour les lignes de facture/proforma
+const PRESTATIONS_CATALOGUE = [
+  {label:'Licence logiciel (module)', unite:'licence', pu:0},
+  {label:'Module complémentaire',     unite:'module',  pu:0},
+  {label:'Formation utilisateurs',    unite:'séance',  pu:50000},
+  {label:'Déploiement & paramétrage', unite:'forfait', pu:150000},
+  {label:'Hébergement cloud (annuel)',unite:'an',      pu:120000},
+  {label:'Abonnement Cloud / SaaS',   unite:'mois',    pu:25000},
+  {label:'Maintenance & support',     unite:'an',      pu:100000},
+  {label:'Reprise de données',        unite:'forfait', pu:80000},
+  {label:'Matériel (poste, imprimante)',unite:'unité', pu:0},
+  {label:'Personnalisation sur mesure',unite:'jour',   pu:75000},
 ];
 
 function initDocuments() {
@@ -9099,23 +9216,52 @@ function dgTypeChange() {
         <option value="dation">Dation en paiement (terrains/biens)</option>
         <option value="mixte">Mixte (dation + numéraire)</option>
       </select></div>`;
-  } else if(type==='facture') {
-    html = `<div class="form-group"><label class="form-label">Désignation prestation</label>
-      <input type="text" class="form-input" id="dg-designation" placeholder="Ex: Licence ERP + déploiement + formation"></div>
-    <div class="form-row">
+  } else if(type==='facture' || type==='proforma') {
+    const isFne = type==='facture';
+    html = `
+    ${isFne?`<div class="form-group"><label class="form-label">Format de facture</label>
+      <select class="form-input" id="dg-format-fac" onchange="dgToggleFne()">
+        <option value="simple">🧾 Facture simple (non certifiée)</option>
+        <option value="fne">🔐 FNE — Facture Normalisée Électronique (DGI)</option>
+      </select></div>
+    <div id="dg-fne-fields" style="display:none">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">N° certification FNE / Sticker</label><input type="text" class="form-input" id="dg-fne-num" placeholder="Ex: 0012-2026-XXXXXXXX"></div>
+        <div class="form-group"><label class="form-label">Référence DGI / IFU client</label><input type="text" class="form-input" id="dg-fne-ifu" placeholder="N° Compte Contribuable client"></div>
+      </div>
+    </div>`:`<div style="background:var(--teal-l);border:1px solid rgba(13,148,136,.15);border-radius:var(--r-sm);padding:8px 12px;margin-bottom:12px;font-size:11px;color:var(--teal)">📄 La proforma porte la mention « Ne vaut pas facture » — c'est un devis détaillé avant commande.</div>`}
+
+    <div style="border-top:1px solid var(--border);margin:8px 0;padding-top:8px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;display:flex;justify-content:space-between;align-items:center">
+      <span>Lignes de prestation</span>
+      <button onclick="dgAddLigneFromCatalogue()" type="button" style="background:var(--primary-l);color:var(--primary);border:none;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;font-weight:600">+ Depuis catalogue</button>
+    </div>
+    <div id="dg-fac-lignes"></div>
+    <button onclick="dgAddLigneFac()" type="button" class="btn btn-outline btn-sm" style="margin-top:6px;width:100%">+ Ligne vide</button>
+
+    <!-- Totaux calculés -->
+    <div style="margin-top:12px;padding:10px;background:var(--surface2);border-radius:var(--r-sm)">
+      <div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0"><span>Total HT</span><strong id="dg-fac-ht">0 FCFA</strong></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0"><span>TVA (${CONFIG.tva||18}%)</span><strong id="dg-fac-tva">0 FCFA</strong></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0" id="dg-timbre-row"><span>Timbre fiscal</span><strong id="dg-fac-timbre">0 FCFA</strong></div>
+      <div style="display:flex;justify-content:space-between;font-size:14px;padding:4px 0;border-top:1px solid var(--border);margin-top:4px"><span style="font-weight:700">TOTAL TTC</span><strong id="dg-fac-ttc" style="color:var(--primary)">0 FCFA</strong></div>
+    </div>
+    <div class="form-row" style="margin-top:10px">
       <div class="form-group"><label class="form-label">Modalité règlement</label>
         <select class="form-input" id="dg-modalite-fac">
           <option value="comptant">Comptant</option>
           <option value="acompte">Acompte + solde</option>
-          <option value="mixte">Dation + numéraire</option>
+          <option value="echelonne">Échelonné</option>
         </select></div>
       <div class="form-group"><label class="form-label">Mode paiement</label>
         <select class="form-input" id="dg-mode-paie">
           <option value="mm">Mobile Money (Wave/Orange/MTN)</option>
           <option value="virement">Virement bancaire</option>
           <option value="especes">Espèces</option>
+          <option value="cheque">Chèque</option>
         </select></div>
     </div>`;
+    // Initialiser les lignes après insertion
+    setTimeout(()=>{ _dgFacLignes = []; dgAddLigneFac(); dgRenderFacLignes(); }, 30);
   } else if(type==='programme') {
     html = `<div class="form-row">
       <div class="form-group"><label class="form-label">Nb séances</label><input type="number" class="form-input" id="dg-seances" value="10" min="1"></div>
@@ -9170,16 +9316,116 @@ function dgFillFromClient() {
 
 // Helpers
 function dgNumToWords(n) {
-  // Conversion simplifiée pour montants courants
-  const units = ['', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix', 'onze', 'douze'];
-  if(n>=1000000 && n%1000000===0) {
-    const m = n/1000000;
-    return (units[m]||m)+' million'+(m>1?'s':'');
+  n = Math.round(parseFloat(n)||0);
+  if(n===0) return 'zéro';
+  const u = ['','un','deux','trois','quatre','cinq','six','sept','huit','neuf','dix','onze','douze','treize','quatorze','quinze','seize','dix-sept','dix-huit','dix-neuf'];
+  const d = ['','','vingt','trente','quarante','cinquante','soixante','soixante','quatre-vingt','quatre-vingt'];
+  function troisChiffres(num){
+    let s='';
+    const c=Math.floor(num/100), reste=num%100;
+    if(c>0) s += (c>1?u[c]+' ':'')+'cent'+(c>1&&reste===0?'s':'');
+    if(reste>0){
+      if(s) s+=' ';
+      if(reste<20) s+=u[reste];
+      else {
+        const diz=Math.floor(reste/10), unite=reste%10;
+        if(diz===7||diz===9){ s+=d[diz]+'-'+u[10+unite]; }
+        else { s+=d[diz]; if(unite===1&&diz!==8) s+=' et un'; else if(unite>0) s+='-'+u[unite]; else if(diz===8) s+='s'; }
+      }
+    }
+    return s;
   }
-  return n.toLocaleString('fr-FR');
+  let mots='';
+  const millions=Math.floor(n/1000000), milliers=Math.floor((n%1000000)/1000), reste=n%1000;
+  if(millions>0) mots += (millions>1?troisChiffres(millions)+' ':'un ')+'million'+(millions>1?'s':'');
+  if(milliers>0){ if(mots) mots+=' '; let mil=troisChiffres(milliers).replace(/cents$/,'cent'); mots += (milliers>1?mil+' ':'')+'mille'; }
+  if(reste>0){ if(mots) mots+=' '; mots += troisChiffres(reste); }
+  return mots.trim();
 }
 function dgFmt(n){ return (parseFloat(n)||0).toLocaleString('fr-FR'); }
 function dgv(id){ return (document.getElementById(id)||{}).value||''; }
+
+// ─── Gestion des lignes facture/proforma ──
+let _dgFacLignes = [];
+
+function dgToggleFne() {
+  const fmt = document.getElementById('dg-format-fac')?.value;
+  const box = document.getElementById('dg-fne-fields');
+  if(box) box.style.display = fmt==='fne' ? '' : 'none';
+  // Le timbre ne s'applique pas en FNE électronique (dématérialisé)
+  dgCalcFacTotals();
+}
+
+function dgAddLigneFac() {
+  _dgFacLignes.push({designation:'', unite:'unité', qte:1, pu:0});
+  dgRenderFacLignes();
+}
+
+function dgAddLigneFromCatalogue() {
+  // Menu rapide : ajoute une ligne pré-remplie depuis le catalogue
+  const opts = PRESTATIONS_CATALOGUE.map((p,i)=>`${i+1}. ${p.label}`).join('\n');
+  const choix = prompt('Choisir une prestation (numéro) :\n\n'+opts);
+  const idx = parseInt(choix)-1;
+  if(idx>=0 && idx<PRESTATIONS_CATALOGUE.length) {
+    const p = PRESTATIONS_CATALOGUE[idx];
+    _dgFacLignes.push({designation:p.label, unite:p.unite, qte:1, pu:p.pu});
+    dgRenderFacLignes();
+  }
+}
+
+function dgRenderFacLignes() {
+  const el = document.getElementById('dg-fac-lignes');
+  if(!el) return;
+  const cat = PRESTATIONS_CATALOGUE.map(p=>`<option value="${p.label}">`).join('');
+  el.innerHTML = _dgFacLignes.map((l,i)=>`
+    <div style="display:grid;grid-template-columns:2fr 0.8fr 0.6fr 1fr auto;gap:5px;margin-bottom:5px;align-items:center">
+      <input list="dg-cat-list" class="form-input" style="font-size:11px;padding:6px" placeholder="Désignation" value="${l.designation}" onchange="dgUpdFac(${i},'designation',this.value)">
+      <input type="text" class="form-input" style="font-size:11px;padding:6px" placeholder="Unité" value="${l.unite}" onchange="dgUpdFac(${i},'unite',this.value)">
+      <input type="number" class="form-input" style="font-size:11px;padding:6px;text-align:center" placeholder="Qté" value="${l.qte}" min="0" step="0.5" oninput="dgUpdFac(${i},'qte',this.value)">
+      <input type="number" class="form-input" style="font-size:11px;padding:6px;text-align:right" placeholder="P.U. HT" value="${l.pu||''}" min="0" oninput="dgUpdFac(${i},'pu',this.value)">
+      <button onclick="dgRemoveLigneFac(${i})" type="button" style="background:var(--danger-l);color:var(--danger);border:none;border-radius:6px;width:26px;height:26px;cursor:pointer">✕</button>
+    </div>`).join('') + `<datalist id="dg-cat-list">${cat}</datalist>`;
+  dgCalcFacTotals();
+}
+
+function dgUpdFac(i, field, val) {
+  if(field==='qte'||field==='pu') _dgFacLignes[i][field] = parseFloat(val)||0;
+  else _dgFacLignes[i][field] = val;
+  // Auto-remplir PU/unité si désignation reconnue du catalogue
+  if(field==='designation') {
+    const p = PRESTATIONS_CATALOGUE.find(x=>x.label===val);
+    if(p && !_dgFacLignes[i].pu) { _dgFacLignes[i].pu=p.pu; _dgFacLignes[i].unite=p.unite; dgRenderFacLignes(); return; }
+  }
+  dgCalcFacTotals();
+}
+
+function dgRemoveLigneFac(i) {
+  if(_dgFacLignes.length<=1){ showToast('⚠️ Au moins une ligne'); return; }
+  _dgFacLignes.splice(i,1);
+  dgRenderFacLignes();
+}
+
+function dgCalcFacTotals() {
+  const tvaRate = (CONFIG.tva||18)/100;
+  const ht = _dgFacLignes.reduce((s,l)=>s+(l.qte||0)*(l.pu||0),0);
+  const tva = Math.round(ht*tvaRate);
+  const fmt = document.getElementById('dg-format-fac')?.value || 'simple';
+  // Timbre fiscal : sur factures papier (espèces), pas en FNE dématérialisée
+  const mode = document.getElementById('dg-mode-paie')?.value;
+  const timbre = (fmt!=='fne' && mode==='especes') ? (CONFIG.timbre||200) : 0;
+  const ttc = ht + tva + timbre;
+  const fv = n=>Math.round(n).toLocaleString('fr-FR')+' FCFA';
+  const setT=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  setT('dg-fac-ht', fv(ht));
+  setT('dg-fac-tva', fv(tva));
+  setT('dg-fac-timbre', fv(timbre));
+  setT('dg-fac-ttc', fv(ttc));
+  const tr = document.getElementById('dg-timbre-row');
+  if(tr) tr.style.display = timbre>0 ? 'flex' : 'none';
+  // Refléter dans le champ montant global
+  const mt = document.getElementById('dg-montant');
+  if(mt) mt.value = ttc;
+}
 
 function generateDoc() {
   const type = dgv('dg-type');
@@ -9191,9 +9437,20 @@ function generateDoc() {
     montant:parseFloat(dgv('dg-montant'))||0,
     contratId:dgv('dg-link-contrat'), deploiementId:dgv('dg-link-deploiement')
   };
+  // Pour facture/proforma : capturer les lignes + format
+  if(type==='facture' || type==='proforma') {
+    meta.lignes = _dgFacLignes.filter(l=>l.designation && (l.pu>0 || l.qte>0));
+    if(!meta.lignes.length){ showToast('❌ Ajoutez au moins une ligne de prestation'); return; }
+    meta.format = dgv('dg-format-fac')||'simple';
+    meta.fneNum = dgv('dg-fne-num');
+    meta.fneIfu = dgv('dg-fne-ifu');
+    meta.modalite = dgv('dg-modalite-fac');
+    meta.modePaie = dgv('dg-mode-paie');
+  }
   let html = '';
   if(type==='convention')        html = genConventionHtml(meta);
   else if(type==='facture')      html = genFactureHtml(meta);
+  else if(type==='proforma')     html = genFactureHtml(meta);
   else if(type==='programme')    html = genProgrammeHtml(meta);
   else if(type==='pv_formation') html = genPvFormationHtml(meta);
   else if(type==='presence')     html = genPresenceHtml(meta);
@@ -9257,33 +9514,91 @@ function genConventionHtml(m) {
 
 function genFactureHtml(m) {
   const date = m.date ? new Date(m.date).toLocaleDateString('fr-FR') : '___/___/2026';
-  const designation = dgv('dg-designation')||'Licence logiciel ERP + déploiement + formation';
-  const ttc = m.montant||0;
-  const tva = Math.round(ttc - (ttc/1.18));
-  const ht = ttc - tva;
+  const isProforma = m.type==='proforma';
+  const isFne = m.format==='fne' && !isProforma;
+  const tvaRate = (CONFIG.tva||18)/100;
+  const lignes = m.lignes && m.lignes.length ? m.lignes : [{designation:'Prestation', unite:'forfait', qte:1, pu:m.montant||0}];
+
+  // Calculs
+  let ht = 0;
+  lignes.forEach(l=> ht += (l.qte||0)*(l.pu||0));
+  const tva = Math.round(ht*tvaRate);
+  const timbre = (!isFne && m.modePaie==='especes') ? (CONFIG.timbre||200) : 0;
+  const ttc = ht + tva + timbre;
+
+  const accent = isProforma ? '#0D9488' : '#065F46';
+  const titre = isProforma ? 'FACTURE PROFORMA' : (isFne ? 'FACTURE NORMALISÉE ÉLECTRONIQUE' : 'FACTURE');
+
+  // Lignes du tableau
+  const lignesHtml = lignes.map((l,i)=>{
+    const montantLigne = (l.qte||0)*(l.pu||0);
+    return `<tr style="${i%2?'background:#fafafa':''}">
+      <td style="border:1px solid #ccc;padding:7px 8px">${l.designation||''}</td>
+      <td style="border:1px solid #ccc;padding:7px 8px;text-align:center;font-size:11px">${l.unite||''}</td>
+      <td style="border:1px solid #ccc;padding:7px 8px;text-align:center">${l.qte||0}</td>
+      <td style="border:1px solid #ccc;padding:7px 8px;text-align:right">${dgFmt(l.pu)}</td>
+      <td style="border:1px solid #ccc;padding:7px 8px;text-align:right;font-weight:600">${dgFmt(montantLigne)}</td>
+    </tr>`;
+  }).join('');
+
+  // En-tête FNE spécifique (numéro normalisé, zone sticker/QR)
+  const fneHeader = isFne ? `
+    <div style="border:2px solid #065F46;border-radius:6px;padding:8px 12px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;background:#f0fdf9">
+      <div style="font-size:11px;color:#065F46">
+        <strong>🔐 FACTURE NORMALISÉE ÉLECTRONIQUE</strong><br>
+        N° normalisé : <strong>${m.fneNum||'__________________'}</strong><br>
+        ${m.fneIfu?'IFU / NCC client : '+m.fneIfu:'IFU / NCC client : __________'}
+      </div>
+      <div style="width:70px;height:70px;border:1px dashed #065F46;border-radius:6px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:8px;color:#065F46">ZONE<br>QR / Sticker<br>DGI</div>
+    </div>` : '';
+
+  // Mention proforma
+  const proformaMention = isProforma ? `
+    <div style="background:#ccfbf1;border-left:4px solid #0D9488;padding:8px 12px;margin-bottom:14px;font-size:12px;color:#0F766E">
+      <strong>⚠️ Ne vaut pas facture.</strong> Ce document est un devis estimatif valable 30 jours, sous réserve de disponibilité. Une facture définitive sera émise à la commande.
+    </div>` : '';
+
+  // Modalités
+  const modaliteTxt = {comptant:'Paiement comptant',acompte:'Acompte à la commande + solde à la livraison',echelonne:'Paiement échelonné selon échéancier'}[m.modalite]||'';
+  const modePaieTxt = {mm:'Mobile Money (Wave / Orange Money / MTN)',virement:'Virement bancaire',especes:'Espèces',cheque:'Chèque'}[m.modePaie]||'';
+
   return `${docHeader()}
-  <div style="text-align:center;margin-bottom:16px">
-    <div style="font-size:17px;font-weight:800;color:#065F46">FACTURE DE VENTE DÉFINITIVE</div>
+  <div style="text-align:center;margin-bottom:14px">
+    <div style="font-size:18px;font-weight:800;color:${accent};letter-spacing:1px">${titre}</div>
     <div style="font-size:11px;color:#666">N° ${m.ref} · Date : ${date}</div>
   </div>
+  ${fneHeader}
+  ${proformaMention}
   <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
-    <tr><td style="border:1px solid #ccc;padding:8px;background:#f5f5f5;width:50%"><strong>CLIENT</strong><br>${m.client.toUpperCase()}<br>${m.clientRep||''}<br>Abidjan — Côte d'Ivoire</td>
-    <td style="border:1px solid #ccc;padding:8px;background:#f5f5f5"><strong>Réf. :</strong> ${m.ref}<br><strong>Devise :</strong> FCFA (XOF)<br><strong>Référentiel :</strong> SYSCOHADA révisé</td></tr>
+    <tr><td style="border:1px solid #ccc;padding:8px;background:#f5f5f5;width:50%;vertical-align:top"><strong>CLIENT</strong><br>${m.client.toUpperCase()}<br>${m.clientRep||''}<br>Abidjan — Côte d'Ivoire</td>
+    <td style="border:1px solid #ccc;padding:8px;background:#f5f5f5;vertical-align:top"><strong>Réf. :</strong> ${m.ref}<br><strong>Devise :</strong> FCFA (XOF)<br><strong>Référentiel :</strong> SYSCOHADA révisé${isFne?'<br><strong>Type :</strong> FNE certifiée DGI':''}</td></tr>
   </table>
-  <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
-    <thead><tr style="background:#065F46;color:#fff"><th style="padding:8px;text-align:left">Désignation</th><th style="padding:8px;text-align:right">Montant TTC (FCFA)</th></tr></thead>
-    <tbody>
-      <tr><td style="border:1px solid #ccc;padding:8px">${designation}</td><td style="border:1px solid #ccc;padding:8px;text-align:right;font-weight:700">${dgFmt(ttc)}</td></tr>
-      <tr style="background:#f0f0f0"><td style="border:1px solid #ccc;padding:8px;font-weight:700">TOTAL TTC</td><td style="border:1px solid #ccc;padding:8px;text-align:right;font-weight:800">${dgFmt(ttc)}</td></tr>
-      <tr><td style="border:1px solid #ccc;padding:8px;font-size:11px;color:#666">dont TVA 18% incluse</td><td style="border:1px solid #ccc;padding:8px;text-align:right;font-size:11px;color:#666">${dgFmt(tva)}</td></tr>
-    </tbody>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:14px">
+    <thead><tr style="background:${accent};color:#fff">
+      <th style="padding:8px;text-align:left">Désignation</th>
+      <th style="padding:8px;text-align:center">Unité</th>
+      <th style="padding:8px;text-align:center">Qté</th>
+      <th style="padding:8px;text-align:right">P.U. HT</th>
+      <th style="padding:8px;text-align:right">Montant HT</th>
+    </tr></thead>
+    <tbody>${lignesHtml}</tbody>
   </table>
-  <p style="font-style:italic"><strong>Arrêtée à la somme de : ${m.montant?dgNumToWords(ttc)+' de francs CFA TTC':'[montant] FCFA TTC'}.</strong></p>
-  <p style="font-size:11px;color:#444;margin-top:12px"><strong>Conditions :</strong> Référentiel comptable SYSCOHADA révisé. TVA au taux en vigueur (18%) incluse dans le prix TTC. Hébergement, noms de domaine et abonnements de base de données à la charge exclusive du client. Le transfert de propriété du logiciel devient effectif au complet règlement.</p>
-  <table style="width:100%;margin-top:30px"><tr>
+  <table style="width:55%;border-collapse:collapse;margin-left:auto;margin-bottom:14px">
+    <tr><td style="border:1px solid #ccc;padding:7px 10px">Total HT</td><td style="border:1px solid #ccc;padding:7px 10px;text-align:right;font-weight:600">${dgFmt(ht)}</td></tr>
+    <tr><td style="border:1px solid #ccc;padding:7px 10px">TVA (${CONFIG.tva||18}%)</td><td style="border:1px solid #ccc;padding:7px 10px;text-align:right">${dgFmt(tva)}</td></tr>
+    ${timbre>0?`<tr><td style="border:1px solid #ccc;padding:7px 10px">Timbre fiscal</td><td style="border:1px solid #ccc;padding:7px 10px;text-align:right">${dgFmt(timbre)}</td></tr>`:''}
+    <tr style="background:${isProforma?'#ccfbf1':'#EFF6FF'}"><td style="border:1px solid #ccc;padding:8px 10px;font-weight:800">TOTAL TTC</td><td style="border:1px solid #ccc;padding:8px 10px;text-align:right;font-weight:800;color:${accent}">${dgFmt(ttc)} FCFA</td></tr>
+  </table>
+  <p style="font-style:italic;clear:both"><strong>Arrêtée la présente ${isProforma?'proforma':'facture'} à la somme de : ${dgNumToWords(ttc)} de francs CFA TTC.</strong></p>
+  <p style="font-size:11px;color:#444;margin-top:10px;line-height:1.6">
+    ${modaliteTxt?'<strong>Modalité :</strong> '+modaliteTxt+'. ':''}${modePaieTxt?'<strong>Paiement :</strong> '+modePaieTxt+'. ':''}<br>
+    <strong>Conditions :</strong> Référentiel SYSCOHADA révisé. TVA ${CONFIG.tva||18}% appliquée. Hébergement, noms de domaine et abonnements à la charge du client sauf ligne dédiée.${isFne?' Facture normalisée conforme aux exigences de la DGI (Direction Générale des Impôts) de Côte d\'Ivoire.':''}
+  </p>
+  ${isProforma?'':`<table style="width:100%;margin-top:24px"><tr>
     <td style="width:50%"><strong>Le Client (bon pour accord)</strong><br><br>Nom / signature / cachet</td>
-    <td style="width:50%"><strong>Pour SANIX Africa Division Technologies</strong><br><br>Nom / signature / cachet</td>
-  </tr></table>`;
+    <td style="width:50%"><strong>Pour ${CONFIG.sigle||'SANIX Africa Division Technologies'}</strong><br><br>Signature / cachet</td>
+  </tr></table>`}
+  ${isFne?'<p style="font-size:9px;color:#888;margin-top:14px;text-align:center;border-top:1px solid #ddd;padding-top:6px">Facture Normalisée Électronique — Toute reproduction non certifiée est sans valeur fiscale. Vérifiable auprès de la DGI.</p>':''}`;
 }
 
 function genProgrammeHtml(m) {
