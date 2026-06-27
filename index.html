@@ -202,6 +202,18 @@ input,textarea,select{font-family:var(--font-b);outline:none}
 .team-kpi-val{font-family:var(--font-h);font-weight:700;font-size:16px}
 .team-kpi-lbl{font-size:10px;color:var(--muted)}
 
+/* ─── MAP PARAMETRAGE ─────────────────────────────────── */
+#cfg-geo-map .leaflet-container { font-family: var(--font-b); }
+#cfg-geo-map { transition: border-color .2s; }
+#cfg-geo-map:hover { border-color: var(--primary) !important; }
+#cfg-geo-results > div:hover { background: var(--primary-l) !important; }
+.cfg-geo-badge {
+  display:inline-flex;align-items:center;gap:5px;
+  background:var(--primary-l);color:var(--primary);
+  border:1px solid rgba(37,99,235,.2);
+  border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700
+}
+
 /* ─── MAP ─────────────────────────────────────── */
 #leaflet-map{height:450px;border-radius:var(--r);border:1px solid var(--border);overflow:hidden}
 .carte-layer-btn{transition:opacity .2s,background .2s}
@@ -1599,6 +1611,54 @@ select.form-input{cursor:pointer}
           <button class="btn btn-outline btn-sm" onclick="paramTab('sync',document.querySelector('#param-tabs .tab:nth-child(3)'))">☁️ Aller à Sync cloud</button>
         </div>
       </div>
+
+      <!-- GEOLOCALISATION ENTREPRISE -->
+      <div class="sync-section" style="margin-bottom:16px" id="cfg-geo-section">
+        <h3>📍 Géolocalisation de l'entreprise</h3>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:14px">
+          Positionnez votre siège sur la carte. Glissez le marqueur <span style="color:var(--danger)">🔴</span> pour affiner, ou utilisez la détection automatique.
+        </p>
+        <div class="form-row" style="margin-bottom:12px">
+          <div class="form-group">
+            <label class="form-label">🌐 Latitude</label>
+            <input type="number" class="form-input" id="cfg-lat" step="0.000001" placeholder="ex : 5.3463">
+          </div>
+          <div class="form-group">
+            <label class="form-label">🌐 Longitude</label>
+            <input type="number" class="form-input" id="cfg-lng" step="0.000001" placeholder="ex : -4.0080">
+          </div>
+          <div class="form-group">
+            <label class="form-label">🔍 Zoom (1–18)</label>
+            <input type="number" class="form-input" id="cfg-zoomLevel" min="1" max="18" step="1" placeholder="14">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <button class="btn btn-primary btn-sm" onclick="cfgGeoLocate()">📡 Détecter ma position GPS</button>
+          <button class="btn btn-outline btn-sm" onclick="cfgGeoSearch()">🔍 Chercher une adresse</button>
+          <button class="btn btn-outline btn-sm" onclick="cfgGeoReset()">↺ Abidjan (défaut)</button>
+        </div>
+        <!-- Champ de recherche d'adresse -->
+        <div id="cfg-geo-search-box" style="display:none;margin-bottom:10px">
+          <div style="display:flex;gap:8px">
+            <input type="text" class="form-input" id="cfg-geo-query" placeholder="Ex : Zone Industrielle Yopougon, Abidjan" style="flex:1" onkeydown="if(event.key==='Enter')cfgGeoDoSearch()">
+            <button class="btn btn-primary btn-sm" onclick="cfgGeoDoSearch()">🔍 Rechercher</button>
+          </div>
+          <div id="cfg-geo-results" style="margin-top:8px;max-height:160px;overflow-y:auto"></div>
+        </div>
+        <!-- Carte de prévisualisation -->
+        <div style="position:relative">
+          <div id="cfg-geo-map" style="height:360px;border-radius:var(--r);border:2px solid var(--border);overflow:hidden;background:#E8F0FE"></div>
+          <div id="cfg-geo-map-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#EFF6FF;z-index:500;border-radius:var(--r);pointer-events:none">
+            <div style="text-align:center"><div style="font-size:32px;margin-bottom:8px">🗺️</div><span style="font-size:13px;color:var(--muted)">Initialisation de la carte…</span></div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;align-items:center">
+          <span>🖱️ Glissez le marqueur rouge pour affiner la position exacte</span>
+          <span id="cfg-geo-coords-display" style="font-weight:700;color:var(--primary);font-size:12px"></span>
+        </div>
+      </div>
+      <!-- /GEOLOCALISATION -->
+
       </div><!-- /param-panel-entreprise -->
 
       <!-- ── PANEL USERS (rempli par JS depuis view-users) ── -->
@@ -3896,6 +3956,9 @@ const CONFIG_DEFAULT = {
   tel:'+225 ',
   email:'contact@sanix-africa.ci',
   adresse:'Abidjan, Côte d\'Ivoire',
+  lat:5.3463,       // latitude siège entreprise
+  lng:-4.0080,      // longitude siège entreprise
+  zoomLevel:14,     // niveau de zoom carte entreprise
   emoji:'🌍',
   logo:null,        // logo entreprise (base64)
   devise:'FCFA',
@@ -7604,11 +7667,17 @@ function initParametrage() {
   const fields = ['appName','sigle','sub','raisonSociale','rccm','cc','tel','email','adresse','emoji',
                   'devise','tva','timbre','commissionDefaut','objectifDefaut','remiseMaxDefaut'];
   fields.forEach(f=>{ const e=g('cfg-'+f); if(e) e.value = CONFIG[f]; });
+  // Géolocalisation
+  if(g('cfg-lat'))       g('cfg-lat').value       = CONFIG.lat       ?? 5.3463;
+  if(g('cfg-lng'))       g('cfg-lng').value       = CONFIG.lng       ?? -4.0080;
+  if(g('cfg-zoomLevel')) g('cfg-zoomLevel').value = CONFIG.zoomLevel ?? 14;
   g('cfg-secteurs').value = (CONFIG.secteurs||[]).join('\n');
   g('cfg-categories').value = (CONFIG.categories||[]).join('\n');
   applyCompanyLogo();
   renderStageRows();
   renderDiagnostic();
+  // Init carte géo paramétrage (délai pour que le DOM soit rendu)
+  setTimeout(initCfgGeoMap, 120);
 }
 function renderStageRows() {
   const box = document.getElementById('cfg-stages-list');
@@ -7664,6 +7733,12 @@ function saveConfigForm() {
   strs.forEach(f=>{ CONFIG[f] = g('cfg-'+f).value.trim(); });
   nums.forEach(f=>{ CONFIG[f] = parseFloat(g('cfg-'+f).value)||0; });
   if(!CONFIG.appName){ showToast('❌ Nom application obligatoire'); g('cfg-appName').focus(); return; }
+  // Géolocalisation
+  const lat = parseFloat(g('cfg-lat')?.value);
+  const lng = parseFloat(g('cfg-lng')?.value);
+  if(!isNaN(lat) && lat>=-90 && lat<=90)   CONFIG.lat = lat;
+  if(!isNaN(lng) && lng>=-180 && lng<=180) CONFIG.lng = lng;
+  CONFIG.zoomLevel = parseInt(g('cfg-zoomLevel')?.value)||14;
   CONFIG.secteurs = g('cfg-secteurs').value.split('\n').map(x=>x.trim()).filter(Boolean);
   CONFIG.categories = g('cfg-categories').value.split('\n').map(x=>x.trim()).filter(Boolean);
   const newStages = collectStages();
@@ -7672,6 +7747,11 @@ function saveConfigForm() {
   CONFIG.stages = STAGES;
   persistConfig();
   applyConfig();
+  // Mettre à jour la carte si elle existe
+  if(_cfgGeoMap) {
+    _cfgGeoMap.setView([CONFIG.lat, CONFIG.lng], CONFIG.zoomLevel);
+    if(_cfgGeoMarker) _cfgGeoMarker.setLatLng([CONFIG.lat, CONFIG.lng]);
+  }
   if(typeof initPipeline==='function') try{ initPipeline(); }catch(e){}
   renderDiagnostic();
   showToast('✅ Paramétrage enregistré');
@@ -10413,6 +10493,212 @@ function dhRenderTimeline(deal) {
 
 // Update renderMsgHistory to also update badge
 const _origRenderMsgHistory = typeof renderMsgHistory === 'function' ? renderMsgHistory : null;
+
+
+// ═══════════════════════════════════════
+//  GÉOLOCALISATION PARAMÉTRAGE ENTREPRISE
+// ═══════════════════════════════════════
+let _cfgGeoMap    = null;
+let _cfgGeoMarker = null;
+
+function initCfgGeoMap() {
+  const el = document.getElementById('cfg-geo-map');
+  if(!el) return;
+  const loading = document.getElementById('cfg-geo-map-loading');
+
+  const lat  = parseFloat(document.getElementById('cfg-lat')?.value)  || CONFIG.lat  || 5.3463;
+  const lng  = parseFloat(document.getElementById('cfg-lng')?.value)  || CONFIG.lng  || -4.0080;
+  const zoom = parseInt(document.getElementById('cfg-zoomLevel')?.value) || CONFIG.zoomLevel || 14;
+
+  // Détruire instance précédente si elle existe
+  if(_cfgGeoMap) { try{ _cfgGeoMap.remove(); }catch(e){} _cfgGeoMap = null; _cfgGeoMarker = null; }
+
+  _cfgGeoMap = L.map('cfg-geo-map').setView([lat, lng], zoom);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
+    maxZoom: 19
+  }).addTo(_cfgGeoMap);
+
+  // Marqueur entreprise draggable
+  const companyIcon = L.divIcon({
+    html: `<div style="
+      background:linear-gradient(135deg,#DC2626,#991B1B);
+      width:36px;height:36px;border-radius:50% 50% 50% 0;
+      transform:rotate(-45deg);
+      border:3px solid #fff;
+      box-shadow:0 2px 12px rgba(220,38,38,.5);
+      display:flex;align-items:center;justify-content:center">
+      <span style="transform:rotate(45deg);font-size:16px">🏭</span>
+    </div>`,
+    className: '',
+    iconSize: [36, 36],
+    iconAnchor: [18, 36],
+    popupAnchor: [0, -38]
+  });
+
+  _cfgGeoMarker = L.marker([lat, lng], {
+    icon: companyIcon,
+    draggable: true,
+    title: CONFIG.raisonSociale || CONFIG.appName || 'Siège entreprise'
+  }).addTo(_cfgGeoMap);
+
+  // Popup riche
+  _cfgGeoUpdatePopup();
+
+  // Mise à jour coordonnées au drag
+  _cfgGeoMarker.on('dragend', function(e) {
+    const pos = e.target.getLatLng();
+    _cfgGeoSetCoords(pos.lat, pos.lng);
+    _cfgGeoUpdatePopup();
+  });
+
+  // Clic sur la carte pour déplacer le marqueur
+  _cfgGeoMap.on('click', function(e) {
+    _cfgGeoMarker.setLatLng(e.latlng);
+    _cfgGeoSetCoords(e.latlng.lat, e.latlng.lng);
+    _cfgGeoUpdatePopup();
+  });
+
+  // Zoom change → mettre à jour le champ zoom
+  _cfgGeoMap.on('zoomend', function() {
+    const zEl = document.getElementById('cfg-zoomLevel');
+    if(zEl) zEl.value = _cfgGeoMap.getZoom();
+  });
+
+  // Masquer le loading
+  if(loading) loading.style.display = 'none';
+
+  // Anneau de rayon indicatif (500m)
+  L.circle([lat, lng], {
+    radius: 500,
+    color: '#2563EB',
+    fillColor: '#2563EB',
+    fillOpacity: 0.05,
+    weight: 1.5,
+    dashArray: '6 4'
+  }).addTo(_cfgGeoMap);
+
+  _cfgGeoUpdateDisplay(lat, lng);
+}
+
+function _cfgGeoUpdatePopup() {
+  if(!_cfgGeoMarker) return;
+  const pos  = _cfgGeoMarker.getLatLng();
+  const name = CONFIG.raisonSociale || CONFIG.appName || 'Siège entreprise';
+  const addr = CONFIG.adresse || '';
+  _cfgGeoMarker.bindPopup(`
+    <div style="min-width:180px;font-family:Poppins,sans-serif">
+      <div style="font-weight:800;font-size:13px;color:#0F172A;margin-bottom:4px">🏭 ${name}</div>
+      ${addr ? `<div style="font-size:11px;color:#64748B;margin-bottom:5px">📍 ${addr}</div>` : ''}
+      <div style="font-size:10px;background:#EFF6FF;color:#2563EB;padding:4px 8px;border-radius:6px;font-weight:700;margin-bottom:6px">
+        ${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}
+      </div>
+      <div style="font-size:10px;color:#64748B">🖱️ Glissez le marqueur ou cliquez sur la carte pour repositionner</div>
+    </div>
+  `).openPopup();
+}
+
+function _cfgGeoSetCoords(lat, lng) {
+  const latEl = document.getElementById('cfg-lat');
+  const lngEl = document.getElementById('cfg-lng');
+  if(latEl) latEl.value = lat.toFixed(6);
+  if(lngEl) lngEl.value = lng.toFixed(6);
+  _cfgGeoUpdateDisplay(lat, lng);
+}
+
+function _cfgGeoUpdateDisplay(lat, lng) {
+  const el = document.getElementById('cfg-geo-coords-display');
+  if(el) el.textContent = `📌 ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+}
+
+// Détecter position GPS du navigateur
+function cfgGeoLocate() {
+  if(!navigator.geolocation) { showToast('❌ Géolocalisation non supportée'); return; }
+  showToast('📡 Détection GPS en cours…');
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      _cfgGeoSetCoords(lat, lng);
+      if(_cfgGeoMap) {
+        _cfgGeoMap.setView([lat, lng], 16);
+        if(_cfgGeoMarker) { _cfgGeoMarker.setLatLng([lat, lng]); _cfgGeoUpdatePopup(); }
+      }
+      showToast('✅ Position détectée : ' + lat.toFixed(4) + ', ' + lng.toFixed(4));
+    },
+    err => {
+      const msgs = {1:'Permission refusée',2:'Position indisponible',3:'Délai dépassé'};
+      showToast('⚠️ GPS : ' + (msgs[err.code]||err.message));
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
+}
+
+// Afficher/masquer le champ de recherche d'adresse
+function cfgGeoSearch() {
+  const box = document.getElementById('cfg-geo-search-box');
+  if(!box) return;
+  box.style.display = box.style.display === 'none' ? '' : 'none';
+  if(box.style.display !== 'none') setTimeout(()=>document.getElementById('cfg-geo-query')?.focus(), 80);
+}
+
+// Recherche d'adresse via Nominatim (OpenStreetMap)
+async function cfgGeoDoSearch() {
+  const q = document.getElementById('cfg-geo-query')?.value.trim();
+  if(!q) return;
+  const resBox = document.getElementById('cfg-geo-results');
+  if(resBox) resBox.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px">🔍 Recherche en cours…</div>';
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&countrycodes=ci,sn,ml,bf,gn,tg,bj,ng,gh`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'fr' } });
+    const data = await res.json();
+    if(!data.length) {
+      if(resBox) resBox.innerHTML = '<div style="font-size:12px;color:var(--danger);padding:6px">❌ Aucun résultat. Essayez une adresse plus précise.</div>';
+      return;
+    }
+    if(resBox) resBox.innerHTML = data.map((r,i)=>`
+      <div onclick="cfgGeoSelectResult(${r.lat},${r.lon},'${r.display_name.replace(/'/g,'\\\'').substring(0,60)}')"
+           style="padding:8px 10px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--surface);cursor:pointer;margin-bottom:5px;font-size:12px;transition:background .15s"
+           onmouseover="this.style.background='var(--primary-l)'" onmouseout="this.style.background='var(--surface)'">
+        📍 ${r.display_name.substring(0,80)}${r.display_name.length>80?'…':''}
+      </div>`).join('');
+  } catch(e) {
+    if(resBox) resBox.innerHTML = '<div style="font-size:12px;color:var(--danger);padding:6px">❌ Erreur réseau. Vérifiez votre connexion.</div>';
+  }
+}
+
+// Sélectionner un résultat de recherche
+function cfgGeoSelectResult(lat, lng, label) {
+  lat = parseFloat(lat); lng = parseFloat(lng);
+  _cfgGeoSetCoords(lat, lng);
+  if(_cfgGeoMap) {
+    _cfgGeoMap.setView([lat, lng], 16);
+    if(_cfgGeoMarker) { _cfgGeoMarker.setLatLng([lat, lng]); _cfgGeoUpdatePopup(); }
+  }
+  const box = document.getElementById('cfg-geo-search-box');
+  if(box) box.style.display = 'none';
+  const resBox = document.getElementById('cfg-geo-results');
+  if(resBox) resBox.innerHTML = '';
+  showToast('📍 Position sélectionnée : ' + label);
+}
+
+// Réinitialiser à Abidjan par défaut
+function cfgGeoReset() {
+  const lat = 5.3463, lng = -4.0080, zoom = 14;
+  const latEl = document.getElementById('cfg-lat');
+  const lngEl = document.getElementById('cfg-lng');
+  const zEl   = document.getElementById('cfg-zoomLevel');
+  if(latEl) latEl.value = lat;
+  if(lngEl) lngEl.value = lng;
+  if(zEl)   zEl.value   = zoom;
+  if(_cfgGeoMap) {
+    _cfgGeoMap.setView([lat, lng], zoom);
+    if(_cfgGeoMarker) { _cfgGeoMarker.setLatLng([lat, lng]); _cfgGeoUpdatePopup(); }
+  }
+  _cfgGeoUpdateDisplay(lat, lng);
+  showToast('↺ Réinitialisé sur Abidjan, Côte d\'Ivoire');
+}
 
 // ═══════════════════════════════════════
 //  INIT ALL
