@@ -796,6 +796,10 @@ select.form-input{cursor:pointer}
     <div class="sb-icon">📄</div><span>Documents & Modèles</span>
     <span class="sb-badge" id="sb-doc-badge" style="display:none">0</span>
   </div>
+  <div class="sb-item" onclick="navigate('automatisations',this)">
+    <div class="sb-icon">⚙️</div><span>Automatisations</span>
+    <span class="sb-badge warn" id="sb-wf-badge" style="display:none">0</span>
+  </div>
 
   <div class="sb-divider"></div>
   <div class="sb-section">⑥ Déploiement</div>
@@ -880,6 +884,9 @@ select.form-input{cursor:pointer}
           <button onclick="initDashboard360()" style="padding:5px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);font-size:11px;cursor:pointer">🔄 Actualiser</button>
         </div>
       </div>
+
+      <!-- 🧠 BRIEFING IA — CERVEAU COMMERCIAL -->
+      <div id="ai-briefing-zone" style="margin-bottom:16px"></div>
 
       <!-- ALERTES CRITIQUES -->
       <div id="alert-zone" style="margin-bottom:12px"></div>
@@ -2350,6 +2357,31 @@ select.form-input{cursor:pointer}
               </thead>
               <tbody id="doc-tbody"></tbody>
             </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ VIEW: AUTOMATISATIONS (Moteur de Workflow) ══ -->
+    <div id="view-automatisations" class="hidden fade-in">
+      <div style="margin-bottom:6px">
+        <h1 class="page-title" style="margin-bottom:0">⚙️ Automatisations</h1>
+        <p class="page-sub">Moteur de Workflow — quand un prospect devient client, contrat, licence, facture, projet, agenda et tâches sont créés automatiquement</p>
+      </div>
+      <div class="stats-grid" id="wf-stats"></div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><span class="card-title">✅ Tâches d'onboarding</span></div>
+          <div id="wf-tasks-list" style="max-height:420px;overflow-y:auto"></div>
+        </div>
+        <div class="flex-col" style="display:flex;flex-direction:column;gap:16px">
+          <div class="card">
+            <div class="card-header"><span class="card-title">📅 Agenda généré</span></div>
+            <div id="wf-events-list" style="max-height:190px;overflow-y:auto"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span class="card-title">🔔 Journal des notifications</span></div>
+            <div id="wf-log-list" style="max-height:190px;overflow-y:auto"></div>
           </div>
         </div>
       </div>
@@ -4527,7 +4559,8 @@ function navigate(view, el) {
     planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
     parametrage:'Paramétrage',
     presentations:'Présentations & Démos',commandes:'Commandes Clients',contrats:'Contrats & Conventions',
-    licences:'Licences Attribuées',documents:'Documents & Modèles',comptabilite:'Comptabilité SYSCOHADA'
+    licences:'Licences Attribuées',documents:'Documents & Modèles',comptabilite:'Comptabilité SYSCOHADA',
+    automatisations:'Automatisations (Moteur de Workflow)'
   }[view] || view;
   if(view === 'carte') setTimeout(()=>{ initMap(); updateCarteStats(); }, 100);
   if(view === 'pipeline') setTimeout(populatePipelineFilters, 60);
@@ -4653,6 +4686,7 @@ function updateSidebarNotifications() {
 function initCharts() { initDashboard360(); } // alias
 
 function initDashboard360() {
+  if(typeof renderBriefingIA==='function') renderBriefingIA();
   const now = new Date();
   const jours = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   const moisNoms = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
@@ -5081,9 +5115,7 @@ function dropDeal(e,stage) {
       if(linked && linked.statut==='prospect') {
         setTimeout(()=>{
           if(confirm(`🎉 Deal "${deal.client}" passé en Gagné !\n\nConvertir "${linked.nom}" de Prospect en Client actif ?`)) {
-            linked.statut='client'; linked.updated_at=new Date().toISOString();
-            saveStore('clients'); renderClients(getFilteredClients());
-            showToast('✅ '+linked.nom+' converti en Client actif !');
+            convertProspectToClient(linked.id, {skipConfirm:true, source:'Pipeline (glisser-déposer)'});
           }
         }, 200);
       }
@@ -6951,11 +6983,7 @@ function saveDeal() {
   if(clientId && stage==='gagne') {
     const c = CLIENTS.find(x=>x.id===clientId);
     if(c && c.statut==='prospect') {
-      if(confirm(`Convertir "${c.nom}" de Prospect en Client actif ?`)) {
-        c.statut='client'; c.updated_at=new Date().toISOString();
-        saveStore('clients');
-        showToast('✅ '+c.nom+' converti en Client actif !');
-      }
+      convertProspectToClient(c.id, {source:'Formulaire deal'});
     }
   }
 
@@ -7207,16 +7235,42 @@ function deleteClient(id) {
   showToast(`🗑 ${type} "${c.nom}" supprimé`);
 }
 
-function convertProspectToClient(id) {
+// ═══════════════════════════════════════════════════════════
+//  POINT UNIQUE DE CONVERSION PROSPECT → CLIENT
+//  (remplace les 4 duplications historiques : dropDeal, saveDeal,
+//   convConvert, ancien convertProspectToClient)
+// ═══════════════════════════════════════════════════════════
+function convertProspectToClient(id, opts) {
+  opts = opts || {};
   const c = CLIENTS.find(x=>x.id===id);
-  if(!c) return;
-  if(!confirm(`Convertir le prospect "${c.nom}" en Client actif ?`)) return;
+  if(!c) return false;
+  if(c.statut === 'client') return false; // déjà converti, idempotent
+  if(!opts.skipConfirm && !confirm(`Convertir le prospect "${c.nom}" en Client actif ?\n\nCela déclenchera automatiquement : contrat, licence, facture, projet, tâches, agenda et notification.`)) return false;
+
   c.statut = 'client';
   c.updated_at = new Date().toISOString();
+  if(!c.interactions) c.interactions = [];
+  c.interactions.push({date:new Date().toISOString(),type:'Converti en client',note:opts.source?('Converti via '+opts.source):'Prospect converti',etape:5,ico:'✅'});
   saveStore('clients');
+
+  // Relier / créer le deal associé (pipeline)
+  let deal = DEALS.find(d=>d.clientId===id);
+  if(deal) { deal.stage='gagne'; }
+  else {
+    const nid = DEALS.length ? Math.max(...DEALS.map(d=>parseInt(d.id)||0))+1 : 1;
+    deal = {id:nid,client:c.nom,clientId:c.id,logiciel:c.logiciel||'',valeur:c.valeur||0,commercial:c.commercial||'',stage:'gagne',notes:c.notes||'',color:'#10B981',date:new Date().toLocaleDateString('fr-FR'),fromProspect:true,history:[]};
+    DEALS.push(deal);
+  }
+  saveStore('deals');
+
+  // 🚀 Déclenchement du moteur de workflow (automatisation complète)
+  runWorkflowProspectToClient(c, deal);
+
   renderClients(getFilteredClients());
+  if(typeof initPipeline==='function') try{ initPipeline(); }catch(e){}
   if(leafletMap) setTimeout(refreshMapMarkers, 200);
-  showToast(`✅ "${c.nom}" converti en Client actif !`);
+  showToast(`✅ "${c.nom}" converti en Client actif — automatisation lancée`);
+  return true;
 }
 
 function showClientDetail(id) {
@@ -7275,6 +7329,26 @@ function showClientDetail(id) {
         ${['Prospect','Contact','Démo','Prop.','Négo','Client'].map(e=>`<div style="font-size:8px;color:var(--muted);flex:1;text-align:center">${e}</div>`).join('')}
       </div>
     </div>
+
+    <!-- 🧠 CRM INTELLIGENCE -->
+    ${(()=>{
+      const ci = crmIntelligence(c);
+      return `<div style="margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 12px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🧠 CRM Intelligence — calculé automatiquement</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">
+          ${crmIndexBar('Score prospect','🎯',ci.score)}
+          ${c.statut==='prospect'?crmIndexBar('Probabilité de vente','📊',ci.probabilite):''}
+          ${crmIndexBar("Indice d'urgence",'🚨',ci.urgence)}
+          ${crmIndexBar("Indice d'intérêt",'💡',ci.interet)}
+          ${crmIndexBar('Indice financier','💳',ci.financier)}
+          ${crmIndexBar('Risque de perte','⚠️',ci.risque.pct)}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;padding-top:8px;border-top:1px dashed var(--border)">
+          ${c.statut==='prospect'?`<span class="badge badge-muted" style="font-size:10px">⏱️ Signature estimée : ~${ci.cycle.joursEstimes}j (${ci.cycle.dateEstimee})</span>`:''}
+          <span class="badge badge-muted" style="font-size:10px">💎 Valeur vie client (CLV) : ${cokFmt(ci.clv.clv)} FCFA</span>
+        </div>
+      </div>`;
+    })()}
 
     <!-- HISTORIQUE INTERACTIONS -->
     <div style="margin-bottom:12px">
@@ -7861,6 +7935,10 @@ const LS_STORES = {
   apporteurs:    { get:()=>APPORTEURS,    set:v=>{ APPORTEURS=v; }    },
   documents:     { get:()=>DOCUMENTS,     set:v=>{ DOCUMENTS=v; }     },
   ecritures:     { get:()=>ECRITURES,     set:v=>{ ECRITURES=v; }     },
+  wf_tasks:      { get:()=>WF_TASKS,      set:v=>{ WF_TASKS=v; }      },
+  wf_events:     { get:()=>WF_EVENTS,     set:v=>{ WF_EVENTS=v; }     },
+  wf_log:        { get:()=>WF_LOG,        set:v=>{ WF_LOG=v; }        },
+  projets:       { get:()=>PROJETS,       set:v=>{ PROJETS=v; }       },
 };
 
 function lsSave(key, data) {
@@ -9384,6 +9462,11 @@ function updateSidebarBadges() {
     const n = CLIENTS.filter(c=>c.statut==='prospect' && (convNBA(c).overdue || aiProspectScore(c)>=70)).length;
     sbConv.textContent = n; sbConv.style.display = n? '' : 'none';
   }
+  const sbWf = document.getElementById('sb-wf-badge');
+  if(sbWf) {
+    const n = (typeof WF_TASKS!=='undefined'?WF_TASKS:[]).filter(t=>t.statut!=='fait').length;
+    sbWf.textContent = n; sbWf.style.display = n? '' : 'none';
+  }
 }
 
 // ─── Persist & Load ─────────────────────
@@ -9396,6 +9479,10 @@ const _extendLoadAll = () => {
   const apps = lsLoad('apporteurs');    if(apps&&Array.isArray(apps))  APPORTEURS=apps;
   const docs = lsLoad('documents');     if(docs&&Array.isArray(docs))  DOCUMENTS=docs;
   const ecr  = lsLoad('ecritures');     if(ecr&&Array.isArray(ecr))   ECRITURES=ecr;
+  const wft  = lsLoad('wf_tasks');      if(wft&&Array.isArray(wft))   WF_TASKS=wft;
+  const wfe  = lsLoad('wf_events');     if(wfe&&Array.isArray(wfe))   WF_EVENTS=wfe;
+  const wfl  = lsLoad('wf_log');        if(wfl&&Array.isArray(wfl))   WF_LOG=wfl;
+  const prj  = lsLoad('projets');       if(prj&&Array.isArray(prj))   PROJETS=prj;
 };
 
 // ─── Navigate extension pour nouveaux modules ─
@@ -9407,6 +9494,7 @@ const _navExtensions = {
   apporteurs:    ()=>setTimeout(initApporteurs,50),
   documents:     ()=>setTimeout(initDocuments,50),
   comptabilite:  ()=>setTimeout(initComptabilite,50),
+  automatisations: ()=>setTimeout(initAutomatisations,50),
 };
 // Hook into existing navigate via event
 document.addEventListener('sanix:navigate', e=>{
@@ -9734,14 +9822,9 @@ function convLog(id, etape){
 function convConvert(id){
   const c=CLIENTS.find(x=>x.id===id); if(!c) return;
   if(!confirm(`Convertir "${c.nom}" en Client actif ?`)) return;
-  c.statut='client'; c.updated_at=new Date().toISOString();
-  if(!c.interactions) c.interactions=[];
-  c.interactions.push({date:new Date().toISOString(),type:'Converti en client',note:'Prospect converti',etape:5,ico:'✅'});
-  saveStore('clients');
-  try{ syncDealForClient(id); }catch(e){}
-  showToast(`🎉 "${c.nom}" est désormais Client actif !`);
+  convertProspectToClient(id, {skipConfirm:true, source:'Moteur de Conversion IA'});
   convRender();
-  try{ updateSidebarBadges(); renderClients(getFilteredClients()); if(leafletMap) refreshMapMarkers(); }catch(e){}
+  try{ updateSidebarBadges(); }catch(e){}
 }
 
 
@@ -9957,6 +10040,213 @@ function relanceSaveConfig(){
 
 
 // ═══════════════════════════════════════════════════════════
+//  ⚙️ MOTEUR DE WORKFLOW (Workflow Engine)
+//  Trigger : "prospect_devient_client"
+//  Actions automatiques : Contrat → Licence → Facture → Projet
+//                          → Tâches → Agenda → Notification
+// ═══════════════════════════════════════════════════════════
+let WF_TASKS  = [];   // {id, titre, assigne, echeance, statut, clientId, ico}
+let WF_EVENTS = [];   // {id, titre, date, type, clientId, ico}
+let WF_LOG    = [];   // {id, date, clientId, client, ico, msg, lu}
+let PROJETS   = [];   // {id, nom, client, clientId, etape, contratId, dateDebut}
+
+// Définition déclarative des étapes du workflow "Onboarding client"
+// → facilement extensible : ajouter/retirer une étape sans toucher au moteur
+const WF_ONBOARDING_STEPS = [
+  {key:'contrat',       label:'Génération du contrat'},
+  {key:'licence',       label:"Attribution de la licence"},
+  {key:'facture',       label:'Émission de la facture'},
+  {key:'projet',        label:'Création du projet de déploiement'},
+  {key:'agenda',        label:'Planification du rendez-vous de lancement'},
+  {key:'taches',        label:"Génération des tâches d'onboarding"},
+  {key:'notification',  label:'Notification à l\'équipe'},
+];
+
+function _wfId(prefix){ return prefix+'_'+Date.now()+'_'+Math.floor(Math.random()*1000); }
+function _wfDatePlus(days){ const d=new Date(); d.setDate(d.getDate()+days); return d.toISOString().split('T')[0]; }
+
+/**
+ * Point d'entrée unique du moteur : exécute la chaîne complète
+ * d'automatisation quand un prospect devient client.
+ * Idempotent : ne s'exécute qu'une seule fois par client (client.wfRunAt).
+ */
+function runWorkflowProspectToClient(client, deal) {
+  if(!client) return;
+  if(client.wfRunAt) { syncLog && syncLog('info', `⚙️ Workflow déjà exécuté pour ${client.nom}, ignoré`); return; }
+
+  const montant  = (deal && deal.valeur) || client.valeur || 0;
+  const logiciel = (deal && deal.logiciel) || client.logiciel || '';
+  const commercial = (deal && deal.commercial) || client.commercial || '';
+  const created  = {};
+
+  // 1) CONTRAT — brouillon prêt à envoyer, réutilise le module Contrats existant
+  const ctrRef = contratRef();
+  const contrat = {
+    id:'ctr_'+Date.now(), ref:ctrRef, type:'contrat', client:client.nom, date:new Date().toISOString().split('T')[0],
+    logiciel, duree:'12 mois', montant, paiement:'Mensuel', statut:'brouillon',
+    cmdId:'', notes:'Généré automatiquement par le Moteur de Workflow (conversion prospect → client)'
+  };
+  CONTRATS.push(contrat); lsSave('contrats', CONTRATS); created.contrat = contrat;
+
+  // 2) LICENCE — liée au contrat, statut "essai" en attendant signature
+  const licKey = genLicKeyStr();
+  const licence = {
+    id:'lic_'+Date.now(), createdAt:new Date().toISOString(), key:licKey, client:client.nom, logiciel,
+    type:'Annuelle', postes:1, debut:new Date().toISOString().split('T')[0], fin:null,
+    statut:'essai', env:'production', contratId:contrat.id, commercial, notes:'Attribuée automatiquement à la conversion',
+    alerte30:true, alerte7:true, alerte1:true, updatedAt:new Date().toISOString()
+  };
+  LICENCES.push(licence); lsSave('licences', LICENCES); created.licence = licence;
+
+  // 3) FACTURE / COMMANDE — reprend le pipeline Commandes existant
+  const htNet = montant, tva = Math.round(htNet*0.18), ttc = htNet+tva;
+  const commande = {
+    id:'cmd_'+Date.now(), ref:cmdNumero(), client:client.nom, date:new Date().toISOString().split('T')[0],
+    logiciel, typeLicence:'Annuelle', htBrut:htNet, remise:0, htNet, tva, ttc, acompte:0, solde:ttc,
+    commercial, statut:'confirmee', presId:'', notes:'Facture générée automatiquement (workflow onboarding)'
+  };
+  COMMANDES.push(commande); lsSave('commandes', COMMANDES); created.commande = commande;
+  contrat.cmdId = commande.id; lsSave('contrats', CONTRATS);
+
+  // 4) PROJET — dossier de déploiement/onboarding
+  const projet = {
+    id:_wfId('prj'), nom:`Déploiement ${logiciel||'SANIX'} — ${client.nom}`, client:client.nom, clientId:client.id,
+    etape:'demarrage', contratId:contrat.id, dateDebut:new Date().toISOString().split('T')[0]
+  };
+  PROJETS.push(projet); lsSave('projets', PROJETS); created.projet = projet;
+
+  // 5) AGENDA — rendez-vous de lancement (kickoff) à J+2
+  const kickoff = {
+    id:_wfId('evt'), titre:`🚀 Kickoff — ${client.nom}`, date:_wfDatePlus(2), type:'kickoff',
+    clientId:client.id, ico:'🚀'
+  };
+  const formation = {
+    id:_wfId('evt'), titre:`🎓 Formation utilisateurs — ${client.nom}`, date:_wfDatePlus(7), type:'formation',
+    clientId:client.id, ico:'🎓'
+  };
+  WF_EVENTS.push(kickoff, formation); lsSave('wf_events', WF_EVENTS); created.events = [kickoff, formation];
+
+  // 6) TÂCHES — checklist d'onboarding assignée au commercial
+  const taches = [
+    {titre:`Faire signer le contrat ${ctrRef}`, jours:3, ico:'✍️'},
+    {titre:`Envoyer la clé de licence (${licKey})`, jours:1, ico:'🔑'},
+    {titre:`Encaisser l'acompte / facture ${commande.ref}`, jours:5, ico:'💰'},
+    {titre:`Préparer le kit de déploiement`, jours:2, ico:'📦'},
+    {titre:`Planifier la formation des utilisateurs`, jours:6, ico:'🎓'},
+  ].map(t=>({
+    id:_wfId('tsk'), titre:t.titre, assigne:commercial||'Non assigné', echeance:_wfDatePlus(t.jours),
+    statut:'a_faire', clientId:client.id, ico:t.ico
+  }));
+  WF_TASKS.push(...taches); lsSave('wf_tasks', WF_TASKS); created.taches = taches;
+
+  // 7) NOTIFICATION — équipe informée, traçabilité complète
+  const log = {
+    id:_wfId('log'), date:new Date().toISOString(), clientId:client.id, client:client.nom, ico:'🎉',
+    msg:`${client.nom} converti en client → Contrat ${ctrRef}, Licence ${licKey}, Facture ${commande.ref}, ${taches.length} tâches et 2 RDV créés automatiquement.`,
+    lu:false
+  };
+  WF_LOG.unshift(log); lsSave('wf_log', WF_LOG); created.log = log;
+
+  // Marquer le client comme "workflow exécuté" (idempotence)
+  client.wfRunAt = new Date().toISOString();
+  client.wfContratId = contrat.id; client.wfLicenceId = licence.id; client.wfCommandeId = commande.id; client.wfProjetId = projet.id;
+  saveStore('clients');
+
+  syncLog && syncLog('info', `⚙️ Workflow onboarding exécuté pour ${client.nom} (7 actions)`);
+  showToast(`⚙️ Automatisation terminée : contrat, licence, facture, projet, agenda et tâches créés pour ${client.nom}`);
+  try{ updateSidebarBadges(); }catch(e){}
+  try{ if(typeof initContrats==='function') initContrats(); }catch(e){}
+  try{ if(typeof initLicences==='function') initLicences(); }catch(e){}
+  try{ if(typeof initCommandes==='function') initCommandes(); }catch(e){}
+  try{ if(typeof initAutomatisations==='function') initAutomatisations(); }catch(e){}
+  return created;
+}
+
+// ─── Vue "Automatisations" : Tâches, Agenda & Journal du Workflow ───
+function initAutomatisations() {
+  renderWfStats();
+  renderWfTasks();
+  renderWfEvents();
+  renderWfLog();
+}
+
+function renderWfStats() {
+  const el = document.getElementById('wf-stats');
+  if(!el) return;
+  const tachesOuvertes = WF_TASKS.filter(t=>t.statut!=='fait').length;
+  const evtsAVenir     = WF_EVENTS.filter(e=>e.date>=new Date().toISOString().split('T')[0]).length;
+  const clientsAuto    = CLIENTS.filter(c=>c.wfRunAt).length;
+  const nonLues        = WF_LOG.filter(l=>!l.lu).length;
+  el.innerHTML = [
+    {ico:'✅',v:tachesOuvertes,lbl:'Tâches en cours',c:'var(--warning)',bg:'var(--warning-l)'},
+    {ico:'📅',v:evtsAVenir,   lbl:'RDV à venir',      c:'var(--primary)',bg:'var(--primary-l)'},
+    {ico:'⚙️',v:clientsAuto,  lbl:'Clients automatisés',c:'var(--success)',bg:'var(--success-l)'},
+    {ico:'🔔',v:nonLues,      lbl:'Notifications non lues',c:'var(--purple)',bg:'var(--purple-l)'},
+  ].map(s=>`<div class="stat-card" style="--accent:${s.c}"><div class="stat-icon" style="background:${s.bg}">${s.ico}</div><div class="stat-val" style="color:${s.c}">${s.v}</div><div class="stat-label">${s.lbl}</div></div>`).join('');
+}
+
+function renderWfTasks() {
+  const el = document.getElementById('wf-tasks-list');
+  if(!el) return;
+  const list = [...WF_TASKS].sort((a,b)=>(a.statut==='fait')-(b.statut==='fait')||a.echeance.localeCompare(b.echeance));
+  if(!list.length) { el.innerHTML='<div style="text-align:center;color:var(--muted);padding:16px;font-size:12px">Aucune tâche générée pour le moment</div>'; return; }
+  el.innerHTML = list.map(t=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border)">
+      <input type="checkbox" ${t.statut==='fait'?'checked':''} onchange="wfToggleTask('${t.id}')">
+      <div style="flex:1;${t.statut==='fait'?'text-decoration:line-through;color:var(--muted)':''}">
+        <div style="font-size:13px;font-weight:600">${t.ico} ${t.titre}</div>
+        <div style="font-size:11px;color:var(--muted)">👤 ${t.assigne} · 📅 Échéance ${t.echeance} · ${t.client||CLIENTS.find(c=>c.id===t.clientId)?.nom||''}</div>
+      </div>
+    </div>`).join('');
+}
+
+function wfToggleTask(id) {
+  const t = WF_TASKS.find(x=>x.id===id); if(!t) return;
+  t.statut = t.statut==='fait' ? 'a_faire' : 'fait';
+  lsSave('wf_tasks', WF_TASKS);
+  renderWfTasks(); renderWfStats();
+}
+
+function renderWfEvents() {
+  const el = document.getElementById('wf-events-list');
+  if(!el) return;
+  const list = [...WF_EVENTS].sort((a,b)=>a.date.localeCompare(b.date));
+  if(!list.length) { el.innerHTML='<div style="text-align:center;color:var(--muted);padding:16px;font-size:12px">Aucun rendez-vous planifié</div>'; return; }
+  el.innerHTML = list.map(e=>{
+    const c = CLIENTS.find(x=>x.id===e.clientId);
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border)">
+      <div style="font-size:18px">${e.ico}</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600">${e.titre}</div>
+        <div style="font-size:11px;color:var(--muted)">📅 ${e.date}${c?' · '+c.nom:''}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderWfLog() {
+  const el = document.getElementById('wf-log-list');
+  if(!el) return;
+  if(!WF_LOG.length) { el.innerHTML='<div style="text-align:center;color:var(--muted);padding:16px;font-size:12px">Aucune notification pour le moment</div>'; return; }
+  el.innerHTML = WF_LOG.map(l=>`
+    <div style="display:flex;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);${l.lu?'opacity:.6':''}" onclick="wfMarkRead('${l.id}')" style="cursor:pointer">
+      <div style="font-size:18px">${l.ico}</div>
+      <div style="flex:1">
+        <div style="font-size:12px">${l.msg}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">${new Date(l.date).toLocaleString('fr-FR')}</div>
+      </div>
+      ${!l.lu?'<span style="width:8px;height:8px;background:var(--primary);border-radius:50%;flex-shrink:0;margin-top:4px"></span>':''}
+    </div>`).join('');
+}
+
+function wfMarkRead(id) {
+  const l = WF_LOG.find(x=>x.id===id); if(!l) return;
+  l.lu = true; lsSave('wf_log', WF_LOG);
+  renderWfLog(); renderWfStats();
+  try{ updateSidebarBadges(); }catch(e){}
+}
+
+// ═══════════════════════════════════════════════════════════
 //  SYNC PROSPECTS → PIPELINE (chaque prospect = 1 deal)
 // ═══════════════════════════════════════════════════════════
 function _stageFromEtape(e){ return ['prospect','contact','demo','proposition','negociation'][Math.min(e,4)] || 'prospect'; }
@@ -10052,6 +10342,305 @@ function cokBestLogiciel(c){
   return matchs[0];
 }
 
+// ═══════════════════════════════════════════════════════════
+//  🧠 CRM INTELLIGENCE — module de scoring automatique
+//  Calcule en continu, pour chaque prospect/client :
+//  Score prospect · Probabilité de vente · Temps moyen avant
+//  signature · Risque de perte · Valeur vie client (CLV) ·
+//  Indice d'urgence · Indice d'intérêt · Indice financier
+// ═══════════════════════════════════════════════════════════
+const CRM_LIFETIME_YEARS_DEFAULT = 3; // hypothèse de rétention PME Afrique de l'Ouest
+
+// ── Cycle moyen de signature (historique réel, calculé sur les deals gagnés) ──
+function crmAvgSignatureDays(){
+  const cycles = [];
+  DEALS.filter(d=>d.stage==='gagne'&&Array.isArray(d.history)&&d.history.length).forEach(d=>{
+    const creation = d.history.find(h=>h.type==='creation');
+    const gain     = [...d.history].reverse().find(h=>h.note&&h.note.includes('Gagné'));
+    if(creation){
+      const start = new Date(creation.date);
+      const end   = gain ? new Date(gain.date) : new Date(d.history[d.history.length-1].date);
+      const days  = Math.round((end-start)/86400000);
+      if(days>=0 && days<365) cycles.push(days);
+    }
+  });
+  if(!cycles.length) return {avg:21, count:0, source:'estimation par défaut'}; // pas encore assez d'historique
+  const avg = Math.round(cycles.reduce((s,v)=>s+v,0)/cycles.length);
+  return {avg, count:cycles.length, source:`${cycles.length} vente(s) historique(s)`};
+}
+
+// ── Temps estimé restant avant signature pour un prospect donné ──
+function crmTempsAvantSignature(c){
+  const {avg} = crmAvgSignatureDays();
+  const et = aiGetEtape(c);
+  const restant = COK_CYCLE_REST[et] ?? Math.round(avg*0.5);
+  const joursEstimes = Math.max(1, Math.min(avg, restant));
+  const d = new Date(); d.setDate(d.getDate()+joursEstimes);
+  return { joursEstimes, dateEstimee: d.toLocaleDateString('fr-FR',{day:'2-digit',month:'short'}), moyenneHistorique: avg };
+}
+
+// ── Risque de perte enrichi (silence + stagnation vs cycle moyen) ──
+function crmRisquePerte(c){
+  const base = cokRisk(c); // {pct, lbl} — basé sur le silence
+  const {avg} = crmAvgSignatureDays();
+  const interactions = c.interactions||[];
+  let pct = base.pct;
+  if(interactions.length){
+    const first = new Date(interactions[0].date);
+    const ageJours = Math.floor((Date.now()-first)/86400000);
+    if(ageJours > avg*1.5) pct += 15; // stagne bien au-delà du cycle moyen
+  }
+  pct = Math.max(0, Math.min(100, pct));
+  const lbl = pct>=60?'Élevé':pct>=30?'Moyen':'Faible';
+  return {pct, lbl};
+}
+
+// ── Valeur vie client (CLV) ──
+function crmValeurVieClient(c){
+  const valeurAnnuelle = cokValeur(c) || 0;
+  const licsClient = LICENCES.filter(l=>l.client===c.nom);
+  const anneesFidelite = licsClient.length>1 ? Math.max(CRM_LIFETIME_YEARS_DEFAULT, licsClient.length) : CRM_LIFETIME_YEARS_DEFAULT;
+  const risque = crmRisquePerte(c).pct/100;
+  const facteurRetention = Math.max(0.4, 1-risque*0.6);
+  const clv = Math.round(valeurAnnuelle*anneesFidelite*facteurRetention);
+  return {clv, anneesFidelite, facteurRetention};
+}
+
+// ── Indice d'urgence : nécessité d'agir maintenant ──
+function crmIndiceUrgence(c){
+  let idx = 0;
+  const d = convDaysSince(c);
+  if(d!==null){ if(d>21) idx+=40; else if(d>10) idx+=22; else if(d>5) idx+=10; }
+  const et = aiGetEtape(c);
+  if(et>=3) idx += 20; // proposition / négociation : moment décisif
+  const rdv = WF_EVENTS.filter(e=>e.clientId===c.id && e.date>=new Date().toISOString().split('T')[0]);
+  if(rdv.length){
+    const prochain = Math.min(...rdv.map(e=>Math.round((new Date(e.date)-Date.now())/86400000)));
+    if(prochain<=3) idx += 25;
+  }
+  const licsExp = LICENCES.filter(l=>l.client===c.nom&&l.statut==='active'&&l.fin);
+  licsExp.forEach(l=>{ const dl=licDaysLeft(l.fin); if(dl!==null&&dl>=0&&dl<=30) idx+=15; });
+  return Math.max(0, Math.min(100, idx));
+}
+
+// ── Indice d'intérêt : engagement réel du prospect ──
+function crmIndiceInteret(c){
+  const interactions = c.interactions||[];
+  if(!interactions.length) return 5;
+  const recentes = interactions.filter(x=>(Date.now()-new Date(x.date))/86400000 <= 60);
+  let idx = Math.min(40, recentes.length*8);
+  const poidsEtape = {0:0,1:5,2:15,3:20,4:25,5:25};
+  const meilleureEtape = Math.max(...interactions.map(x=>x.etape||0));
+  idx += poidsEtape[meilleureEtape] || 0;
+  // Tendance : interactions plus fréquentes récemment qu'auparavant
+  if(interactions.length>=3){
+    const half = Math.floor(interactions.length/2);
+    const recentPace = interactions.slice(half).length;
+    const oldPace = interactions.slice(0,half).length;
+    if(recentPace>oldPace) idx += 15;
+  }
+  return Math.max(0, Math.min(100, Math.round(idx)));
+}
+
+// ── Indice financier : capacité / solvabilité estimée ──
+function crmIndiceFinancier(c){
+  const valeur = cokValeur(c);
+  const valeursMarche = LOGICIELS.map(l=>l.prixNum||0).filter(v=>v>0);
+  const moyenneMarche = valeursMarche.length ? valeursMarche.reduce((s,v)=>s+v,0)/valeursMarche.length : 500000;
+  let idx = 30 + Math.min(40, Math.round((valeur/Math.max(1,moyenneMarche))*30));
+  // Historique de paiement : commandes/contrats avec solde impayé = pénalité
+  const cmds = COMMANDES.filter(x=>x.client===c.nom);
+  const impayes = cmds.filter(x=>(x.solde||0) > 0 && x.statut!=='annulee');
+  if(cmds.length){
+    const tauxImpaye = impayes.length/cmds.length;
+    idx -= Math.round(tauxImpaye*30);
+  }
+  if(c.secteur && ['Banque/Finance','Industrie','Santé'].includes(c.secteur)) idx += 10;
+  return Math.max(5, Math.min(100, Math.round(idx)));
+}
+
+/**
+ * Agrégateur : calcule les 8 indices de CRM Intelligence pour un contact.
+ * Point d'entrée unique utilisé par l'UI (fiche client, Cockpit IA, listes).
+ */
+function crmIntelligence(c){
+  return {
+    score:        aiProspectScore(c),
+    probabilite:  c.statut==='prospect' ? cokProba(c) : 100,
+    cycle:        crmTempsAvantSignature(c),
+    risque:       crmRisquePerte(c),
+    clv:          crmValeurVieClient(c),
+    urgence:      crmIndiceUrgence(c),
+    interet:      crmIndiceInteret(c),
+    financier:    crmIndiceFinancier(c),
+  };
+}
+
+// Petit composant HTML réutilisable : barre d'indice colorée
+function crmIndexBar(label, ico, val, suffix){
+  suffix = suffix||'%';
+  const color = val>=70?'var(--success)':val>=40?'var(--warning)':'var(--danger)';
+  return `<div style="margin-bottom:7px">
+    <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px">
+      <span style="color:var(--text2);font-weight:600">${ico} ${label}</span>
+      <span style="font-weight:700;color:${color}">${val}${suffix}</span>
+    </div>
+    <div style="height:5px;background:var(--border);border-radius:4px;overflow:hidden">
+      <div style="height:100%;width:${Math.min(100,val)}%;background:${color};border-radius:4px"></div>
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  🧠 CERVEAU COMMERCIAL — Briefing IA en langage naturel
+//  Synthèse quotidienne générée à partir des données live :
+//  signatures probables, licences à échéance, CA prévisionnel,
+//  commerciaux inactifs, recommandations de relance ciblées.
+// ═══════════════════════════════════════════════════════════
+const STAGE_TO_ETAPE = {prospect:0, contact:1, demo:2, proposition:3, negociation:4, gagne:5, perdu:0};
+
+// Termes métiers par secteur, pour des recommandations qui « parlent »
+const SECTEUR_TERME = {
+  'Immobilier':'les promoteurs immobiliers', 'Santé':'les cliniques', 'Aviculture':'les aviculteurs',
+  'Distribution':'les distributeurs', 'Industrie':'les industriels', 'Agro-industrie':'les agro-industriels',
+  'Agriculture':'les exploitants agricoles', 'BTP':'les entreprises BTP', 'Commerce':'les commerçants',
+  'Services':'les prestataires de services', 'Logistique':'les transporteurs & logisticiens',
+  'Restauration':'les restaurateurs', 'Éducation':'les établissements scolaires',
+  'Ressources Humaines':'les cabinets RH', 'Banque/Finance':'les institutions financières'
+};
+
+function crmGreeting(){
+  const h = new Date().getHours();
+  const prenom = (typeof currentUser!=='undefined' && currentUser && currentUser.nom) ? currentUser.nom.split(' ')[0] : '';
+  const salut = h<12?'Bonjour':h<18?'Bon après-midi':'Bonsoir';
+  return prenom ? `${salut} ${prenom}` : `${salut}`;
+}
+
+// Prospects « chauds » : probabilité de signature > seuil
+function crmHotProspects(seuil){
+  seuil = seuil==null?85:seuil;
+  return CLIENTS.filter(c=>c.statut==='prospect').map(c=>({c, p:cokProba(c)})).filter(x=>x.p>seuil).sort((a,b)=>b.p-a.p);
+}
+
+// Licences actives qui expirent dans les N prochains jours
+function crmLicencesExpirantBientot(jours){
+  jours = jours||15;
+  return LICENCES.filter(l=>l.statut==='active'&&l.fin).filter(l=>{
+    const d = licDaysLeft(l.fin); return d!==null && d>=0 && d<=jours;
+  });
+}
+
+// CA prévisionnel du mois en cours (pipeline pondéré, filtré sur date de clôture estimée)
+function crmCAPrevisionnelMois(){
+  const now = new Date();
+  const openDeals = DEALS.filter(d=>d.stage!=='gagne'&&d.stage!=='perdu');
+  let total = 0;
+  openDeals.forEach(d=>{
+    const c = (d.clientId && CLIENTS.find(x=>x.id===d.clientId)) || CLIENTS.find(x=>x.nom===d.client);
+    let proba, joursEstimes;
+    if(c){ proba = cokProba(c)/100; joursEstimes = crmTempsAvantSignature(c).joursEstimes; }
+    else { proba = COK_STAGE_PROB[d.stage] ?? .05; joursEstimes = COK_CYCLE_REST[STAGE_TO_ETAPE[d.stage]] ?? 20; }
+    const closeDate = new Date(); closeDate.setDate(closeDate.getDate()+joursEstimes);
+    if(closeDate.getMonth()===now.getMonth() && closeDate.getFullYear()===now.getFullYear()){
+      total += (d.valeur||0)*proba;
+    }
+  });
+  // + le CA déjà signé ce mois-ci
+  const moisKey = now.getMonth(), anKey = now.getFullYear();
+  DEALS.filter(d=>d.stage==='gagne').forEach(d=>{
+    const dt = d.date ? new Date(d.date.split('/').reverse().join('-')) : null;
+    if(dt && dt.getMonth()===moisKey && dt.getFullYear()===anKey) total += (d.valeur||0);
+  });
+  return Math.round(total);
+}
+
+// Commerciaux sans aucune activité enregistrée (historique deals) depuis N jours
+function crmCommerciauxInactifs(seuilJours){
+  seuilJours = seuilJours||5;
+  const now = Date.now();
+  const commerciaux = EQUIPE.filter(m=>m.type==='salarie');
+  const result = [];
+  commerciaux.forEach(m=>{
+    let lastDate = null;
+    DEALS.forEach(d=>{
+      (d.history||[]).forEach(h=>{
+        if(h.commercial===m.nom){ const dt=new Date(h.date); if(!lastDate||dt>lastDate) lastDate=dt; }
+      });
+    });
+    if(lastDate){
+      const jours = Math.floor((now-lastDate)/86400000);
+      if(jours>=seuilJours) result.push({nom:m.nom, jours});
+    }
+  });
+  return result.sort((a,b)=>b.jours-a.jours);
+}
+
+// Recommandations de relance : secteurs × logiciels à plus fort potentiel pondéré
+function crmRecommandationsRelance(){
+  const candidats = CLIENTS.filter(c=>c.statut==='prospect').map(c=>({c, p:cokProba(c)})).filter(x=>x.p>=65);
+  const groups = {};
+  candidats.forEach(({c,p})=>{
+    if(!c.logiciel) return;
+    const key = (c.secteur||'Autre')+'|'+c.logiciel;
+    if(!groups[key]) groups[key] = {secteur:c.secteur||'Autre', logiciel:c.logiciel, count:0, valeur:0};
+    groups[key].count++; groups[key].valeur += cokValeur(c)*(p/100);
+  });
+  return Object.values(groups).sort((a,b)=>b.valeur-a.valeur).slice(0,2);
+}
+
+/**
+ * Génère le briefing du jour en langage naturel + les données brutes associées
+ * (pour brancher des boutons d'action rapide dans l'UI).
+ */
+function generateBriefingIA(){
+  const hot      = crmHotProspects(85);
+  const licExp   = crmLicencesExpirantBientot(15);
+  const caMois   = crmCAPrevisionnelMois();
+  const inactifs = crmCommerciauxInactifs(5);
+  const recos    = crmRecommandationsRelance();
+
+  let txt = `${crmGreeting()}. `;
+  txt += hot.length
+    ? `Cette semaine, ${hot.length} prospect${hot.length>1?'s':''} présente${hot.length>1?'nt':''} une probabilité supérieure à 85 % de signature. `
+    : `Aucun prospect n'affiche pour l'instant une probabilité de signature supérieure à 85 %. `;
+  if(licExp.length) txt += `${licExp.length===1?'Une licence arrive':licExp.length+' licences arrivent'} à expiration dans les 15 prochains jours. `;
+  txt += `Le chiffre d'affaires prévisionnel du mois est estimé à ${cokFmt(caMois)} FCFA. `;
+  if(inactifs.length){
+    const jmin = Math.min(...inactifs.map(i=>i.jours));
+    txt += `${inactifs.length===1?"Un commercial n'a":inactifs.length+" commerciaux n'ont"} effectué aucune activité terrain depuis ${jmin} jour${jmin>1?'s':''} ou plus (${inactifs.map(i=>i.nom).join(', ')}). `;
+  }
+  if(recos.length){
+    const parts = recos.map(r=>`${SECTEUR_TERME[r.secteur]||('les prospects '+r.secteur)} pour ${r.logiciel}`);
+    txt += `Je recommande de relancer en priorité ${parts.join(' ainsi que ')}.`;
+  }
+  return {text:txt, hot, licExp, caMois, inactifs, recos};
+}
+
+/**
+ * Affiche le Briefing IA dans le bandeau du tableau de bord.
+ * Appelé automatiquement à l'ouverture de session (enterApp) et
+ * à chaque rafraîchissement du dashboard (initDashboard360).
+ */
+function renderBriefingIA(){
+  const el = document.getElementById('ai-briefing-zone');
+  if(!el) return;
+  const b = generateBriefingIA();
+  el.innerHTML = `
+    <div style="background:linear-gradient(135deg,#0B1628,#111E35);border-radius:var(--r-lg);padding:18px 20px;color:#fff;display:flex;gap:14px;align-items:flex-start;box-shadow:var(--sh-md)">
+      <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#3B82F6,#7C3AED);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🧠</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:#8BA3C4;font-weight:700;margin-bottom:4px">Assistant IA SANIX — Briefing du jour</div>
+        <div style="font-size:13.5px;line-height:1.65">${b.text}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          ${b.hot.length?`<button onclick="navigate('cockpit',null)" style="font-size:11px;padding:5px 10px;background:rgba(59,130,246,.25);color:#fff;border:1px solid rgba(59,130,246,.4);border-radius:20px;cursor:pointer">🔥 ${b.hot.length} signature${b.hot.length>1?'s':''} probable${b.hot.length>1?'s':''}</button>`:''}
+          ${b.licExp.length?`<button onclick="navigate('licences',null)" style="font-size:11px;padding:5px 10px;background:rgba(217,119,6,.25);color:#fff;border:1px solid rgba(217,119,6,.4);border-radius:20px;cursor:pointer">🔑 Licences à échéance</button>`:''}
+          ${b.inactifs.length?`<button onclick="navigate('equipe',null)" style="font-size:11px;padding:5px 10px;background:rgba(220,38,38,.25);color:#fff;border:1px solid rgba(220,38,38,.4);border-radius:20px;cursor:pointer">👥 Équipe terrain</button>`:''}
+          <button onclick="renderBriefingIA()" style="font-size:11px;padding:5px 10px;background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:20px;cursor:pointer">🔄 Régénérer</button>
+        </div>
+      </div>
+    </div>`;
+}
+
 // ─── Suivi des actions "À faire aujourd'hui" ───
 // cok_done      : { 'YYYY-MM-DD': { clientId: timestamp } }  → coche du jour
 // cok_action_log: [{clientId, nom, motif, date, ts}, ...]     → historique / suivi
@@ -10123,6 +10712,8 @@ function cokRender(){
   const brut = openDeals.reduce((s,d)=>s+(d.valeur||0),0);
   const tosign = prospects.filter(c=>cokProba(c)>=55);
   const atrisk = prospects.filter(c=>cokRisk(c).pct>=50);
+  const cycleInfo = crmAvgSignatureDays();
+  const clvMoyenne = clients.length ? Math.round(clients.reduce((s,c)=>s+crmValeurVieClient(c).clv,0)/clients.length) : 0;
 
   document.getElementById('cok-kpis').innerHTML = `
     ${convKpi('📈', cokFmt(weighted), 'Prévision pondérée (FCFA)', 'var(--primary)')}
@@ -10130,7 +10721,9 @@ function cokRender(){
     ${convKpi('✅', cokFmt(realized), 'CA réalisé (FCFA)', 'var(--success)')}
     ${convKpi('🔥', tosign.length, 'Signatures probables', 'var(--danger)')}
     ${convKpi('⚠️', atrisk.length, 'Prospects à risque', atrisk.length?'var(--warning)':'var(--muted)')}
-    ${convKpi('🎯', prospects.length, 'Prospects actifs', 'var(--primary)')}`;
+    ${convKpi('🎯', prospects.length, 'Prospects actifs', 'var(--primary)')}
+    ${convKpi('⏱️', cycleInfo.avg+'j', 'Cycle moyen de signature', 'var(--purple)')}
+    ${convKpi('💎', cokFmt(clvMoyenne), 'CLV moyenne portefeuille (FCFA)', 'var(--teal)')}`;
 
   // À faire aujourd'hui : fusion retards + closing + risque
   const today = [];
