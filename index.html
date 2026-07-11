@@ -8,6 +8,9 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <style>
 :root{
   --bg:#F0F5FF;--surface:#FFFFFF;--surface2:#F8FAFF;
@@ -203,9 +206,29 @@ input,textarea,select{font-family:var(--font-b);outline:none}
 .team-kpi-lbl{font-size:10px;color:var(--muted)}
 
 /* ─── MAP ─────────────────────────────────────── */
-#leaflet-map{height:450px;border-radius:var(--r);border:1px solid var(--border);overflow:hidden}
+#leaflet-map-wrap{position:relative;border-radius:var(--r);overflow:hidden;border:1px solid var(--border)}
+#leaflet-map{height:520px}
+#leaflet-map-wrap.map-fullscreen{position:fixed;inset:0;z-index:9999;border-radius:0;border:none}
+#leaflet-map-wrap.map-fullscreen #leaflet-map{height:100vh}
 .carte-layer-btn{transition:opacity .2s,background .2s}
 .carte-layer-btn:not(.active){opacity:.45;text-decoration:line-through}
+.basemap-switch{position:absolute;top:10px;right:10px;z-index:500;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.25);overflow:hidden;display:flex}
+.basemap-switch button{border:none;background:#fff;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;color:#334155;border-right:1px solid #eee}
+.basemap-switch button:last-child{border-right:none}
+.basemap-switch button.active{background:#2563EB;color:#fff}
+.map-tool-btn{position:absolute;z-index:500;background:#fff;border:none;box-shadow:0 2px 8px rgba(0,0,0,.25);border-radius:8px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;color:#334155}
+.map-tool-btn:hover{background:#f1f5f9}
+#map-btn-locate{top:54px;right:10px}
+#map-btn-fullscreen{top:96px;right:10px}
+.map-search-box{position:absolute;top:10px;left:10px;z-index:500;width:230px}
+.map-search-box input{width:100%;padding:7px 10px;border-radius:8px;border:none;box-shadow:0 2px 8px rgba(0,0,0,.25);font-size:12px;font-family:inherit}
+.secteur-chip{padding:4px 11px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text2);transition:all .15s;white-space:nowrap}
+.secteur-chip.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.marker-cluster-clients div{background:rgba(37,99,235,.75)!important}
+.marker-cluster-clients{background:rgba(37,99,235,.35)!important}
+.marker-cluster-prospects div{background:rgba(217,119,6,.75)!important}
+.marker-cluster-prospects{background:rgba(217,119,6,.35)!important}
+.marker-cluster div span{color:#fff!important;font-weight:800!important}
 .itineraire-item{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)}
 .itineraire-step{width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
 
@@ -1007,9 +1030,16 @@ select.form-input{cursor:pointer}
 
       <div class="flex" style="gap:16px;flex-wrap:wrap;margin-bottom:16px">
         <div class="card" style="padding:16px;flex:2;min-width:300px">
-          <div style="font-weight:700;font-size:14px;margin-bottom:4px">📌 À faire aujourd'hui</div>
+          <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:6px;margin-bottom:4px">
+            <div style="font-weight:700;font-size:14px">📌 À faire aujourd'hui</div>
+            <span id="cok-today-count" style="font-size:11px;font-weight:700;color:var(--success);background:var(--success-l);padding:2px 8px;border-radius:20px"></span>
+          </div>
           <p class="page-sub" style="margin:0 0 10px">Actions triées par impact commercial</p>
           <div id="cok-today"></div>
+          <div id="cok-today-done" class="hidden" style="margin-top:6px;border-top:1px dashed var(--border);padding-top:8px"></div>
+          <div style="margin-top:10px;text-align:center">
+            <button class="btn btn-outline btn-sm" id="cok-today-toggle" style="font-size:11px" onclick="cokToggleDone()">📋 Voir le suivi des actions réalisées</button>
+          </div>
         </div>
         <div class="card" style="padding:16px;flex:1;min-width:260px">
           <div style="font-weight:700;font-size:14px;margin-bottom:4px">📈 Prévision de signature</div>
@@ -1351,6 +1381,22 @@ select.form-input{cursor:pointer}
         </div>
       </div>
 
+      <!-- Segmentation secteur & type -->
+      <div class="card" style="padding:12px 14px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+          <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">📁 Secteur d'activité</span>
+          <button class="secteur-chip" id="sect-chip-all" onclick="setSecteurFilter(null)">Tous</button>
+          <div id="carte-secteur-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">🏷️ Type de contact</span>
+          <button class="secteur-chip active" id="type-chip-all" onclick="setTypeFilter('all',this)">Tous</button>
+          <button class="secteur-chip" onclick="setTypeFilter('client',this)">✅ Clients actifs</button>
+          <button class="secteur-chip" onclick="setTypeFilter('prospect',this)">🎯 Prospects chauds (≥70%)</button>
+          <button class="secteur-chip" onclick="setTypeFilter('prospect_froid',this)">🧊 Prospects froids (&lt;40%)</button>
+        </div>
+      </div>
+
       <!-- Alerte sans GPS -->
       <div id="carte-alert-nogeo" style="display:none;background:var(--warning-l);border:1px solid rgba(217,119,6,.25);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--warning);display:flex;align-items:center;gap:8px">
         <span>⚠️</span>
@@ -1358,7 +1404,20 @@ select.form-input{cursor:pointer}
         <button onclick="gotoClientsMissingGeo()" class="btn btn-sm" style="margin-left:auto;background:var(--warning);color:#fff;padding:4px 10px;font-size:11px">Voir la liste →</button>
       </div>
 
-      <div id="leaflet-map"></div>
+      <div id="leaflet-map-wrap">
+        <div class="map-search-box">
+          <input type="text" id="map-search-input" placeholder="🔍 Rechercher un client/prospect..." list="map-search-list" oninput="mapSearchGoto(this.value)">
+          <datalist id="map-search-list"></datalist>
+        </div>
+        <div class="basemap-switch" id="basemap-switch">
+          <button class="active" id="bm-btn-plan" onclick="setBasemap('plan')">🗺️ Plan</button>
+          <button id="bm-btn-satellite" onclick="setBasemap('satellite')">🛰️ Satellite</button>
+          <button id="bm-btn-hybride" onclick="setBasemap('hybride')">🌐 Hybride</button>
+        </div>
+        <button class="map-tool-btn" id="map-btn-locate" onclick="locateMe()" title="Ma position">📍</button>
+        <button class="map-tool-btn" id="map-btn-fullscreen" onclick="toggleMapFullscreen()" title="Plein écran">⛶</button>
+        <div id="leaflet-map"></div>
+      </div>
 
       <!-- Clients sans GPS -->
       <div class="card" style="margin-top:16px;display:none" id="carte-missing-geo-card">
@@ -1480,29 +1539,43 @@ select.form-input{cursor:pointer}
     <!-- ══ VIEW: MESSAGERIE ══ -->
     <div id="view-messagerie" class="hidden fade-in">
       <h1 class="page-title">Messagerie Commerciale</h1>
-      <p class="page-sub">WhatsApp + Email — Envoi individuel et groupé</p>
+      <p class="page-sub">WhatsApp + Email — Message personnalisé par client, produit et secteur d'activité</p>
 
       <div class="grid-2">
         <div>
           <div class="card" style="margin-bottom:16px">
-            <div class="card-header"><span class="card-title">Canal de communication</span></div>
+            <div class="card-header"><span class="card-title">Destinataire</span></div>
+
+            <div class="form-group">
+              <label class="form-label">Client / Prospect</label>
+              <select class="form-input" id="msg-client-sel" onchange="onMsgClientSelect(this.value)">
+                <option value="">— Sélectionner dans la base CRM —</option>
+              </select>
+            </div>
+
+            <div id="msg-client-info" style="display:none;font-size:12px;color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;margin-bottom:12px"></div>
+
+            <div class="form-group">
+              <label class="form-label">Produit à proposer</label>
+              <select class="form-input" id="msg-logiciel-sel" onchange="msgGenerate()">
+                <option value="">— Sélectionner un produit —</option>
+              </select>
+            </div>
+
+            <label class="form-label">Canal de communication</label>
             <div class="msg-channel">
               <button class="channel-btn wa active" onclick="selectChannel('wa',this)">📱 WhatsApp</button>
               <button class="channel-btn email" onclick="selectChannel('email',this)">📧 Email</button>
             </div>
+
             <div class="form-group">
-              <label class="form-label">Destinataires</label>
-              <select class="form-input" id="msg-destinataires" multiple style="height:80px">
-                <option value="all_prospects">Tous les prospects actifs</option>
-                <option value="all_clients">Tous les clients</option>
-              </select>
+              <label class="form-label">Message <span class="muted" style="font-weight:400">(généré automatiquement, modifiable avant envoi)</span></label>
+              <textarea class="form-input" id="msg-text" rows="10" placeholder="Sélectionnez un client puis un produit pour générer un message adapté à sa problématique..."></textarea>
             </div>
-            <div class="form-group">
-              <label class="form-label">Message</label>
-              <textarea class="form-input" id="msg-text" rows="5" placeholder="Rédigez votre message..."></textarea>
-            </div>
-            <div class="flex gap-2">
+            <div class="flex gap-2" style="flex-wrap:wrap">
               <button class="btn btn-primary" onclick="sendMessage()">📤 Envoyer</button>
+              <button class="btn btn-outline" onclick="msgGenerate()">🔄 Régénérer</button>
+              <button class="btn btn-outline" onclick="msgCopy()">📋 Copier</button>
               <button class="btn btn-outline" onclick="saveTemplate()">💾 Sauvegarder template</button>
             </div>
           </div>
@@ -5792,11 +5865,17 @@ function populateCommerciaux() {
 }
 
 // ═══════════════════════════════════════
-//  MAP LEAFLET — DYNAMIC WITH REAL CLIENTS
+//  MAP LEAFLET — DYNAMIC WITH REAL CLIENTS, SATELLITE & SEGMENTATION
 // ═══════════════════════════════════════
 let leafletMap = null;
 let _mapLayers = { clients:true, prospects:true, commerciaux:true, bureau:true };
-let _mapMarkers = []; // {type, marker, clientId}
+let _mapMarkers = []; // {type, marker, clientId} (bureau + commerciaux, hors clusters)
+let _clusterClients = null, _clusterProspects = null;
+let _tilePlan = null, _tileSat = null, _tileLabels = null;
+let _currentBasemap = 'plan';
+let _mapSecteurFilter = null; // null = tous les secteurs
+let _mapTypeFilter = 'all';   // all | client | prospect | prospect_froid
+let _locateMarker = null;
 
 const SANIX_OFFICE = { lat:5.3048, lng:-4.0167, nom:'Bureau SANIX Africa', quartier:'Songon Agban, Abidjan' };
 
@@ -5807,22 +5886,119 @@ function initMap() {
     return;
   }
   updateCarteStats();
+  buildSecteurChips();
   if(leafletMap) {
     leafletMap.invalidateSize();
     refreshMapMarkers();
     return;
   }
-  leafletMap = L.map('leaflet-map').setView([5.3463, -4.0080], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(leafletMap);
+  leafletMap = L.map('leaflet-map',{zoomControl:true}).setView([5.3463, -4.0080], 12);
+
+  // ── Fonds de carte : Plan (OSM), Satellite (Esri), Hybride (Satellite + labels) ──
+  _tilePlan = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors',maxZoom:19});
+  _tileSat  = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics',maxZoom:19});
+  _tileLabels = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',{attribution:'© CARTO',maxZoom:19,pane:'overlayPane'});
+  _tilePlan.addTo(leafletMap);
+
+  // ── Groupes de clustering (perf. avec beaucoup de marqueurs) ──
+  _clusterClients = L.markerClusterGroup({maxClusterRadius:50,iconCreateFunction:c=>clusterIcon(c,'clients')});
+  _clusterProspects = L.markerClusterGroup({maxClusterRadius:50,iconCreateFunction:c=>clusterIcon(c,'prospects')});
+  leafletMap.addLayer(_clusterClients);
+  leafletMap.addLayer(_clusterProspects);
+
   refreshMapMarkers();
   initItineraire();
 }
 
+function clusterIcon(cluster, type) {
+  const count = cluster.getChildCount();
+  const cls = type==='clients' ? 'marker-cluster-clients' : 'marker-cluster-prospects';
+  return L.divIcon({html:`<div><span>${count}</span></div>`,className:'marker-cluster '+cls,iconSize:[40,40]});
+}
+
+function setBasemap(mode) {
+  if(!leafletMap) return;
+  [_tilePlan,_tileSat,_tileLabels].forEach(l=>{ if(l&&leafletMap.hasLayer(l)) leafletMap.removeLayer(l); });
+  if(mode==='plan') { _tilePlan.addTo(leafletMap); }
+  else if(mode==='satellite') { _tileSat.addTo(leafletMap); }
+  else if(mode==='hybride') { _tileSat.addTo(leafletMap); _tileLabels.addTo(leafletMap); }
+  _currentBasemap = mode;
+  ['plan','satellite','hybride'].forEach(m=>{
+    const b = document.getElementById('bm-btn-'+m);
+    if(b) b.classList.toggle('active', m===mode);
+  });
+}
+
+function toggleMapFullscreen() {
+  const wrap = document.getElementById('leaflet-map-wrap');
+  if(!wrap) return;
+  wrap.classList.toggle('map-fullscreen');
+  const btn = document.getElementById('map-btn-fullscreen');
+  if(btn) btn.textContent = wrap.classList.contains('map-fullscreen') ? '✕' : '⛶';
+  setTimeout(()=>{ if(leafletMap) leafletMap.invalidateSize(); }, 150);
+}
+
+function locateMe() {
+  if(!navigator.geolocation) { showToast('⚠️ Géolocalisation non supportée par ce navigateur'); return; }
+  showToast('📍 Localisation en cours...');
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const {latitude:lat, longitude:lng} = pos.coords;
+    if(_locateMarker) { try{leafletMap.removeLayer(_locateMarker);}catch(e){} }
+    const ico = L.divIcon({html:`<div style="width:20px;height:20px;border-radius:50%;background:#2563EB;border:3px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,.25)"></div>`,iconSize:[20,20],iconAnchor:[10,10],className:''});
+    _locateMarker = L.marker([lat,lng],{icon:ico}).addTo(leafletMap).bindPopup('📍 Vous êtes ici').openPopup();
+    leafletMap.flyTo([lat,lng],15);
+  }, ()=>{ showToast('⚠️ Impossible de récupérer votre position'); }, {enableHighAccuracy:true,timeout:8000});
+}
+
+// ── Segmentation par secteur d'activité ──
+function buildSecteurChips() {
+  const wrap = document.getElementById('carte-secteur-chips');
+  if(!wrap) return;
+  const secteurs = [...new Set(CLIENTS.filter(c=>c.statut!=='inactif'&&c.secteur).map(c=>c.secteur))].sort();
+  wrap.innerHTML = secteurs.map(s=>`<button class="secteur-chip" data-sect="${s}" onclick="setSecteurFilter('${s.replace(/'/g,"\\'")}')">${s} (${CLIENTS.filter(c=>c.secteur===s&&c.statut!=='inactif').length})</button>`).join('');
+  syncSecteurChipsUI();
+}
+
+function syncSecteurChipsUI() {
+  const allBtn = document.getElementById('sect-chip-all');
+  if(allBtn) allBtn.classList.toggle('active', !_mapSecteurFilter);
+  document.querySelectorAll('#carte-secteur-chips .secteur-chip').forEach(b=>{
+    b.classList.toggle('active', _mapSecteurFilter===b.dataset.sect);
+  });
+}
+
+function setSecteurFilter(secteur) {
+  _mapSecteurFilter = (_mapSecteurFilter===secteur) ? null : secteur;
+  syncSecteurChipsUI();
+  refreshMapMarkers();
+}
+
+function setTypeFilter(type, btn) {
+  _mapTypeFilter = type;
+  document.querySelectorAll('#view-carte .card .secteur-chip').forEach(b=>{
+    if(b.id==='type-chip-all' || ['client','prospect','prospect_froid'].some(t=>b.onclick&&b.getAttribute('onclick')?.includes(`'${t}'`))) {
+      b.classList.toggle('active', b===btn || (type==='all'&&b.id==='type-chip-all'));
+    }
+  });
+  refreshMapMarkers();
+}
+
+function passesFilters(c, kind) {
+  if(_mapSecteurFilter && c.secteur !== _mapSecteurFilter) return false;
+  if(_mapTypeFilter==='all') return true;
+  if(_mapTypeFilter==='client') return kind==='client';
+  if(_mapTypeFilter==='prospect') return kind==='prospect' && aiProspectScore(c)>=70;
+  if(_mapTypeFilter==='prospect_froid') return kind==='prospect' && aiProspectScore(c)<40;
+  return true;
+}
+
 function refreshMapMarkers() {
   if(!leafletMap) return;
-  // Supprimer anciens marqueurs
+  // Supprimer anciens marqueurs simples (bureau + commerciaux)
   _mapMarkers.forEach(m=>{ try{leafletMap.removeLayer(m.marker);}catch(e){} });
   _mapMarkers = [];
+  if(_clusterClients) _clusterClients.clearLayers();
+  if(_clusterProspects) _clusterProspects.clearLayers();
 
   // ── Bureau SANIX (toujours en rouge) ──
   if(_mapLayers.bureau) {
@@ -5833,15 +6009,14 @@ function refreshMapMarkers() {
     _mapMarkers.push({type:'bureau',marker:m,clientId:null});
   }
 
-  // ── Clients avec GPS ──
-  const clients = CLIENTS.filter(c=>c.statut==='client'&&c.lat&&c.lng);
+  // ── Clients avec GPS (clusterisés) ──
+  const clients = CLIENTS.filter(c=>c.statut==='client'&&c.lat&&c.lng&&passesFilters(c,'client'));
   if(_mapLayers.clients) {
     clients.forEach(c=>{
       const ico = L.divIcon({html:`<div style="width:30px;height:30px;border-radius:50%;background:#2563EB;border:3px solid #fff;box-shadow:0 2px 6px rgba(37,99,235,.4);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff">${clientInitials(c.nom)}</div>`,iconSize:[30,30],iconAnchor:[15,15],className:''});
       const deals = DEALS.filter(d=>d.clientId===c.id||d.client===c.nom);
       const dealsHtml = deals.length?`<div style="margin-top:6px;padding-top:6px;border-top:1px solid #eee"><small style="font-weight:700">Deals:</small> ${deals.map(d=>`<small style="color:${STAGES.find(s=>s.id===d.stage)?.color||'#666'}">${d.logiciel||d.client} · ${(d.valeur/1000).toFixed(0)}k</small>`).join('<br>')}</div>`:'';
       const m = L.marker([c.lat,c.lng],{icon:ico})
-        .addTo(leafletMap)
         .bindPopup(`<div style="min-width:180px">
           <strong style="font-size:13px">✅ ${c.nom}</strong><br>
           <small style="color:#2563EB">Client actif</small><br>
@@ -5851,19 +6026,19 @@ function refreshMapMarkers() {
           ${dealsHtml}
           <div style="margin-top:8px"><button onclick="leafletMap.closePopup();showClientDetail(${c.id})" style="padding:4px 10px;background:#2563EB;color:#fff;border:none;border-radius:5px;font-size:11px;cursor:pointer;width:100%">Ouvrir fiche →</button></div>
         </div>`);
+      _clusterClients.addLayer(m);
       _mapMarkers.push({type:'client',marker:m,clientId:c.id});
     });
   }
 
-  // ── Prospects avec GPS ──
-  const prospects = CLIENTS.filter(c=>c.statut==='prospect'&&c.lat&&c.lng);
+  // ── Prospects avec GPS (clusterisés) ──
+  const prospects = CLIENTS.filter(c=>c.statut==='prospect'&&c.lat&&c.lng&&passesFilters(c,'prospect'));
   if(_mapLayers.prospects) {
     prospects.forEach(c=>{
       const score = aiProspectScore(c);
       const sColor = score>=70?'#059669':score>=40?'#D97706':'#DC2626';
       const ico = L.divIcon({html:`<div style="width:30px;height:30px;border-radius:50%;background:#D97706;border:3px solid #fff;box-shadow:0 2px 6px rgba(217,119,6,.4);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff">🎯</div>`,iconSize:[30,30],iconAnchor:[15,15],className:''});
       const m = L.marker([c.lat,c.lng],{icon:ico})
-        .addTo(leafletMap)
         .bindPopup(`<div style="min-width:180px">
           <strong style="font-size:13px">🎯 ${c.nom}</strong><br>
           <small style="color:#D97706">Prospect actif</small>
@@ -5876,6 +6051,7 @@ function refreshMapMarkers() {
             <button onclick="leafletMap.closePopup();openDealFromClient(${c.id})" style="flex:1;padding:4px 6px;background:#2563EB;color:#fff;border:none;border-radius:5px;font-size:11px;cursor:pointer">+ Deal</button>
           </div>
         </div>`);
+      _clusterProspects.addLayer(m);
       _mapMarkers.push({type:'prospect',marker:m,clientId:c.id});
     });
   }
@@ -5891,8 +6067,27 @@ function refreshMapMarkers() {
     });
   }
 
+  updateMapSearchList();
   updateCarteStats();
   initItineraire();
+}
+
+function updateMapSearchList() {
+  const dl = document.getElementById('map-search-list');
+  if(!dl) return;
+  const withGeo = CLIENTS.filter(c=>c.lat&&c.lng);
+  dl.innerHTML = withGeo.map(c=>`<option value="${c.nom}">`).join('');
+}
+
+function mapSearchGoto(query) {
+  if(!query || query.length<2 || !leafletMap) return;
+  const q = query.trim().toLowerCase();
+  const c = CLIENTS.find(x=>x.lat&&x.lng&&x.nom.toLowerCase()===q) || CLIENTS.find(x=>x.lat&&x.lng&&x.nom.toLowerCase().includes(q));
+  if(c) {
+    leafletMap.flyTo([c.lat,c.lng],16);
+    const target = _mapMarkers.find(m=>m.clientId===c.id);
+    if(target) setTimeout(()=>target.marker.openPopup(),450);
+  }
 }
 
 function refreshMap() {
@@ -6208,10 +6403,21 @@ function submitRapport() {
 }
 
 // ═══════════════════════════════════════
-//  MESSAGERIE
+//  MESSAGERIE — messages personnalisés client × produit × secteur
 // ═══════════════════════════════════════
 function initMessagerie() {
-  document.getElementById('msg-templates').innerHTML = MSG_TEMPLATES.map((t,i)=>`
+  // Recharge les templates persos sauvegardés précédemment
+  const saved = lsLoad('msg_templates_custom');
+  if(Array.isArray(saved)) saved.forEach(t=>{ if(!MSG_TEMPLATES.some(x=>x.titre===t.titre)) MSG_TEMPLATES.push(t); });
+  msgRenderTemplates();
+  msgPopulateClients();
+  renderMsgHistory();
+}
+
+function msgRenderTemplates(){
+  const el = document.getElementById('msg-templates');
+  if(!el) return;
+  el.innerHTML = MSG_TEMPLATES.map((t,i)=>`
     <div class="msg-template" onclick="selectTemplate(${i})">
       <div class="flex items-center gap-2 justify-between">
         <div style="font-weight:600;font-size:12px">${t.titre}</div>
@@ -6228,25 +6434,151 @@ function selectTemplate(i) {
 function selectChannel(ch, el) {
   document.querySelectorAll('.channel-btn').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
+  msgGenerate();
 }
+
+// ─── Destinataire : client réel de la base CRM (numéro + email) ───
+function msgPopulateClients(){
+  const sel = document.getElementById('msg-client-sel');
+  if(!sel) return;
+  const current = sel.value;
+  const sorted = [...CLIENTS].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
+  sel.innerHTML = '<option value="">— Sélectionner dans la base CRM —</option>' +
+    sorted.map(c=>{
+      const ico = c.statut==='client' ? '✅' : '🎯';
+      return `<option value="${c.id}">${ico} ${c.nom} — ${c.secteur||c.statut}</option>`;
+    }).join('');
+  if(current) sel.value = current;
+}
+
+// ─── Produit à proposer : celui déjà assigné, sinon meilleure reco secteur ───
+function msgPopulateLogiciels(selectedNom){
+  const sel = document.getElementById('msg-logiciel-sel');
+  if(!sel) return;
+  const actifs = LOGICIELS.filter(l=>l.actif!==false);
+  sel.innerHTML = '<option value="">— Sélectionner un produit —</option>' +
+    actifs.map(l=>`<option value="${l.nom.replace(/"/g,'')}"${l.nom===selectedNom?' selected':''}>${l.icon||'💻'} ${l.nom} (${l.cat})</option>`).join('');
+}
+
+function onMsgClientSelect(idStr){
+  const infoEl = document.getElementById('msg-client-info');
+  const id = parseInt(idStr)||null;
+  if(!id){
+    if(infoEl) infoEl.style.display='none';
+    msgPopulateLogiciels('');
+    document.getElementById('msg-text').value = '';
+    return;
+  }
+  const c = CLIENTS.find(x=>x.id===id);
+  if(!c) return;
+  const best = (typeof cokBestLogiciel==='function') ? cokBestLogiciel(c) : null;
+  const defaultNom = c.logiciel || (best?best.nom:'');
+  msgPopulateLogiciels(defaultNom);
+  if(infoEl){
+    infoEl.style.display='';
+    infoEl.innerHTML = `<div style="display:flex;gap:14px;flex-wrap:wrap">
+        <span>📞 ${c.phone ? c.phone : '<span style="color:var(--danger)">Numéro manquant</span>'}</span>
+        <span>📧 ${c.email ? c.email : '<span style="color:var(--danger)">Email manquant</span>'}</span>
+        <span>🏷️ ${c.secteur||'—'}</span>
+      </div>`;
+  }
+  msgGenerate();
+}
+
+function msgResolveLogiciel(nom){ return LOGICIELS.find(l=>l.nom===nom) || null; }
+
+// Construit le message : problématique du secteur → solution produit → lien démo réel
+function msgBuildText(c, log, canal){
+  const r = relanceCfg();
+  const prenom  = (c.nom||'').split(' ')[0] || c.nom || 'Madame, Monsieur';
+  const secteur = c.secteur || 'votre secteur';
+  const pain    = sectorPain(c.secteur);
+  const modules = (log?.modules||'').split(',').map(s=>s.trim()).filter(Boolean).slice(0,3).join(', ');
+  const prix    = (log?.prixNum||0).toLocaleString('fr-FR');
+  const demoLine = (log?.demo && log.demo!=='#')
+    ? `🔗 Démo gratuite en ligne : ${log.demo}`
+    : `📅 Je peux vous organiser une démonstration en direct cette semaine, sans engagement.`;
+
+  if(canal==='email'){
+    return `Objet : Une solution concrète pour ${secteur} — ${log?.nom||'nos logiciels'}\n\n`
+      + `Bonjour ${c.civilite?c.civilite+' ':''}${c.nom||''},\n\n`
+      + `En tant qu'acteur du secteur ${secteur}, vous êtes sans doute confronté(e) à ${pain}.\n\n`
+      + `C'est exactement ce que résout ${log?.nom||'notre solution'}${log?.desc ? (' : '+log.desc.split(/[.·]/)[0].trim()) : ''}.`
+      + (modules?` Parmi les fonctionnalités clés : ${modules}.`:'') + `\n\n`
+      + `${demoLine}\n`
+      + (log?.prixNum?`💰 Licence à partir de ${prix} FCFA, déploiement et formation inclus.\n\n`:'\n')
+      + `Je reste à votre disposition pour un échange de 15 minutes cette semaine, pour voir comment ${log?.nom||'notre solution'} répond concrètement à vos besoins.\n\n`
+      + `Cordialement,\n${r.gerant} — ${r.societe}\n📞 ${r.tel1} · 📧 ${r.email}`;
+  }
+  return `Bonjour ${prenom} 👋\n\n`
+    + `Je suis ${r.gerant}, de ${r.societe}. Dans le secteur ${secteur}, on nous remonte souvent ${pain}.\n\n`
+    + `C'est précisément ce que règle ${log?.nom||'notre solution'}${modules?` (${modules})`:''} — pensé pour répondre à ce type de problème, pas juste "un logiciel de plus".\n\n`
+    + `${demoLine}\n`
+    + (log?.prixNum?`💰 À partir de ${prix} FCFA\n\n`:'\n')
+    + `Disponible pour un échange rapide cette semaine ?\n\n`
+    + `— ${r.gerant}, ${r.societe}\n📞 ${r.tel1}`;
+}
+
+function msgGenerate(){
+  const clientId = parseInt(document.getElementById('msg-client-sel')?.value)||null;
+  if(!clientId) return;
+  const c = CLIENTS.find(x=>x.id===clientId);
+  if(!c) return;
+  const nom = document.getElementById('msg-logiciel-sel')?.value || c.logiciel || '';
+  const log = msgResolveLogiciel(nom);
+  const isWA = document.querySelector('.channel-btn.wa.active') !== null;
+  const ta = document.getElementById('msg-text');
+  if(ta) ta.value = msgBuildText(c, log, isWA?'wa':'email');
+}
+
+function msgCopy(){
+  const t = document.getElementById('msg-text')?.value || '';
+  if(!t.trim()) { showToast('❌ Rien à copier'); return; }
+  navigator.clipboard?.writeText(t).then(()=>showToast('📋 Message copié')).catch(()=>{
+    const ta=document.getElementById('msg-text'); ta.select(); document.execCommand('copy'); showToast('📋 Copié');
+  });
+}
+
 function sendMessage() {
   const txt = document.getElementById('msg-text').value;
-  if(!txt.trim()) { alert('Rédigez un message'); return; }
-  // Detect active channel
+  if(!txt.trim()) { showToast('❌ Rédigez ou générez un message'); return; }
   const isWA = document.querySelector('.channel-btn.wa.active') !== null;
   const chanLabel = isWA ? 'WhatsApp' : 'Email';
   const chanIco   = isWA ? '💬' : '📧';
-  // Log in messagerie history
+
+  const clientId = parseInt(document.getElementById('msg-client-sel')?.value)||null;
+  const c = clientId ? CLIENTS.find(x=>x.id===clientId) : null;
+
+  if(c){
+    if(isWA){
+      const num = relancePhoneIntl(c.phone);
+      if(!num){ showToast('❌ Numéro manquant pour ce client'); return; }
+      window.open(`https://wa.me/${num}?text=${encodeURIComponent(txt)}`,'_blank');
+    } else {
+      if(!c.email){ showToast('❌ Email manquant pour ce client'); return; }
+      const firstLine = txt.split('\n')[0]||'';
+      const hasObjet  = firstLine.trim().startsWith('Objet :');
+      const subj = encodeURIComponent(hasObjet ? firstLine.replace('Objet :','').trim() : `${c.logiciel||'Solutions de gestion'} — ${relanceCfg().societe}`);
+      const body = hasObjet ? txt.split('\n').slice(1).join('\n').replace(/^\n+/,'') : txt;
+      window.location.href = `mailto:${c.email}?subject=${subj}&body=${encodeURIComponent(body)}`;
+    }
+    if(typeof _relanceLog==='function') _relanceLog(c, chanLabel);
+  } else {
+    showToast('ℹ️ Aucun client sélectionné — message non lié à une fiche CRM');
+  }
+
   if(!window.MSG_HISTORY) window.MSG_HISTORY = [];
   window.MSG_HISTORY.unshift({
     date: new Date().toISOString(),
     canal: chanLabel,
     ico: chanIco,
+    client: c ? c.nom : null,
     extrait: txt.trim().substring(0,80) + (txt.length>80?'…':''),
     commercial: (typeof currentUser !== 'undefined' && currentUser) ? currentUser.nom||currentUser.email||'—' : '—'
   });
-  showToast('✅ Message ' + chanLabel + ' envoyé et enregistré !');
+  showToast('✅ Message ' + chanLabel + (c?` préparé pour ${c.nom}`:'') + ' !');
   renderMsgHistory();
+  try{ updateSidebarBadges(); }catch(e){}
 }
 
 function renderMsgHistory() {
@@ -6263,13 +6595,26 @@ function renderMsgHistory() {
     <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);align-items:flex-start">
       <div style="width:30px;height:30px;border-radius:50%;background:${m.canal==='WhatsApp'?'#25D36622':'var(--primary-l)'};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${m.ico}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:11px;font-weight:700;color:var(--text2)">${m.canal} · ${m.commercial}</div>
+        <div style="font-size:11px;font-weight:700;color:var(--text2)">${m.canal}${m.client?(' · '+m.client):''} · ${m.commercial}</div>
         <div style="font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.extrait}</div>
       </div>
       <div style="font-size:10px;color:var(--muted);flex-shrink:0">${new Date(m.date).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
     </div>`).join('');
 }
-function saveTemplate() { showToast('✅ Template sauvegardé !'); }
+function saveTemplate(){
+  const txt = document.getElementById('msg-text')?.value.trim();
+  if(!txt){ showToast('❌ Rien à sauvegarder — générez ou rédigez un message d\'abord'); return; }
+  const isWA  = document.querySelector('.channel-btn.wa.active') !== null;
+  const titre = (prompt('Nom du template :', 'Template personnalisé')||'').trim();
+  if(!titre) return;
+  const tpl = {canal:isWA?'wa':'email', titre, msg:txt};
+  MSG_TEMPLATES.push(tpl);
+  const saved = lsLoad('msg_templates_custom')||[];
+  saved.push(tpl);
+  lsSave('msg_templates_custom', saved);
+  msgRenderTemplates();
+  showToast('✅ Template sauvegardé !');
+}
 
 // ─── DEAL MODAL ─────────────────────────
 // ─── POPULATE DEAL CLIENT SELECT ────────
@@ -9191,6 +9536,22 @@ function convConvert(id){
 // ═══════════════════════════════════════════════════════════
 //  SÉQUENCES DE RELANCE — WhatsApp / SMS / Email (réel)
 // ═══════════════════════════════════════════════════════════
+// Problématiques types par secteur — utilisées pour orienter le pitch vers "solution au problème"
+const SECTOR_PAIN = {
+  'Immobilier':          'la dispersion du suivi des programmes/lots, les retards de paiement des souscripteurs (notamment diaspora) et la complexité de la conformité SYSCOHADA',
+  'Aviculture':          'le suivi manuel des bandes et de la mortalité, le manque de visibilité sur les performances (GMQ/IC) et les pertes non anticipées',
+  'Distribution':        'les ruptures de stock, les impayés clients (encours) et la lourdeur de la facturation SYSCOHADA multi-dépôts',
+  'Santé':               'les dossiers patients dispersés, les délais de prise en charge et le manque de connexion entre labo, pharmacie et caisse',
+  'Industrie':           'les arrêts de production imprévus, la traçabilité des lots et le calcul imprécis du coût de revient',
+  'Ressources Humaines': 'la gestion manuelle de la paie et des congés, et le manque de tableau de bord RH pour la direction',
+  'Commerce':            'la gestion de caisse peu fiable, les ruptures de stock et l\'absence de suivi en temps réel des ventes',
+  'Agriculture':         'le manque de traçabilité par parcelle/lot, la gestion approximative des intrants et l\'absence de données terrain fiables',
+  'Logistique':          'le manque de visibilité sur les livraisons, la planification des tournées et le suivi des coûts de transport',
+  'Restauration':        'la gestion de caisse multi-points de vente, les pertes de stock et le manque de reporting',
+  'Éducation':           'le suivi manuel des inscriptions, des paiements de scolarité et l\'absence de tableau de bord de gestion',
+};
+function sectorPain(secteur){ return SECTOR_PAIN[secteur] || 'la gestion manuelle chronophage, le manque de visibilité en temps réel et les difficultés de conformité SYSCOHADA'; }
+
 const RELANCE_DEFAULT = {
   gerant:'Cyrille KESIE',
   societe:'SANIX Africa',
@@ -9469,6 +9830,62 @@ function cokBestLogiciel(c){
   return matchs[0];
 }
 
+// ─── Suivi des actions "À faire aujourd'hui" ───
+// cok_done      : { 'YYYY-MM-DD': { clientId: timestamp } }  → coche du jour
+// cok_action_log: [{clientId, nom, motif, date, ts}, ...]     → historique / suivi
+function cokTodayKey(){ return new Date().toISOString().slice(0,10); }
+function cokLoadDone(){ return lsLoad('cok_done') || {}; }
+function cokSaveDone(o){ lsSave('cok_done', o); }
+function cokLoadLog(){ return lsLoad('cok_action_log') || []; }
+function cokSaveLog(a){ lsSave('cok_action_log', a); }
+
+function cokMarkDone(clientId, motif, nom){
+  const key = cokTodayKey();
+  const done = cokLoadDone();
+  if(!done[key]) done[key] = {};
+  done[key][clientId] = Date.now();
+  cokSaveDone(done);
+  const log = cokLoadLog();
+  log.unshift({clientId, nom, motif, date:key, ts:Date.now()});
+  cokSaveLog(log.slice(0,300));
+  showToast('✅ Action marquée comme réalisée');
+  cokRender();
+}
+
+function cokUndoDone(clientId){
+  const key = cokTodayKey();
+  const done = cokLoadDone();
+  if(done[key] && done[key][clientId]){
+    delete done[key][clientId];
+    cokSaveDone(done);
+  }
+  cokRender();
+}
+
+function cokToggleDone(){
+  const el  = document.getElementById('cok-today-done');
+  const btn = document.getElementById('cok-today-toggle');
+  if(!el || !btn) return;
+  const willShow = el.classList.contains('hidden');
+  el.classList.toggle('hidden');
+  btn.textContent = willShow ? '🔼 Masquer le suivi' : '📋 Voir le suivi des actions réalisées';
+}
+
+function cokRenderHistory(){
+  const log = cokLoadLog();
+  if(!log.length) return '<div style="color:var(--muted);font-size:11px;padding:6px 0">Aucune action réalisée pour le moment.</div>';
+  return `<div style="font-size:11px;font-weight:700;color:var(--muted);margin:10px 0 6px">📜 SUIVI — HISTORIQUE DES ACTIONS (${log.length})</div>` +
+    log.slice(0,20).map(h=>{
+      const dt = new Date(h.ts);
+      const dateStr = dt.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'});
+      const timeStr = dt.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+      return `<div style="font-size:11px;color:var(--text2);padding:5px 0;border-bottom:1px dotted var(--border);cursor:pointer" onclick="showClientDetail(${h.clientId})">
+        <strong>${h.nom||'—'}</strong> — ${h.motif||''}
+        <span style="color:var(--muted)"> · ${dateStr} à ${timeStr}</span>
+      </div>`;
+    }).join('');
+}
+
 function initCockpit(){ cokRender(); }
 
 function cokRender(){
@@ -9507,7 +9924,16 @@ function cokRender(){
   });
   today.sort((a,b)=>b.prio-a.prio);
   const topToday = today.slice(0,8);
-  document.getElementById('cok-today').innerHTML = topToday.length ? topToday.map(t=>`
+
+  // Suivi : actions déjà marquées "faites" aujourd'hui
+  const doneMap  = cokLoadDone()[cokTodayKey()] || {};
+  const pending  = topToday.filter(t=>!doneMap[t.c.id]);
+  const doneNow  = topToday.filter(t=>doneMap[t.c.id]);
+
+  const cokCountEl = document.getElementById('cok-today-count');
+  if(cokCountEl) cokCountEl.textContent = topToday.length ? `${doneNow.length}/${topToday.length} réalisées` : '';
+
+  document.getElementById('cok-today').innerHTML = pending.length ? pending.map(t=>`
     <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
       <div style="width:8px;height:8px;border-radius:50%;background:${t.nba.color};flex-shrink:0"></div>
       <div style="flex:1;min-width:0">
@@ -9515,8 +9941,27 @@ function cokRender(){
         <div style="font-size:11px;color:var(--muted)">${t.motif}</div>
       </div>
       <div style="font-weight:800;font-size:13px;color:${t.p>=55?'var(--success)':t.p>=30?'var(--warning)':'var(--muted)'}">${t.p}%</div>
-      <button class="btn btn-sm" style="background:#25D366;color:#fff;font-size:11px" onclick="relanceOpen(${t.c.id})">💬</button>
-    </div>`).join('') : '<div style="color:var(--muted);font-size:13px;padding:14px 0">Rien d\'urgent. Faites avancer vos prospects.</div>';
+      <button class="btn btn-sm" style="background:#25D366;color:#fff;font-size:11px" onclick="relanceOpen(${t.c.id})" title="Relancer sur WhatsApp">💬</button>
+      <button class="btn btn-sm btn-outline" style="font-size:11px" onclick="cokMarkDone(${t.c.id},'${(t.motif||'').replace(/'/g,"\\'")}','${(t.c.nom||'').replace(/'/g,"\\'")}')" title="Marquer comme réalisée">✔️</button>
+    </div>`).join('') : (doneNow.length
+      ? '<div style="color:var(--success);font-size:13px;padding:14px 0">✅ Toutes les actions prioritaires du jour sont réalisées !</div>'
+      : '<div style="color:var(--muted);font-size:13px;padding:14px 0">Rien d\'urgent. Faites avancer vos prospects.</div>');
+
+  const doneEl = document.getElementById('cok-today-done');
+  if(doneEl){
+    const doneBlock = doneNow.length ? `
+      <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px">✅ RÉALISÉES AUJOURD'HUI (${doneNow.length})</div>
+      ${doneNow.map(t=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 0;opacity:.65">
+          <div style="width:8px;height:8px;border-radius:50%;background:var(--success);flex-shrink:0"></div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:13px;text-decoration:line-through;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.c.nom}</div>
+            <div style="font-size:11px;color:var(--muted)">${t.motif}</div>
+          </div>
+          <button class="btn btn-sm btn-outline" style="font-size:11px" onclick="cokUndoDone(${t.c.id})" title="Annuler">↺</button>
+        </div>`).join('')}` : '';
+    doneEl.innerHTML = doneBlock + cokRenderHistory();
+  }
 
   // Prévision détail par étape
   const byStage = ['prospect','contact','demo','proposition','negociation'].map(st=>{
