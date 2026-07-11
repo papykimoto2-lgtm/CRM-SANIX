@@ -698,6 +698,10 @@ select.form-input{cursor:pointer}
     <div class="sb-icon">👤</div><span>Clients & Prospects</span>
     <span class="sb-badge warn" id="sb-prospects-badge">0</span>
   </div>
+  <div class="sb-item" onclick="navigate('conversion',this)">
+    <div class="sb-icon">🚀</div><span>Moteur de Conversion</span>
+    <span class="sb-badge warn" id="sb-conv-badge">0</span>
+  </div>
   <div class="sb-item" onclick="navigate('carte',this)">
     <div class="sb-icon">🗺️</div><span>Carte & Géoloc</span>
   </div>
@@ -961,6 +965,52 @@ select.form-input{cursor:pointer}
     </div>
 
     <!-- ══ VIEW: CLIENTS ══ -->
+
+    <!-- ══ VIEW: MOTEUR DE CONVERSION ══ -->
+    <div id="view-conversion" class="hidden fade-in">
+      <div style="margin-bottom:16px">
+        <h1 class="page-title">🚀 Moteur de Conversion</h1>
+        <p class="page-sub">Transformez chaque prospect en client — action suivante pilotée, priorisée par score</p>
+      </div>
+
+      <!-- KPIs -->
+      <div class="stats-grid" id="conv-kpis" style="margin-bottom:18px"></div>
+
+      <!-- Bandeau insight -->
+      <div id="conv-insight" style="margin-bottom:18px"></div>
+
+      <div class="flex" style="gap:16px;flex-wrap:wrap;margin-bottom:18px">
+        <!-- Entonnoir -->
+        <div class="card" style="padding:16px;flex:1;min-width:280px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:12px">🔻 Entonnoir de conversion</div>
+          <div id="conv-funnel"></div>
+        </div>
+        <!-- Répartition score -->
+        <div class="card" style="padding:16px;flex:1;min-width:280px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:12px">🌡️ Température du portefeuille</div>
+          <div id="conv-temp"></div>
+        </div>
+      </div>
+
+      <!-- File d'action priorisée -->
+      <div class="card" style="padding:16px">
+        <div class="flex justify-between items-center" style="margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <div style="font-weight:700;font-size:14px">🎯 File d'action prioritaire</div>
+          <div class="flex gap-2" style="flex-wrap:wrap">
+            <select class="form-input" id="conv-filter" onchange="convRender()" style="width:auto;font-size:12px;padding:6px 10px">
+              <option value="all">Tous les prospects</option>
+              <option value="overdue">⚠️ Relances en retard</option>
+              <option value="hot">🔥 Chauds (score ≥ 70)</option>
+              <option value="cold">❄️ Froids (jamais contactés)</option>
+              <option value="closing">🤝 En closing (négo/propo)</option>
+            </select>
+            <button class="btn btn-outline btn-sm" onclick="convRender()">↻</button>
+          </div>
+        </div>
+        <div id="conv-list"></div>
+      </div>
+    </div>
+
     <div id="view-clients" class="hidden fade-in">
       <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:8px;margin-bottom:6px">
         <div>
@@ -4163,7 +4213,7 @@ function navigate(view, el) {
   if(el && el.classList && el.classList.contains('sb-item')) el.classList.add('active');
   document.getElementById('topbar-title').textContent = {
     dashboard:'Tableau de bord',pipeline:'Pipeline Commercial',clients:'Clients & Prospects',
-    logiciels:'Catalogue Logiciels',equipe:'Équipe & Apporteurs',apporteurs:'Apporteurs d\'affaires',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
+    conversion:'Moteur de Conversion',logiciels:'Catalogue Logiciels',equipe:'Équipe & Apporteurs',apporteurs:'Apporteurs d\'affaires',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
     planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
     parametrage:'Paramétrage',
     presentations:'Présentations & Démos',commandes:'Commandes Clients',contrats:'Contrats & Conventions',
@@ -4173,6 +4223,7 @@ function navigate(view, el) {
   if(view === 'pipeline') setTimeout(populatePipelineFilters, 60);
   if(view === 'commissions') setTimeout(initCommissions, 50);
   if(view === 'parametrage') setTimeout(initParametrage, 50);
+  if(view === 'conversion') setTimeout(initConversion, 50);
   if(view === 'apporteurs') setTimeout(initApporteurs, 50);
   if(view === 'documents') setTimeout(initDocuments, 50);
   document.dispatchEvent(new CustomEvent('sanix:navigate', {detail: view}));
@@ -8618,6 +8669,11 @@ function updateSidebarBadges() {
   if(sbPipeline) sbPipeline.textContent = DEALS.filter(d=>d.stage!=='gagne'&&d.stage!=='perdu').length;
   const sbProspects = document.getElementById('sb-prospects-badge');
   if(sbProspects) sbProspects.textContent = CLIENTS.filter(c=>c.statut==='prospect').length;
+  const sbConv = document.getElementById('sb-conv-badge');
+  if(sbConv && typeof convNBA==='function'){
+    const n = CLIENTS.filter(c=>c.statut==='prospect' && (convNBA(c).overdue || aiProspectScore(c)>=70)).length;
+    sbConv.textContent = n; sbConv.style.display = n? '' : 'none';
+  }
 }
 
 // ─── Persist & Load ─────────────────────
@@ -8800,6 +8856,179 @@ function csvImpConfirm(){
 function initImportCSV(){
   const logSel=document.getElementById('csvimp-def-logiciel');
   if(logSel && !logSel.options.length){ logSel.innerHTML='<option value="">— Aucun —</option>'+LOGICIELS.filter(l=>l.actif!==false).map(l=>`<option value="${l.nom}">${l.nom}</option>`).join(''); }
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  MOTEUR DE CONVERSION — vente pilotée par l'action suivante
+// ═══════════════════════════════════════════════════════════
+const CONV_ETAPES = ['Nouveau','Contacté','Démo réalisée','Proposition','Négociation'];
+const CONV_CADENCE = [0, 3, 2, 4, 3]; // jours max entre 2 touches selon étape
+
+function convDaysSince(c){
+  const ints=c.interactions||[];
+  if(!ints.length) return null;
+  return Math.floor((Date.now()-new Date(ints[ints.length-1].date))/86400000);
+}
+
+// Next Best Action — toujours une action suivante (Pipedrive activity-based)
+function convNBA(c){
+  const e=aiGetEtape(c);
+  const d=convDaysSince(c);
+  const cad=CONV_CADENCE[e]||3;
+  const overdue = d!==null && d>cad;
+  const veryLate = d!==null && d>cad*2;
+  let label, act, color='var(--primary)', urg=1;
+  if(e===0){ label='📞 Premier appel'; act='appel'; color='var(--danger)'; urg=3; }
+  else if(e===1){ label = overdue?'🔁 Relancer + caler démo':'🎬 Programmer une démo'; act='demo'; color=overdue?'var(--warning)':'var(--primary)'; urg=overdue?3:2; }
+  else if(e===2){ label='📄 Envoyer la proposition'; act='proposition'; color='var(--primary)'; urg=2; }
+  else if(e===3){ label = overdue?'🔁 Relancer la décision':'⏳ Suivre la proposition'; act='negociation'; color=overdue?'var(--warning)':'var(--primary)'; urg=overdue?3:2; }
+  else { label='✅ Closer & convertir'; act='convert'; color='var(--success)'; urg=3; }
+  return {label, act, color, urg, overdue, veryLate, days:d, etape:e, cadence:cad};
+}
+
+function convPipelineValue(c){
+  if(c.valeur>0) return c.valeur;
+  const log=LOGICIELS.find(l=>l.nom===c.logiciel);
+  return log?.prixNum || 0;
+}
+
+function convProspects(){
+  return CLIENTS.filter(c=>c.statut==='prospect');
+}
+
+function initConversion(){ convRender(); }
+
+function convRender(){
+  const view=document.getElementById('view-conversion');
+  if(!view) return;
+  const prospects=convProspects();
+  const clients=CLIENTS.filter(c=>c.statut==='client').length;
+  const total=prospects.length;
+  const conv = (clients+total)>0 ? Math.round(clients/(clients+total)*100) : 0;
+  const pipeVal=prospects.reduce((s,c)=>s+convPipelineValue(c),0);
+  const hot=prospects.filter(c=>aiProspectScore(c)>=70).length;
+  const overdue=prospects.filter(c=>convNBA(c).overdue).length;
+  const closing=prospects.filter(c=>aiGetEtape(c)>=3).length;
+
+  // KPIs
+  const fmt=n=>n.toLocaleString('fr-FR');
+  document.getElementById('conv-kpis').innerHTML=`
+    ${convKpi('🎯',total,'Prospects actifs','var(--primary)')}
+    ${convKpi('🔥',hot,'Prospects chauds','var(--danger)')}
+    ${convKpi('🤝',closing,'En closing','var(--success)')}
+    ${convKpi('⚠️',overdue,'Relances en retard',overdue?'var(--warning)':'var(--muted)')}
+    ${convKpi('📈',conv+'%','Taux de conversion','var(--primary)')}
+    ${convKpi('💰',fmt(pipeVal),'Pipeline prospects (FCFA)','var(--success)')}`;
+
+  // Insight
+  const insEl=document.getElementById('conv-insight');
+  if(overdue>0){
+    insEl.innerHTML=`<div style="background:linear-gradient(135deg,#F59E0B22,#EF444422);border:1px solid var(--warning);border-radius:var(--r-sm);padding:12px 16px;font-size:13px">
+      ⚠️ <strong>${overdue} relance(s) en retard</strong> — priorité absolue. Un prospect non relancé refroidit de ~10 pts/semaine.
+      ${hot?` · 🔥 <strong>${hot} prospect(s) chaud(s)</strong> prêt(s) à convertir.`:''}</div>`;
+  } else if(hot>0){
+    insEl.innerHTML=`<div style="background:linear-gradient(135deg,#10B98122,#3B82F622);border:1px solid var(--success);border-radius:var(--r-sm);padding:12px 16px;font-size:13px">
+      🔥 <strong>${hot} prospect(s) chaud(s)</strong> (score ≥ 70) — concentrez le closing dessus aujourd'hui.</div>`;
+  } else {
+    insEl.innerHTML=`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px 16px;font-size:13px;color:var(--muted)">
+      Aucune urgence. Faites avancer les prospects d'une étape pour réchauffer le portefeuille.</div>`;
+  }
+
+  // Funnel
+  const byEtape=[0,1,2,3,4].map(e=>prospects.filter(c=>aiGetEtape(c)===e).length);
+  const maxF=Math.max(1,...byEtape,clients);
+  const funnelRows=CONV_ETAPES.map((lbl,e)=>{
+    const n=byEtape[e]; const w=Math.round(n/maxF*100);
+    return `<div style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span>${e+1}. ${lbl}</span><span style="font-weight:700">${n}</span></div>
+      <div style="height:14px;background:var(--surface2);border-radius:7px;overflow:hidden"><div style="height:100%;width:${w}%;background:linear-gradient(90deg,var(--primary),#3B82F6);border-radius:7px;transition:.3s"></div></div></div>`;
+  }).join('');
+  const wC=Math.round(clients/maxF*100);
+  document.getElementById('conv-funnel').innerHTML=funnelRows+
+    `<div style="margin-top:6px;padding-top:8px;border-top:1px dashed var(--border)">
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span>✅ Convertis (clients)</span><span style="font-weight:700;color:var(--success)">${clients}</span></div>
+      <div style="height:14px;background:var(--surface2);border-radius:7px;overflow:hidden"><div style="height:100%;width:${wC}%;background:var(--success);border-radius:7px"></div></div></div>`;
+
+  // Température
+  const t1=prospects.filter(c=>aiProspectScore(c)>=70).length;
+  const t2=prospects.filter(c=>{const s=aiProspectScore(c);return s>=40&&s<70;}).length;
+  const t3=prospects.filter(c=>aiProspectScore(c)<40).length;
+  document.getElementById('conv-temp').innerHTML=`
+    ${convTempRow('🔥 Chaud','score ≥ 70',t1,total,'var(--success)')}
+    ${convTempRow('🌤️ Tiède','score 40-69',t2,total,'var(--warning)')}
+    ${convTempRow('❄️ Froid','score < 40',t3,total,'var(--danger)')}`;
+
+  // Liste priorisée
+  const filter=document.getElementById('conv-filter')?.value||'all';
+  let list=prospects.map(c=>({c,nba:convNBA(c),score:aiProspectScore(c)}));
+  if(filter==='overdue') list=list.filter(x=>x.nba.overdue);
+  else if(filter==='hot') list=list.filter(x=>x.score>=70);
+  else if(filter==='cold') list=list.filter(x=>x.nba.etape===0);
+  else if(filter==='closing') list=list.filter(x=>x.nba.etape>=3);
+  // Tri : retard d'abord, puis urgence, puis score
+  list.sort((a,b)=> (b.nba.overdue-a.nba.overdue) || (b.nba.urg-a.nba.urg) || (b.score-a.score));
+
+  const listEl=document.getElementById('conv-list');
+  if(!list.length){ listEl.innerHTML='<div style="text-align:center;color:var(--muted);padding:30px;font-size:13px">Aucun prospect dans ce filtre.</div>'; return; }
+  listEl.innerHTML=list.map(({c,nba,score})=>{
+    const sc=score>=70?'var(--success)':score>=40?'var(--warning)':'var(--danger)';
+    const contact = nba.days===null?'<span style="color:var(--danger)">Jamais</span>':(nba.days===0?"Aujourd'hui":'J-'+nba.days);
+    const retard = nba.overdue?`<span style="color:var(--warning);font-weight:700"> · +${nba.days-nba.cadence}j retard</span>`:'';
+    return `<div style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border);border-left:3px solid ${nba.color};border-radius:var(--r-sm);margin-bottom:8px;flex-wrap:wrap">
+      <div style="width:44px;height:44px;border-radius:50%;background:conic-gradient(${sc} ${score*3.6}deg,var(--surface2) 0);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <div style="width:34px;height:34px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;color:${sc}">${score}</div></div>
+      <div style="flex:1;min-width:140px">
+        <div style="font-weight:700;font-size:13px;cursor:pointer" onclick="showClientDetail(${c.id})">${c.nom}</div>
+        <div style="font-size:11px;color:var(--muted)">${CONV_ETAPES[nba.etape]} · Dernier contact : ${contact}${retard} · ${(convPipelineValue(c)).toLocaleString('fr-FR')} F</div>
+      </div>
+      <div style="font-size:12px;font-weight:700;color:${nba.color};min-width:150px">${nba.label}</div>
+      <div class="flex gap-2" style="flex-wrap:wrap">
+        ${nba.etape<1?`<button class="btn btn-sm" style="background:var(--surface2);font-size:11px" onclick="convLog(${c.id},1)" title="Contact établi">📞</button>`:''}
+        ${nba.etape<2?`<button class="btn btn-sm" style="background:var(--surface2);font-size:11px" onclick="convLog(${c.id},2)" title="Démo réalisée">🎬</button>`:''}
+        ${nba.etape<3?`<button class="btn btn-sm" style="background:var(--surface2);font-size:11px" onclick="convLog(${c.id},3)" title="Proposition envoyée">📄</button>`:''}
+        ${nba.etape<4?`<button class="btn btn-sm" style="background:var(--surface2);font-size:11px" onclick="convLog(${c.id},4)" title="Négociation">🤝</button>`:''}
+        <button class="btn btn-sm" style="background:var(--success);color:#fff;font-size:11px" onclick="convConvert(${c.id})" title="Convertir en client">✅</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function convKpi(ico,val,lbl,color){
+  return `<div class="stat-card"><div style="font-size:20px">${ico}</div>
+    <div class="stat-val" style="color:${color}">${val}</div>
+    <div class="stat-label">${lbl}</div></div>`;
+}
+function convTempRow(lbl,sub,n,total,color){
+  const pct=total?Math.round(n/total*100):0;
+  return `<div style="margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>${lbl} <span style="color:var(--muted);font-size:10px">${sub}</span></span><span style="font-weight:700">${n} (${pct}%)</span></div>
+    <div style="height:10px;background:var(--surface2);border-radius:5px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${color};border-radius:5px"></div></div></div>`;
+}
+
+// Actions cockpit — 1 clic, note auto, refresh cockpit
+function convLog(id, etape){
+  const c=CLIENTS.find(x=>x.id===id); if(!c) return;
+  if(!c.interactions) c.interactions=[];
+  const labels=['Nouveau','Contact établi','Démonstration réalisée','Proposition envoyée','Négociation'];
+  const icons=['👤','📞','🎬','📄','🤝'];
+  c.interactions.push({date:new Date().toISOString(),type:labels[etape],note:'Action enregistrée depuis le Moteur de Conversion',etape,ico:icons[etape]});
+  c.updated_at=new Date().toISOString();
+  saveStore('clients');
+  showToast(`📈 ${c.nom} → ${labels[etape]}`);
+  convRender();
+  try{ updateSidebarBadges(); }catch(e){}
+}
+function convConvert(id){
+  const c=CLIENTS.find(x=>x.id===id); if(!c) return;
+  if(!confirm(`Convertir "${c.nom}" en Client actif ?`)) return;
+  c.statut='client'; c.updated_at=new Date().toISOString();
+  if(!c.interactions) c.interactions=[];
+  c.interactions.push({date:new Date().toISOString(),type:'Converti en client',note:'Prospect converti',etape:5,ico:'✅'});
+  saveStore('clients');
+  showToast(`🎉 "${c.nom}" est désormais Client actif !`);
+  convRender();
+  try{ updateSidebarBadges(); renderClients(getFilteredClients()); if(leafletMap) refreshMapMarkers(); }catch(e){}
 }
 
 // ═══ SEED PROMOTEURS IMMOBILIERS AGRÉÉS (import unique, idempotent) ═══
