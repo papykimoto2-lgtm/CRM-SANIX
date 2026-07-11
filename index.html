@@ -702,6 +702,9 @@ select.form-input{cursor:pointer}
     <div class="sb-icon">🚀</div><span>Moteur de Conversion</span>
     <span class="sb-badge warn" id="sb-conv-badge">0</span>
   </div>
+  <div class="sb-item" onclick="navigate('cockpit',this)">
+    <div class="sb-icon">🧠</div><span>Cockpit IA</span>
+  </div>
   <div class="sb-item" onclick="navigate('carte',this)">
     <div class="sb-icon">🗺️</div><span>Carte & Géoloc</span>
   </div>
@@ -965,6 +968,49 @@ select.form-input{cursor:pointer}
     </div>
 
     <!-- ══ VIEW: CLIENTS ══ -->
+
+
+    <!-- ══ VIEW: COCKPIT IA — DIRECTEUR COMMERCIAL ══ -->
+    <div id="view-cockpit" class="hidden fade-in">
+      <div style="margin-bottom:16px">
+        <h1 class="page-title">🧠 Cockpit IA — Directeur Commercial</h1>
+        <p class="page-sub">Prévisions, probabilités de signature, risques et priorités — calculés en continu</p>
+      </div>
+
+      <div class="stats-grid" id="cok-kpis" style="margin-bottom:18px"></div>
+
+      <div class="flex" style="gap:16px;flex-wrap:wrap;margin-bottom:16px">
+        <div class="card" style="padding:16px;flex:2;min-width:300px">
+          <div style="font-weight:700;font-size:14px;margin-bottom:4px">📌 À faire aujourd'hui</div>
+          <p class="page-sub" style="margin:0 0 10px">Actions triées par impact commercial</p>
+          <div id="cok-today"></div>
+        </div>
+        <div class="card" style="padding:16px;flex:1;min-width:260px">
+          <div style="font-weight:700;font-size:14px;margin-bottom:4px">📈 Prévision de signature</div>
+          <p class="page-sub" style="margin:0 0 10px">Pipeline pondéré par probabilité</p>
+          <div id="cok-forecast"></div>
+        </div>
+      </div>
+
+      <div class="flex" style="gap:16px;flex-wrap:wrap;margin-bottom:16px">
+        <div class="card" style="padding:16px;flex:1;min-width:280px">
+          <div style="font-weight:700;font-size:14px;margin-bottom:4px">🔥 Vont probablement signer</div>
+          <p class="page-sub" style="margin:0 0 10px">Probabilité ≥ 55%, tri par valeur × probabilité</p>
+          <div id="cok-tosign"></div>
+        </div>
+        <div class="card" style="padding:16px;flex:1;min-width:280px">
+          <div style="font-weight:700;font-size:14px;margin-bottom:4px">⚠️ Risque de perte</div>
+          <p class="page-sub" style="margin:0 0 10px">Silence prolongé — à sauver en priorité</p>
+          <div id="cok-risk"></div>
+        </div>
+      </div>
+
+      <div class="card" style="padding:16px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px">🎯 Moteur de stratégie — quel logiciel vendre</div>
+        <p class="page-sub" style="margin:0 0 10px">Recommandation basée sur le secteur du prospect</p>
+        <div id="cok-strategy"></div>
+      </div>
+    </div>
 
     <!-- ══ VIEW: MOTEUR DE CONVERSION ══ -->
     <div id="view-conversion" class="hidden fade-in">
@@ -4286,7 +4332,7 @@ function navigate(view, el) {
   if(el && el.classList && el.classList.contains('sb-item')) el.classList.add('active');
   document.getElementById('topbar-title').textContent = {
     dashboard:'Tableau de bord',pipeline:'Pipeline Commercial',clients:'Clients & Prospects',
-    conversion:'Moteur de Conversion',logiciels:'Catalogue Logiciels',equipe:'Équipe & Apporteurs',apporteurs:'Apporteurs d\'affaires',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
+    cockpit:'Cockpit IA',conversion:'Moteur de Conversion',logiciels:'Catalogue Logiciels',equipe:'Équipe & Apporteurs',apporteurs:'Apporteurs d\'affaires',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
     planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
     parametrage:'Paramétrage',
     presentations:'Présentations & Démos',commandes:'Commandes Clients',contrats:'Contrats & Conventions',
@@ -4297,6 +4343,7 @@ function navigate(view, el) {
   if(view === 'commissions') setTimeout(initCommissions, 50);
   if(view === 'parametrage') setTimeout(initParametrage, 50);
   if(view === 'conversion') setTimeout(initConversion, 50);
+  if(view === 'cockpit') setTimeout(initCockpit, 50);
   if(view === 'apporteurs') setTimeout(initApporteurs, 50);
   if(view === 'documents') setTimeout(initDocuments, 50);
   document.dispatchEvent(new CustomEvent('sanix:navigate', {detail: view}));
@@ -4725,6 +4772,7 @@ function initDashboard360() {
 //  PIPELINE KANBAN
 // ═══════════════════════════════════════
 function initPipeline() {
+  syncProspectsToPipeline();
   // Pipeline bar
   const counts = {};
   STAGES.forEach(s=>{ counts[s.id]=DEALS.filter(d=>d.stage===s.id).length; });
@@ -9090,6 +9138,7 @@ function convLog(id, etape){
   c.interactions.push({date:new Date().toISOString(),type:labels[etape],note:'Action enregistrée depuis le Moteur de Conversion',etape,ico:icons[etape]});
   c.updated_at=new Date().toISOString();
   saveStore('clients');
+  try{ syncDealForClient(id); }catch(e){}
   showToast(`📈 ${c.nom} → ${labels[etape]}`);
   convRender();
   try{ updateSidebarBadges(); }catch(e){}
@@ -9101,6 +9150,7 @@ function convConvert(id){
   if(!c.interactions) c.interactions=[];
   c.interactions.push({date:new Date().toISOString(),type:'Converti en client',note:'Prospect converti',etape:5,ico:'✅'});
   saveStore('clients');
+  try{ syncDealForClient(id); }catch(e){}
   showToast(`🎉 "${c.nom}" est désormais Client actif !`);
   convRender();
   try{ updateSidebarBadges(); renderClients(getFilteredClients()); if(leafletMap) refreshMapMarkers(); }catch(e){}
@@ -9266,6 +9316,208 @@ function relanceSaveConfig(){
   showToast('✅ Séquences de relance enregistrées');
 }
 
+
+// ═══════════════════════════════════════════════════════════
+//  SYNC PROSPECTS → PIPELINE (chaque prospect = 1 deal)
+// ═══════════════════════════════════════════════════════════
+function _stageFromEtape(e){ return ['prospect','contact','demo','proposition','negociation'][Math.min(e,4)] || 'prospect'; }
+
+function syncProspectsToPipeline(){
+  let changed=false;
+  let nextId = DEALS.length ? Math.max(...DEALS.map(d=>parseInt(d.id)||0))+1 : 1;
+  CLIENTS.filter(c=>c.statut==='prospect').forEach(c=>{
+    const et = (typeof aiGetEtape==='function') ? aiGetEtape(c) : 0;
+    const stage = _stageFromEtape(et);
+    let deal = DEALS.find(d=>d.clientId===c.id);
+    if(!deal){
+      DEALS.push({
+        id: nextId++, client:c.nom, clientId:c.id, logiciel:c.logiciel||'',
+        valeur: c.valeur>0?c.valeur:( (LOGICIELS.find(l=>l.nom===c.logiciel)||{}).prixNum || 0 ),
+        commercial:c.commercial||'', stage, notes:c.notes||'', color:'#2563EB',
+        date:new Date().toLocaleDateString('fr-FR'), fromProspect:true,
+        history:[{date:new Date().toISOString(),type:'creation',ico:'🎯',label:'Deal créé (prospect)',note:'Généré depuis le prospect',resultat:'',commercial:c.commercial||''}]
+      });
+      changed=true;
+    } else if(deal.fromProspect && deal.stage!==stage && deal.stage!=='gagne' && deal.stage!=='perdu'){
+      deal.stage=stage; changed=true;
+    }
+  });
+  if(changed) saveStore('deals');
+  return changed;
+}
+
+// Aligne le deal lié quand un prospect avance / est converti
+function syncDealForClient(clientId){
+  const c=CLIENTS.find(x=>x.id===clientId); if(!c) return;
+  let deal=DEALS.find(d=>d.clientId===clientId);
+  if(c.statut==='client'){
+    if(deal){ deal.stage='gagne'; }
+    else { const nid=DEALS.length?Math.max(...DEALS.map(d=>parseInt(d.id)||0))+1:1;
+      DEALS.push({id:nid,client:c.nom,clientId:c.id,logiciel:c.logiciel||'',valeur:c.valeur||0,commercial:c.commercial||'',stage:'gagne',notes:c.notes||'',color:'#10B981',date:new Date().toLocaleDateString('fr-FR'),fromProspect:true,history:[]}); }
+    saveStore('deals'); return;
+  }
+  if(!deal){ syncProspectsToPipeline(); return; }
+  if(deal.fromProspect && deal.stage!=='gagne' && deal.stage!=='perdu'){
+    deal.stage=_stageFromEtape(aiGetEtape(c)); saveStore('deals');
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  COCKPIT IA — intelligence commerciale (heuristique, offline)
+// ═══════════════════════════════════════════════════════════
+const COK_STAGE_PROB = {prospect:.05, contact:.15, demo:.35, proposition:.55, negociation:.75, gagne:1, perdu:0};
+const COK_CYCLE_REST = {0:30, 1:20, 2:14, 3:10, 4:5}; // jours restants estimés par étape
+
+function cokFmt(n){ return Math.round(n).toLocaleString('fr-FR'); }
+
+// Probabilité de signature d'un prospect (stage + score)
+function cokProba(c){
+  const et = aiGetEtape(c);
+  const stage = _stageFromEtape(et);
+  const sp = COK_STAGE_PROB[stage] ?? .05;
+  const score = aiProspectScore(c)/100;
+  let p = sp*0.6 + score*0.4;
+  // pénalité silence
+  const d = convDaysSince(c);
+  if(d!==null){ if(d>30) p*=0.5; else if(d>14) p*=0.75; }
+  return Math.max(2, Math.min(97, Math.round(p*100)));
+}
+function cokValeur(c){
+  if(c.valeur>0) return c.valeur;
+  return (LOGICIELS.find(l=>l.nom===c.logiciel)||{}).prixNum || 0;
+}
+function cokRisk(c){
+  const d = convDaysSince(c);
+  if(d===null) return {pct:0, lbl:'—'};
+  if(d>30) return {pct:Math.min(90,60+d-30), lbl:'Élevé'};
+  if(d>14) return {pct:40+(d-14), lbl:'Moyen'};
+  return {pct:Math.max(5,d*2), lbl:'Faible'};
+}
+function cokCloseDate(c){
+  const et = aiGetEtape(c);
+  const rest = COK_CYCLE_REST[et] ?? 20;
+  const base = convDaysSince(c)!==null ? new Date((c.interactions||[]).slice(-1)[0].date) : new Date();
+  const dt = new Date(base.getTime()+rest*86400000);
+  return dt.toLocaleDateString('fr-FR',{day:'2-digit',month:'short'});
+}
+// Reco logiciel par secteur (via catalogue)
+function cokBestLogiciel(c){
+  const actifs = LOGICIELS.filter(l=>l.actif!==false);
+  const fallback = {Logistique:'Distribution',Restauration:'Commerce',Services:'Commerce','Éducation':'Commerce'};
+  const cible = c.secteur || 'Autre';
+  let matchs = actifs.filter(l=>l.cat===cible);
+  if(!matchs.length && fallback[cible]) matchs = actifs.filter(l=>l.cat===fallback[cible]);
+  if(!matchs.length) return null;
+  matchs.sort((a,b)=>(b.prixNum||0)-(a.prixNum||0));
+  return matchs[0];
+}
+
+function initCockpit(){ cokRender(); }
+
+function cokRender(){
+  if(!document.getElementById('view-cockpit')) return;
+  const prospects = CLIENTS.filter(c=>c.statut==='prospect');
+  const clients = CLIENTS.filter(c=>c.statut==='client');
+
+  // Prévision pondérée depuis DEALS
+  syncProspectsToPipeline();
+  const openDeals = DEALS.filter(d=>d.stage!=='gagne'&&d.stage!=='perdu');
+  const weighted = openDeals.reduce((s,d)=>s+(d.valeur||0)*(COK_STAGE_PROB[d.stage]??.05),0);
+  const realized = DEALS.filter(d=>d.stage==='gagne').reduce((s,d)=>s+(d.valeur||0),0);
+  const brut = openDeals.reduce((s,d)=>s+(d.valeur||0),0);
+  const tosign = prospects.filter(c=>cokProba(c)>=55);
+  const atrisk = prospects.filter(c=>cokRisk(c).pct>=50);
+
+  document.getElementById('cok-kpis').innerHTML = `
+    ${convKpi('📈', cokFmt(weighted), 'Prévision pondérée (FCFA)', 'var(--primary)')}
+    ${convKpi('💼', cokFmt(brut), 'Pipeline brut (FCFA)', 'var(--muted)')}
+    ${convKpi('✅', cokFmt(realized), 'CA réalisé (FCFA)', 'var(--success)')}
+    ${convKpi('🔥', tosign.length, 'Signatures probables', 'var(--danger)')}
+    ${convKpi('⚠️', atrisk.length, 'Prospects à risque', atrisk.length?'var(--warning)':'var(--muted)')}
+    ${convKpi('🎯', prospects.length, 'Prospects actifs', 'var(--primary)')}`;
+
+  // À faire aujourd'hui : fusion retards + closing + risque
+  const today = [];
+  prospects.forEach(c=>{
+    const nba = convNBA(c); const p = cokProba(c); const r = cokRisk(c);
+    let prio = nba.urg*10 + p/10;
+    let motif='', ico=nba.color;
+    if(nba.overdue){ prio+=50; motif=`Relance en retard (+${nba.days-nba.cadence}j)`; }
+    else if(aiGetEtape(c)>=3){ prio+=30; motif=`En closing · ${p}% de signer`; }
+    else if(r.pct>=50){ prio+=20; motif=`Risque ${r.lbl} — relancer`; }
+    else motif = nba.label;
+    today.push({c, nba, p, prio, motif});
+  });
+  today.sort((a,b)=>b.prio-a.prio);
+  const topToday = today.slice(0,8);
+  document.getElementById('cok-today').innerHTML = topToday.length ? topToday.map(t=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
+      <div style="width:8px;height:8px;border-radius:50%;background:${t.nba.color};flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" onclick="showClientDetail(${t.c.id})">${t.c.nom}</div>
+        <div style="font-size:11px;color:var(--muted)">${t.motif}</div>
+      </div>
+      <div style="font-weight:800;font-size:13px;color:${t.p>=55?'var(--success)':t.p>=30?'var(--warning)':'var(--muted)'}">${t.p}%</div>
+      <button class="btn btn-sm" style="background:#25D366;color:#fff;font-size:11px" onclick="relanceOpen(${t.c.id})">💬</button>
+    </div>`).join('') : '<div style="color:var(--muted);font-size:13px;padding:14px 0">Rien d\'urgent. Faites avancer vos prospects.</div>';
+
+  // Prévision détail par étape
+  const byStage = ['prospect','contact','demo','proposition','negociation'].map(st=>{
+    const ds = openDeals.filter(d=>d.stage===st);
+    const v = ds.reduce((s,d)=>s+(d.valeur||0),0);
+    return {st, n:ds.length, v, w:v*(COK_STAGE_PROB[st]), p:Math.round(COK_STAGE_PROB[st]*100)};
+  });
+  document.getElementById('cok-forecast').innerHTML = byStage.map(s=>{
+    const lbl = (STAGES.find(x=>x.id===s.st)||{}).label||s.st;
+    return `<div style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;font-size:12px"><span>${lbl} <span style="color:var(--muted)">(${s.p}%)</span></span><span style="font-weight:700">${cokFmt(s.w)}</span></div>
+      <div style="font-size:10px;color:var(--muted)">${s.n} deal(s) · brut ${cokFmt(s.v)} F</div></div>`;
+  }).join('') + `<div style="border-top:2px solid var(--border);margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-weight:800">
+    <span>Prévision</span><span style="color:var(--primary)">${cokFmt(weighted)} F</span></div>`;
+
+  // Vont signer
+  const sign = tosign.map(c=>({c,p:cokProba(c),v:cokValeur(c)})).sort((a,b)=>(b.p*b.v)-(a.p*a.v)).slice(0,6);
+  document.getElementById('cok-tosign').innerHTML = sign.length ? sign.map(x=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px;cursor:pointer" onclick="showClientDetail(${x.c.id})">${x.c.nom}</div>
+      <div style="font-size:11px;color:var(--muted)">${cokFmt(x.v)} F · signature ~ ${cokCloseDate(x.c)}</div></div>
+      <div style="font-weight:800;color:var(--success)">${x.p}%</div></div>`).join('')
+    : '<div style="color:var(--muted);font-size:13px;padding:10px 0">Aucun prospect chaud. Réchauffez le portefeuille via démos et propositions.</div>';
+
+  // Risque
+  const risk = prospects.map(c=>({c,r:cokRisk(c),v:cokValeur(c)})).filter(x=>x.r.pct>=50).sort((a,b)=>b.r.pct-a.r.pct).slice(0,6);
+  document.getElementById('cok-risk').innerHTML = risk.length ? risk.map(x=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px;cursor:pointer" onclick="showClientDetail(${x.c.id})">${x.c.nom}</div>
+      <div style="font-size:11px;color:var(--muted)">Silence ${convDaysSince(x.c)}j · ${cokFmt(x.v)} F en jeu</div></div>
+      <div style="text-align:right"><div style="font-weight:800;color:var(--warning)">${x.r.pct}%</div>
+      <button class="btn btn-sm" style="background:#25D366;color:#fff;font-size:10px;margin-top:2px" onclick="relanceOpen(${x.c.id})">💬 Sauver</button></div></div>`).join('')
+    : '<div style="color:var(--muted);font-size:13px;padding:10px 0">Aucun prospect en danger. Bon suivi !</div>';
+
+  // Stratégie logiciel
+  const strat = prospects.map(c=>({c, best:cokBestLogiciel(c)})).filter(x=>x.best && x.best.nom!==x.c.logiciel);
+  const stratEl = document.getElementById('cok-strategy');
+  stratEl.innerHTML = strat.length ? `
+    <div style="max-height:280px;overflow-y:auto">
+    ${strat.slice(0,15).map(x=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
+        <div style="flex:1;min-width:160px"><div style="font-weight:600;font-size:13px">${x.c.nom} <span style="font-size:11px;color:var(--muted)">· ${x.c.secteur||'secteur ?'}</span></div>
+        <div style="font-size:11px;color:var(--muted)">${x.c.logiciel?('Assigné : '+x.c.logiciel+' → '):''}Recommandé : <strong style="color:var(--primary)">${x.best.nom}</strong> (${cokFmt(x.best.prixNum)} F)</div></div>
+        <button class="btn btn-outline btn-sm" style="font-size:11px" onclick="cokApplyLogiciel(${x.c.id},'${x.best.nom.replace(/'/g,"\\'")}')">✔️ Appliquer</button>
+      </div>`).join('')}</div>`
+    : '<div style="color:var(--muted);font-size:13px;padding:10px 0">Tous les prospects ont déjà le logiciel le plus adapté à leur secteur. 👌</div>';
+}
+
+function cokApplyLogiciel(id, nom){
+  const c = CLIENTS.find(x=>x.id===id); if(!c) return;
+  c.logiciel = nom; c.updated_at = new Date().toISOString();
+  saveStore('clients');
+  try{ syncDealForClient(id); }catch(e){}
+  showToast(`🎯 ${c.nom} → ${nom}`);
+  cokRender();
+}
+
 // ═══ SEED PROMOTEURS IMMOBILIERS AGRÉÉS (import unique, idempotent) ═══
 const PROMOTEURS_AGREES = [{"nom":"VICTOIRE IMMOBILIER","phone":"25 22 01 63 22","email":"","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Angre, Carrefour Fred & Poppée","lat":5.36687,"lng":-4.03205,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 1 · Tel2: 07 07 63 03 03"},{"nom":"VILLA ABIDJANAISE","phone":"07 08 71 12 55","email":"info@villaabidjanaine.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Il Plareaux vers Station Mobile","lat":5.34865,"lng":-4.02214,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 1 · Tel2: 01 51 21 60 86"},{"nom":"VISION CONSTRUCTION+SARL","phone":"07 07 43 54 51","email":"visionplusconstruction@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Yopougon, Carrefour Chu, 21 BP 1216 Abidjan 21","lat":5.37172,"lng":-3.99947,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 1 · Tel2: 05 05 85 56 63"},{"nom":"WEAVERS IMMOBILIER","phone":"25 23 00 72 68","email":"info@weaversimmobilier.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Yopougon, Coopec Ananeraie","lat":5.37951,"lng":-4.02895,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 1 · Tel2: 07 08 97 93 39"},{"nom":"YAPGI IMMOBILIER","phone":"27 21 26 13 46","email":"info@yapgi-immobilier.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Marcory, Résidentiel, Rue de la Paix, Immeuble Guement, OI BP 4475 Abidjan OI","lat":5.356,"lng":-4.03181,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 1 · Tel2: 07 88 67 19 52"},{"nom":"SARDONIE IMMOBILIER","phone":"07 09 08 02","email":"Sardonierinterieur@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Plateau, Av Delafosse vers Résidence Horizon","lat":5.34583,"lng":-4.00803,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 2 · Tel2: 05 75 27 85 65"},{"nom":"SCHAMA GROUP IMMOBILIER","phone":"27 22 46 76 31","email":"schama-group@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Palmerae, Rue minisole vers Station First Petroleum, 38 Bp 432 Abidjan 31","lat":5.33623,"lng":-4.02336,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 2"},{"nom":"SCI AFRIK INVEST","phone":"07 69 59 46 36","email":"contact@sciafrikinvest.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody","lat":5.36739,"lng":-4.00605,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 2"},{"nom":"SCI DEKAM","phone":"07 79 78 78 78","email":"info@scidekam.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Abana, Immeuble Kyl Galeria","lat":5.34592,"lng":-4.00384,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 2"},{"nom":"SCI HABITAT PLUS IMMOBILIERS SARL","phone":"27 21 59 77 90","email":"schahabatpluumsosari@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Marcory, Im Sana Maria, Rue du Canal, 02 Bp 925 Abidjan 02","lat":5.37537,"lng":-4.03298,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 2"},{"nom":"SCI L'ELAN","phone":"07 07 70 02 00","email":"","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Marcory, Zone 4C, 32 Rue Marconi, 05 Bp 1551 Abidjan 05","lat":5.37519,"lng":-3.99839,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 2"},{"nom":"SCI LE LIBERATEUR","phone":"05 05 95 07 82","email":"liberateur@hotmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera 3, Cité Synacessi 2 vers Lycée François Blaise Pascal, 01 Bp 815 Abidjan 01","lat":5.35191,"lng":-4.02553,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 2 · Tel2: 05 46 95 09 74"},{"nom":"SCI LES ROSIERS SARL","phone":"27 22 41 84 83","email":"info programmes@lesrosiers.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Plateau, Carrefour Eglise Saint Jacques, 18 Bp 151 Abidjan 18","lat":5.38276,"lng":-4.01647,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 2 · Tel2: 07 07 01 88 05"},{"nom":"SCI MALKO","phone":"27 21 34 06 00","email":"scimalko@scimalko.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Marcory, Zone 4 C, Rue Thomas Edison vers Honda, 18 Bp 216 Abidjan 18","lat":5.33954,"lng":-4.02846,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 2"},{"nom":"SCI HOBA (SOCIÉTÉ CIVILE IMMOBILIÈRE HOBA)","phone":"27 21 30 01 65","email":"Schiboba@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Entrée de la ville, en venant de Bassam, 01 BP 777 Bonoua 01","lat":5.28987,"lng":-3.58841,"notes":"Promoteur immobilier agréé · Bonoua · Import CSV Fichier 2 · Tel2: 07 08 71 66 86"},{"nom":"SIDIBA GROUP","phone":"07 04 07 24 37","email":"Serviceclient.sidiba@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera, route Abatta Carrefour Ab Center","lat":5.37526,"lng":-3.99681,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 2"},{"nom":"SOGETD","phone":"27 34 71 14 70","email":"sogetd2010@hotmail.fr","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Carrefour francophone, au Lac, 02 Bp 339 San Pedro 02","lat":4.75031,"lng":-6.61264,"notes":"Promoteur immobilier agréé · San-Pédro · Import CSV Fichier 2"},{"nom":"SOOMI-CI","phone":"27 21 00 83 04","email":"","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Plateau, Av Jean Paul II, Im. Ccia","lat":5.35383,"lng":-4.0057,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 2 · Tel2: 07 07 09 60 28"},{"nom":"SOMMITE IMMO 6 SERVICES","phone":"07 77 27 66 66","email":"sommitteimmoservices@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Bingerville","lat":5.37207,"lng":-3.89267,"notes":"Promoteur immobilier agréé · Bingerville · Import CSV Fichier 2"},{"nom":"TERRE ACCUEIL IMMOBILIER","phone":"07 09 26 94 23","email":"terreaccueilimmobilier@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Faya, Nouveau Coudron vers Pharmacie Ephrata, 25 Bp 640 Abidjan 25","lat":5.37799,"lng":-4.00443,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 2 · Tel2: 05 41 89 76 90"},{"nom":"TERRES CÔTE D'IVOIRE","phone":"27 22 43 22 22","email":"info@terrescotedivore.cl","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera 3, Bd Mitterand","lat":5.37013,"lng":-4.03101,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 2 · Tel2: 07 87 88 58 12"},{"nom":"TTT-IMMOBILIER","phone":"27 22 46 46 06","email":"info@ttt-immobilier.net","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Angle Bd Latrille et Av Jean-Marmoz, 01 Bp 1804 Abidjan 01","lat":5.34629,"lng":-4.01883,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 2 · Tel2: 27 22 48 71 37"},{"nom":"VERTICA IMMO","phone":"07 59 59 29 99","email":"info@vertica-ci.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Palmerae, Immeuble Palmyra","lat":5.33889,"lng":-4.02166,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 2"},{"nom":"LOWE GROUP SARL","phone":"07 08 25 88 43","email":"lowemeudjico@tiscali.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Faya, Quartier Cuy Karajah, Quai Bar 2748 Abidjan Oa","lat":5.33995,"lng":-4.0194,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3"},{"nom":"LUXURY HOME TP N'SIKAN","phone":"07 07 39 04 07","email":"info@majisondeluxeinpian.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Excide de Police","lat":5.36668,"lng":-4.01506,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3"},{"nom":"LUXURY IMMOBILIER","phone":"27 22 59 97 60","email":"secretaire@luxuryimmobilier.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Faye & Tante, 01 Bp 11365 Abidjan Oa","lat":5.35341,"lng":-4.02282,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3 · Tel2: 07 69 69 96 67"},{"nom":"MASSERAM GROUP","phone":"07 99 45 33 15","email":"groupmasseram@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Angré Nouveau Chu","lat":5.34825,"lng":-3.98647,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3"},{"nom":"MOB IMMOBILIER","phone":"27 24 35 09 71","email":"info@mobimmobilier.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Faya, Face Synaressor","lat":5.3673,"lng":-4.00284,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3 · Tel2: 05 45 21 58 56"},{"nom":"MIXTA CÔTE D'IVOIRE","phone":"27 22 47 67 31","email":"mixta@cotedivoire@mixtafrica.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera 3, Centre Commercial, Saint Michel, 25 Bp 1060 Abidjan 25","lat":5.34346,"lng":-3.99684,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3"},{"nom":"MOBILIA CI","phone":"07 58 66 36 90","email":"mobiliasart@yahoo.fr","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Plateau, 7 Avenue Nogues","lat":5.34307,"lng":-4.01433,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3 · Tel2: 05 46 95 95 02"},{"nom":"MONDIAL BUILDING","phone":"27 22 50 07 42","email":"Accueilmondialbuilding@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Angré Petro Voire, Vers Station Shell allant au Château","lat":5.38438,"lng":-4.0013,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3 · Tel2: 05 84 13 55 56"},{"nom":"NAV & ASSOCIES","phone":"07 59 13 91 55","email":"drgmay@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Faya, Vers Supermarché Bon Prix","lat":5.36275,"lng":-3.99907,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3"},{"nom":"NKCI (NOUR KOBAKE CONSTRUCTION IMMOBILIERE)","phone":"27 22 53 49 11","email":"contact@nchi.africa","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Cité des Arts","lat":5.37704,"lng":-3.9945,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3 · Tel2: 01 43 36 60 80"},{"nom":"NOUVELLE GESTION (NO)","phone":"07 58 87 43 02","email":"Abeloesher@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Quartier Addis Abeba","lat":5.34635,"lng":-4.03169,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3"},{"nom":"NSI IMMOBILIER SA","phone":"27 22 50 13 21","email":"nsimmobilier@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Angré 86, Tante, Ceneffour Michèle, Yalice","lat":5.35067,"lng":-4.01991,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3 · Tel2: 07 07 02 35 16"},{"nom":"O'BOGN IMMOBILIER AFRIQUE","phone":"27 24 35 43 29","email":"obognimmobilier@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Yapougon, Ananera, Cuchan, Rola, Fec, Station, Lavage, Meda","lat":5.34545,"lng":-3.98615,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3 · Tel2: 07 05 02 77 16"},{"nom":"OPES HOLDING SA","phone":"27 22 48 73 53","email":"info@opesholding-sa.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Il Plateau, Valsons, Rue des Jardins, Vers Sangria","lat":5.37872,"lng":-4.01757,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3"},{"nom":"RIIA IMMOBILIER ET GRANDS TRAVAUX","phone":"27 22 49 98 65","email":"direccion@riaimmobilier.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera 3, Feu Pharmacie, Saint Pierre, Les Roses","lat":5.36767,"lng":-4.01352,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3 · Tel2: 07 97 70 70 98"},{"nom":"SADI","phone":"27 21 24 18 09","email":"info@sadi-ci.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Treichville, Derrière Parc des Spont, 05 Epl753, Abidjan Oa","lat":5.38063,"lng":-4.01036,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3"},{"nom":"SAFARI CONSTRUCTIONS","phone":"27 22 51 66 64","email":"dcm@safariimmobilier.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Bonoumin, 01 Bp 6562, Abidjan Oa","lat":5.34814,"lng":-4.02097,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3 · Tel2: 07 77 07 77 38"},{"nom":"SALLAM REALISATION ET GESTION","phone":"05 05 89 81 65","email":"Traorea7@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Yapougon, Hotel Blanc","lat":5.36297,"lng":-4.02016,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 3"},{"nom":"JAKIN DESIGN","phone":"27 22 52 05 34","email":"direction@jakin-design.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Angré, Carrefour les Oscars, 28 Bp 399 Abidjan 28","lat":5.36413,"lng":-3.98841,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 4 · Tel2: 07 07 56 34 31"},{"nom":"KEÏTA HOLDING & PARTNERS SARL","phone":"25 24 00 27 01","email":"Keltpharmer's ci@hotmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Il Plateauux, derriere Sococé, 09 Bp 388 Abidjan 09","lat":5.35487,"lng":-4.02233,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 4 · Tel2: 07 07 83 44 83"},{"nom":"KH AGENCE IMMOBILIER","phone":"07 49 91 05 67","email":"khimmobilier02@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Faya, Cité Sir","lat":5.38478,"lng":-4.00782,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 4"},{"nom":"KOBA HOLDING AFRICA","phone":"27 24 32 52 57","email":"info@kobaholdingafrica.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Il Plateauux, 7è Tranche","lat":5.33945,"lng":-4.03094,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 4 · Tel2: 07 59 84 84 84"},{"nom":"KOBES GROUP SARL","phone":"01 03 09 77 18","email":"rh@kobesgroup.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Palmeraie, Nouveau Camp","lat":5.34038,"lng":-4.00193,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 4 · Tel2: 07 00 67 67 56"},{"nom":"KODANN","phone":"25 22 00 55 55","email":"info@kodann.ci","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera 2, Im. Le Pierre","lat":5.3745,"lng":-4.01219,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 4 · Tel2: 05 84 00 44 21"},{"nom":"KOFAS GROUP","phone":"27 32 79 71 74","email":"Kofflassocie@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Ciad","lat":5.33808,"lng":-4.01422,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 4"},{"nom":"KS BOUAKE S.A","phone":"27 34 75 66 20","email":"hwamecoteivoire@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Bouahé","lat":7.71481,"lng":-5.02854,"notes":"Promoteur immobilier agréé · Bouahé · Import CSV Fichier 4"},{"nom":"LA BOUSSOLE IMMOBILIER","phone":"27 22 21 93 02","email":"contact@laboussoleimmobilierci.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Palmeraie, Rue Ministre, 25 Bp 2314 Abidjan 25","lat":5.38345,"lng":-3.99026,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 4 · Tel2: 07 59 47 47 45"},{"nom":"LA FAC DE L'IMMOBILIER","phone":"27 24 36 11 97","email":"info@fac-immo.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Palmeraie, Rond-point Ado","lat":5.33547,"lng":-3.99726,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 4 · Tel2: 01 01 73 50 02"},{"nom":"LE PROPRIETAIRE IMMOBILIER","phone":"27 22 49 23 89","email":"leproprietaireimmob@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody 17 Bp 526 Abidjan 17","lat":5.36899,"lng":-4.00645,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 4 · Tel2: 07 49 22 22 19"},{"nom":"LE RÊVE BY SIDI","phone":"27 20 22 29 95","email":"info@sidi-intl.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Comoé, vers Modeste","lat":5.20014,"lng":-3.73155,"notes":"Promoteur immobilier agréé · Grand-Bassam · Import CSV Fichier 4 · Tel2: 05 46 00 00 17"},{"nom":"LEADERS IMMO-INDUSTRY","phone":"27 22 51 88 53","email":"leadersimmoci@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Angré Caféier I, vers Nouvelle Station Pétré Voire","lat":5.34048,"lng":-4.01156,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 4 · Tel2: 07 67 43 80 55"},{"nom":"LES PAVES SARL","phone":"05 05 35 03 19","email":"Yayouss2013@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Route de Bingerville, dernière Espace Tonton Bouba, 21 Bp 1048 Abidjan 21","lat":5.35329,"lng":-3.87591,"notes":"Promoteur immobilier agréé · Bingerville · Import CSV Fichier 4 · Tel2: 07 07 51 50 39"},{"nom":"LES TOITS D'EBURNIE","phone":"07 07 10 58 77","email":"rogerbriffy6@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera 3, vers Cité Ecci","lat":5.37869,"lng":-4.02013,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 4 · Tel2: 01 42 37 01 77"},{"nom":"LGI BTP","phone":"27 22 44 30 44","email":"lgibtp@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Bd François Mitterrand, Carrefour Chu, 05 Bp 2200 Abidjan 05","lat":5.35993,"lng":-4.02437,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 4 · Tel2: 07 07 29 92 99"},{"nom":"LIZ IMMOBILIER","phone":"27 21 39 27 38","email":"info@lizi-immobilier.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Marcory, Zone 4, Bd. de Marseille, Im. de Sushis","lat":5.38053,"lng":-3.98977,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 4 · Tel2: 07 79 98 27 47"},{"nom":"LOTISSEMENT AD-IMMOBILIER","phone":"07 48 15 56 83","email":"aadimmobilier@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Moreyville","lat":5.20172,"lng":-3.73165,"notes":"Promoteur immobilier agréé · Grand-Bassam · Import CSV Fichier 4 · Tel2: 05 96 04 40 18"},{"nom":"CEGEX","phone":"27 22 21 13 88","email":"contact@cegeximmo.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Plateau, Bd. Général de Gaulle, 01 Bp 752 Abidjan OI","lat":5.36535,"lng":-4.02566,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5 · Tel2: 27 20 21 28 61"},{"nom":"CENTRE COMMERCIAL DE L'IMMOBILIER-CCI","phone":"07 13 39 01 72","email":"ccimmobilier24@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Palmerae, Saint Vitaleur","lat":5.37303,"lng":-4.00633,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5"},{"nom":"CETP SARL","phone":"05 05 82 71 23","email":"Dg cetp@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Route de Dabou, 01 Bp 4611 Abidjan OI","lat":5.37383,"lng":-4.00678,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5 · Tel2: 07 08 81 71 13"},{"nom":"CIIMAA SARL","phone":"27 22 21 98 32","email":"info@ciimaa.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Bonoumín, Cité Presse face Im. Le Walèbo, 04 Bp 2924 Abidjan 04","lat":5.33493,"lng":-4.01709,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5 · Tel2: 05 44 80 45 45"},{"nom":"CIM-CI (COMPAGNIE IMMOBILIÈRE DE CÔTE D'IVOIRE)","phone":"27 22 52 65 65","email":"info@cim-ci.net","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Il Plateau Vallons, Rue des Jardins, 25 Bp 2189 Abidjan 25","lat":5.33587,"lng":-3.98685,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5 · Tel2: 07 57 58 11 75"},{"nom":"CISLO (CÔTE D'IVOIRE SERVICES ET LOGEMENTS)","phone":"27 22 41 61 44","email":"","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Il Plateau, derrière Sococé vers Résidences Sideci, 06 Bp 6494 Abidjan 06","lat":5.37884,"lng":-3.99172,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5 · Tel2: 07 08 87 32 52"},{"nom":"CORAM DEO","phone":"05 85 03 63 85","email":"","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera, route Abatta, vers Lecat","lat":5.35028,"lng":-4.0304,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5"},{"nom":"E-MOYÉ","phone":"07 79 05 01 10","email":"info@emoye.cl","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody","lat":5.3788,"lng":-3.98595,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5 · Tel2: 05 05 78 67 00"},{"nom":"E2JS SA","phone":"27 22 40 94 09","email":"info@e2js.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody","lat":5.33918,"lng":-4.009,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5 · Tel2: 07 07 00 17 92"},{"nom":"ECONYX GROUP","phone":"27 22 59 76 72","email":"office@econyxgroup.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Palmerae, vers Pharmacie Sainte Béatrice","lat":5.33836,"lng":-3.99527,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5"},{"nom":"EGFOP SA","phone":"27 22 42 71 41","email":"fibroutdje@yahoo.fr","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Plateau-Dohui, Carrefour Adama Sanogo, 01 Bp 2773 Abidjan OI","lat":5.37319,"lng":-4.02688,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5"},{"nom":"EICS (ENTREPRISE IVOIRIENNE DE CONSTRUCTION ET DE SERVICES)","phone":"27 22 41 90 25","email":"eicsciv@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Angré 7e Tranche vers Pont Soro, 06 Bp 1927 Abidjan 06","lat":5.35866,"lng":-4.00581,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5 · Tel2: 07 67 44 82 15"},{"nom":"ELOHIM CONSTRUCTION","phone":"07 58 81 26 48","email":"","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Centre Mo-Faisal","lat":5.34815,"lng":-3.98968,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5"},{"nom":"EQUINOX PLANET CÔTE D'IVOIRE","phone":"27 22 54 95 00","email":"","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Il Plateau Vallons, Rue des Jardins, 01 Bp 13551 Abidjan OI","lat":5.35606,"lng":-4.02271,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5 · Tel2: 07 79 10 85 62"},{"nom":"ERCINN","phone":"27 22 54 96 16","email":"ercinn.entreprise@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Palmerae, Im. Ercinn vers Clinique Divine Grâce","lat":5.36186,"lng":-3.9968,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5 · Tel2: 07 79 45 11 25"},{"nom":"EXPERTIZ GROUP, ABIDJAN","phone":"27 22 20 46 05","email":"info@expertizgroup.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Angré 6e Tranche","lat":5.34496,"lng":-4.01771,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5 · Tel2: 01 41 68 68 14"},{"nom":"FINESSE IMMOBILIER","phone":"25 21 00 59 35","email":"info@finesseimmobiliere.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Ancienne voie de Grand-Bessam vers Espace jardini d'Edema","lat":5.38466,"lng":-4.00081,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5 · Tel2: 07 59 27 93 01"},{"nom":"FIRST IMMOBILIER","phone":"27 21 39 15 78","email":"firstimmobilier@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Marcory, Zone 4 C, Rue du 7 Décembre vers Clavier Amour","lat":5.35681,"lng":-4.00742,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 5 · Tel2: 01 43 72 72 72"},{"nom":"ABRI 2000","phone":"27 22 41 83 66","email":"abri2000@avisio.cl","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Il Plateau Vallons, Rue des Jardins face Woodin, 01 BP 969 Abidjan OI","lat":5.34095,"lng":-4.02207,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 6 · Tel2: 27 22 41 73 69"},{"nom":"ABS INTER MULTISERVICE","phone":"07 09 26 31 26","email":"abinterbtp@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Yopougon, Niangon, 01 Bp 6120 Abidjan OI","lat":5.3518,"lng":-4.00388,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 6"},{"nom":"ADDOHA (LAGOONA CITY)","phone":"27 23 50 00 23","email":"info@addoha.cl","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Koumassi, Athlomiala, Terminus 32 vers route Gendarmerie","lat":5.34641,"lng":-4.02229,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 6 · Tel2: 27 20 30 50 40"},{"nom":"AKIDOM IMMOBILIER","phone":"07 77 90 91 08","email":"ahidom.immo@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Bd. Mitterrand vers Nouveau Camp Ahouédo, Immeuble Pélican","lat":5.33845,"lng":-4.00174,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 6 · Tel2: 05 75 79 32 32"},{"nom":"AL BANI ENGINEERING","phone":"05 06 60 60 60","email":"info@albaniengineering.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Marcy, Rue GBO","lat":5.34635,"lng":-3.98803,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 6 · Tel2: 07 05 55 55 74"},{"nom":"AL SANOGO","phone":"27 22 46 82 51","email":"alsanogo@alsanogo.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Faya, Carrefour Abatta à droite, 01 Bp 5793 Abidjan OI","lat":5.37788,"lng":-4.02976,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 6"},{"nom":"AMS ENTREPRISE (ADOM MULTI SERVICES ENTREPRISES)","phone":"27 22 46 59 83","email":"info@ams-entreprises.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Angré Djibi","lat":5.3468,"lng":-3.99985,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 6"},{"nom":"ANAH","phone":"25 20 00 36 26","email":"","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Adjamé, Bd. du Général de Gaulle, Im. Mirador, 01 Bp 1856 Abidjan OI","lat":5.34561,"lng":-4.02668,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 6 · Tel2: 05 86 70 20 96"},{"nom":"ANDJOU IMMOBILIER","phone":"27 35 96 42 14","email":"info@andjouimmobilier.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Carrefour Adama","lat":5.37738,"lng":-3.89505,"notes":"Promoteur immobilier agréé · Bingerville · Import CSV Fichier 6 · Tel2: 07 49 62 92 29"},{"nom":"ARC EN CIEL SARL","phone":"27 22 41 39 33","email":"sbalarcenciel@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Il Plateau Vallons, Rue des Jardins, Immeuble Cissé, 25 Bp 535 Abidjan 25","lat":5.35853,"lng":-3.99407,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 6 · Tel2: 07 89 78 66 35"},{"nom":"ASA GROUP SA","phone":"07 03 80 92 56","email":"info@asasomgroupci.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Angré 9e Tranche, Star 14 Im. Asa Group Sa","lat":5.37527,"lng":-4.02378,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 6 · Tel2: 07 77 77 15 14"},{"nom":"AYHOGE GROUP SARL","phone":"27 22 23 53 14","email":"ayhobegroup@gmail.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Angré Château","lat":5.33975,"lng":-4.01175,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 6 · Tel2: 07 59 96 87 65"},{"nom":"BACID","phone":"27 22 47 43 00","email":"Contact@bacid.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Faya, Génie 2000","lat":5.35178,"lng":-3.90025,"notes":"Promoteur immobilier agréé · Bingerville · Import CSV Fichier 6 · Tel2: 27 22 47 93 74"},{"nom":"BATINET PRESTIGE","phone":"27 21 76 37 58","email":"info@batinet.cl","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Yopougon, 3e Pont, Cité Abdoulaye Diallo face Bae","lat":5.37135,"lng":-3.99963,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 6 · Tel2: 07 07 54 39 68"},{"nom":"BATIR S.A","phone":"27 22 54 51 65","email":"contact@batirsa-cl.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera 3, Cité Synacassi I vers Collège Jacques Prévert, 06 Bp 1975 Abidjan 06","lat":5.38411,"lng":-4.02838,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 6"},{"nom":"BROKERS AFRIKA","phone":"07 11 43 43 43","email":"","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera Anano","lat":5.35503,"lng":-4.01633,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 6"},{"nom":"CABINET JURISCONSULT","phone":"27 21 30 19 92","email":"info@cabineturjursconsult.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Bd. Hth, 12 Bp 1389 Abidjan 12","lat":5.22988,"lng":-3.75117,"notes":"Promoteur immobilier agréé · Grand-Bassam · Import CSV Fichier 6"},{"nom":"CADIC HOME DEVELOPPEMENT","phone":"25 22 01 86 19","email":"Infos@cadicgroup.com","secteur":"Immobilier","logiciel":"ImmoSuite ERP","statut":"prospect","commercial":"","valeur":750000,"adresse":"Cocody, Riviera 2 les Jardins, vers Groupe Scolaire la Marelle, 01 Bp 72 Abidjan OI","lat":5.34441,"lng":-4.01087,"notes":"Promoteur immobilier agréé · Abidjan · Import CSV Fichier 6"}];
 function _seedPromoteursOnce(){
@@ -9289,7 +9541,7 @@ function _seedPromoteursOnce(){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
-  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); updateSidebarBadges(); updateSidebarNotifications(); }, 900);
+  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); syncProspectsToPipeline(); updateSidebarBadges(); updateSidebarNotifications(); }, 900);
   // Refresh notifications toutes les 2 minutes
   setInterval(updateSidebarNotifications, 120000);
 });
