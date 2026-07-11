@@ -1201,7 +1201,10 @@ select.form-input{cursor:pointer}
           <h1 class="page-title">Catalogue Logiciels</h1>
           <p class="page-sub" style="margin-bottom:0">Produits SANIX Africa — Gérer, démos, vidéos, manuels</p>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="openLogicielModal()">+ Nouveau logiciel</button>
+        <div class="flex gap-2">
+          <button class="btn btn-outline btn-sm" onclick="openGithubImportModal()">🔗 Importer GitHub</button>
+          <button class="btn btn-primary btn-sm" onclick="openLogicielModal()">+ Nouveau logiciel</button>
+        </div>
       </div>
 
       <!-- Stats rapides -->
@@ -2687,6 +2690,26 @@ select.form-input{cursor:pointer}
 </div>
 
 <!-- ══ MODAL IMPORT PROSPECTS ══ -->
+<div id="modal-github-import" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:680px;max-height:94vh;overflow-y:auto">
+    <div class="modal-close" onclick="document.getElementById('modal-github-import').classList.add('hidden')">✕</div>
+    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:2px">🔗 Importer mes logiciels depuis GitHub</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:20px">Récupère la liste des dépôts publics d'un compte ou d'une organisation et les ajoute au Catalogue Logiciels</div>
+
+    <div class="flex gap-2" style="margin-bottom:10px">
+      <input type="text" class="form-input" id="gh-username" placeholder="Utilisateur ou organisation GitHub (ex: sanix-africa)" style="flex:1" onkeydown="if(event.key==='Enter')githubFetchRepos()">
+      <button class="btn btn-primary btn-sm" onclick="githubFetchRepos()">🔍 Charger</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:14px" id="gh-status">Dépôts publics uniquement (limite API GitHub : 60 requêtes/heure sans authentification).</div>
+    <div id="gh-repo-list"></div>
+    <div class="flex gap-2" style="margin-top:16px;justify-content:flex-end;display:none" id="gh-import-actions">
+      <button class="btn btn-outline btn-sm" onclick="githubToggleAll(true)">Tout cocher</button>
+      <button class="btn btn-outline btn-sm" onclick="githubToggleAll(false)">Tout décocher</button>
+      <button class="btn btn-primary btn-sm" onclick="githubImportSelected()">✅ Importer la sélection</button>
+    </div>
+  </div>
+</div>
+
 <div id="modal-import-prospects" class="modal-overlay hidden">
   <div class="modal-box" style="max-width:640px;max-height:94vh;overflow-y:auto">
     <div class="modal-close" onclick="document.getElementById('modal-import-prospects').classList.add('hidden')">✕</div>
@@ -5107,6 +5130,96 @@ function logCatTab(cat, el) {
   const sel = document.getElementById('log-filter-cat');
   if(sel) sel.value = cat;
   renderLogiciels();
+}
+
+// ═══════════════════════════════════════
+//  IMPORT LOGICIELS DEPUIS GITHUB
+// ═══════════════════════════════════════
+let _githubRepos = [];
+const GH_COLOR_PALETTE = ['#1E3A5F','#92400E','#065F46','#7C3AED','#B91C1C','#0F766E','#B45309','#1D4ED8','#BE185D','#4D7C0F'];
+
+function openGithubImportModal() {
+  document.getElementById('modal-github-import').classList.remove('hidden');
+  const inp = document.getElementById('gh-username');
+  if(inp) setTimeout(()=>inp.focus(), 100);
+}
+
+function githubFetchRepos() {
+  const user = (document.getElementById('gh-username').value||'').trim();
+  const statusEl = document.getElementById('gh-status');
+  const listEl = document.getElementById('gh-repo-list');
+  if(!user) { showToast('⚠️ Entrez un nom d\'utilisateur ou d\'organisation GitHub'); return; }
+  statusEl.textContent = '⏳ Chargement des dépôts publics de "'+user+'"...';
+  listEl.innerHTML = '';
+  document.getElementById('gh-import-actions').style.display = 'none';
+
+  fetch(`https://api.github.com/users/${encodeURIComponent(user)}/repos?per_page=100&sort=updated`, {headers:{'Accept':'application/vnd.github+json'}})
+    .then(r=>{
+      if(r.status===404) throw new Error('Utilisateur/organisation introuvable');
+      if(r.status===403) throw new Error('Limite API GitHub atteinte — réessayez dans quelques minutes');
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    })
+    .then(repos=>{
+      if(!Array.isArray(repos) || repos.length===0) {
+        statusEl.textContent = 'Aucun dépôt public trouvé pour "'+user+'".';
+        return;
+      }
+      _githubRepos = repos.filter(r=>!r.fork).sort((a,b)=>new Date(b.pushed_at)-new Date(a.pushed_at));
+      statusEl.textContent = `✅ ${_githubRepos.length} dépôt(s) trouvé(s) — cochez ceux à ajouter au catalogue`;
+      renderGithubRepoList();
+    })
+    .catch(err=>{
+      statusEl.textContent = '❌ '+err.message;
+    });
+}
+
+function renderGithubRepoList() {
+  const wrap = document.getElementById('gh-repo-list');
+  if(!wrap) return;
+  const existingRepos = new Set(LOGICIELS.map(l=>(l.githubRepo||'').toLowerCase()).filter(Boolean));
+  wrap.innerHTML = _githubRepos.map((r,i)=>{
+    const already = existingRepos.has((r.name||'').toLowerCase());
+    return `<label style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-bottom:1px solid var(--border);cursor:${already?'default':'pointer'};${already?'opacity:.5':''}">
+      <input type="checkbox" class="gh-repo-check" data-idx="${i}" ${already?'disabled':'checked'} style="width:16px;height:16px;flex-shrink:0">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:13px">${r.name}${r.private?' 🔒':''} ${already?'<span style="font-size:10px;color:var(--muted);font-weight:600"> · déjà au catalogue</span>':''}</div>
+        <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.description||'Sans description'} ${r.language?' · '+r.language:''} · ⭐${r.stargazers_count||0} · MAJ ${r.pushed_at?new Date(r.pushed_at).toLocaleDateString('fr-FR'):'—'}</div>
+      </div>
+    </label>`;
+  }).join('');
+  document.getElementById('gh-import-actions').style.display = _githubRepos.length ? 'flex' : 'none';
+}
+
+function githubToggleAll(state) {
+  document.querySelectorAll('.gh-repo-check:not(:disabled)').forEach(cb=>{ cb.checked = state; });
+}
+
+function githubImportSelected() {
+  const checks = [...document.querySelectorAll('.gh-repo-check:checked:not(:disabled)')];
+  if(!checks.length) { showToast('⚠️ Aucun dépôt sélectionné'); return; }
+  let n = 0;
+  checks.forEach(cb=>{
+    const r = _githubRepos[+cb.dataset.idx]; if(!r) return;
+    const id = 'log_gh_'+r.id;
+    if(LOGICIELS.some(l=>l.id===id)) return;
+    LOGICIELS.push({
+      id, nom:r.name, version:'v1.0', cat:'Autre', plateforme:'Web',
+      type_licence:'Annuelle', support:'1an',
+      desc:r.description||'', modules:'',
+      prixNum:0, prix:'', prixMensuel:0, remiseMax:10,
+      demo:r.homepage||'', video:'', doc:r.html_url,
+      icon:'💻', color:GH_COLOR_PALETTE[n%GH_COLOR_PALETTE.length],
+      commission:10, ventes:0, prospects:0, actif:true,
+      githubRepo:r.name
+    });
+    n++;
+  });
+  saveStore('logiciels');
+  if(typeof renderLogiciels==='function') renderLogiciels();
+  if(typeof renderLogStats==='function') renderLogStats();
+  showToast(n>0 ? `✅ ${n} logiciel(s) importé(s) depuis GitHub — complétez prix/modules dans chaque fiche` : 'ℹ️ Tous les dépôts sélectionnés sont déjà au catalogue');
+  document.getElementById('modal-github-import').classList.add('hidden');
 }
 
 function renderLogiciels() {
