@@ -1505,6 +1505,7 @@ select.form-input{cursor:pointer}
         <div class="tab" onclick="paramTab('users',this)">🔐 Utilisateurs & Accès</div>
         <div class="tab" onclick="paramTab('sync',this)">☁️ Synchronisation</div>
         <div class="tab" onclick="paramTab('import',this)">📥 Import CSV</div>
+        <div class="tab" onclick="paramTab('relance',this)">💬 Relances</div>
       </div>
 
       <!-- ── PANEL ENTREPRISE ── -->
@@ -1760,6 +1761,55 @@ select.form-input{cursor:pointer}
           <div id="csvimp-preview"></div>
         </div>
       </div>
+
+      <!-- ── PANEL SÉQUENCES DE RELANCE ── -->
+      <div id="param-panel-relance" style="display:none">
+        <div class="flex justify-between items-center" style="margin-bottom:16px;flex-wrap:wrap;gap:8px">
+          <div>
+            <h2 style="font-family:var(--font-h);font-weight:800;font-size:16px;margin:0">💬 Séquences de relance</h2>
+            <p class="page-sub" style="margin:2px 0 0">Identité expéditeur, modèles par étape, canaux WhatsApp / SMS / Email</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="relanceSaveConfig()">💾 Enregistrer</button>
+        </div>
+
+        <!-- Identité expéditeur -->
+        <div class="card" style="padding:16px;margin-bottom:16px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:12px">Identité expéditeur (signature des messages)</div>
+          <div class="form-row" style="flex-wrap:wrap;gap:12px">
+            <div class="form-group" style="flex:1;min-width:180px"><label class="form-label">Gérant</label><input class="form-input" id="rel-cfg-gerant"></div>
+            <div class="form-group" style="flex:1;min-width:180px"><label class="form-label">Société</label><input class="form-input" id="rel-cfg-societe"></div>
+            <div class="form-group" style="flex:1;min-width:160px"><label class="form-label">Ville</label><input class="form-input" id="rel-cfg-ville"></div>
+          </div>
+          <div class="form-row" style="flex-wrap:wrap;gap:12px">
+            <div class="form-group" style="flex:1;min-width:180px"><label class="form-label">WhatsApp / Tél. 1</label><input class="form-input" id="rel-cfg-tel1" placeholder="+225 07 79 18 10 75"></div>
+            <div class="form-group" style="flex:1;min-width:180px"><label class="form-label">Tél. 2</label><input class="form-input" id="rel-cfg-tel2"></div>
+            <div class="form-group" style="flex:1;min-width:180px"><label class="form-label">Email</label><input class="form-input" id="rel-cfg-email"></div>
+          </div>
+        </div>
+
+        <!-- Modèles par étape -->
+        <div class="card" style="padding:16px;margin-bottom:16px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:6px">Modèles de message par étape</div>
+          <p class="page-sub" style="margin:0 0 12px">Variables : <code>{nom}</code> <code>{logiciel}</code> <code>{gerant}</code> <code>{societe}</code> <code>{tel}</code> <code>{email}</code> <code>{ville}</code> <code>{prix}</code></p>
+          <div id="rel-cfg-templates"></div>
+        </div>
+
+        <!-- Automatisation API (optionnel) -->
+        <div class="card" style="padding:16px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:4px">⚙️ Envoi automatique (optionnel — sans clic)</div>
+          <p class="page-sub" style="margin:0 0 12px">Sans ces clés : envoi via WhatsApp/SMS/Mail de l'appareil (1 clic). Avec : envoi direct par API.</p>
+          <div class="form-row" style="flex-wrap:wrap;gap:12px">
+            <div class="form-group" style="flex:1;min-width:200px"><label class="form-label">WhatsApp Cloud — Phone Number ID</label><input class="form-input" id="rel-cfg-waid" placeholder="Meta Business API"></div>
+            <div class="form-group" style="flex:2;min-width:220px"><label class="form-label">WhatsApp Cloud — Token</label><input class="form-input" type="password" id="rel-cfg-watoken"></div>
+          </div>
+          <div class="form-row" style="flex-wrap:wrap;gap:12px">
+            <div class="form-group" style="flex:2;min-width:220px"><label class="form-label">Passerelle SMS — URL POST</label><input class="form-input" id="rel-cfg-smsurl" placeholder="https://api.smsgateway.ci/send"></div>
+            <div class="form-group" style="flex:1;min-width:180px"><label class="form-label">Passerelle SMS — Clé API</label><input class="form-input" type="password" id="rel-cfg-smskey"></div>
+          </div>
+          <div style="font-size:11px;color:var(--warning);margin-top:6px">⚠️ Clés stockées en local (navigateur). Ne pas utiliser sur poste partagé.</div>
+        </div>
+      </div>
+
 
     </div>
 
@@ -2186,6 +2236,29 @@ select.form-input{cursor:pointer}
 </div><!-- /app -->
 
 <!-- ══ MODAL ÉCRITURE MANUELLE ══ -->
+
+<!-- ══ MODAL SÉQUENCE DE RELANCE ══ -->
+<div id="modal-relance" class="modal-overlay hidden">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-close" onclick="document.getElementById('modal-relance').classList.add('hidden')">✕</div>
+    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:2px">💬 Relance — <span id="rel-nom"></span></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px" id="rel-etape-lbl"></div>
+
+    <div class="form-group">
+      <label class="form-label">Message (modifiable)</label>
+      <textarea class="form-input" id="rel-msg" rows="8" style="font-size:13px;line-height:1.5"></textarea>
+    </div>
+
+    <div id="rel-channels" class="flex gap-2" style="flex-wrap:wrap;margin-top:6px">
+      <button class="btn btn-sm" style="background:#25D366;color:#fff;flex:1;min-width:120px" onclick="relanceSend('wa')">📱 WhatsApp</button>
+      <button class="btn btn-sm" style="background:#2563EB;color:#fff;flex:1;min-width:120px" onclick="relanceSend('sms')">✉️ SMS</button>
+      <button class="btn btn-sm" style="background:#EA4335;color:#fff;flex:1;min-width:120px" onclick="relanceSend('email')">📧 Email</button>
+      <button class="btn btn-outline btn-sm" style="flex:1;min-width:120px" onclick="relanceCopy()">📋 Copier</button>
+    </div>
+    <div id="rel-api-hint" style="font-size:11px;color:var(--muted);margin-top:10px"></div>
+  </div>
+</div>
+
 <div id="modal-ecriture" class="modal-overlay hidden">
   <div class="modal-box" style="max-width:640px;max-height:92vh;overflow-y:auto">
     <div class="modal-close" onclick="closeEcritureModal()">✕</div>
@@ -7860,7 +7933,7 @@ function paramMoveContent() {
 
 function paramTab(tab, el) {
   paramMoveContent();
-  ['entreprise','users','sync','import'].forEach(t=>{
+  ['entreprise','users','sync','import','relance'].forEach(t=>{
     const p = document.getElementById('param-panel-'+t);
     if(p) p.style.display = t===tab ? '' : 'none';
   });
@@ -7871,6 +7944,7 @@ function paramTab(tab, el) {
   if(tab==='sync')   setTimeout(initParametres,30);
   if(tab==='entreprise') setTimeout(initParametrage,30);
   if(tab==='import') setTimeout(initImportCSV,30);
+  if(tab==='relance') setTimeout(initRelanceConfig,30);
 }
 
 function initParametrage() {
@@ -8988,6 +9062,7 @@ function convRender(){
         ${nba.etape<2?`<button class="btn btn-sm" style="background:var(--surface2);font-size:11px" onclick="convLog(${c.id},2)" title="Démo réalisée">🎬</button>`:''}
         ${nba.etape<3?`<button class="btn btn-sm" style="background:var(--surface2);font-size:11px" onclick="convLog(${c.id},3)" title="Proposition envoyée">📄</button>`:''}
         ${nba.etape<4?`<button class="btn btn-sm" style="background:var(--surface2);font-size:11px" onclick="convLog(${c.id},4)" title="Négociation">🤝</button>`:''}
+        <button class="btn btn-sm" style="background:#25D366;color:#fff;font-size:11px" onclick="relanceOpen(${c.id})" title="Relancer (WhatsApp/SMS/Email)">💬</button>
         <button class="btn btn-sm" style="background:var(--success);color:#fff;font-size:11px" onclick="convConvert(${c.id})" title="Convertir en client">✅</button>
       </div>
     </div>`;
@@ -9029,6 +9104,166 @@ function convConvert(id){
   showToast(`🎉 "${c.nom}" est désormais Client actif !`);
   convRender();
   try{ updateSidebarBadges(); renderClients(getFilteredClients()); if(leafletMap) refreshMapMarkers(); }catch(e){}
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  SÉQUENCES DE RELANCE — WhatsApp / SMS / Email (réel)
+// ═══════════════════════════════════════════════════════════
+const RELANCE_DEFAULT = {
+  gerant:'Cyrille KESIE',
+  societe:'SANIX Africa',
+  ville:'Abidjan, Côte d\'Ivoire',
+  tel1:'+225 07 79 18 10 75',
+  tel2:'+225 01 40 07 55 51',
+  email:'sanixafrica699@gmail.com',
+  waPhoneId:'', waToken:'', smsUrl:'', smsKey:'',
+  templates:[
+    // 0 — premier contact
+    'Bonjour {nom},\n\nJe suis {gerant}, gérant de {societe}. Nous éditons {logiciel}, une solution de gestion pensée pour les entreprises ivoiriennes (SYSCOHADA, hors-ligne, sans abonnement lourd).\n\nSeriez-vous disponible pour une courte démonstration cette semaine ?\n\nCordialement,\n{gerant} — {societe}\n📞 {tel} · 📧 {email}',
+    // 1 — relancer + caler démo
+    'Bonjour {nom},\n\nSuite à notre premier échange, je vous propose une démonstration de {logiciel} adaptée à votre activité. Elle prend 20 minutes et se fait à distance ou dans vos locaux à {ville}.\n\nQuel créneau vous conviendrait ?\n\n{gerant} — {societe}\n📞 {tel}',
+    // 2 — envoyer proposition
+    'Bonjour {nom},\n\nMerci pour le temps accordé à la démonstration de {logiciel}. Je vous transmets notre proposition (licence à partir de {prix} FCFA, déploiement et formation inclus).\n\nJe reste disponible pour toute question.\n\n{gerant} — {societe}\n📞 {tel} · 📧 {email}',
+    // 3 — relancer décision
+    'Bonjour {nom},\n\nAvez-vous pu étudier notre proposition pour {logiciel} ? Je peux ajuster les modalités (paiement échelonné, remise) pour faciliter votre décision.\n\nDites-moi ce qui vous aiderait à avancer.\n\n{gerant} — {societe}\n📞 {tel}',
+    // 4 — closing
+    'Bonjour {nom},\n\nPour finaliser la mise en place de {logiciel}, il ne reste qu\'à valider ensemble. Je vous accompagne sur la signature et le déploiement dès cette semaine.\n\nQuand pouvons-nous conclure ?\n\n{gerant} — {societe}\n📞 {tel} · 📧 {email}',
+  ],
+};
+
+function relanceCfg(){ CONFIG.relance = {...RELANCE_DEFAULT, ...(CONFIG.relance||{})}; return CONFIG.relance; }
+let _relanceClientId = null;
+
+function relancePhoneIntl(phone){
+  const n = importNormalizePhone(phone).replace(/\D/g,'');
+  return n.startsWith('225') ? n : (n.length===10 ? '225'+n : n);
+}
+
+function relanceBuildMsg(c, etape){
+  const r = relanceCfg();
+  const log = LOGICIELS.find(l=>l.nom===c.logiciel);
+  const prix = (c.valeur>0?c.valeur:(log?.prixNum||0)).toLocaleString('fr-FR');
+  const tpl = r.templates[etape] || r.templates[0];
+  return tpl
+    .replace(/{nom}/g, c.nom||'')
+    .replace(/{logiciel}/g, c.logiciel||'nos solutions de gestion')
+    .replace(/{gerant}/g, r.gerant)
+    .replace(/{societe}/g, r.societe)
+    .replace(/{tel}/g, r.tel1)
+    .replace(/{email}/g, r.email)
+    .replace(/{ville}/g, r.ville)
+    .replace(/{prix}/g, prix);
+}
+
+// Ouvre le modal de relance pour un prospect
+function relanceOpen(id){
+  const c = CLIENTS.find(x=>x.id===id); if(!c) return;
+  _relanceClientId = id;
+  const etape = aiGetEtape(c);
+  document.getElementById('rel-nom').textContent = c.nom;
+  document.getElementById('rel-etape-lbl').textContent = 'Étape : '+(CONV_ETAPES[etape]||'Nouveau')+' · '+(c.phone||'sans numéro')+(c.email?' · '+c.email:'');
+  document.getElementById('rel-msg').value = relanceBuildMsg(c, etape);
+  const r = relanceCfg();
+  const auto = r.waToken && r.waPhoneId;
+  document.getElementById('rel-api-hint').innerHTML = auto
+    ? '✅ WhatsApp Cloud API configuré — envoi direct sans clic.'
+    : 'ℹ️ Envoi via l\'app de l\'appareil (1 clic). Configurez l\'API dans Paramétrage → Séquences pour l\'envoi automatique.';
+  document.getElementById('modal-relance').classList.remove('hidden');
+}
+
+function _relanceLog(c, canal){
+  if(!c.interactions) c.interactions=[];
+  const et = aiGetEtape(c);
+  c.interactions.push({date:new Date().toISOString(),type:'Relance '+canal,note:'Message '+canal+' (étape '+(CONV_ETAPES[et]||'')+')',etape:Math.max(et,1),ico:'💬'});
+  c.updated_at=new Date().toISOString();
+  saveStore('clients');
+}
+
+// Envoi réel selon canal
+async function relanceSend(canal){
+  const c = CLIENTS.find(x=>x.id===_relanceClientId); if(!c) return;
+  const msg = document.getElementById('rel-msg').value;
+  const r = relanceCfg();
+
+  if(canal==='wa'){
+    const num = relancePhoneIntl(c.phone);
+    if(!num){ showToast('❌ Numéro manquant'); return; }
+    // Envoi automatique si API configurée
+    if(r.waToken && r.waPhoneId){
+      try{
+        const res = await fetch(`https://graph.facebook.com/v21.0/${r.waPhoneId}/messages`,{
+          method:'POST',
+          headers:{'Authorization':'Bearer '+r.waToken,'Content-Type':'application/json'},
+          body:JSON.stringify({messaging_product:'whatsapp',to:num,type:'text',text:{body:msg}})
+        });
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        _relanceLog(c,'WhatsApp (auto)'); showToast('✅ WhatsApp envoyé automatiquement');
+      }catch(e){ showToast('⚠️ API échec, ouverture manuelle'); window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,'_blank'); _relanceLog(c,'WhatsApp'); }
+    } else {
+      window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,'_blank');
+      _relanceLog(c,'WhatsApp'); showToast('📱 WhatsApp ouvert');
+    }
+  }
+  else if(canal==='sms'){
+    const num = relancePhoneIntl(c.phone);
+    if(!num){ showToast('❌ Numéro manquant'); return; }
+    if(r.smsUrl && r.smsKey){
+      try{
+        const res = await fetch(r.smsUrl,{method:'POST',headers:{'Authorization':'Bearer '+r.smsKey,'Content-Type':'application/json'},body:JSON.stringify({to:'+'+num,from:r.tel1,message:msg})});
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        _relanceLog(c,'SMS (auto)'); showToast('✅ SMS envoyé automatiquement');
+      }catch(e){ showToast('⚠️ Passerelle échec, ouverture manuelle'); window.location.href=`sms:+${num}?body=${encodeURIComponent(msg)}`; _relanceLog(c,'SMS'); }
+    } else {
+      window.location.href = `sms:+${num}?body=${encodeURIComponent(msg)}`;
+      _relanceLog(c,'SMS'); showToast('✉️ SMS ouvert');
+    }
+  }
+  else if(canal==='email'){
+    if(!c.email){ showToast('❌ Email manquant'); return; }
+    const subj = encodeURIComponent(`${c.logiciel||'Solutions de gestion'} — ${r.societe}`);
+    window.location.href = `mailto:${c.email}?subject=${subj}&body=${encodeURIComponent(msg)}`;
+    _relanceLog(c,'Email'); showToast('📧 Email ouvert');
+  }
+  document.getElementById('modal-relance').classList.add('hidden');
+  if(document.getElementById('view-conversion') && !document.getElementById('view-conversion').classList.contains('hidden')) convRender();
+  try{ updateSidebarBadges(); }catch(e){}
+}
+
+function relanceCopy(){
+  const t = document.getElementById('rel-msg').value;
+  navigator.clipboard?.writeText(t).then(()=>showToast('📋 Message copié')).catch(()=>{
+    const ta=document.getElementById('rel-msg'); ta.select(); document.execCommand('copy'); showToast('📋 Copié');
+  });
+  const c = CLIENTS.find(x=>x.id===_relanceClientId); if(c) _relanceLog(c,'Copie manuelle');
+}
+
+// ─── Paramétrage : identité + modèles + API ───
+function initRelanceConfig(){
+  const r = relanceCfg();
+  const g=id=>document.getElementById(id);
+  g('rel-cfg-gerant').value=r.gerant; g('rel-cfg-societe').value=r.societe; g('rel-cfg-ville').value=r.ville;
+  g('rel-cfg-tel1').value=r.tel1; g('rel-cfg-tel2').value=r.tel2; g('rel-cfg-email').value=r.email;
+  g('rel-cfg-waid').value=r.waPhoneId; g('rel-cfg-watoken').value=r.waToken;
+  g('rel-cfg-smsurl').value=r.smsUrl; g('rel-cfg-smskey').value=r.smsKey;
+  const box=g('rel-cfg-templates');
+  box.innerHTML = CONV_ETAPES.map((lbl,e)=>`
+    <div class="form-group" style="margin-bottom:10px">
+      <label class="form-label">${e+1}. ${lbl}</label>
+      <textarea class="form-input rel-cfg-tpl" data-e="${e}" rows="4" style="font-size:12px">${r.templates[e]||''}</textarea>
+    </div>`).join('');
+}
+function relanceSaveConfig(){
+  const g=id=>document.getElementById(id).value;
+  const templates=[...document.querySelectorAll('.rel-cfg-tpl')].sort((a,b)=>a.dataset.e-b.dataset.e).map(t=>t.value);
+  CONFIG.relance={
+    gerant:g('rel-cfg-gerant'),societe:g('rel-cfg-societe'),ville:g('rel-cfg-ville'),
+    tel1:g('rel-cfg-tel1'),tel2:g('rel-cfg-tel2'),email:g('rel-cfg-email'),
+    waPhoneId:g('rel-cfg-waid'),waToken:g('rel-cfg-watoken'),smsUrl:g('rel-cfg-smsurl'),smsKey:g('rel-cfg-smskey'),
+    templates
+  };
+  if(typeof persistConfig==='function') persistConfig();
+  showToast('✅ Séquences de relance enregistrées');
 }
 
 // ═══ SEED PROMOTEURS IMMOBILIERS AGRÉÉS (import unique, idempotent) ═══
