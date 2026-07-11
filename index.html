@@ -240,7 +240,29 @@ select.form-input{cursor:pointer}
 /* ─── QR MODAL ─────────────────────────────────────── */
 .modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:center;justify-content:center}
 .modal-box{background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--sh-lg);padding:28px;max-width:420px;width:90%;position:relative}
-.modal-close{position:absolute;top:16px;right:16px;width:28px;height:28px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px}
+.modal-close{position:absolute;top:16px;right:16px;width:28px;height:28px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;transition:all .15s}
+.modal-close:hover{background:#EF4444;color:#fff;border-color:transparent;transform:rotate(90deg)}
+/* ─── PREMIUM MODAL UPGRADE ─── */
+.modal-overlay{background:rgba(15,23,42,.55)!important;backdrop-filter:blur(8px)!important}
+.modal-box,.modal{animation:spPop .25s cubic-bezier(.2,.8,.25,1) both;border-radius:var(--r-xl)!important;box-shadow:0 24px 60px -12px rgba(15,23,42,.35),0 8px 24px -8px rgba(15,23,42,.2)!important}
+@keyframes spPop{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:none}}
+/* ─── SANIX SMART PANEL ─── */
+.sp-overlay{justify-content:flex-end;align-items:stretch}
+.smart-panel{background:var(--bg);width:86%;max-width:1040px;height:100%;max-height:100%;border-radius:22px 0 0 22px;box-shadow:-24px 0 60px -12px rgba(15,23,42,.4);display:flex;flex-direction:column;position:relative;animation:spSlide .28s cubic-bezier(.2,.8,.25,1) both;overflow:hidden}
+@keyframes spSlide{from{transform:translateX(48px);opacity:.3}to{transform:none;opacity:1}}
+.sp-close{position:absolute;top:18px;right:18px;z-index:6;width:34px;height:34px;background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.25);color:#fff}
+.sp-close:hover{background:#EF4444}
+.sp-scroll{flex:1;overflow-y:auto;background:var(--surface)}
+.sp-header-prem{background:linear-gradient(135deg,#2563EB,#1E40AF);padding:22px 24px 20px;color:#fff}
+.sp-avatar{width:56px;height:56px;border-radius:16px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-family:var(--font-h);font-weight:800;font-size:20px;flex-shrink:0}
+.sp-ia-card{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:9px 12px;min-width:90px;flex:1}
+.sp-ia-card .lbl{font-size:9px;text-transform:uppercase;letter-spacing:.5px;opacity:.7}
+.sp-ia-card .val{font-size:14px;font-weight:800;font-family:var(--font-h);margin-top:2px}
+.sp-footer{flex-shrink:0;display:flex;gap:8px;flex-wrap:wrap;padding:12px 18px;background:var(--surface);border-top:1px solid var(--border);box-shadow:0 -6px 20px -8px rgba(15,23,42,.12)}
+.sp-act{flex:1;min-width:84px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 6px;border-radius:14px;background:var(--surface2);border:1px solid var(--border);cursor:pointer;font-size:11px;font-weight:600;color:var(--text2);transition:all .15s}
+.sp-act:hover{transform:translateY(-2px);box-shadow:0 6px 16px -6px rgba(15,23,42,.2);border-color:var(--primary);color:var(--primary)}
+.sp-act .ico{font-size:18px}
+@media(max-width:720px){.smart-panel{width:100%;max-width:100%;border-radius:0}.sp-footer{overflow-x:auto;flex-wrap:nowrap}.sp-act{min-width:72px}}
 #qr-canvas{display:flex;justify-content:center;margin:16px 0}
 .client-card-print{border:2px solid var(--primary);border-radius:var(--r);padding:20px;text-align:center;background:linear-gradient(135deg,#EFF6FF,#FFFFFF)}
 .client-card-name{font-family:var(--font-h);font-weight:800;font-size:18px;color:var(--text);margin:10px 0 3px}
@@ -646,19 +668,19 @@ select.form-input{cursor:pointer}
         <label class="login-label">Identifiant ou email</label>
         <div class="login-input-wrap">
           <span class="login-input-icon">👤</span>
-          <input id="login-email" type="text" class="login-input" placeholder="Identifiant ou email" autocapitalize="off" onkeydown="if(event.key==='Enter')doLogin()">
+          <input id="login-email" type="text" class="login-input" placeholder="Identifiant ou email" autocapitalize="off" value="kessie" onkeydown="if(event.key==='Enter')doLogin()">
         </div>
       </div>
       <div class="login-field">
         <label class="login-label">Mot de passe</label>
         <div class="login-input-wrap">
           <span class="login-input-icon">🔒</span>
-          <input id="login-password" type="password" class="login-input" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+          <input id="login-password" type="password" class="login-input" placeholder="••••••••" value="Azerty@2026" onkeydown="if(event.key==='Enter')doLogin()">
           <span class="login-pass-toggle" onclick="togglePass()">👁</span>
         </div>
       </div>
       <div class="login-remember">
-        <label><input type="checkbox" id="login-remember"> Se souvenir de moi</label>
+        <label><input type="checkbox" id="login-remember" checked> Se souvenir de moi</label>
         <span class="login-forgot" onclick="forgotPass()">Mot de passe oublié ?</span>
       </div>
       <button class="login-btn" id="login-btn" onclick="doLogin()">Se connecter</button>
@@ -686,9 +708,8 @@ select.form-input{cursor:pointer}
   <div class="sb-item active" onclick="navigate('dashboard',this)">
     <div class="sb-icon">📊</div><span>Tableau de bord</span>
   </div>
-  <div class="sb-item" onclick="navigate('pipeline',this)">
-    <div class="sb-icon">🎯</div><span>Pipeline</span>
-    <span class="sb-badge" id="sb-pipeline-badge">0</span>
+  <div class="sb-item" onclick="navigate('cockpit',this)">
+    <div class="sb-icon">🧠</div><span>Cockpit IA</span>
   </div>
 
   <div class="sb-divider"></div>
@@ -697,13 +718,6 @@ select.form-input{cursor:pointer}
   <div class="sb-item" onclick="navigate('clients',this)">
     <div class="sb-icon">👤</div><span>Clients & Prospects</span>
     <span class="sb-badge warn" id="sb-prospects-badge">0</span>
-  </div>
-  <div class="sb-item" onclick="navigate('conversion',this)">
-    <div class="sb-icon">🚀</div><span>Moteur de Conversion</span>
-    <span class="sb-badge warn" id="sb-conv-badge">0</span>
-  </div>
-  <div class="sb-item" onclick="navigate('cockpit',this)">
-    <div class="sb-icon">🧠</div><span>Cockpit IA</span>
   </div>
   <div class="sb-item" onclick="navigate('carte',this)">
     <div class="sb-icon">🗺️</div><span>Carte & Géoloc</span>
@@ -729,7 +743,19 @@ select.form-input{cursor:pointer}
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section">④ Vente & Contractualisation</div>
+  <div class="sb-section">④ Conversion</div>
+
+  <div class="sb-item" onclick="navigate('conversion',this)">
+    <div class="sb-icon">🚀</div><span>Moteur de Conversion</span>
+    <span class="sb-badge warn" id="sb-conv-badge">0</span>
+  </div>
+  <div class="sb-item" onclick="navigate('pipeline',this)">
+    <div class="sb-icon">🎯</div><span>Pipeline commercial</span>
+    <span class="sb-badge" id="sb-pipeline-badge">0</span>
+  </div>
+
+  <div class="sb-divider"></div>
+  <div class="sb-section">⑤ Vente & Contractualisation</div>
 
   <div class="sb-item" onclick="navigate('commandes',this)">
     <div class="sb-icon">🛒</div><span>Commandes clients</span>
@@ -749,14 +775,14 @@ select.form-input{cursor:pointer}
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section">⑤ Déploiement</div>
+  <div class="sb-section">⑥ Déploiement</div>
 
   <div class="sb-item" onclick="navigate('planning',this)">
     <div class="sb-icon">📅</div><span>Planning déploiement</span>
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section">⑥ Réseau commercial</div>
+  <div class="sb-section">⑦ Réseau commercial</div>
 
   <div class="sb-item" onclick="navigate('equipe',this)">
     <div class="sb-icon">🏆</div><span>Équipe & Apporteurs</span>
@@ -771,7 +797,7 @@ select.form-input{cursor:pointer}
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section">⑦ Comptabilité SYSCOHADA</div>
+  <div class="sb-section">⑧ Comptabilité SYSCOHADA</div>
 
   <div class="sb-item" onclick="navigate('comptabilite',this)">
     <div class="sb-icon">📒</div><span>Comptabilité</span>
@@ -3614,10 +3640,12 @@ select.form-input{cursor:pointer}
 </div>
 
 <!-- ══ MODAL FICHE CLIENT DÉTAIL ══ -->
-<div id="modal-client-detail" class="modal-overlay hidden">
-  <div class="modal-box" style="max-width:720px;max-height:94vh;overflow-y:auto;padding:0">
+<div id="modal-client-detail" class="modal-overlay hidden sp-overlay">
+  <div class="smart-panel">
+    <div class="modal-close sp-close" onclick="document.getElementById('modal-client-detail').classList.add('hidden')">✕</div>
+    <div id="sp-header"></div>
+    <div class="sp-scroll">
     <div style="padding:20px 24px 0">
-      <div class="modal-close" onclick="document.getElementById('modal-client-detail').classList.add('hidden')" style="top:16px;right:16px">✕</div>
       <div id="client-detail-body"></div>
     </div>
     <!-- IA COCKPIT -->
@@ -3676,6 +3704,8 @@ select.form-input{cursor:pointer}
         </div>
       </div>
     </div>
+    </div>
+    <div id="sp-actions" class="sp-footer"></div>
   </div>
 </div>
 
@@ -7001,9 +7031,10 @@ function doLogout() {
   if(sessionTimer) clearInterval(sessionTimer);
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('session-banner').classList.remove('show');
-  // Reset form
-  document.getElementById('login-email').value = '';
-  document.getElementById('login-password').value = '';
+  // Reset form (pré-remplissage conservé — utilisateur unique)
+  document.getElementById('login-email').value = 'kessie';
+  document.getElementById('login-password').value = 'Azerty@2026';
+  document.getElementById('login-remember').checked = true;
   document.getElementById('login-error').classList.remove('show');
   navigate('dashboard', document.querySelector('.sb-item'));
 }
@@ -9190,11 +9221,36 @@ function relancePhoneIntl(phone){
   return n.startsWith('225') ? n : (n.length===10 ? '225'+n : n);
 }
 
+// Pitch logiciel adapté au domaine d'activité du prospect
+function relanceBuildPitch(c){
+  let best = (typeof cokBestLogiciel==='function') ? cokBestLogiciel(c) : null;
+  if(!best) best = LOGICIELS.find(l=>l.nom===c.logiciel);
+  if(!best) return '';
+  const mods = (best.modules||'').split(',').map(s=>s.trim()).filter(Boolean).slice(0,3).join(', ');
+  const desc = (best.desc||'').split(/[.·]/)[0].trim();
+  const prix = (best.prixNum||0).toLocaleString('fr-FR');
+  return `📌 ${best.nom}${c.secteur?' (adapté au secteur '+c.secteur+')':''} : ${desc}.`
+       + (mods?` Modules clés : ${mods}.`:'')
+       + (best.prixNum?` À partir de ${prix} FCFA.`:'');
+}
+
 function relanceBuildMsg(c, etape){
   const r = relanceCfg();
   const log = LOGICIELS.find(l=>l.nom===c.logiciel);
   const prix = (c.valeur>0?c.valeur:(log?.prixNum||0)).toLocaleString('fr-FR');
-  const tpl = r.templates[etape] || r.templates[0];
+  let tpl = r.templates[etape] || r.templates[0];
+  const pitch = relanceBuildPitch(c);
+  // Insertion auto du pitch pour les étapes de présentation (0-2) si non déjà présent
+  if(pitch && etape<=2){
+    if(tpl.includes('{pitch}')) tpl = tpl.replace(/{pitch}/g, pitch);
+    else {
+      const parts = tpl.split('\n\n');
+      if(parts.length>=2){ parts.splice(1,0,pitch); tpl = parts.join('\n\n'); }
+      else tpl = tpl + '\n\n' + pitch;
+    }
+  } else {
+    tpl = tpl.replace(/{pitch}\n?\n?/g,'');
+  }
   return tpl
     .replace(/{nom}/g, c.nom||'')
     .replace(/{logiciel}/g, c.logiciel||'nos solutions de gestion')
@@ -9516,6 +9572,73 @@ function cokApplyLogiciel(id, nom){
   try{ syncDealForClient(id); }catch(e){}
   showToast(`🎯 ${c.nom} → ${nom}`);
   cokRender();
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  SANIX SMART PANEL — header premium + IA + barre d'actions
+// ═══════════════════════════════════════════════════════════
+function smartPanelDecorate(id){
+  const c = CLIENTS.find(x=>x.id===id); if(!c) return;
+  const isP = c.statut==='prospect';
+  const score = aiProspectScore(c);
+  const st = Math.round(score/20);
+  const stars = '★'.repeat(st)+'☆'.repeat(5-st);
+  const d = convDaysSince(c);
+  const last = d===null?'jamais contacté':(d===0?"aujourd'hui":'il y a '+d+' j');
+  const proba = isP ? cokProba(c) : 100;
+  const best = (typeof cokBestLogiciel==='function') ? cokBestLogiciel(c) : null;
+  const nba = isP ? convNBA(c) : {label:'Client actif'};
+  const budget = (typeof cokValeur==='function') ? cokValeur(c) : (c.valeur||0);
+  const initials = (c.nom||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase()||'?';
+  const stCol = {prospect:'#FBBF24',client:'#34D399',inactif:'#CBD5E1'}[c.statut]||'#CBD5E1';
+  const stLbl = (typeof STATUT_LABEL!=='undefined' && STATUT_LABEL[c.statut]) || c.statut;
+
+  const hdr = document.getElementById('sp-header');
+  if(hdr) hdr.innerHTML = `
+    <div class="sp-header-prem">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+        <div class="sp-avatar">${initials}</div>
+        <div style="min-width:0;flex:1">
+          <div style="font-family:var(--font-h);font-weight:800;font-size:19px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.nom}</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:5px;flex-wrap:wrap;font-size:12px">
+            <span style="display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.15);padding:3px 10px;border-radius:20px"><span style="width:7px;height:7px;border-radius:50%;background:${stCol}"></span>${stLbl}</span>
+            <span style="color:#FBBF24;letter-spacing:1px">${stars}</span>
+            <span style="opacity:.75">${c.secteur||''}${c.adresse?' · '+c.adresse.split(',')[0]:''}</span>
+            <span style="opacity:.6">· Activité : ${last}</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div class="sp-ia-card"><div class="lbl">🧠 Probabilité</div><div class="val">${proba}%</div></div>
+        <div class="sp-ia-card"><div class="lbl">💡 Logiciel conseillé</div><div class="val" style="font-size:12px">${best?best.nom:(c.logiciel||'—')}</div></div>
+        <div class="sp-ia-card"><div class="lbl">💰 Budget estimé</div><div class="val" style="font-size:12px">${(budget||0).toLocaleString('fr-FR')} F</div></div>
+        <div class="sp-ia-card"><div class="lbl">➡️ Prochaine action</div><div class="val" style="font-size:11px">${nba.label}</div></div>
+      </div>
+    </div>`;
+
+  const acts = [];
+  const tel = (c.phone||'').replace(/\s/g,'');
+  if(tel) acts.push(`<div class="sp-act" onclick="window.location.href='tel:${tel}'"><span class="ico">📞</span>Appeler</div>`);
+  acts.push(`<div class="sp-act" onclick="relanceOpen(${id})"><span class="ico">💬</span>WhatsApp</div>`);
+  if(c.email) acts.push(`<div class="sp-act" onclick="window.location.href='mailto:${c.email}'"><span class="ico">📧</span>Email</div>`);
+  acts.push(`<div class="sp-act" onclick="document.getElementById('modal-client-detail').classList.add('hidden');navigate('carte')"><span class="ico">📍</span>Carte</div>`);
+  if(isP){
+    acts.push(`<div class="sp-act" onclick="relanceOpen(${id})"><span class="ico">🔔</span>Relancer</div>`);
+    acts.push(`<div class="sp-act" style="background:var(--success);color:#fff;border-color:transparent" onclick="convConvert(${id});document.getElementById('modal-client-detail').classList.add('hidden')"><span class="ico">✅</span>Convertir</div>`);
+  }
+  const af = document.getElementById('sp-actions');
+  if(af) af.innerHTML = acts.join('');
+
+  // reset scroll en haut
+  const sc = document.querySelector('#modal-client-detail .sp-scroll');
+  if(sc) sc.scrollTop = 0;
+}
+
+// Enrobage non-invasif de showClientDetail
+if(typeof showClientDetail==='function'){
+  const _origShowClientDetail = showClientDetail;
+  showClientDetail = function(id){ _origShowClientDetail(id); try{ smartPanelDecorate(id); }catch(e){} };
 }
 
 // ═══ SEED PROMOTEURS IMMOBILIERS AGRÉÉS (import unique, idempotent) ═══
