@@ -3254,7 +3254,11 @@ select.form-input{cursor:pointer}
   <div class="modal-box" style="max-width:680px;max-height:88vh;overflow-y:auto">
     <div class="modal-close" onclick="document.getElementById('modal-media').classList.add('hidden')">✕</div>
     <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:2px" id="media-modal-title">📁 Médiathèque</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:20px" id="media-modal-sub">Vidéos, documents et catalogues</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px" id="media-modal-sub">Vidéos, documents, catalogues et voix off</div>
+
+    <div style="margin-bottom:16px">
+      <button type="button" class="btn btn-outline btn-sm" id="media-tts-btn" onclick="speakLogiciel(_mediaCurrentLogId,this)" style="color:var(--teal);border-color:rgba(13,148,136,.3)">🔊 Écouter le pitch produit (voix de synthèse)</button>
+    </div>
 
     <!-- Onglets -->
     <div class="tabs" id="media-tabs" style="margin-bottom:16px">
@@ -3262,6 +3266,7 @@ select.form-input{cursor:pointer}
       <div class="tab" onclick="mediaTabSwitch('video',this)">🎬 Vidéos</div>
       <div class="tab" onclick="mediaTabSwitch('document',this)">📄 Documents</div>
       <div class="tab" onclick="mediaTabSwitch('catalogue',this)">📚 Catalogues</div>
+      <div class="tab" onclick="mediaTabSwitch('audio',this)">🎙️ Voix off</div>
     </div>
 
     <!-- Zone d'upload drop -->
@@ -3271,16 +3276,50 @@ select.form-input{cursor:pointer}
       ondrop="mediaDrop(event)">
       <div style="font-size:32px;margin-bottom:6px">📎</div>
       <div style="font-weight:600">Glissez vos fichiers ici</div>
-      <div style="font-size:11px;margin-top:4px">Vidéos jusqu'à 500MB · PDF, images, documents Office</div>
+      <div style="font-size:11px;margin-top:4px">Vidéos jusqu'à 500MB · PDF, images, documents Office · Voix off (audio)</div>
       <div class="flex gap-2" style="justify-content:center;margin-top:12px;flex-wrap:wrap">
         <label class="btn btn-primary btn-sm" style="cursor:pointer">🎬 Vidéo<input type="file" accept="video/*" style="display:none" onchange="mediaDropUpload(this,'video')"></label>
         <label class="btn btn-outline btn-sm" style="cursor:pointer">📄 Document<input type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx" multiple style="display:none" onchange="mediaDropUpload(this,'document')"></label>
         <label class="btn btn-outline btn-sm" style="cursor:pointer">📚 Catalogue<input type="file" accept=".pdf,image/*" multiple style="display:none" onchange="mediaDropUpload(this,'catalogue')"></label>
+        <label class="btn btn-outline btn-sm" style="cursor:pointer">🎙️ Voix off (fichier)<input type="file" accept="audio/*" multiple style="display:none" onchange="mediaDropUpload(this,'audio')"></label>
+        <button type="button" class="btn btn-sm" id="media-rec-btn" onclick="mediaToggleRecord()" style="background:var(--purple-l);color:var(--purple);border:1px solid rgba(124,58,237,.25);cursor:pointer">⏺ Enregistrer une voix off</button>
       </div>
+      <div id="media-rec-status" style="display:none;margin-top:10px;font-weight:700;color:var(--purple)"></div>
     </div>
 
     <!-- Liste des médias -->
     <div id="media-list-items"></div>
+  </div>
+</div>
+
+<!-- ══ MODAL ENVOI CLIENT/PROSPECT ══ -->
+<div id="modal-media-send" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:460px">
+    <div class="modal-close" onclick="closeMediaSend()">✕</div>
+    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:2px">✉️ Envoyer au client / prospect</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px" id="ms-file-label">—</div>
+
+    <div class="form-group">
+      <label class="form-label">Destinataire</label>
+      <select class="form-input" id="ms-client-sel" onchange="mediaSendFillTemplate()">
+        <option value="">— Sans destinataire CRM (partage libre) —</option>
+      </select>
+    </div>
+    <div id="ms-client-info" style="display:none;font-size:12px;color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;margin-bottom:12px"></div>
+
+    <div class="form-group">
+      <label class="form-label">Message d'accompagnement</label>
+      <textarea class="form-input" id="ms-text" rows="5"></textarea>
+    </div>
+
+    <button class="btn btn-primary" style="width:100%;margin-bottom:10px" onclick="mediaSendNativeShare()">📤 Partager le fichier (WhatsApp, Email, Bluetooth…)</button>
+
+    <div style="font-size:11px;color:var(--muted);margin:2px 0 8px">Si le partage direct n'est pas disponible sur cet appareil : le fichier est téléchargé automatiquement, il ne reste qu'à le joindre manuellement dans la conversation —</div>
+    <div class="flex gap-2" style="flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm" style="flex:1;color:#25D366;border-color:rgba(37,211,102,.35)" onclick="mediaSendVia('whatsapp')">📱 WhatsApp</button>
+      <button class="btn btn-outline btn-sm" style="flex:1" onclick="mediaSendVia('email')">📧 Email</button>
+      <button class="btn btn-outline btn-sm" style="flex:1" onclick="mediaSendVia('download')">⬇ Télécharger</button>
+    </div>
   </div>
 </div>
 
@@ -5281,6 +5320,7 @@ function renderLogiciels() {
           ${l.video&&l.video!=='#'&&l.video?`<a href="${l.video}" target="_blank" class="btn-video">🎬 Vidéo</a>`:`<button class="btn-video" onclick="editLogiciel('${l.id}')">🎬 + Vidéo</button>`}
           <button class="btn-video" onclick="copyDemoLink('${l.id}')">🔗 Lien</button>
           <button class="btn-video" id="media-btn-${l.id}" onclick="openMediaModal('${l.id}')" style="background:var(--orange-l);color:var(--orange);border-color:rgba(234,88,12,.2)">📁 Médias</button>
+          <button class="btn-video" onclick="openMediaModal('${l.id}','audio')" style="background:var(--purple-l);color:var(--purple);border-color:rgba(124,58,237,.2)" title="Écouter, enregistrer ou envoyer une voix off">🎙️ Voix off</button>
         </div>
         <div style="margin-top:10px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between">
           <span>Commission : <strong style="color:var(--success)">${l.commission||10}%</strong></span>
@@ -12694,6 +12734,7 @@ function clearGeo() {
 }
 
 const MEDIA_DB_NAME = 'sanix_media';
+const MEDIA_DB_VER = 2; // v2 : ajout du type 'audio' (voix off)
 let _mediaDB = null;
 let _mediaCurrentLogId = null;
 let _mediaCurrentTab = 'all';
@@ -12769,6 +12810,7 @@ function mediaReadFile(file) {
 function mediaGuessType(file, forcedType) {
   if(forcedType) return forcedType;
   if(file.type.startsWith('video/')) return 'video';
+  if(file.type.startsWith('audio/')) return 'audio';
   if(file.type.startsWith('image/')) return 'catalogue';
   if(file.type.includes('pdf')||file.type.includes('word')||file.type.includes('presentation')||file.type.includes('spreadsheet')) return 'document';
   return 'document';
@@ -12782,7 +12824,7 @@ function mediaFormatSize(bytes) {
 }
 
 // Limites par type (vidéos beaucoup plus larges)
-const MEDIA_LIMITS = { video: 500*1024*1024, document: 50*1024*1024, catalogue: 50*1024*1024 };
+const MEDIA_LIMITS = { video: 500*1024*1024, document: 50*1024*1024, catalogue: 50*1024*1024, audio: 100*1024*1024 };
 function mediaLimitFor(type){ return MEDIA_LIMITS[type] || 100*1024*1024; }
 
 // ─── Upload depuis modal logiciel ────────
@@ -12852,13 +12894,15 @@ async function mediaDrop(event) {
 }
 
 // ─── Ouvrir modal médiathèque ────────────
-async function openMediaModal(logId) {
+async function openMediaModal(logId, startTab) {
   _mediaCurrentLogId = logId;
-  _mediaCurrentTab = 'all';
+  _mediaCurrentTab = startTab || 'all';
   const log = LOGICIELS.find(x=>x.id===logId);
   document.getElementById('media-modal-title').textContent = `📁 ${log?log.nom:'Logiciel'} — Médiathèque`;
-  document.getElementById('media-modal-sub').textContent = 'Vidéos · Documents · Catalogues';
-  document.querySelectorAll('#media-tabs .tab').forEach((t,i)=>t.classList.toggle('active',i===0));
+  document.getElementById('media-modal-sub').textContent = 'Vidéos · Documents · Catalogues · Voix off';
+  const tabOrder = ['all','video','document','catalogue','audio'];
+  const idx = Math.max(0, tabOrder.indexOf(_mediaCurrentTab));
+  document.querySelectorAll('#media-tabs .tab').forEach((t,i)=>t.classList.toggle('active',i===idx));
   document.getElementById('modal-media').classList.remove('hidden');
   await mediaRenderList();
 }
@@ -12880,8 +12924,8 @@ async function mediaRenderList() {
     listEl.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:12px">Aucun fichier dans cette catégorie</div>';
     return;
   }
-  const TYPE_ICO = {video:'🎬',document:'📄',catalogue:'📚'};
-  const TYPE_LBL = {video:'Vidéo',document:'Document',catalogue:'Catalogue'};
+  const TYPE_ICO = {video:'🎬',document:'📄',catalogue:'📚',audio:'🎙️'};
+  const TYPE_LBL = {video:'Vidéo',document:'Document',catalogue:'Catalogue',audio:'Voix off'};
   // Révoquer les anciennes URLs objet pour libérer la mémoire
   if(window._mediaObjectURLs) window._mediaObjectURLs.forEach(u=>{ try{URL.revokeObjectURL(u);}catch(e){} });
   window._mediaObjectURLs = [];
@@ -12890,6 +12934,7 @@ async function mediaRenderList() {
     const lbl = TYPE_LBL[f.type]||f.type;
     const isImg = f.mimeType && f.mimeType.startsWith('image/');
     const isVid = f.mimeType && f.mimeType.startsWith('video/');
+    const isAudio = f.type==='audio' || (f.mimeType && f.mimeType.startsWith('audio/'));
     const date = f.uploadedAt ? new Date(f.uploadedAt).toLocaleDateString('fr-FR') : '—';
     // Crée une URL objet depuis le Blob (ou rétro-compatibilité dataUrl)
     let src = '';
@@ -12900,15 +12945,17 @@ async function mediaRenderList() {
       : isVid
       ? `<video src="${src}" style="width:56px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0" muted preload="metadata"></video>`
       : `<div style="width:56px;height:42px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${ico}</div>`;
-    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
       ${previewHtml}
-      <div style="flex:1;min-width:0">
+      <div style="flex:1;min-width:160px">
         <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.name}</div>
         <div style="font-size:11px;color:var(--muted)">${ico} ${lbl} · ${mediaFormatSize(f.sizeBytes)} · ${date}</div>
+        ${isAudio ? `<audio controls src="${src}" style="height:30px;max-width:230px;margin-top:5px;display:block" preload="metadata"></audio>` : ''}
       </div>
       <div class="flex gap-2" style="flex-shrink:0">
         <a href="${src}" download="${f.name}" class="btn btn-outline btn-sm" title="Télécharger">⬇</a>
         ${isVid||isImg ? `<button onclick="mediaPreview(${f.id})" class="btn btn-outline btn-sm" title="Aperçu">👁</button>` : ''}
+        <button onclick="mediaOpenSend(${f.id})" class="btn btn-outline btn-sm" title="Envoyer au client/prospect" style="color:#25D366;border-color:rgba(37,211,102,.35)">✉️</button>
         <button onclick="mediaDelete(${f.id})" class="btn btn-sm" style="background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2)" title="Supprimer">🗑</button>
       </div>
     </div>`;
@@ -12963,6 +13010,280 @@ async function mediaRefreshAllBadges() {
 
 // Init IndexedDB on load
 window.addEventListener('DOMContentLoaded', ()=>{ mediaOpenDB().catch(()=>{}); });
+
+// ═══════════════════════════════════════
+//  VOIX OFF — Enregistrement micro (MediaRecorder)
+// ═══════════════════════════════════════
+let _mediaRecorder = null;
+let _mediaRecChunks = [];
+let _mediaRecStream = null;
+let _mediaRecStartTs = 0;
+let _mediaRecTimerId = null;
+
+async function mediaToggleRecord() {
+  const btn = document.getElementById('media-rec-btn');
+  const statusEl = document.getElementById('media-rec-status');
+  if(!btn) return;
+
+  // Arrêt d'un enregistrement en cours
+  if(_mediaRecorder && _mediaRecorder.state === 'recording') {
+    _mediaRecorder.stop();
+    return;
+  }
+
+  if(!_mediaCurrentLogId) { showToast('⚠️ Ouvrez la médiathèque d\'un logiciel avant d\'enregistrer'); return; }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined') {
+    showToast('❌ Enregistrement audio non supporté par ce navigateur');
+    return;
+  }
+
+  try {
+    _mediaRecStream = await navigator.mediaDevices.getUserMedia({audio:true});
+  } catch(err) {
+    showToast('❌ Micro refusé ou indisponible — autorisez l\'accès au microphone');
+    return;
+  }
+
+  const mimeCandidates = ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg'];
+  const mime = (typeof MediaRecorder.isTypeSupported === 'function')
+    ? (mimeCandidates.find(m=>MediaRecorder.isTypeSupported(m)) || '')
+    : '';
+  try {
+    _mediaRecorder = mime ? new MediaRecorder(_mediaRecStream,{mimeType:mime}) : new MediaRecorder(_mediaRecStream);
+  } catch(err) {
+    _mediaRecorder = new MediaRecorder(_mediaRecStream);
+  }
+  _mediaRecChunks = [];
+
+  _mediaRecorder.ondataavailable = e => { if(e.data && e.data.size>0) _mediaRecChunks.push(e.data); };
+
+  _mediaRecorder.onstop = async () => {
+    clearInterval(_mediaRecTimerId);
+    if(statusEl) statusEl.style.display = 'none';
+    btn.textContent = '⏺ Enregistrer une voix off';
+    btn.style.background = 'var(--purple-l)'; btn.style.color = 'var(--purple)';
+    if(_mediaRecStream) _mediaRecStream.getTracks().forEach(t=>t.stop());
+
+    const blobType = (_mediaRecorder && _mediaRecorder.mimeType) || 'audio/webm';
+    const blob = new Blob(_mediaRecChunks, {type: blobType});
+    if(blob.size < 500) { showToast('⚠️ Enregistrement trop court — annulé'); return; }
+
+    const logId = _mediaCurrentLogId;
+    const log = LOGICIELS.find(x=>x.id===logId);
+    const ext = blobType.includes('mp4') ? 'm4a' : (blobType.includes('ogg') ? 'ogg' : 'webm');
+    const fname = `voix-off-${(log?log.nom:'logiciel').replace(/[^a-z0-9]+/gi,'-').toLowerCase()}-${Date.now()}.${ext}`;
+
+    try {
+      await mediaSaveFile(logId, fname, 'audio', blobType, blob, blob.size);
+      showToast('✅ Voix off enregistrée');
+      await mediaRenderList();
+      await mediaUpdateCardBadge(logId);
+    } catch(err) {
+      showToast(`❌ Échec de l'enregistrement : ${err && err.name==='QuotaExceededError' ? 'espace insuffisant' : 'erreur'}`);
+    }
+  };
+
+  _mediaRecorder.start();
+  _mediaRecStartTs = Date.now();
+  btn.textContent = '⏹ Arrêter (00:00)';
+  btn.style.background = 'var(--danger-l)'; btn.style.color = 'var(--danger)';
+  if(statusEl) { statusEl.style.display = 'block'; statusEl.textContent = '🔴 Enregistrement en cours… parlez près du micro'; }
+  _mediaRecTimerId = setInterval(()=>{
+    const s = Math.floor((Date.now()-_mediaRecStartTs)/1000);
+    const mm = String(Math.floor(s/60)).padStart(2,'0');
+    const ss = String(s%60).padStart(2,'0');
+    btn.textContent = `⏹ Arrêter (${mm}:${ss})`;
+  }, 500);
+}
+
+// ═══════════════════════════════════════
+//  VOIX OFF — Synthèse vocale instantanée (Web Speech API)
+//  Lecture immédiate du pitch produit, sans stockage — dispo pour les 16
+//  logiciels dès maintenant, en complément des enregistrements micro.
+// ═══════════════════════════════════════
+function speakLogiciel(logId, btnEl) {
+  if(!('speechSynthesis' in window)) { showToast('❌ Synthèse vocale non supportée par ce navigateur'); return; }
+  const btn = btnEl || document.getElementById('media-tts-btn');
+
+  if(window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+    window.speechSynthesis.cancel();
+    if(btn) btn.textContent = btn.dataset.label || btn.textContent;
+    return;
+  }
+
+  const log = LOGICIELS.find(x=>x.id===logId);
+  if(!log) { showToast('⚠️ Ouvrez la fiche d\'un logiciel pour écouter son pitch'); return; }
+
+  const mods = (log.modules||'').split(',').map(s=>s.trim()).filter(Boolean).slice(0,5).join(', ');
+  const text = `${log.nom}. ${log.desc||''}`
+    + (mods ? ` Modules principaux : ${mods}.` : '')
+    + (log.prixNum ? ` Prix : ${formatPrix(log.prixNum)} francs C-F-A par an.` : '');
+
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.lang = 'fr-FR';
+  utt.rate = 0.97;
+  const voices = window.speechSynthesis.getVoices();
+  const frVoice = voices.find(v=>v.lang && v.lang.toLowerCase().startsWith('fr'));
+  if(frVoice) utt.voice = frVoice;
+
+  if(btn) { btn.dataset.label = btn.dataset.label || btn.textContent; btn.textContent = '⏸ Arrêter la lecture'; }
+  utt.onend   = () => { if(btn) btn.textContent = btn.dataset.label; };
+  utt.onerror = () => { if(btn) btn.textContent = btn.dataset.label; };
+  window.speechSynthesis.speak(utt);
+}
+
+// ═══════════════════════════════════════
+//  VOIX OFF — Envoyer un média au client / prospect
+//  1) Partage natif (navigator.share avec fichier) quand le navigateur le permet
+//     → l'utilisateur choisit lui-même l'app (WhatsApp, Email, Bluetooth…) et le contact
+//  2) Sinon : téléchargement auto du fichier + ouverture WhatsApp/Email avec le message
+//     pré-rempli (impossible techniquement de joindre un fichier via ces liens)
+// ═══════════════════════════════════════
+let _msCurrentFileId = null;
+
+async function mediaOpenSend(fileId) {
+  const db = await mediaOpenDB();
+  const file = await new Promise((res,rej)=>{
+    const tx = db.transaction('files','readonly');
+    const req = tx.objectStore('files').get(fileId);
+    req.onsuccess = ()=>res(req.result);
+    req.onerror   = ()=>rej(req.error);
+  });
+  if(!file) { showToast('❌ Fichier introuvable'); return; }
+
+  _msCurrentFileId = fileId;
+  const log = LOGICIELS.find(x=>x.id===file.logId);
+  const TYPE_LBL = {video:'vidéo',document:'document',catalogue:'catalogue',audio:'voix off'};
+  document.getElementById('ms-file-label').textContent = `${TYPE_LBL[file.type]||file.type} · ${file.name}${log?' — '+log.nom:''}`;
+
+  mediaSendPopulateClients();
+  document.getElementById('ms-client-sel').value = '';
+  document.getElementById('ms-client-info').style.display = 'none';
+  document.getElementById('ms-text').value = mediaSendDefaultText(log, null);
+
+  document.getElementById('modal-media-send').classList.remove('hidden');
+}
+
+function closeMediaSend() {
+  document.getElementById('modal-media-send').classList.add('hidden');
+  _msCurrentFileId = null;
+}
+
+function mediaSendPopulateClients(){
+  const sel = document.getElementById('ms-client-sel');
+  if(!sel) return;
+  const sorted = [...CLIENTS].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
+  sel.innerHTML = '<option value="">— Sans destinataire CRM (partage libre) —</option>' +
+    sorted.map(c=>{
+      const ico = c.statut==='client' ? '✅' : '🎯';
+      return `<option value="${c.id}">${ico} ${c.nom} — ${c.secteur||c.statut}</option>`;
+    }).join('');
+}
+
+function mediaSendDefaultText(log, client){
+  const r = (typeof relanceCfg==='function') ? relanceCfg() : {gerant:'',societe:'SANIX Africa'};
+  const prenom = client && client.nom ? (client.nom.split(' ')[0]||client.nom) : '';
+  return `Bonjour ${prenom||'Madame, Monsieur'} 👋\n\n`
+    + `Voici la présentation${log?' de '+log.nom:''} en voix off — quelques minutes pour comprendre concrètement ce que la solution peut faire pour vous.\n\n`
+    + `N'hésitez pas à me faire vos retours !\n\n`
+    + `— ${r.gerant||''}${r.gerant?', ':''}${r.societe||'SANIX Africa'}`;
+}
+
+function mediaSendFillTemplate(){
+  const id = parseInt(document.getElementById('ms-client-sel').value)||null;
+  const infoEl = document.getElementById('ms-client-info');
+  if(!id){ infoEl.style.display='none'; return; }
+  const c = CLIENTS.find(x=>x.id===id);
+  if(!c) return;
+  infoEl.style.display = '';
+  infoEl.innerHTML = `<div style="display:flex;gap:14px;flex-wrap:wrap">
+      <span>📞 ${c.phone ? c.phone : '<span style="color:var(--danger)">Numéro manquant</span>'}</span>
+      <span>📧 ${c.email ? c.email : '<span style="color:var(--danger)">Email manquant</span>'}</span>
+    </div>`;
+  const fileRow = _msCurrentFileId; // conservé pour lisibilité
+  mediaGetFileForSend().then(file=>{
+    const log = file ? LOGICIELS.find(x=>x.id===file.logId) : null;
+    document.getElementById('ms-text').value = mediaSendDefaultText(log, c);
+  });
+}
+
+async function mediaGetFileForSend(){
+  if(!_msCurrentFileId) return null;
+  const db = await mediaOpenDB();
+  return new Promise((res,rej)=>{
+    const tx = db.transaction('files','readonly');
+    const req = tx.objectStore('files').get(_msCurrentFileId);
+    req.onsuccess = ()=>res(req.result);
+    req.onerror   = ()=>rej(req.error);
+  });
+}
+
+function mediaSendLogClient(channelLabel){
+  const id = parseInt(document.getElementById('ms-client-sel').value)||null;
+  if(!id) return;
+  const c = CLIENTS.find(x=>x.id===id);
+  if(!c) return;
+  if(!c.interactions) c.interactions=[];
+  c.interactions.push({date:new Date().toISOString(),type:'Voix off envoyée',note:`Présentation envoyée via ${channelLabel}`,ico:'🎙️'});
+  c.updated_at = new Date().toISOString();
+  saveStore('clients');
+}
+
+async function mediaSendNativeShare(){
+  const file = await mediaGetFileForSend();
+  if(!file){ showToast('❌ Fichier introuvable'); return; }
+  const text = document.getElementById('ms-text').value;
+  const log = LOGICIELS.find(x=>x.id===file.logId);
+
+  if(navigator.canShare && navigator.share){
+    try{
+      const shareFile = new File([file.blob], file.name, {type:file.mimeType||file.blob.type});
+      if(navigator.canShare({files:[shareFile]})){
+        await navigator.share({files:[shareFile], title: log?log.nom:'Présentation SANIX', text});
+        mediaSendLogClient('Partage natif');
+        showToast('✅ Partage envoyé');
+        closeMediaSend();
+        return;
+      }
+    } catch(err){
+      if(err && err.name==='AbortError') return; // utilisateur a annulé le partage — pas d'erreur à afficher
+    }
+  }
+  showToast('⚠️ Partage direct de fichier non disponible sur ce navigateur — utilisez WhatsApp/Email/Télécharger ci-dessous');
+}
+
+async function mediaSendVia(channel){
+  const file = await mediaGetFileForSend();
+  if(!file){ showToast('❌ Fichier introuvable'); return; }
+  const text = document.getElementById('ms-text').value;
+  const id = parseInt(document.getElementById('ms-client-sel').value)||null;
+  const c = id ? CLIENTS.find(x=>x.id===id) : null;
+
+  // Téléchargement systématique — le navigateur ne permet pas de joindre
+  // automatiquement un fichier à WhatsApp Web ou à un mailto:
+  const url = URL.createObjectURL(file.blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = file.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+
+  if(channel==='whatsapp'){
+    const num = c && c.phone ? relancePhoneIntl(c.phone) : '';
+    if(c && !num){ showToast('⚠️ Numéro manquant pour ce client — fichier téléchargé, ouvrez WhatsApp manuellement'); return; }
+    window.open(`https://wa.me/${num}?text=${encodeURIComponent(text+`\n\n🎙️ (fichier "${file.name}" téléchargé — à joindre à ce message)`)}`,'_blank');
+    mediaSendLogClient('WhatsApp');
+    showToast('✅ Fichier téléchargé — joignez-le dans WhatsApp');
+  } else if(channel==='email'){
+    if(c && !c.email){ showToast('⚠️ Email manquant pour ce client — fichier téléchargé, ouvrez votre messagerie manuellement'); return; }
+    const log = LOGICIELS.find(x=>x.id===file.logId);
+    const subj = encodeURIComponent(`Présentation${log?' — '+log.nom:''}`);
+    window.location.href = `mailto:${c&&c.email?c.email:''}?subject=${subj}&body=${encodeURIComponent(text+`\n\n(Fichier "${file.name}" téléchargé — à joindre à cet email)`)}`;
+    mediaSendLogClient('Email');
+    showToast('✅ Fichier téléchargé — joignez-le à votre email');
+  } else {
+    showToast('✅ Fichier téléchargé');
+  }
+}
 
 function toggleMediaSection() {
   const body = document.getElementById('media-section-body');
