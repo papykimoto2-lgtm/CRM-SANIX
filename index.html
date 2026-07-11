@@ -988,6 +988,32 @@ select.form-input{cursor:pointer}
           <div id="dash-echeances" style="max-height:200px;overflow-y:auto"></div>
         </div>
       </div>
+      <!-- ── LIGNE 7 : SUIVI CLIENT (FIDÉLISATION) ── -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          <span class="card-title">📋 Suivi Clients — Fidélisation</span>
+          <span class="badge badge-muted" id="dash-suivi-total-count">0 client(s)</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px" id="dash-suivi-kpis">
+          <div style="padding:10px;background:var(--success-l);border-radius:var(--r-sm);text-align:center">
+            <div style="font-weight:800;font-size:20px;color:var(--success)" id="suivi-recent-count">0</div>
+            <div style="font-size:10px;color:var(--muted);font-weight:600">🟢 Suivi actif (&lt;15j)</div>
+          </div>
+          <div style="padding:10px;background:var(--warning-l);border-radius:var(--r-sm);text-align:center">
+            <div style="font-weight:800;font-size:20px;color:var(--warning)" id="suivi-attention-count">0</div>
+            <div style="font-size:10px;color:var(--muted);font-weight:600">🟡 À recontacter (15-45j)</div>
+          </div>
+          <div style="padding:10px;background:var(--danger-l);border-radius:var(--r-sm);text-align:center">
+            <div style="font-weight:800;font-size:20px;color:var(--danger)" id="suivi-risque-count">0</div>
+            <div style="font-size:10px;color:var(--muted);font-weight:600">🔴 Négligés (&gt;45j)</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Clients sans contact récent — priorité de relance</span>
+          <button class="btn btn-outline btn-sm" onclick="navigate('clients',null)" style="font-size:10px;padding:4px 10px">Voir tous les clients →</button>
+        </div>
+        <div id="dash-suivi-clients" style="max-height:260px;overflow-y:auto"></div>
+      </div>
     </div>
 
     <!-- ══ VIEW: PIPELINE ══ -->
@@ -1388,7 +1414,7 @@ select.form-input{cursor:pointer}
           <button class="secteur-chip" id="sect-chip-all" onclick="setSecteurFilter(null)">Tous</button>
           <div id="carte-secteur-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap" id="carte-type-chips">
           <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">🏷️ Type de contact</span>
           <button class="secteur-chip active" id="type-chip-all" onclick="setTypeFilter('all',this)">Tous</button>
           <button class="secteur-chip" onclick="setTypeFilter('client',this)">✅ Clients actifs</button>
@@ -4825,6 +4851,40 @@ function initDashboard360() {
     :'<div style="text-align:center;color:var(--success);font-size:12px;padding:16px">✅ Tous les prospects ont été contactés récemment</div>';
   }
 
+  // ─── Suivi Clients — Fidélisation (clients actifs) ──
+  const suiviEl=document.getElementById('dash-suivi-clients');
+  if(suiviEl){
+    const clientsActifs = CLIENTS.filter(c=>c.statut==='client').map(c=>{
+      const ints=c.interactions||[];
+      const last=ints.length?new Date(ints[ints.length-1].date):(c.updated_at?new Date(c.updated_at):(c.created_at?new Date(c.created_at):null));
+      const days=last?Math.floor((Date.now()-last)/86400000):999;
+      return {...c,daysSince:days};
+    });
+    const recentN   = clientsActifs.filter(c=>c.daysSince<15).length;
+    const attenteN  = clientsActifs.filter(c=>c.daysSince>=15&&c.daysSince<=45).length;
+    const risqueN   = clientsActifs.filter(c=>c.daysSince>45).length;
+    setEl('suivi-recent-count', recentN);
+    setEl('suivi-attention-count', attenteN);
+    setEl('suivi-risque-count', risqueN);
+    setEl('dash-suivi-total-count', clientsActifs.length+' client(s)');
+
+    const priorite = clientsActifs.filter(c=>c.daysSince>=15).sort((a,b)=>b.daysSince-a.daysSince).slice(0,8);
+    suiviEl.innerHTML = priorite.length ? priorite.map(c=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
+        <div style="width:28px;height:28px;border-radius:50%;background:${clientColor(c.id)};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px;flex-shrink:0">${clientInitials(c.nom)}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.nom}</div>
+          <div style="font-size:10px;color:${c.daysSince>45?'var(--danger)':'var(--warning)'}">${c.daysSince>45?'🔴':'🟡'} Dernier contact il y a ${c.daysSince}j · ${c.secteur||'—'}</div>
+        </div>
+        <div class="flex gap-1">
+          ${c.phone?`<a href="https://wa.me/225${c.phone.replace(/\D/g,'')}" target="_blank" style="padding:3px 6px;background:#25D366;color:#fff;border-radius:4px;font-size:10px;text-decoration:none">WA</a>`:''}
+          <button onclick="markClientContacted(${c.id})" style="padding:3px 6px;background:var(--success-l);color:var(--success);border:none;border-radius:4px;font-size:10px;cursor:pointer" title="Marquer comme contacté">✔ Contacté</button>
+          <button onclick="showClientDetail(${c.id})" style="padding:3px 6px;background:var(--primary-l);color:var(--primary);border:none;border-radius:4px;font-size:10px;cursor:pointer">Fiche</button>
+        </div>
+      </div>`).join('')
+    :'<div style="text-align:center;color:var(--success);font-size:12px;padding:16px">✅ Tous les clients ont été suivis récemment</div>';
+  }
+
   // ─── Licences & Échéances urgentes ──────
   const echeanceEl=document.getElementById('dash-echeances');
   const echeanceCnt=document.getElementById('dash-echeance-count');
@@ -5975,10 +6035,8 @@ function setSecteurFilter(secteur) {
 
 function setTypeFilter(type, btn) {
   _mapTypeFilter = type;
-  document.querySelectorAll('#view-carte .card .secteur-chip').forEach(b=>{
-    if(b.id==='type-chip-all' || ['client','prospect','prospect_froid'].some(t=>b.onclick&&b.getAttribute('onclick')?.includes(`'${t}'`))) {
-      b.classList.toggle('active', b===btn || (type==='all'&&b.id==='type-chip-all'));
-    }
+  document.querySelectorAll('#carte-type-chips .secteur-chip').forEach(b=>{
+    b.classList.toggle('active', b===btn);
   });
   refreshMapMarkers();
 }
@@ -5994,6 +6052,7 @@ function passesFilters(c, kind) {
 
 function refreshMapMarkers() {
   if(!leafletMap) return;
+  buildSecteurChips();
   // Supprimer anciens marqueurs simples (bureau + commerciaux)
   _mapMarkers.forEach(m=>{ try{leafletMap.removeLayer(m.marker);}catch(e){} });
   _mapMarkers = [];
@@ -9637,6 +9696,16 @@ function relanceOpen(id){
     ? '✅ WhatsApp Cloud API configuré — envoi direct sans clic.'
     : 'ℹ️ Envoi via l\'app de l\'appareil (1 clic). Configurez l\'API dans Paramétrage → Séquences pour l\'envoi automatique.';
   document.getElementById('modal-relance').classList.remove('hidden');
+}
+
+function markClientContacted(id) {
+  const c = CLIENTS.find(x=>x.id===id); if(!c) return;
+  if(!c.interactions) c.interactions=[];
+  c.interactions.push({date:new Date().toISOString(),type:'Suivi commercial',note:'Contact enregistré depuis le tableau de bord',etape:c.interactions.length?Math.max(...c.interactions.map(i=>i.etape||0)):1,ico:'📋'});
+  c.updated_at=new Date().toISOString();
+  saveStore('clients');
+  showToast('✔ '+c.nom+' marqué comme contacté');
+  initDashboard360();
 }
 
 function _relanceLog(c, canal){
