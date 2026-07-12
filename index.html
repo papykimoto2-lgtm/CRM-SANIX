@@ -703,23 +703,7 @@ select.form-input{cursor:pointer}
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section">① Pilotage</div>
-
-  <div class="sb-item active" onclick="navigate('direction',this)">
-    <div class="sb-icon">👔</div><span>Tableau dirigeant</span>
-  </div>
-  <div class="sb-item" onclick="navigate('dashboard',this)">
-    <div class="sb-icon">📊</div><span>Tableau de bord</span>
-  </div>
-  <div class="sb-item" onclick="navigate('cockpit',this)">
-    <div class="sb-icon">🧠</div><span>Cockpit IA</span>
-  </div>
-  <div class="sb-item" onclick="navigate('intel',this)">
-    <div class="sb-icon">🧬</div><span>CRM Intelligence</span>
-  </div>
-
-  <div class="sb-divider"></div>
-  <div class="sb-section">② Prospection</div>
+  <div class="sb-section">① Prospection</div>
 
   <div class="sb-item" onclick="navigate('clients',this)">
     <div class="sb-icon">👤</div><span>Clients & Prospects</span>
@@ -745,7 +729,7 @@ select.form-input{cursor:pointer}
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section">③ Présentation</div>
+  <div class="sb-section">② Présentation</div>
 
   <div class="sb-item" onclick="navigate('logiciels',this)">
     <div class="sb-icon">💻</div><span>Catalogue logiciels</span>
@@ -756,7 +740,7 @@ select.form-input{cursor:pointer}
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section">④ Conversion</div>
+  <div class="sb-section">③ Conversion</div>
 
   <div class="sb-item" onclick="navigate('conversion',this)">
     <div class="sb-icon">🚀</div><span>Moteur de Conversion</span>
@@ -768,7 +752,7 @@ select.form-input{cursor:pointer}
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section">⑤ Vente & Contractualisation</div>
+  <div class="sb-section">④ Vente & Contractualisation</div>
 
   <div class="sb-item" onclick="navigate('commandes',this)">
     <div class="sb-icon">🛒</div><span>Commandes clients</span>
@@ -788,14 +772,14 @@ select.form-input{cursor:pointer}
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section">⑥ Déploiement</div>
+  <div class="sb-section">⑤ Déploiement</div>
 
   <div class="sb-item" onclick="navigate('planning',this)">
     <div class="sb-icon">📅</div><span>Planning déploiement</span>
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section">⑦ Réseau commercial</div>
+  <div class="sb-section">⑥ Réseau commercial</div>
 
   <div class="sb-item" onclick="navigate('equipe',this)">
     <div class="sb-icon">🏆</div><span>Équipe & Apporteurs</span>
@@ -810,11 +794,27 @@ select.form-input{cursor:pointer}
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section">⑧ Comptabilité SYSCOHADA</div>
+  <div class="sb-section">⑦ Comptabilité SYSCOHADA</div>
 
   <div class="sb-item" onclick="navigate('comptabilite',this)">
     <div class="sb-icon">📒</div><span>Comptabilité</span>
     <span class="sb-badge" id="sb-compta-badge" style="display:none">0</span>
+  </div>
+
+  <div class="sb-divider"></div>
+  <div class="sb-section">⑧ Pilotage & Reporting</div>
+
+  <div class="sb-item" onclick="navigate('direction',this)">
+    <div class="sb-icon">👔</div><span>Tableau dirigeant</span>
+  </div>
+  <div class="sb-item active" onclick="navigate('dashboard',this)">
+    <div class="sb-icon">📊</div><span>Tableau de bord</span>
+  </div>
+  <div class="sb-item" onclick="navigate('cockpit',this)">
+    <div class="sb-icon">🧠</div><span>Cockpit IA</span>
+  </div>
+  <div class="sb-item" onclick="navigate('intel',this)">
+    <div class="sb-icon">🧬</div><span>CRM Intelligence</span>
   </div>
 
   <div class="sb-divider"></div>
@@ -3463,6 +3463,38 @@ Seriez-vous disponible pour une démonstration {rdv} ?
 
     <!-- Liste des médias -->
     <div id="media-list-items"></div>
+  </div>
+</div>
+
+<!-- MODAL COFFRE-FORT DOCUMENTAIRE CLIENT -->
+<div id="modal-vault" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:720px;max-height:90vh;overflow-y:auto">
+    <div class="modal-close" onclick="document.getElementById('modal-vault').classList.add('hidden')">✕</div>
+    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:2px" id="vault-modal-title">🗄️ Coffre-fort documentaire</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px" id="vault-modal-sub">Traçabilité complète du projet client</div>
+
+    <!-- Statistiques par catégorie (audit rapide) -->
+    <div id="vault-stats" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:16px"></div>
+
+    <!-- Filtre + upload -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <select id="vault-filter-cat" onchange="vaultFilterChange(this)" class="form-select" style="flex:1;min-width:180px;font-size:12px;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface)"></select>
+    </div>
+
+    <!-- Zone d'upload drop -->
+    <div id="vault-drop-zone" style="border:2px dashed var(--border);border-radius:var(--r);padding:16px;text-align:center;margin-bottom:16px;color:var(--muted);font-size:12px;transition:all .2s"
+      ondragover="event.preventDefault();this.style.borderColor='var(--primary)';this.style.background='var(--primary-l)'"
+      ondragleave="this.style.borderColor='';this.style.background=''"
+      ondrop="vaultDrop(event)">
+      <div style="display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap">
+        <select id="vault-upload-cat" style="font-size:12px;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface)"></select>
+        <label class="btn btn-primary btn-sm" style="cursor:pointer">📎 Archiver un document<input type="file" multiple style="display:none" onchange="vaultUpload(this)"></label>
+      </div>
+      <div style="font-size:10px;margin-top:8px">Ou glissez-déposez vos fichiers ici (200MB max/fichier) — choisissez d'abord la catégorie</div>
+    </div>
+
+    <!-- Liste des documents -->
+    <div id="vault-list-items"></div>
   </div>
 </div>
 
@@ -7140,9 +7172,11 @@ function showClientDetail(id) {
       <button onclick="aiLogInteraction(${id},'demo','🎬')" class="btn btn-outline btn-sm" style="font-size:11px">🎬 Logger démo</button>
       <button onclick="editClient(${c.id});document.getElementById('modal-client-detail').classList.add('hidden')" class="btn btn-outline btn-sm" style="font-size:11px">✏️</button>
       ${c.statut==='prospect'?`<button class="btn btn-sm" style="background:var(--success);color:#fff;font-size:11px" onclick="convertProspectToClient(${c.id});document.getElementById('modal-client-detail').classList.add('hidden')">✅ Convertir</button>`:''}
+      <button id="vault-badge-${c.id}" onclick="vaultOpen(${c.id})" class="btn btn-sm" style="background:var(--surface2);border:1px solid var(--border);font-size:11px;font-weight:700">🗄️ Coffre-fort</button>
     </div>
     ${c.notes?`<div style="background:var(--warning-l);border-radius:var(--r-sm);padding:8px 10px;margin-top:8px;font-size:11px"><strong>📝</strong> ${c.notes}</div>`:''}
   `;
+  vaultUpdateBadge(c.id);
 
   // Afficher cockpit IA si prospect
   const cockpit = document.getElementById('prospect-ai-cockpit');
@@ -13657,6 +13691,7 @@ function clearGeo() {
 }
 
 const MEDIA_DB_NAME = 'sanix_media';
+const MEDIA_DB_VER = 2; // v1: store 'files' (médiathèque logiciels) — v2: + store 'vault' (coffre-fort client)
 let _mediaDB = null;
 let _mediaCurrentLogId = null;
 let _mediaCurrentTab = 'all';
@@ -13671,6 +13706,11 @@ function mediaOpenDB() {
         const store = db.createObjectStore('files', {keyPath:'id', autoIncrement:true});
         store.createIndex('logId', 'logId', {unique:false});
         store.createIndex('type',  'type',  {unique:false});
+      }
+      if(!db.objectStoreNames.contains('vault')) {
+        const vstore = db.createObjectStore('vault', {keyPath:'id', autoIncrement:true});
+        vstore.createIndex('clientId', 'clientId', {unique:false});
+        vstore.createIndex('category', 'category', {unique:false});
       }
     };
     req.onsuccess = e => { _mediaDB = e.target.result; res(_mediaDB); };
@@ -13926,6 +13966,212 @@ async function mediaRefreshAllBadges() {
 
 // Init IndexedDB on load
 window.addEventListener('DOMContentLoaded', ()=>{ mediaOpenDB().catch(()=>{}); });
+
+// ═══════════════════════════════════════
+//  🗄️ COFFRE-FORT DOCUMENTAIRE CLIENT
+//  Continuité vente → déploiement → formation → support → maintenance
+//  Stockage IndexedDB (store 'vault'), Blob brut, par client + catégorie
+// ═══════════════════════════════════════
+const VAULT_CATEGORIES = [
+  {id:'contrat',        label:'Contrats',                    ico:'📜'},
+  {id:'licence',        label:'Licences',                    ico:'🔑'},
+  {id:'facture',        label:'Factures',                    ico:'🧾'},
+  {id:'deploiement',    label:'Rapports de déploiement',     ico:'🚀'},
+  {id:'modification',   label:'Rapports de modifications',   ico:'🔧'},
+  {id:'presence',       label:'Listes de présence',          ico:'📋'},
+  {id:'pv_formation',   label:'PV de formation',             ico:'🎓'},
+  {id:'pv_recette',     label:'PV de recette',               ico:'✅'},
+  {id:'pv_mep',         label:'PV de mise en production',    ico:'🟢'},
+  {id:'manuel_user',    label:'Manuels utilisateur',         ico:'📘'},
+  {id:'manuel_proc',    label:'Manuels de procédures',       ico:'📗'},
+  {id:'backup_bd',      label:'Sauvegardes bases de données',ico:'💾'},
+  {id:'video_formation',label:'Vidéos de formation',         ico:'🎬'},
+  {id:'historique_maj', label:'Historique des mises à jour', ico:'🔄'},
+  {id:'certif_maint',   label:'Certificats de maintenance',  ico:'🛡️'},
+];
+function vaultCatMeta(id){ return VAULT_CATEGORIES.find(c=>c.id===id) || {id, label:id, ico:'📁'}; }
+
+let _vaultCurrentClientId = null;
+let _vaultCurrentCat = 'all';
+
+async function vaultGetByClientId(clientId) {
+  const db = await mediaOpenDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('vault','readonly');
+    const idx = tx.objectStore('vault').index('clientId');
+    const req = idx.getAll(clientId);
+    req.onsuccess = () => res(req.result||[]);
+    req.onerror   = () => rej(req.error);
+  });
+}
+
+async function vaultSaveFile(clientId, category, name, mimeType, blob, sizeBytes, meta) {
+  const db = await mediaOpenDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('vault','readwrite');
+    const req = tx.objectStore('vault').add({
+      clientId, category, name, mimeType, blob, sizeBytes,
+      note: (meta&&meta.note) || '',
+      uploadedAt: new Date().toISOString(),
+      uploadedBy: (typeof CURRENT_USER!=='undefined' && CURRENT_USER && CURRENT_USER.nom) || ''
+    });
+    req.onsuccess = () => res(req.result);
+    req.onerror   = () => rej(req.error);
+  });
+}
+
+async function vaultDeleteFile(id) {
+  const db = await mediaOpenDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('vault','readwrite');
+    const req = tx.objectStore('vault').delete(id);
+    req.onsuccess = () => res();
+    req.onerror   = () => rej(req.error);
+  });
+}
+
+const VAULT_LIMIT = 200*1024*1024; // 200MB / fichier (vidéos formation incluses)
+
+// ─── Ouvrir le coffre-fort d'un client ───
+async function vaultOpen(clientId) {
+  const c = CLIENTS.find(x=>x.id===clientId);
+  if(!c) return;
+  _vaultCurrentClientId = clientId;
+  _vaultCurrentCat = 'all';
+  document.getElementById('vault-modal-title').textContent = `🗄️ Coffre-fort documentaire — ${c.nom}`;
+  document.getElementById('vault-modal-sub').textContent = 'Contrats · Licences · Factures · PV · Manuels · Sauvegardes · Historique';
+  const sel = document.getElementById('vault-upload-cat');
+  sel.innerHTML = VAULT_CATEGORIES.map(cat=>`<option value="${cat.id}">${cat.ico} ${cat.label}</option>`).join('');
+  const filt = document.getElementById('vault-filter-cat');
+  filt.innerHTML = `<option value="all">Toutes catégories</option>` + VAULT_CATEGORIES.map(cat=>`<option value="${cat.id}">${cat.ico} ${cat.label}</option>`).join('');
+  filt.value = 'all';
+  document.getElementById('modal-vault').classList.remove('hidden');
+  await vaultRenderList();
+}
+
+function vaultFilterChange(sel) {
+  _vaultCurrentCat = sel.value;
+  vaultRenderList();
+}
+
+async function vaultUpload(input) {
+  const clientId = _vaultCurrentClientId;
+  if(!clientId) return;
+  const category = document.getElementById('vault-upload-cat').value;
+  const files = Array.from(input.files);
+  for(const file of files) {
+    if(file.size > VAULT_LIMIT) { showToast(`⚠️ ${file.name} dépasse 200MB`); continue; }
+    try {
+      await vaultSaveFile(clientId, category, file.name, file.type, file, file.size);
+      showToast(`✅ ${file.name} archivé`);
+    } catch(err) { showToast(`❌ ${file.name}: ${err.name==='QuotaExceededError'?'espace insuffisant':'erreur'}`); }
+  }
+  input.value = '';
+  await vaultRenderList();
+}
+
+async function vaultDrop(event) {
+  event.preventDefault();
+  const zone = document.getElementById('vault-drop-zone');
+  zone.style.borderColor=''; zone.style.background='';
+  const clientId = _vaultCurrentClientId;
+  if(!clientId) return;
+  const category = document.getElementById('vault-upload-cat').value;
+  const files = Array.from(event.dataTransfer.files);
+  for(const file of files) {
+    if(file.size > VAULT_LIMIT) { showToast(`⚠️ ${file.name} dépasse 200MB`); continue; }
+    try {
+      await vaultSaveFile(clientId, category, file.name, file.type, file, file.size);
+      showToast(`✅ ${file.name} archivé`);
+    } catch(err) { showToast(`❌ ${file.name}: ${err.name==='QuotaExceededError'?'espace insuffisant':'erreur'}`); }
+  }
+  await vaultRenderList();
+}
+
+async function vaultRenderList() {
+  const listEl = document.getElementById('vault-list-items');
+  const statsEl = document.getElementById('vault-stats');
+  if(!listEl) return;
+  listEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">⏳ Chargement…</div>';
+  const all = await vaultGetByClientId(_vaultCurrentClientId);
+
+  // Statistiques par catégorie (audit rapide)
+  if(statsEl) {
+    statsEl.innerHTML = VAULT_CATEGORIES.map(cat=>{
+      const n = all.filter(f=>f.category===cat.id).length;
+      return `<div title="${cat.label}" onclick="document.getElementById('vault-filter-cat').value='${cat.id}';vaultFilterChange(document.getElementById('vault-filter-cat'))" style="cursor:pointer;text-align:center;background:${n?'var(--primary-l)':'var(--surface2)'};border:1px solid ${n?'rgba(37,99,235,.25)':'var(--border)'};border-radius:8px;padding:6px 2px">
+        <div style="font-size:15px">${cat.ico}</div>
+        <div style="font-size:13px;font-weight:800;color:${n?'var(--primary)':'var(--muted)'}">${n}</div>
+      </div>`;
+    }).join('');
+  }
+
+  let files = _vaultCurrentCat==='all' ? all : all.filter(f=>f.category===_vaultCurrentCat);
+  files = files.sort((a,b)=>b.uploadedAt.localeCompare(a.uploadedAt));
+
+  if(!files.length) {
+    listEl.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:12px">Aucun document dans cette catégorie</div>';
+    return;
+  }
+  if(window._vaultObjectURLs) window._vaultObjectURLs.forEach(u=>{ try{URL.revokeObjectURL(u);}catch(e){} });
+  window._vaultObjectURLs = [];
+  listEl.innerHTML = files.map(f => {
+    const meta = vaultCatMeta(f.category);
+    const isImg = f.mimeType && f.mimeType.startsWith('image/');
+    const isVid = f.mimeType && f.mimeType.startsWith('video/');
+    const date = f.uploadedAt ? new Date(f.uploadedAt).toLocaleDateString('fr-FR') : '—';
+    let src = '';
+    if(f.blob) { src = URL.createObjectURL(f.blob); window._vaultObjectURLs.push(src); }
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="width:38px;height:38px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${meta.ico}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.name}</div>
+        <div style="font-size:11px;color:var(--muted)">${meta.label} · ${mediaFormatSize(f.sizeBytes)} · ${date}${f.uploadedBy?` · ${f.uploadedBy}`:''}</div>
+      </div>
+      <div class="flex gap-2" style="flex-shrink:0">
+        <a href="${src}" download="${f.name}" class="btn btn-outline btn-sm" title="Télécharger">⬇</a>
+        ${isVid||isImg ? `<button onclick="vaultPreview(${f.id})" class="btn btn-outline btn-sm" title="Aperçu">👁</button>` : ''}
+        <button onclick="vaultDelete(${f.id})" class="btn btn-sm" style="background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2)" title="Supprimer">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function vaultDelete(id) {
+  if(!confirm('Supprimer ce document du coffre-fort ? Action irréversible.')) return;
+  await vaultDeleteFile(id);
+  showToast('🗑 Document supprimé');
+  await vaultRenderList();
+  if(_vaultCurrentClientId) await vaultUpdateBadge(_vaultCurrentClientId);
+}
+
+async function vaultPreview(id) {
+  const db = await mediaOpenDB();
+  const file = await new Promise((res,rej)=>{
+    const tx = db.transaction('vault','readonly');
+    const req = tx.objectStore('vault').get(id);
+    req.onsuccess = ()=>res(req.result);
+    req.onerror   = ()=>rej(req.error);
+  });
+  if(!file) return;
+  const isImg = file.mimeType&&file.mimeType.startsWith('image/');
+  const isVid = file.mimeType&&file.mimeType.startsWith('video/');
+  const src = file.blob ? URL.createObjectURL(file.blob) : '';
+  const w = window.open('','_blank','width=900,height=650');
+  if(!w) { showToast('⚠️ Autorisez les popups pour l\'aperçu'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><title>${file.name}</title><style>body{margin:0;background:#111;display:flex;align-items:center;justify-content:center;height:100vh}</style></head><body>`);
+  if(isImg) w.document.write(`<img src="${src}" style="max-width:100%;max-height:100%;object-fit:contain">`);
+  else if(isVid) w.document.write(`<video src="${src}" controls autoplay style="max-width:100%;max-height:100%"></video>`);
+  w.document.write('</body></html>');
+  w.document.close();
+}
+
+// Badge nombre de documents sur le bouton "Coffre-fort" de la fiche client
+async function vaultUpdateBadge(clientId) {
+  const files = await vaultGetByClientId(clientId);
+  const btn = document.getElementById('vault-badge-'+clientId);
+  if(btn) btn.textContent = files.length>0 ? `🗄️ Coffre-fort (${files.length})` : '🗄️ Coffre-fort';
+}
 
 function toggleMediaSection() {
   const body = document.getElementById('media-section-body');
