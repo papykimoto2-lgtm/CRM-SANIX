@@ -1618,6 +1618,27 @@ Seriez-vous disponible pour une démonstration {rdv} ?
         </div>
       </div>
 
+      <!-- Géo-intelligence -->
+      <div class="card" style="padding:12px;margin-bottom:12px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <span style="font-weight:700;font-size:12px">🧠 Géo-intelligence :</span>
+          <button class="btn btn-outline btn-sm" style="font-size:11px" onclick="geoHeat()">🔥 Densité</button>
+          <button class="btn btn-outline btn-sm" style="font-size:11px" onclick="geoZones()">🗂️ Zones chaudes/mortes</button>
+          <button class="btn btn-outline btn-sm" style="font-size:11px" onclick="geoRoute()">🧭 Tournée optimisée</button>
+          <span style="border-left:1px solid var(--border);height:20px;margin:0 2px"></span>
+          <label style="font-size:11px;color:var(--muted)">Rayon</label>
+          <input type="range" id="geo-radius" min="1" max="30" value="5" style="width:100px" oninput="document.getElementById('geo-radius-val').textContent=this.value+' km'">
+          <span id="geo-radius-val" style="font-size:11px;font-weight:700">5 km</span>
+          <button class="btn btn-outline btn-sm" style="font-size:11px" onclick="geoRadius()">🎯 Prospects dans le rayon</button>
+          <span style="border-left:1px solid var(--border);height:20px;margin:0 2px"></span>
+          <label style="font-size:11px;color:var(--muted)">Colorer par</label>
+          <select id="geo-color" class="form-input" style="width:auto;font-size:11px;padding:4px 8px" onchange="geoColorBy(this.value)">
+            <option value="">—</option><option value="statut">Statut</option><option value="score">Score</option><option value="secteur">Secteur</option>
+          </select>
+          <button class="btn btn-outline btn-sm" style="font-size:11px" onclick="geoClear()">✕ Effacer</button>
+        </div>
+      </div>
+
       <!-- Alerte sans GPS -->
       <div id="carte-alert-nogeo" style="display:none;background:var(--warning-l);border:1px solid rgba(217,119,6,.25);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--warning);display:flex;align-items:center;gap:8px">
         <span>⚠️</span>
@@ -1626,6 +1647,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
       </div>
 
       <div id="leaflet-map"></div>
+      <div id="geo-insights" style="margin-top:12px"></div>
 
       <!-- Clients sans GPS -->
       <div class="card" style="margin-top:16px;display:none" id="carte-missing-geo-card">
@@ -11076,6 +11098,137 @@ function dirExportPDF(){
   const w=window.open('','_blank');
   if(!w){ showToast('❌ Autorisez les pop-ups'); return; }
   w.document.write(html); w.document.close();
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  GÉO-INTELLIGENCE — densité, rayon, tournée, zones (Leaflet natif)
+// ═══════════════════════════════════════════════════════════
+let geoOverlay=null;
+function geoLayer(){ if(!geoOverlay && typeof leafletMap!=='undefined' && leafletMap){ geoOverlay=L.layerGroup().addTo(leafletMap); } return geoOverlay; }
+function geoClear(){ const g=geoLayer(); if(g) g.clearLayers(); const i=document.getElementById('geo-insights'); if(i) i.innerHTML=''; }
+function _geoPts(statut){ return CLIENTS.filter(c=>c.lat&&c.lng && (!statut||c.statut===statut)); }
+function _hav(a,b){ const R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180,
+  s=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s)); }
+function _geoVal(c){ return (typeof cokValeur==='function')?cokValeur(c):(c.valeur||0); }
+function _fmt(n){ return Math.round(n||0).toLocaleString('fr-FR'); }
+
+// 🔥 Densité (heat approximé par cercles pondérés)
+function geoHeat(){
+  const g=geoLayer(); if(!g){ showToast('Carte non prête'); return; } g.clearLayers();
+  const pts=_geoPts();
+  pts.forEach(c=>{
+    const near=pts.filter(o=>_hav(c,o)<1).length; // densité locale (<1km)
+    const intensity=Math.min(1,near/8);
+    L.circle([c.lat,c.lng],{radius:700,stroke:false,fillColor:intensity>0.6?'#DC2626':intensity>0.3?'#F59E0B':'#3B82F6',fillOpacity:0.18}).addTo(g);
+  });
+  document.getElementById('geo-insights').innerHTML=`<div class="card" style="padding:12px;font-size:13px">🔥 Carte de densité — ${pts.length} points. Zones rouges = forte concentration (>6 contacts/km), à couvrir en priorité lors d'une tournée.</div>`;
+  showToast('🔥 Densité affichée');
+}
+
+// 🎯 Prospects dans un rayon autour du bureau
+function geoRadius(){
+  const g=geoLayer(); if(!g) return; g.clearLayers();
+  const km=parseInt(document.getElementById('geo-radius').value)||5;
+  const center=(typeof SANIX_OFFICE!=='undefined')?SANIX_OFFICE:{lat:5.3463,lng:-4.008};
+  L.circle([center.lat,center.lng],{radius:km*1000,color:'#2563EB',fillColor:'#2563EB',fillOpacity:0.06}).addTo(g);
+  const inside=_geoPts('prospect').filter(c=>_hav(center,c)<=km);
+  inside.forEach(c=>L.circleMarker([c.lat,c.lng],{radius:7,color:'#fff',weight:2,fillColor:'#10B981',fillOpacity:1}).addTo(g)
+    .on('click',()=>showClientDetail(c.id)).bindTooltip(c.nom));
+  const val=inside.reduce((s,c)=>s+_geoVal(c),0);
+  document.getElementById('geo-insights').innerHTML=`<div class="card" style="padding:14px">
+    <div style="font-weight:700;font-size:14px;margin-bottom:6px">🎯 Rayon commercial ${km} km</div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:13px">
+      <div><div style="font-weight:800;font-size:20px;color:var(--success)">${inside.length}</div><div style="color:var(--muted);font-size:11px">prospects dans le rayon</div></div>
+      <div><div style="font-weight:800;font-size:20px;color:var(--primary)">${_fmt(val)}</div><div style="color:var(--muted);font-size:11px">potentiel FCFA</div></div>
+    </div>
+    ${inside.length?`<div style="margin-top:10px;font-size:12px;color:var(--muted)">Idéal pour une tournée d'une demi-journée. Lancez « Tournée optimisée » pour l'ordre de visite.</div>`:'<div style="margin-top:8px;color:var(--muted);font-size:12px">Aucun prospect géolocalisé dans ce rayon.</div>'}
+  </div>`;
+  showToast(`🎯 ${inside.length} prospects sous ${km} km`);
+}
+
+// 🧭 Tournée optimisée (plus proche voisin depuis le bureau)
+function geoRoute(){
+  const g=geoLayer(); if(!g) return; g.clearLayers();
+  const center=(typeof SANIX_OFFICE!=='undefined')?SANIX_OFFICE:{lat:5.3463,lng:-4.008};
+  const km=parseInt(document.getElementById('geo-radius').value)||30;
+  let pool=_geoPts('prospect').filter(c=>_hav(center,c)<=km);
+  if(!pool.length){ showToast('Aucun prospect géolocalisé à proximité'); return; }
+  if(pool.length>15) pool=pool.slice(0,15); // limite pratique tournée
+  // nearest-neighbor
+  const route=[]; let cur={lat:center.lat,lng:center.lng}; const rem=[...pool];
+  while(rem.length){ let bi=0,bd=1e9; rem.forEach((c,i)=>{const d=_hav(cur,c);if(d<bd){bd=d;bi=i;}});
+    const nx=rem.splice(bi,1)[0]; route.push(nx); cur=nx; }
+  // tracé
+  const latlngs=[[center.lat,center.lng],...route.map(c=>[c.lat,c.lng])];
+  L.polyline(latlngs,{color:'#2563EB',weight:3,opacity:.7,dashArray:'6 6'}).addTo(g);
+  L.circleMarker([center.lat,center.lng],{radius:8,color:'#fff',weight:2,fillColor:'#DC2626',fillOpacity:1}).addTo(g).bindTooltip('Départ : Bureau');
+  let total=_hav(center,route[0]);
+  route.forEach((c,i)=>{ if(i>0) total+=_hav(route[i-1],c);
+    const mk=L.divIcon({html:`<div style="background:#2563EB;color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;border:2px solid #fff">${i+1}</div>`,className:'',iconSize:[22,22],iconAnchor:[11,11]});
+    L.marker([c.lat,c.lng],{icon:mk}).addTo(g).on('click',()=>showClientDetail(c.id)).bindTooltip(`${i+1}. ${c.nom}`);
+  });
+  const val=route.reduce((s,c)=>s+_geoVal(c),0);
+  document.getElementById('geo-insights').innerHTML=`<div class="card" style="padding:14px">
+    <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:6px;margin-bottom:8px">
+      <div style="font-weight:700;font-size:14px">🧭 Tournée optimisée — ${route.length} arrêts</div>
+      <div style="font-size:12px;color:var(--muted)">≈ ${total.toFixed(1)} km · potentiel ${_fmt(val)} F</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">${route.map((c,i)=>`
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)">
+        <span style="background:var(--primary);color:#fff;width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">${i+1}</span>
+        <span style="flex:1;cursor:pointer" onclick="showClientDetail(${c.id})">${c.nom}<span style="color:var(--muted)"> · ${c.secteur||''}</span></span>
+        <a href="https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lng}" target="_blank" style="font-size:11px;color:var(--primary);text-decoration:none">🧭 GPS</a>
+      </div>`).join('')}</div>
+    <a href="https://www.google.com/maps/dir/${center.lat},${center.lng}/${route.map(c=>c.lat+','+c.lng).join('/')}" target="_blank" class="btn btn-primary btn-sm" style="margin-top:10px">🗺️ Ouvrir la tournée dans Google Maps</a>
+  </div>`;
+  showToast(`🧭 Tournée : ${route.length} arrêts, ${total.toFixed(1)} km`);
+}
+
+// 🗂️ Zones chaudes / mortes (par commune)
+function geoZones(){
+  const g=geoLayer(); if(g) g.clearLayers();
+  const zones={};
+  CLIENTS.filter(c=>c.statut==='prospect').forEach(c=>{
+    const z=((c.adresse||'').split(',')[0].trim())||'Non localisé';
+    if(!zones[z]) zones[z]={n:0,val:0,geo:0};
+    zones[z].n++; zones[z].val+=_geoVal(c); if(c.lat&&c.lng) zones[z].geo++;
+  });
+  const rows=Object.entries(zones).sort((a,b)=>b[1].val-a[1].val);
+  const maxV=Math.max(1,...rows.map(r=>r[1].val));
+  document.getElementById('geo-insights').innerHTML=`<div class="card" style="padding:14px">
+    <div style="font-weight:700;font-size:14px;margin-bottom:10px">🗂️ Zones commerciales (par quartier/ville)</div>
+    ${rows.map(([z,x])=>{const w=Math.round(x.val/maxV*100);const chaud=w>=66?'🔥':w>=33?'🌤️':'❄️';
+      return `<div style="margin-bottom:9px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>${chaud} ${z} <span style="color:var(--muted)">(${x.n} prospects)</span></span><span style="font-weight:700">${_fmt(x.val)} F</span></div>
+        <div style="height:12px;background:var(--surface2);border-radius:6px;overflow:hidden"><div style="height:100%;width:${w}%;background:${w>=66?'#DC2626':w>=33?'#F59E0B':'#3B82F6'};border-radius:6px"></div></div></div>`;}).join('')}
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">🔥 zones chaudes = fort potentiel à prioriser · ❄️ zones froides = à travailler ou déprioriser.</div>
+  </div>`;
+  showToast('🗂️ Zones analysées');
+}
+
+// 🎨 Coloration analytique (overlay circleMarkers)
+function geoColorBy(mode){
+  const g=geoLayer(); if(!g) return; g.clearLayers();
+  if(!mode) return;
+  const pts=_geoPts();
+  const secteurCols={};
+  const palette=['#2563EB','#10B981','#F59E0B','#DC2626','#7C3AED','#0D9488','#DB2777','#457B9D','#65A30D','#EA580C'];
+  let si=0;
+  pts.forEach(c=>{
+    let col='#2563EB';
+    if(mode==='statut') col=c.statut==='client'?'#10B981':c.statut==='prospect'?'#F59E0B':'#94A3B8';
+    else if(mode==='score'){ const s=(typeof aiProspectScore==='function')?aiProspectScore(c):0; col=s>=70?'#10B981':s>=40?'#F59E0B':'#DC2626'; }
+    else if(mode==='secteur'){ const k=c.secteur||'Autre'; if(!(k in secteurCols)) secteurCols[k]=palette[si++%palette.length]; col=secteurCols[k]; }
+    L.circleMarker([c.lat,c.lng],{radius:7,color:'#fff',weight:2,fillColor:col,fillOpacity:1}).addTo(g)
+      .on('click',()=>showClientDetail(c.id)).bindTooltip(c.nom);
+  });
+  let legend='';
+  if(mode==='statut') legend='🟢 Client · 🟡 Prospect · ⚪ Inactif';
+  else if(mode==='score') legend='🟢 ≥70 · 🟡 40-69 · 🔴 <40';
+  else if(mode==='secteur') legend=Object.entries(secteurCols).map(([k,v])=>`<span style="color:${v};font-weight:700">●</span> ${k}`).join(' · ');
+  document.getElementById('geo-insights').innerHTML=`<div class="card" style="padding:12px;font-size:12px">🎨 Coloration par ${mode} — ${pts.length} points. ${legend}</div>`;
 }
 
 // ═══ SEED PROMOTEURS IMMOBILIERS AGRÉÉS (import unique, idempotent) ═══
