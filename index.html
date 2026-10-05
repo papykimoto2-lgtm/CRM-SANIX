@@ -2007,12 +2007,45 @@ Seriez-vous disponible pour une démonstration {rdv} ?
           </div>
           <div class="form-row">
             <div class="form-group">
+              <label class="form-label">Forme juridique</label>
+              <input type="text" class="form-input" id="cfg-forme" placeholder="SARL, SA, SAS, Ets…">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Capital social</label>
+              <input type="text" class="form-input" id="cfg-capital" placeholder="1 000 000">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Site web</label>
+              <input type="text" class="form-input" id="cfg-site" placeholder="www.exemple.ci">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Banque / RIB (en-tête des documents)</label>
+              <input type="text" class="form-input" id="cfg-banque" placeholder="Banque — IBAN CI…">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
               <label class="form-label">Adresse</label>
               <input type="text" class="form-input" id="cfg-adresse">
             </div>
             <div class="form-group">
               <label class="form-label">Emoji logo (fallback)</label>
               <input type="text" class="form-input" id="cfg-emoji" maxlength="4">
+            </div>
+          </div>
+          <div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:12px;margin-bottom:14px;background:var(--surface2)">
+            <div style="font-weight:700;font-size:13px;margin-bottom:8px">🔐 Authenticité des documents (QR code)</div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="cfg-docQr"> Ajouter un QR code d'authenticité sur les documents imprimés / PDF</label>
+            <div class="form-group">
+              <label class="form-label">Adresse ouverte par le QR code</label>
+              <input type="text" class="form-input" id="cfg-docVerifyUrl" placeholder="https://crm-sanix.vercel.app/">
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Clé de signature (à conserver — à recopier sur chaque appareil qui doit vérifier les documents)</label>
+              <input type="password" class="form-input" id="cfg-docSecret" placeholder="Générée automatiquement à la première émission" autocomplete="off">
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">Sans cette clé, un appareil affiche les informations du document mais ne peut pas confirmer la signature. Ne la communiquez pas aux clients.</div>
             </div>
           </div>
           <div class="form-group">
@@ -2592,7 +2625,10 @@ Seriez-vous disponible pour une démonstration {rdv} ?
           <h1 class="page-title" style="margin-bottom:0">Documents & Modèles</h1>
           <p class="page-sub">Conventions · Factures · Programmes · PV · Listes de présence — générés depuis vos données</p>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="openDocGenModal()">📄 Générer un document</button>
+        <div class="flex gap-2" style="flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" onclick="docVerifyOpen()">🔎 Vérifier un document</button>
+          <button class="btn btn-primary btn-sm" onclick="openDocGenModal()">📄 Générer un document</button>
+        </div>
       </div>
 
       <!-- Onglets -->
@@ -4801,6 +4837,13 @@ const CONFIG_DEFAULT = {
   tel:'+225 ',
   email:'contact@sanix-africa.ci',
   adresse:'Abidjan, Côte d\'Ivoire',
+  forme:'',            // forme juridique (SARL, SA…) — en-tête des documents
+  capital:'',          // capital social
+  site:'',             // site web
+  banque:'',           // coordonnées bancaires (RIB / IBAN) — en-tête des documents
+  docVerifyUrl:'https://crm-sanix.vercel.app/',   // adresse ouverte par le QR code d'authenticité
+  docSecret:'',        // clé de signature des documents (générée à la 1re émission)
+  docQr:true,          // QR code d'authenticité sur les documents imprimés / PDF
   emoji:'🌍',
   logo:null,        // logo entreprise (base64)
   devise:'FCFA',
@@ -8970,9 +9013,10 @@ function initParametrage() {
   // Au premier affichage, déplacer le DOM et activer onglet entreprise
   paramMoveContent();
   const g = id => document.getElementById(id);
-  const fields = ['appName','sigle','sub','raisonSociale','rccm','cc','tel','email','adresse','emoji',
+  const fields = ['appName','sigle','sub','raisonSociale','rccm','cc','tel','email','adresse','forme','capital','site','banque','docVerifyUrl','docSecret','emoji',
                   'devise','tva','timbre','commissionDefaut','objectifDefaut','remiseMaxDefaut'];
-  fields.forEach(f=>{ const e=g('cfg-'+f); if(e) e.value = CONFIG[f]; });
+  fields.forEach(f=>{ const e=g('cfg-'+f); if(e) e.value = CONFIG[f]==null?'':CONFIG[f]; });
+  { const q=g('cfg-docQr'); if(q) q.checked = CONFIG.docQr!==false; }
   g('cfg-secteurs').value = (CONFIG.secteurs||[]).join('\n');
   g('cfg-categories').value = (CONFIG.categories||[]).join('\n');
   applyCompanyLogo();
@@ -9029,8 +9073,9 @@ function renderDiagnostic() {
 function saveConfigForm() {
   const g = id => document.getElementById(id);
   const nums = ['tva','timbre','commissionDefaut','objectifDefaut','remiseMaxDefaut'];
-  const strs = ['appName','sigle','sub','raisonSociale','rccm','cc','tel','email','adresse','emoji','devise'];
-  strs.forEach(f=>{ CONFIG[f] = g('cfg-'+f).value.trim(); });
+  const strs = ['appName','sigle','sub','raisonSociale','rccm','cc','tel','email','adresse','forme','capital','site','banque','docVerifyUrl','docSecret','emoji','devise'];
+  strs.forEach(f=>{ const e=g('cfg-'+f); if(e) CONFIG[f] = e.value.trim(); });
+  CONFIG.docQr = g('cfg-docQr') ? g('cfg-docQr').checked : true;
   nums.forEach(f=>{ CONFIG[f] = parseFloat(g('cfg-'+f).value)||0; });
   if(!CONFIG.appName){ showToast('❌ Nom application obligatoire'); g('cfg-appName').focus(); return; }
   CONFIG.secteurs = g('cfg-secteurs').value.split('\n').map(x=>x.trim()).filter(Boolean);
@@ -9047,7 +9092,9 @@ function saveConfigForm() {
 }
 function resetConfig() {
   if(!confirm('Restaurer tous les paramètres par défaut ?')) return;
+  const _sec = CONFIG.docSecret;
   CONFIG = {...CONFIG_DEFAULT};
+  if(_sec) CONFIG.docSecret = _sec;   // la clé de signature survit à la réinitialisation (documents déjà émis)
   STAGES = JSON.parse(JSON.stringify([
     {id:'prospect',label:'Prospect',color:'#94A3B8'},{id:'contact',label:'Contact',color:'#3B82F6'},
     {id:'demo',label:'Démo',color:'#8B5CF6'},{id:'proposition',label:'Proposition',color:'#F59E0B'},
@@ -9526,7 +9573,7 @@ function imprimerBonCommande(id) {
       <strong>Pour ${CONFIG.sigle||'SANIX'}</strong><br>
       <span style="font-size:10px;color:#888">Signature et cachet</span>
     </td>
-  </tr></table>`;
+  </tr></table>${docSecurityFooter({type:'bon_commande',ref:c.ref,client:c.client,montant:c.ttc,date:c.date},true)}`;
 
   // Imprimer dans une fenêtre dédiée
   const w = window.open('','_blank','width=900,height=1000');
@@ -11677,7 +11724,7 @@ function genDocFromDossier(clientId, kind){
   .sign{display:flex;justify-content:space-between;margin-top:50px;font-size:13px}
   @media print{body{padding:14px}.noprint{display:none}}
   </style></head><body>
-  <div class="head"><div><div class="brand">${r.societe||'SANIX Africa'}</div><div style="font-size:12px;color:#64748b">${r.gerant} · Abidjan, Côte d'Ivoire<br>${r.tel1||''} · ${r.email||''}</div></div>
+  <div class="head">${docBrandLeft()}
   <div><div class="doc-title">${titre}</div><div class="ref">N° ${ref} · ${today}</div></div></div>
   <div class="parties">
     <div class="box"><strong>ÉMETTEUR</strong><br>${r.societe||'SANIX Africa'}<br>${r.gerant}<br>${r.tel1||''}<br>${r.email||''}</div>
@@ -11691,6 +11738,7 @@ function genDocFromDossier(clientId, kind){
   ${tpl.trim()?`<div style="margin-top:20px">${corps}</div>`:''}
   <div class="sign"><div>Le client<br><span style="color:#94a3b8">(signature + cachet)</span></div><div>Pour ${r.societe||'SANIX Africa'}<br>${r.gerant}</div></div>
   <div class="foot">Document généré par SANIX CRM · ${today}${isDevis?' · Devis valable 30 jours':' · Contrat régi par le droit ivoirien / OHADA'}</div>
+  ${docSecurityFooter({type:isDevis?'devis':'contrat',ref:ref,client:c.nom,montant:ttc,date:new Date().toISOString().slice(0,10)},true)}
   <div class="noprint" style="text-align:center;margin-top:24px"><button onclick="window.print()" style="padding:10px 24px;background:#2563EB;color:#fff;border:0;border-radius:8px;font-size:15px;cursor:pointer">🖨️ Imprimer / Enregistrer en PDF</button></div>
   </body></html>`;
 
@@ -11728,13 +11776,14 @@ function dirExportPDF(){
   .foot{margin-top:26px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:10px}
   @media print{body{padding:12px}.noprint{display:none}}
   </style></head><body>
-  <div class="head"><div><div class="brand">${r.societe||'SANIX Africa'}</div><div class="sub">${r.gerant} · Abidjan</div></div>
+  <div class="head">${docBrandLeft()}
   <div style="text-align:right"><h1>Rapport de direction</h1><div class="sub">Période : ${rg.label} · Édité le ${now}</div></div></div>
   <div class="stats-grid">${grab('dir-kpis')}</div>
   <div class="grid2">${card('🎯 Pipeline par étape',grab('dir-pipeline'))}${card('💰 Commissions',grab('dir-commissions'))}</div>
   <div class="grid2">${card('🏆 Logiciels les plus vendus',grab('dir-topsoft'))}${card('⭐ Commercial de la période',grab('dir-commercial'))}</div>
   <div class="grid2">${card('⏱️ Temps moyen de vente',grab('dir-cycle'))}${card('📊 Taux de transformation',grab('dir-taux'))}</div>
   <div class="foot">Généré par SANIX CRM · Confidentiel — usage interne direction</div>
+  ${docSecurityFooter({type:'rapport',ref:'RAPPORT-DIR-'+new Date().toISOString().slice(0,10),client:'Direction — '+(rg.label||''),montant:0,date:new Date().toISOString().slice(0,10)},true)}
   <div class="noprint" style="text-align:center;margin-top:20px"><button onclick="window.print()" style="padding:10px 24px;background:#2563EB;color:#fff;border:0;border-radius:8px;font-size:15px;cursor:pointer">🖨️ Imprimer / Enregistrer en PDF</button></div>
   </body></html>`;
   const w=window.open('','_blank');
@@ -12954,23 +13003,246 @@ function generateDoc() {
   _docCurrentHtml = html;
   _docCurrentMeta = meta;
   document.getElementById('docpreview-title').textContent = DOC_TYPES[type].ico+' '+DOC_TYPES[type].label+' — '+client;
-  document.getElementById('docpreview-content').innerHTML = html;
+  document.getElementById('docpreview-content').innerHTML = docWithSecurity(html, meta, false);
   closeDocGenModal();
   document.getElementById('modal-docpreview').classList.remove('hidden');
 }
 
 // ─── GÉNÉRATEURS DE MODÈLES ──────────────
+function _dEsc(t){ return String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function _docOrgLines(){
+  const c = CONFIG;
+  const juridique = [c.forme, c.capital ? 'au capital de '+c.capital+' '+(c.devise||'FCFA') : ''].filter(Boolean).join(' ');
+  return {
+    juridique,
+    siege:   c.adresse ? 'Siège : '+c.adresse : '',
+    contact: [c.tel ? 'Tél : '+c.tel : '', c.email, c.site].filter(Boolean).join(' · '),
+    ids:     [c.rccm ? 'RCCM : '+c.rccm : '', c.cc ? 'CC : '+c.cc : ''].filter(Boolean).join(' · '),
+    banque:  c.banque ? 'Banque : '+c.banque : ''
+  };
+}
+function _docLogoHtml(px){
+  if(CONFIG.logo) return '<img src="'+CONFIG.logo+'" style="width:'+px+'px;height:'+px+'px;object-fit:contain;flex:none">';
+  const ini=(CONFIG.sigle||CONFIG.raisonSociale||'S').split(/[\s\-&]+/).map(w=>w[0]||'').join('').substring(0,2).toUpperCase();
+  return '<div style="width:'+px+'px;height:'+px+'px;border-radius:12px;background:#1E3A5F;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:'+Math.round(px/3)+'px;flex:none">'+_dEsc(ini)+'</div>';
+}
+// Papier à en-tête : logo, raison sociale, forme / capital, siège, contacts, RCCM / CC, banque
 function docHeader() {
-  const logoHtml = CONFIG.logo
-    ? `<img src="${CONFIG.logo}" style="width:54px;height:54px;object-fit:contain;margin-bottom:6px">`
-    : '';
-  return `<div style="text-align:center;border-bottom:2px solid #1E3A5F;padding-bottom:12px;margin-bottom:20px">
-    ${logoHtml}
-    <div style="font-size:16px;font-weight:800;color:#1E3A5F">${(CONFIG.raisonSociale||'SANIX AFRICA DIVISION TECHNOLOGIES').toUpperCase()}</div>
-    <div style="font-size:11px;color:#666;font-style:italic">Édition de logiciels de gestion — ERP / Industrie 4.0</div>
-    <div style="font-size:10px;color:#888;margin-top:4px">${CONFIG.adresse?'Siège : '+CONFIG.adresse:'Songon Kassamblé, Abidjan'} — Côte d'Ivoire · ${CONFIG.email||'sanixafrica699@gmail.com'}</div>
+  const o=_docOrgLines();
+  const line=(t,st)=>t?'<div style="font-size:10.5px;color:#475569;line-height:1.5'+(st||'')+'">'+_dEsc(t)+'</div>':'';
+  return `<div style="display:flex;align-items:center;gap:16px;border-bottom:3px solid #1E3A5F;padding-bottom:12px;margin-bottom:22px;font-family:Arial,Helvetica,sans-serif">
+    ${_docLogoHtml(68)}
+    <div style="flex:1;min-width:0">
+      <div style="font-size:18px;font-weight:800;color:#1E3A5F;letter-spacing:.3px">${_dEsc((CONFIG.raisonSociale||CONFIG.appName||'').toUpperCase())}</div>
+      ${CONFIG.sub?'<div style="font-size:11px;color:#64748b;font-style:italic;margin-bottom:3px">'+_dEsc(CONFIG.sub)+'</div>':''}
+      ${line(o.juridique)}${line(o.siege)}${line(o.contact)}${line(o.ids,';font-weight:600')}${line(o.banque)}
+    </div>
   </div>`;
 }
+// Même identité, version compacte pour les modèles qui ont leur propre mise en page (devis, contrat, rapports)
+function docBrandLeft(){
+  const o=_docOrgLines();
+  const line=t=>t?'<div style="font-size:11px;color:#64748b;line-height:1.5">'+_dEsc(t)+'</div>':'';
+  return `<div style="display:flex;align-items:center;gap:12px">${_docLogoHtml(56)}<div><div class="brand">${_dEsc(CONFIG.raisonSociale||CONFIG.appName||'')}</div>${line(o.juridique)}${line(o.siege)}${line(o.contact)}${line(o.ids)}${line(o.banque)}</div></div>`;
+}
+
+// ═══════════════════════════════════════
+//  AUTHENTICITÉ DES DOCUMENTS — QR code signé + registre des émissions
+//  Le QR contient l'adresse de vérification + les données clés (type, réf., client, montant, date) + une signature
+//  HMAC-SHA256 calculée avec la clé de l'entreprise : toute modification des montants ou de la date est détectée.
+// ═══════════════════════════════════════
+// ── QR Code (octets, niveau M) + SHA-256 / HMAC synchrones — aucune dépendance externe ──
+const SXQR = (function(){
+  const ECC_PER_BLOCK = [-1,10,16,26,18,24,16,18,22,22,26,30,22,22,24,24,28,28,26,26,26,26,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28];
+  const NUM_BLOCKS    = [-1,1,1,1,2,2,4,4,4,5,5,5,8,9,9,10,10,11,13,14,16,17,17,18,20,21,23,25,26,28,29,31,33,35,37,38,40,43,45,47,49];
+  const MAX_VER = 16;
+  function rawModules(v){ let r=(16*v+128)*v+64; if(v>=2){ const n=Math.floor(v/7)+2; r-=(25*n-10)*n-55; if(v>=7) r-=36; } return r; }
+  function dataCodewords(v){ return Math.floor(rawModules(v)/8) - ECC_PER_BLOCK[v]*NUM_BLOCKS[v]; }
+  function gfMul(x,y){ let z=0; for(let i=7;i>=0;i--){ z=(z<<1)^((z>>>7)*0x11D); z^=((y>>>i)&1)*x; } return z; }
+  function rsDivisor(deg){ const r=new Array(deg).fill(0); r[deg-1]=1; let root=1; for(let i=0;i<deg;i++){ for(let j=0;j<deg;j++){ r[j]=gfMul(r[j],root); if(j+1<deg) r[j]^=r[j+1]; } root=gfMul(root,2); } return r; }
+  function rsRemainder(data,div){ const r=div.map(()=>0); for(const b of data){ const f=b^r.shift(); r.push(0); div.forEach((c,i)=>{ r[i]^=gfMul(c,f); }); } return r; }
+  function alignPos(v){ if(v===1) return []; const n=Math.floor(v/7)+2; const step=(v===32)?26:Math.ceil((v*4+4)/(n*2-2))*2; const res=[6]; for(let pos=v*4+10;res.length<n;pos-=step) res.splice(1,0,pos); return res; }
+  function utf8(s){ return Array.from(new TextEncoder().encode(s)); }
+  function encode(text){
+    const bytes=utf8(text);
+    let ver=0; for(let v=1;v<=MAX_VER;v++){ const cc=v<10?8:16; if(4+cc+8*bytes.length<=dataCodewords(v)*8){ ver=v; break; } }
+    if(!ver) throw new Error('Texte trop long pour le QR');
+    const bits=[]; const put=(val,len)=>{ for(let i=len-1;i>=0;i--) bits.push((val>>>i)&1); };
+    put(4,4); put(bytes.length, ver<10?8:16); bytes.forEach(b=>put(b,8));
+    const cap=dataCodewords(ver)*8;
+    put(0,Math.min(4,cap-bits.length)); while(bits.length%8) bits.push(0);
+    for(let pad=0xEC; bits.length<cap; pad^=0xEC^0x11) put(pad,8);
+    const data=[]; for(let i=0;i<bits.length;i+=8){ let b=0; for(let j=0;j<8;j++) b=(b<<1)|bits[i+j]; data.push(b); }
+    // ECC + entrelacement
+    const nb=NUM_BLOCKS[ver], eccLen=ECC_PER_BLOCK[ver], raw=Math.floor(rawModules(ver)/8);
+    const nShort=nb-raw%nb, shortLen=Math.floor(raw/nb);
+    const div=rsDivisor(eccLen), blocks=[]; let k=0;
+    for(let i=0;i<nb;i++){ const dat=data.slice(k,k+shortLen-eccLen+(i<nShort?0:1)); k+=dat.length; const ecc=rsRemainder(dat,div); if(i<nShort) dat.push(0); blocks.push(dat.concat(ecc)); }
+    const all=[]; for(let i=0;i<blocks[0].length;i++) blocks.forEach((b,j)=>{ if(i!==shortLen-eccLen||j>=nShort) all.push(b[i]); });
+    // matrice
+    const size=ver*4+17;
+    const mod=Array.from({length:size},()=>new Array(size).fill(false)), fn=Array.from({length:size},()=>new Array(size).fill(false));
+    const setF=(x,y,d)=>{ mod[y][x]=d; fn[y][x]=true; };
+    for(let i=0;i<size;i++){ setF(6,i,i%2===0); setF(i,6,i%2===0); }
+    const finder=(cx,cy)=>{ for(let dy=-4;dy<=4;dy++) for(let dx=-4;dx<=4;dx++){ const d=Math.max(Math.abs(dx),Math.abs(dy)), x=cx+dx, y=cy+dy; if(x>=0&&x<size&&y>=0&&y<size) setF(x,y,d!==2&&d!==4); } };
+    finder(3,3); finder(size-4,3); finder(3,size-4);
+    const ap=alignPos(ver), n=ap.length;
+    for(let i=0;i<n;i++) for(let j=0;j<n;j++){ if((i===0&&j===0)||(i===0&&j===n-1)||(i===n-1&&j===0)) continue; for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++) setF(ap[i]+dx,ap[j]+dy,Math.max(Math.abs(dx),Math.abs(dy))!==1); }
+    const drawFormat=(mask)=>{
+      const d=(0<<3)|mask; let rem=d; for(let i=0;i<10;i++) rem=(rem<<1)^((rem>>>9)*0x537);
+      const bitsF=((d<<10)|rem)^0x5412; const g=i=>((bitsF>>>i)&1)!==0;
+      for(let i=0;i<=5;i++) setF(8,i,g(i)); setF(8,7,g(6)); setF(8,8,g(7)); setF(7,8,g(8)); for(let i=9;i<15;i++) setF(14-i,8,g(i));
+      for(let i=0;i<8;i++) setF(size-1-i,8,g(i)); for(let i=8;i<15;i++) setF(8,size-15+i,g(i)); setF(8,size-8,true);
+    };
+    drawFormat(0);
+    if(ver>=7){ let rem=ver; for(let i=0;i<12;i++) rem=(rem<<1)^((rem>>>11)*0x1F25); const vb=(ver<<12)|rem; for(let i=0;i<18;i++){ const bit=((vb>>>i)&1)!==0, a=size-11+i%3, b=Math.floor(i/3); setF(a,b,bit); setF(b,a,bit); } }
+    // placement des données
+    let bi=0; for(let right=size-1;right>=1;right-=2){ if(right===6) right=5; for(let vert=0;vert<size;vert++) for(let j=0;j<2;j++){ const x=right-j, up=((right+1)&2)===0, y=up?size-1-vert:vert; if(!fn[y][x]&&bi<all.length*8){ mod[y][x]=((all[bi>>>3]>>>(7-(bi&7)))&1)!==0; bi++; } } }
+    // masque
+    const apply=(m)=>{ for(let y=0;y<size;y++) for(let x=0;x<size;x++){ if(fn[y][x]) continue; let inv; switch(m){ case 0:inv=(x+y)%2===0;break; case 1:inv=y%2===0;break; case 2:inv=x%3===0;break; case 3:inv=(x+y)%3===0;break; case 4:inv=(Math.floor(x/3)+Math.floor(y/2))%2===0;break; case 5:inv=x*y%2+x*y%3===0;break; case 6:inv=(x*y%2+x*y%3)%2===0;break; default:inv=((x+y)%2+x*y%3)%2===0; } if(inv) mod[y][x]=!mod[y][x]; } };
+    const penalty=()=>{ let p=0; const lines=(get)=>{ for(let a=0;a<size;a++){ let run=1; for(let b=1;b<size;b++){ if(get(a,b)===get(a,b-1)) { run++; if(run===5) p+=3; else if(run>5) p++; } else run=1; } } };
+      lines((a,b)=>mod[a][b]); lines((a,b)=>mod[b][a]);
+      const P1=[1,0,1,1,1,0,1], finderLike=(get)=>{ for(let a=0;a<size;a++) for(let b=-4;b<=size-7+4-1;b++){ let ok=true; for(let i=0;i<7&&ok;i++){ const v=(b+i>=0&&b+i<size)?(get(a,b+i)?1:0):0; if(v!==P1[i]) ok=false; } if(!ok) continue; let l=true,r=true; for(let i=1;i<=4;i++){ const x=b-i, y=b+6+i; if(x>=0&&x<size&&get(a,x)) l=false; if(y>=0&&y<size&&get(a,y)) r=false; } if(l||r) p+=40; } };
+      finderLike((a,b)=>mod[a][b]); finderLike((a,b)=>mod[b][a]);
+      for(let y=0;y<size-1;y++) for(let x=0;x<size-1;x++){ const c=mod[y][x]; if(c===mod[y][x+1]&&c===mod[y+1][x]&&c===mod[y+1][x+1]) p+=3; }
+      let dark=0; mod.forEach(r=>r.forEach(v=>{ if(v) dark++; })); p+=Math.floor(Math.abs(dark*20-size*size*10)/(size*size))*10; return p; };
+    let best=0,bestP=Infinity; for(let m=0;m<8;m++){ apply(m); drawFormat(m); const p=penalty(); if(p<bestP){ bestP=p; best=m; } apply(m); }
+    apply(best); drawFormat(best);
+    return {size,version:ver,modules:mod};
+  }
+  function svg(text,opt){ opt=opt||{}; const q=encode(text), b=opt.border==null?2:opt.border, n=q.size+b*2; let d=''; q.modules.forEach((row,y)=>row.forEach((v,x)=>{ if(v) d+='M'+(x+b)+','+(y+b)+'h1v1h-1z'; }));
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+n+' '+n+'" width="'+(opt.px||84)+'" height="'+(opt.px||84)+'" shape-rendering="crispEdges"><rect width="'+n+'" height="'+n+'" fill="#fff"/><path d="'+d+'" fill="#000"/></svg>'; }
+  return {encode,svg};
+})();
+
+const SXHASH = (function(){
+  const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  function sha256(bytes){
+    const H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+    const l=bytes.length, bitLen=l*8; const m=bytes.slice(); m.push(0x80); while(m.length%64!==56) m.push(0);
+    const hi=Math.floor(bitLen/0x100000000), lo=bitLen>>>0; for(let i=3;i>=0;i--) m.push((hi>>>(i*8))&255); for(let i=3;i>=0;i--) m.push((lo>>>(i*8))&255);
+    const rotr=(x,n)=>(x>>>n)|(x<<(32-n));
+    for(let off=0;off<m.length;off+=64){
+      const w=new Array(64); for(let i=0;i<16;i++) w[i]=(m[off+i*4]<<24)|(m[off+i*4+1]<<16)|(m[off+i*4+2]<<8)|m[off+i*4+3];
+      for(let i=16;i<64;i++){ const s0=rotr(w[i-15],7)^rotr(w[i-15],18)^(w[i-15]>>>3), s1=rotr(w[i-2],17)^rotr(w[i-2],19)^(w[i-2]>>>10); w[i]=(w[i-16]+s0+w[i-7]+s1)|0; }
+      let [a,b,c,d,e,f,g,h]=H;
+      for(let i=0;i<64;i++){ const S1=rotr(e,6)^rotr(e,11)^rotr(e,25), ch=(e&f)^(~e&g), t1=(h+S1+ch+K[i]+w[i])|0, S0=rotr(a,2)^rotr(a,13)^rotr(a,22), mj=(a&b)^(a&c)^(b&c), t2=(S0+mj)|0; h=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+t2)|0; }
+      H[0]=(H[0]+a)|0;H[1]=(H[1]+b)|0;H[2]=(H[2]+c)|0;H[3]=(H[3]+d)|0;H[4]=(H[4]+e)|0;H[5]=(H[5]+f)|0;H[6]=(H[6]+g)|0;H[7]=(H[7]+h)|0;
+    }
+    const out=[]; H.forEach(x=>{ for(let i=3;i>=0;i--) out.push((x>>>(i*8))&255); }); return out;
+  }
+  const u8=s=>Array.from(new TextEncoder().encode(s));
+  const hex=a=>a.map(b=>b.toString(16).padStart(2,'0')).join('');
+  function hmac(key,msg){ let k=u8(key); if(k.length>64) k=sha256(k); while(k.length<64) k.push(0); const ip=k.map(b=>b^0x36), op=k.map(b=>b^0x5c); return sha256(op.concat(sha256(ip.concat(u8(msg))))); }
+  return {sha256hex:s=>hex(sha256(u8(s))), hmachex:(k,m)=>hex(hmac(k,m))};
+})();
+
+function _b64u(str){ const b=new TextEncoder().encode(str); let s=''; b.forEach(x=>s+=String.fromCharCode(x)); return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+function _unb64u(t){ try{ t=t.replace(/-/g,'+').replace(/_/g,'/'); while(t.length%4) t+='='; const bin=atob(t); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); return new TextDecoder().decode(arr); }catch(e){ return null; } }
+function docSecret(){
+  if(!CONFIG.docSecret){
+    const a=new Uint8Array(16); (window.crypto||{getRandomValues:x=>x.forEach((_,i)=>x[i]=Math.floor(Math.random()*256))}).getRandomValues(a);
+    CONFIG.docSecret=[...a].map(b=>b.toString(16).padStart(2,'0')).join('');
+    try{ persistConfig(); }catch(e){}
+  }
+  return CONFIG.docSecret;
+}
+const DOC_TYPE_LBL = {devis:'Devis',contrat:'Contrat de licence',bon_commande:'Bon de commande',rapport:'Rapport de direction',convention_apporteur:'Convention apporteur'};
+function _docTypeLabel(t){ return (typeof DOC_TYPES!=='undefined' && DOC_TYPES[t] && DOC_TYPES[t].label) || DOC_TYPE_LBL[t] || t || 'Document'; }
+function _docIso(d){
+  if(!d) return new Date().toISOString().slice(0,10);
+  if(/^\d{4}-\d{2}-\d{2}/.test(d)) return String(d).slice(0,10);
+  const m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(d); if(m) return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  const dt=new Date(d); return isNaN(dt)?new Date().toISOString().slice(0,10):dt.toISOString().slice(0,10);
+}
+function docSignInfo(meta){
+  const data={t:meta.type||'doc', r:String(meta.ref||'SANS-REF').trim().slice(0,40), c:String(meta.client||'').trim().slice(0,60), m:Math.round(meta.montant||0), d:_docIso(meta.date)};
+  const p=_b64u(JSON.stringify(data));
+  const sig=SXHASH.hmachex(docSecret(),p).slice(0,12);
+  const code='AUTH-'+sig.slice(0,4).toUpperCase()+'-'+sig.slice(4,8).toUpperCase()+'-'+sig.slice(8,12).toUpperCase();
+  const base=(CONFIG.docVerifyUrl||'').trim() || (/^https?:/.test(location.protocol)?location.origin+location.pathname:'');
+  const url=(base+(base.includes('?')?'&':'?')+'v='+p+'.'+sig);
+  return {data,p,sig,code,url};
+}
+function docRegistryLoad(){ try{ return JSON.parse(localStorage.getItem('sanix_crm_doc_registry')||'[]'); }catch(e){ return []; } }
+function docRegister(meta,info){
+  try{
+    const reg=docRegistryLoad(); const i=reg.findIndex(x=>x.code===info.code);
+    const rec={code:info.code,type:info.data.t,ref:info.data.r,client:info.data.c,montant:info.data.m,date:info.data.d,at:new Date().toISOString(),by:(typeof currentUser!=='undefined'&&currentUser)?(currentUser.nom||currentUser.email||''):''};
+    if(i<0) reg.push(rec); else reg[i].lastPrint=rec.at;
+    localStorage.setItem('sanix_crm_doc_registry',JSON.stringify(reg.slice(-3000)));
+  }catch(e){}
+}
+// Bloc « Document authentifié » (QR + code) à placer à la fin du document ; register=true à l'impression
+function docSecurityFooter(meta,register){
+  if(CONFIG.docQr===false) return '';
+  const info=docSignInfo(meta); if(register) docRegister(meta,info);
+  const d=info.data, dt=new Date(d.d+'T12:00:00').toLocaleDateString('fr-FR');
+  return `<div style="margin-top:30px;padding-top:12px;border-top:2px solid #1E3A5F;display:flex;gap:16px;align-items:center;break-inside:avoid;page-break-inside:avoid;font-family:Arial,Helvetica,sans-serif;color:#1e293b;text-align:left;white-space:normal">
+    <div style="flex:none;border:1px solid #cbd5e1;padding:3px;background:#fff;line-height:0">${SXQR.svg(info.url,{px:108,border:1})}</div>
+    <div style="font-size:10.5px;line-height:1.6">
+      <div style="font-weight:800;font-size:12px;color:#1E3A5F">🔐 DOCUMENT AUTHENTIFIÉ — ${_dEsc((CONFIG.raisonSociale||CONFIG.appName||'').toUpperCase())}</div>
+      <div>Code d'authenticité : <b style="font-family:monospace;font-size:12.5px;letter-spacing:1px">${info.code}</b></div>
+      <div>${_dEsc(_docTypeLabel(d.t))} n° ${_dEsc(d.r)} · émis le ${dt}${d.m?' · Montant : '+d.m.toLocaleString('fr-FR')+' FCFA':''}</div>
+      <div style="color:#64748b">Scannez le QR code pour contrôler l'authenticité. Tout ajout ou modification du contenu, des montants ou de la date rend ce document invalide.</div>
+    </div>
+  </div>`;
+}
+function docWithSecurity(html,meta,register){ return html + docSecurityFooter(meta||{},!!register); }
+
+// Vérification : accepte l'adresse du QR, « données.signature » ou un code AUTH-XXXX-XXXX-XXXX
+function docVerify(input){
+  const s=String(input||'').trim();
+  const reg=docRegistryLoad();
+  let m=/[?&]v=([A-Za-z0-9_\-]+)\.([0-9a-fA-F]{12})/.exec(s) || /^([A-Za-z0-9_\-]{8,})\.([0-9a-fA-F]{12})$/.exec(s);
+  if(m){
+    const p=m[1], sig=m[2].toLowerCase(); let data=null;
+    try{ data=JSON.parse(_unb64u(p)||'null'); }catch(e){}
+    if(!data||!data.r) return {status:'invalid',msg:'QR code illisible ou incomplet.'};
+    const code='AUTH-'+sig.slice(0,4).toUpperCase()+'-'+sig.slice(4,8).toUpperCase()+'-'+sig.slice(8,12).toUpperCase();
+    const rec=reg.find(x=>x.code===code)||null;
+    if(CONFIG.docSecret){
+      const exp=SXHASH.hmachex(CONFIG.docSecret,p).slice(0,12);
+      return exp===sig ? {status:'ok',data,code,rec,msg:'Signature valide : ce document a bien été émis avec la clé de l\'entreprise et son contenu n\'a pas été modifié.'}
+                       : {status:'ko',data,code,rec,msg:'Signature INVALIDE : document falsifié, modifié, ou émis avec une autre clé.'};
+    }
+    return {status:'unknown',data,code,rec,msg:'Cet appareil ne possède pas la clé de signature de l\'entreprise : la signature ne peut pas être confirmée ici. Comparez les informations ci-dessous avec le document papier ; la confirmation complète se fait sur un appareil de l\'entreprise.'};
+  }
+  const c=/AUTH-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}/.exec(s);
+  if(c){
+    const code=c[0].toUpperCase(); const rec=reg.find(x=>x.code===code);
+    return rec ? {status:'ok',data:{t:rec.type,r:rec.ref,c:rec.client,m:rec.montant,d:rec.date},code,rec,msg:'Code retrouvé dans le registre des documents émis par cet appareil.'}
+               : {status:'unknown',code,msg:'Ce code n\'est pas dans le registre de cet appareil (registre propre à chaque poste). Utilisez plutôt le QR code.'};
+  }
+  return {status:'invalid',msg:'Aucun QR code ni code d\'authenticité reconnu.'};
+}
+function docVerifyHtml(res){
+  const col={ok:['#059669','#ECFDF5','✅ DOCUMENT AUTHENTIQUE'],ko:['#DC2626','#FEF2F2','❌ DOCUMENT NON CONFORME'],unknown:['#D97706','#FFFBEB','⚠️ SIGNATURE À CONFIRMER'],invalid:['#64748B','#F1F5F9','QR code non reconnu']}[res.status];
+  const d=res.data;
+  const row=(k,v)=>'<tr><td style="padding:6px 0;color:#64748b;width:38%">'+k+'</td><td style="padding:6px 0;font-weight:600">'+_dEsc(v)+'</td></tr>';
+  return '<div style="border:2px solid '+col[0]+';background:'+col[1]+';border-radius:12px;padding:16px;text-align:center;margin-bottom:14px"><div style="font-size:18px;font-weight:800;color:'+col[0]+'">'+col[2]+'</div><div style="font-size:12px;color:#334155;margin-top:6px;line-height:1.5">'+_dEsc(res.msg)+'</div></div>'
+   +(d?'<table style="width:100%;font-size:13px;border-collapse:collapse">'+row('Type',_docTypeLabel(d.t))+row('Référence',d.r)+row('Client / bénéficiaire',d.c||'—')+row('Montant',d.m?d.m.toLocaleString('fr-FR')+' FCFA':'—')+row('Date d\'émission',new Date(d.d+'T12:00:00').toLocaleDateString('fr-FR'))+row('Code',res.code||'')+(res.rec?row('Registre',"émis le "+new Date(res.rec.at).toLocaleString('fr-FR')+(res.rec.by?' par '+res.rec.by:'')):'')+'</table>':'');
+}
+function docVerifyOpen(prefill){
+  let m=document.getElementById('modal-docverify');
+  if(!m){ m=document.createElement('div'); m.id='modal-docverify'; m.className='modal-overlay hidden'; m.style.zIndex=100000;
+    m.innerHTML='<div class="modal-box" style="max-width:520px;max-height:92vh;overflow-y:auto"><div class="modal-close" onclick="docVerifyClose()">&#10005;</div><div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:4px">🔎 Vérifier un document</div><div style="font-size:12px;color:var(--muted);margin-bottom:12px">Scannez le QR code du document avec l\'appareil photo (il ouvre cette page), ou collez ci-dessous l\'adresse du QR ou le code d\'authenticité.</div><textarea class="form-input" id="dv-input" rows="2" placeholder="https://…/?v=…  ou  AUTH-XXXX-XXXX-XXXX" oninput="docVerifyRun()"></textarea><div id="dv-result" style="margin-top:14px"></div></div>';
+    document.body.appendChild(m); }
+  const i=document.getElementById('dv-input'); i.value=prefill||''; docVerifyRun(); m.classList.remove('hidden');
+}
+function docVerifyRun(){
+  const v=document.getElementById('dv-input').value.trim(); const box=document.getElementById('dv-result');
+  box.innerHTML = v ? docVerifyHtml(docVerify(v)) : '';
+}
+function docVerifyClose(){
+  document.getElementById('modal-docverify').classList.add('hidden');
+  try{ if(/[?&]v=/.test(location.search)) history.replaceState(null,'',location.pathname); }catch(e){}
+}
+// Ouverture par le QR code : ?v=données.signature — s'affiche même avant la connexion
+window.addEventListener('DOMContentLoaded',()=>{
+  const q=location.search; if(/[?&]v=/.test(q)) docVerifyOpen(location.href);
+});
+
 const DOC_HEADER = ''; // remplacé par docHeader() à l'exécution
 
 function genConventionHtml(m) {
@@ -13189,7 +13461,8 @@ function genPresenceHtml(m) {
 }
 
 function printDoc() {
-  const html = _docCurrentHtml || document.getElementById('docpreview-content').innerHTML;
+  // HTML d'origine du document + bloc d'authenticité (QR) enregistré au registre à l'impression
+  const html = docWithSecurity(_docCurrentHtml || document.getElementById('docpreview-content').innerHTML, _docCurrentMeta||{}, true);
   const w = window.open('','_blank','width=900,height=1000');
   if(!w) return;
   w.document.write(`<!DOCTYPE html><html><head><title>${_docCurrentMeta?_docCurrentMeta.ref:'Document'}</title>
@@ -13219,7 +13492,7 @@ function viewSavedDoc(id) {
   _docCurrentHtml = d.html;
   _docCurrentMeta = d;
   document.getElementById('docpreview-title').textContent = DOC_TYPES[d.type].ico+' '+DOC_TYPES[d.type].label+' — '+d.client;
-  document.getElementById('docpreview-content').innerHTML = d.html;
+  document.getElementById('docpreview-content').innerHTML = docWithSecurity(d.html, d, false);
   document.getElementById('modal-docpreview').classList.remove('hidden');
 }
 
@@ -13455,6 +13728,7 @@ function genConventionApporteur() {
     paiement:gv('app-paiement'), dateConv:gv('app-date-conv'), logiciels:gv('app-logiciels')
   };
   if(!a.nom){ showToast('❌ Renseignez au moins le nom'); return; }
+  window._convApp = a;
   document.getElementById('convention-app-content').textContent = buildConventionText(a);
   document.getElementById('modal-convention-app').classList.remove('hidden');
 }
@@ -13462,17 +13736,20 @@ function genConventionApporteur() {
 function viewConventionApporteur(id) {
   const a = APPORTEURS.find(x=>x.id===id);
   if(!a) return;
+  window._convApp = a;
   document.getElementById('convention-app-content').textContent = buildConventionText(a);
   document.getElementById('modal-convention-app').classList.remove('hidden');
 }
 
 function printConventionApp() {
   const content = document.getElementById('convention-app-content').textContent;
+  const a = window._convApp || {};
   const w = window.open('','_blank','width=800,height=900');
   if(!w) return;
-  w.document.write(`<!DOCTYPE html><html><head><title>Convention Apporteur</title>
-    <style>body{font-family:Georgia,serif;padding:40px;line-height:1.8;font-size:13px;white-space:pre-wrap}</style>
-    </head><body>${content.replace(/</g,'&lt;')}</body></html>`);
+  const meta = {type:'convention_apporteur', ref:'CONV-APP-'+(a.id||String(a.nom||'').replace(/\W+/g,'').toUpperCase().slice(0,12)||'000'), client:a.nom||'', montant:0, date:a.dateConv||new Date().toISOString().slice(0,10)};
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Convention Apporteur</title>
+    <style>@page{margin:1.6cm}body{font-family:Georgia,serif;padding:20px 28px;line-height:1.8;font-size:13px;max-width:800px;margin:0 auto}.txt{white-space:pre-wrap}</style>
+    </head><body>${docHeader()}<div class="txt">${content.replace(/</g,'&lt;')}</div>${docSecurityFooter(meta,true)}</body></html>`);
   w.document.close();
   setTimeout(()=>w.print(),300);
 }
