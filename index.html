@@ -1263,8 +1263,10 @@ Seriez-vous disponible pour une démonstration {rdv} ?
           <div style="font-weight:700;font-size:14px;margin-bottom:6px">🌐 Générateur de landing page</div>
           <p class="page-sub" style="margin:0 0 12px">Page de capture mono-fichier — le formulaire ouvre WhatsApp vers ton numéro (capture sans serveur)</p>
           <div class="form-group"><label class="form-label">Logiciel à promouvoir</label><select class="form-input" id="mkt-lp-logiciel"></select></div>
-          <div class="form-group"><label class="form-label">Accroche (titre)</label><input class="form-input" id="mkt-lp-titre" placeholder="Gérez votre activité en toute simplicité"></div>
-          <button class="btn btn-primary btn-sm" onclick="mktGenLanding()">⬇️ Générer la landing page</button>
+          <div class="form-group"><label class="form-label">Accroche (titre) — laissez vide pour utiliser l'accroche optimisée du logiciel</label><input class="form-input" id="mkt-lp-titre" placeholder="Ex. Chiffrez vos devis alu & inox en quelques minutes"></div>
+          <div class="form-group"><label class="form-label">🎁 Offre / urgence (affichée en haut et près du prix, avec compte à rebours « fin du mois ») — vide = aucune offre</label><input class="form-input" id="mkt-lp-offre" value="🎁 Offre du mois : installation et formation de votre équipe offertes" placeholder="Ex. -10 % sur la licence jusqu'à fin du mois"></div>
+          <div class="form-group"><label class="form-label">Numéro WhatsApp qui reçoit les demandes</label><input class="form-input" id="mkt-lp-tel" placeholder="07 XX XX XX XX (vide = numéro des paramètres de relance)"></div>
+          <div class="flex gap-2" style="flex-wrap:wrap"><button class="btn btn-outline btn-sm" onclick="mktGenLanding(true)">👁 Aperçu</button><button class="btn btn-primary btn-sm" onclick="mktGenLanding()">⬇️ Générer la landing page</button></div>
           <div id="mkt-lp-info" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
         </div>
       </div>
@@ -11362,60 +11364,180 @@ function mktRenderFunnel(){
   }).join('');
 }
 
-// Générateur de landing page (capture via WhatsApp, sans serveur)
-function mktGenLanding(){
-  const logNom=document.getElementById('mkt-lp-logiciel').value;
-  const log=LOGICIELS.find(l=>l.nom===logNom);
-  const titre=document.getElementById('mkt-lp-titre').value.trim()||(logNom+' — la solution de gestion adaptée à votre entreprise');
-  const r=(typeof relanceCfg==='function')?relanceCfg():{tel1:'',gerant:'Cyrille KESIE'};
-  const waNum=(typeof relancePhoneIntl==='function' && r.tel1)?relancePhoneIntl(r.tel1):'2250779181075';
-  const mods=(log?.modules||'').split(',').map(s=>s.trim()).filter(Boolean).slice(0,6);
-  const prix=log?.prixNum?log.prixNum.toLocaleString('fr-FR')+' FCFA':'';
-  const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${titre} — SANIX Africa</title><style>
-*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,-apple-system,'Segoe UI',sans-serif}
-body{background:#0F172A;color:#fff;line-height:1.6}
-.hero{background:linear-gradient(135deg,#2563EB,#1E40AF);padding:64px 20px;text-align:center}
-.hero h1{font-size:34px;font-weight:800;max-width:760px;margin:0 auto 14px}
-.hero p{font-size:17px;opacity:.9;max-width:620px;margin:0 auto 26px}
-.badge{display:inline-block;background:rgba(255,255,255,.15);padding:6px 16px;border-radius:20px;font-size:13px;margin-bottom:18px}
-.wrap{max-width:900px;margin:0 auto;padding:40px 20px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin:30px 0}
-.mod{background:#1E293B;border:1px solid #334155;border-radius:14px;padding:18px}
-.mod b{color:#60A5FA}
-.cta{background:#1E293B;border:1px solid #334155;border-radius:18px;padding:28px;max-width:460px;margin:30px auto;text-align:center}
-.cta input{width:100%;padding:13px;margin:7px 0;border-radius:10px;border:1px solid #475569;background:#0F172A;color:#fff;font-size:15px}
-.cta button{width:100%;padding:14px;margin-top:10px;border:0;border-radius:10px;background:#25D366;color:#fff;font-size:16px;font-weight:700;cursor:pointer}
-.price{font-size:22px;font-weight:800;color:#34D399;margin:8px 0}
-footer{text-align:center;padding:24px;color:#64748B;font-size:13px}
+// ═══════════════════════════════════════════════════════════════
+//  GÉNÉRATEUR DE LANDING PAGE — page de conversion mono-fichier (capture via WhatsApp, sans serveur)
+// ═══════════════════════════════════════════════════════════════
+const LP_COPY = {
+  log_aluexpert:{ hook:'Chiffrez vos devis alu & inox en quelques minutes — et sachez enfin ce que chaque chantier vous rapporte.',
+    sub:'Sanix AluExpert ERP : devis, fabrication, stock, pose et facturation dans un seul outil conçu pour les ateliers de menuiserie aluminium et inox.',
+    pains:['Vos devis prennent des heures et les prix « à l\'œil » rognent votre marge','Vous ne savez pas si un chantier a vraiment été rentable avant de l\'avoir terminé','Profilés, vitrages, quincaillerie : le stock ne tombe jamais juste','Les ordres de fabrication et les mesures se perdent entre papier et WhatsApp'],
+    gains:[['🧮','Devis & proformas rapides','Profilés, vitrage, quincaillerie et pose chiffrés automatiquement, prêts à envoyer au client'],['📈','Coût de revient & marge','Matière, main-d\'œuvre et pose : vous voyez votre marge avant de signer'],['🏭','Fabrication & chantiers','Ordres de fabrication, fiches d\'exécution, planning et suivi journalier'],['📦','Stock & achats','Valorisation du stock, alertes de réapprovisionnement, bons de commande fournisseurs'],['🧾','Facturation conforme FNE','Factures, acomptes et soldes suivis, certification FNE'],['📴','Fonctionne sans connexion','Continuez à travailler à l\'atelier même quand le réseau saute']],
+    roi:'Une seule erreur de métrage ou une marge mal calculée sur un chantier coûte souvent plus cher que le logiciel.' },
+  log_avinest:{ hook:'Pilotez vos bandes avicoles : mortalité, indice de consommation et marge, lot par lot.',
+    sub:'AviNest Pro : l\'ERP des éleveurs de volaille — lots, aliments, performances (GMQ / IC), ventes et comptabilité.',
+    pains:['Vous découvrez les pertes quand la bande est déjà terminée','Le coût de l\'aliment et des intrants n\'est pas rapporté à chaque lot','Pas de vision claire de la rentabilité par bande','Les cahiers papier se perdent et se contredisent'],
+    gains:[['🐔','Lots & bandes','Effectifs, mortalité, rebuts et suivi quotidien'],['🥚','Couvoir / reproduction','Cycles et résultats de reproduction'],['🌾','Alimentation & intrants','Coût réel de chaque lot'],['📊','Performance GMQ / IC','Indicateurs clés et comparaison entre bandes'],['🧾','Ventes & facturation','Facturation, TVA 18 %, timbre fiscal'],['📴','Hors connexion','Saisie à la ferme, synchronisation ensuite']],
+    roi:'Repérer une dérive de mortalité ou d\'indice de consommation une semaine plus tôt peut sauver une bande entière.' },
+  log_autogarage:{ hook:'Remplissez votre garage et ne perdez plus un euro de pièces ni une heure de main-d\'œuvre.',
+    sub:'AutoGarage Pro : fiches véhicules, ordres de réparation, maintenance préventive, stock de pièces et facturation.',
+    pains:['Des réparations faites… mais pas toujours facturées','Pièces sorties du stock sans trace','Clients qui oublient leurs entretiens, donc des ateliers vides','Aucun historique fiable par véhicule'],
+    gains:[['🚗','Fiches véhicules','Historique complet de chaque véhicule et client'],['🔧','Ordres de réparation','Devis, pièces, main-d\'œuvre, de l\'ouverture à la facture'],['📅','Maintenance préventive','Rappels d\'entretien : des clients qui reviennent'],['📦','Stock de pièces','Entrées, sorties et alertes de rupture'],['🧾','Facturation','Factures claires, acomptes, soldes suivis'],['📈','Tableau de bord','Chiffre d\'affaires et rentabilité de l\'atelier']],
+    roi:'Une seule pièce non facturée par semaine représente déjà plusieurs mois de licence.' },
+  log_immo:{ hook:'Gardez la main sur vos programmes, vos ventes et vos encaissements.',
+    sub:'ImmoSuite ERP : programmes, lots, souscripteurs (diaspora incluse), échéanciers de paiement, DQE et comptabilité SYSCOHADA.',
+    pains:['Qui a payé quoi, et quand ? Les échéances se perdent','Suivi des souscripteurs de la diaspora compliqué','Le DQE et la comptabilité vivent dans des fichiers séparés','Pas de vision claire des lots disponibles et vendus'],
+    gains:[['🏢','Programmes & lots','État de chaque lot, vendu ou disponible'],['👥','Souscripteurs','Diaspora incluse, dossier unique par client'],['💳','Échéanciers de paiement','Relances et encaissements suivis'],['📐','DQE / étude de prix','Estimations chiffrées par programme'],['📚','Comptabilité SYSCOHADA','Journaux, balance, export FEC'],['🌐','Portail client','Vos souscripteurs suivent leur dossier en ligne']],
+    roi:'Un encaissement retrouvé à temps vaut plus que le prix du logiciel.' },
+  log_psf:{ hook:'Distribuez vos produits phytosanitaires avec un stock juste et une compta maîtrisée.',
+    sub:'Phyto Strike Force : ERP du distributeur de produits phytosanitaires — stock, clients, TVA et SYSCOHADA.',
+    pains:['Lots et péremptions mal suivis','Créances clients difficiles à relancer','Déclarations de TVA longues et risquées','Marges inconnues par produit'],
+    gains:[['🧪','Stock par lot','Traçabilité et alertes de péremption'],['👨‍🌾','Clients & créances','Soldes, relances, historique'],['🧾','TVA & déclarations','Liquidation et déclarations facilitées'],['📊','SIG SYSCOHADA','Soldes intermédiaires de gestion automatiques'],['🛒','Ventes & achats','Facturation et réceptions fournisseurs'],['📈','Marges par produit','Voyez ce qui rapporte vraiment']],
+    roi:'Connaître la marge réelle par produit change la façon d\'acheter et de vendre.' },
+  log_distripro:{ hook:'Vendez plus, perdez moins : stock, ventes et créances de votre distribution sous contrôle.',
+    sub:'DistriPro ERP : distribution, stock multi-dépôts, ventes, créances et comptabilité.',
+    pains:['Ruptures et surstocks qui immobilisent votre trésorerie','Créances clients oubliées','Marges inconnues par article','Inventaires interminables'],
+    gains:[['📦','Stock multi-dépôts','Niveaux, alertes et valorisation'],['🛒','Ventes & facturation','Comptoir, bons de livraison, factures'],['💰','Créances clients','Relances et suivi des paiements'],['📊','Marges & rapports','Rentabilité par article et par client'],['🚚','Achats','Commandes et réceptions fournisseurs'],['📚','Comptabilité','SYSCOHADA intégrée']],
+    roi:'Réduire les ruptures et les créances oubliées pèse directement sur votre chiffre d\'affaires.' }
+};
+const LP_COPY_CAT = {
+  'Immobilier':'log_immo','Aviculture':'log_avinest','Industrie':'log_aluexpert','Distribution':'log_distripro'
+};
+function lpCopyFor(log){
+  if(!log) return null;
+  if(LP_COPY[log.id]) return LP_COPY[log.id];
+  const mods=(log.modules||'').split(',').map(x=>x.trim()).filter(Boolean);
+  const ico=['📋','📦','🧾','📊','👥','⚙️'];
+  return { hook:log.nom+' : reprenez le contrôle de votre activité et gagnez du temps dès la première semaine.',
+    sub:(log.desc||'').split('. ')[0].replace(/\.$/,'')+'.',
+    pains:['Des données éparpillées entre papier, Excel et WhatsApp','Des erreurs de saisie et des oublis qui coûtent cher','Aucune vision claire des chiffres en temps réel','Beaucoup de temps perdu en tâches répétitives'],
+    gains:mods.slice(0,6).map((m,i)=>[ico[i%ico.length],m,'Intégré dans '+log.nom]),
+    roi:'Moins d\'erreurs, plus de temps pour développer votre activité.' };
+}
+function lpBuildHtml(o){
+  const log=o.log, cp=lpCopyFor(log)||{hook:o.logNom,sub:'',pains:[],gains:[],roi:''};
+  const E=_dEsc, num=(v)=>Number(v||0).toLocaleString('fr-FR');
+  const acc=(log&&log.color)||'#2563EB';
+  const titre=o.titre||cp.hook;
+  const prix=log&&log.prixNum?log.prixNum:0, mens=log&&log.prixMensuel?log.prixMensuel:0;
+  const nClients=CLIENTS.filter(c=>c.logiciel===o.logNom&&c.statut==='client').length;
+  const slug='LP-'+String(o.logNom||'SANIX').toUpperCase().replace(/[^A-Z0-9]+/g,'').slice(0,10);
+  const tel=o.tel?('+225 '+o.tel.replace(/^225/,'').replace(/(\d{2})(?=\d)/g,'$1 ')):'';
+  const waMsg='Bonjour, je souhaite une démo gratuite de '+o.logNom+'. (Réf. '+slug+')';
+  const waLinkDirect='https://wa.me/'+o.wa+'?text='+encodeURIComponent(waMsg);
+  const demoBtn=(log&&log.demo&&log.demo!=='#')?`<a class="btn ghost" href="${E(log.demo)}" target="_blank" rel="noopener">▶ Voir le logiciel en ligne</a>`:'';
+  const gains=cp.gains.map(g=>`<div class="card"><div class="ico">${g[0]}</div><h3>${E(g[1])}</h3><p>${E(g[2])}</p></div>`).join('');
+  const pains=cp.pains.map(x=>`<li>${E(x)}</li>`).join('');
+  const faq=[
+    ['Une démonstration, ça m\'engage à quelque chose ?','Non. La démo est gratuite et sans engagement : nous vous montrons le logiciel sur votre cas concret, en ligne ou chez vous (environ 20 minutes).'],
+    ['Faut-il être à l\'aise avec l\'informatique ?','Non. Le logiciel est pensé pour des utilisateurs non techniciens et nous vous accompagnons à la prise en main.'],
+    ['Combien ça coûte vraiment ?',prix?`La licence est définitive : ${num(prix)} FCFA, à régler en deux temps (avance à la commande, solde à la livraison).${mens?` Une formule mensuelle à ${num(mens)} FCFA/mois est aussi disponible.`:''}`:'Nous vous remettons un devis clair après la démo, sans frais cachés.'],
+    ['Et après l\'achat ?','Support et mises à jour inclus'+(log&&log.support?' ('+(log.support==='1an'?'1 an':log.support)+')':'')+'. Vous pouvez nous joindre directement sur WhatsApp.']
+  ].map(q=>`<details><summary>${E(q[0])}</summary><p>${E(q[1])}</p></details>`).join('');
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${E(o.logNom)} — démo gratuite · SANIX Africa</title>
+<meta name="description" content="${E(cp.sub)}"><meta property="og:title" content="${E(titre)}"><meta property="og:description" content="${E(cp.sub)}"><meta name="theme-color" content="#0B1220">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
+body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#0B1220;color:#E5E7EB;line-height:1.6;padding-bottom:78px}
+a{color:inherit}.wrap{max-width:1000px;margin:0 auto;padding:0 18px}
+.top{position:sticky;top:0;z-index:50;background:rgba(11,18,32,.92);backdrop-filter:blur(8px);border-bottom:1px solid #1F2937}
+.top .wrap{display:flex;align-items:center;justify-content:space-between;height:54px;gap:10px}
+.brand{font-weight:800;font-size:15px;letter-spacing:.3px}.brand span{color:${acc}}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 22px;border-radius:12px;font-weight:800;font-size:16px;text-decoration:none;border:0;cursor:pointer;transition:transform .15s}
+.btn:active{transform:scale(.98)}.wa{background:#25D366;color:#06260F;box-shadow:0 8px 24px rgba(37,211,102,.35)}.ghost{background:transparent;border:2px solid #334155;color:#E5E7EB}
+.top .btn{padding:9px 14px;font-size:13px}
+.hero{padding:44px 0 34px;background:radial-gradient(1200px 500px at 70% -10%,${acc}55,transparent 60%),#0B1220}
+.chip{display:inline-block;background:#FBBF2422;border:1px solid #FBBF2466;color:#FCD34D;padding:6px 14px;border-radius:999px;font-size:13px;font-weight:700;margin-bottom:16px}
+h1{font-size:clamp(28px,6vw,46px);line-height:1.12;font-weight:900;color:#fff;margin-bottom:14px;max-width:780px}
+.sub{font-size:clamp(16px,3.4vw,19px);color:#CBD5E1;max-width:660px;margin-bottom:22px}
+.cta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}.proof{font-size:13.5px;color:#94A3B8;display:flex;gap:16px;flex-wrap:wrap}.proof b{color:#E5E7EB}
+section{padding:40px 0}h2{font-size:clamp(22px,4.6vw,32px);font-weight:900;color:#fff;margin-bottom:8px}.lead{color:#94A3B8;margin-bottom:22px;max-width:640px}
+.pains{background:#111827;border-top:1px solid #1F2937;border-bottom:1px solid #1F2937}.pains ul{list-style:none;display:grid;gap:10px;max-width:700px}
+.pains li{background:#1F293799;border-left:4px solid #EF4444;padding:12px 14px;border-radius:8px}.pains li:before{content:'✗ ';color:#F87171;font-weight:800}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.card{background:#111827;border:1px solid #1F2937;border-radius:16px;padding:18px}.card .ico{font-size:26px;margin-bottom:6px}.card h3{font-size:16px;color:#fff;margin-bottom:4px}.card p{font-size:14px;color:#94A3B8}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;counter-reset:s}.step{background:#111827;border:1px solid #1F2937;border-radius:16px;padding:18px 18px 18px 64px;position:relative;counter-increment:s}
+.step:before{content:counter(s);position:absolute;left:16px;top:16px;width:36px;height:36px;border-radius:50%;background:${acc};color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center}.step b{color:#fff;display:block;margin-bottom:2px}.step span{font-size:14px;color:#94A3B8}
+.price{background:linear-gradient(135deg,${acc}33,#0B1220);border:1px solid ${acc}77;border-radius:22px;padding:28px 22px;text-align:center}
+.price .big{font-size:clamp(34px,8vw,54px);font-weight:900;color:#34D399;line-height:1.1}.price .small{color:#94A3B8;font-size:14px;margin-top:6px}.price ul{list-style:none;margin:16px auto;max-width:430px;text-align:left}.price li{padding:5px 0}.price li:before{content:'✓ ';color:#34D399;font-weight:900}
+.roi{margin:14px auto 0;max-width:560px;font-style:italic;color:#CBD5E1;font-size:15px}
+.timer{display:inline-block;background:#7F1D1D;color:#FECACA;padding:7px 14px;border-radius:10px;font-weight:800;font-size:14px;margin-bottom:14px}
+.form{background:#111827;border:1px solid #1F2937;border-radius:22px;padding:24px;max-width:480px;margin:0 auto}.form h2{font-size:22px;text-align:center}.form p.s{text-align:center;color:#94A3B8;font-size:14px;margin-bottom:12px}
+.form input{width:100%;padding:14px;margin:6px 0;border-radius:10px;border:1px solid #334155;background:#0B1220;color:#fff;font-size:16px}.form .btn{width:100%;margin-top:10px}
+details{background:#111827;border:1px solid #1F2937;border-radius:12px;padding:14px 16px;margin-bottom:10px}summary{cursor:pointer;font-weight:700;color:#fff}details p{margin-top:8px;color:#94A3B8;font-size:14.5px}
+footer{text-align:center;padding:26px 18px;color:#64748B;font-size:13px}
+.sticky{position:fixed;left:0;right:0;bottom:0;z-index:60;background:#0B1220ee;border-top:1px solid #1F2937;padding:10px 14px;display:flex;gap:10px}.sticky .btn{flex:1;padding:13px 10px;font-size:15px}
+@media(min-width:760px){.sticky{display:none}body{padding-bottom:0}}
 </style></head><body>
-<div class="hero"><div class="badge">🇨🇮 Conçu pour les entreprises ivoiriennes · SYSCOHADA</div>
-<h1>${titre}</h1><p>${(log?.desc||'').split('.')[0]}.</p></div>
-<div class="wrap">
-<div class="grid">${mods.map(m=>`<div class="mod"><b>✓</b> ${m}</div>`).join('')}</div>
-${prix?`<div style="text-align:center" class="price">À partir de ${prix}</div>`:''}
-<div class="cta"><h2 style="font-size:20px;margin-bottom:6px">Demandez une démo gratuite</h2>
-<p style="color:#94A3B8;font-size:14px">Réponse rapide sur WhatsApp</p>
-<input id="lp-nom" placeholder="Votre nom / entreprise">
-<input id="lp-tel" placeholder="Votre téléphone">
-<button onclick="lpSend()">📱 Recevoir la démo sur WhatsApp</button>
-${log?.demo&&log.demo!=='#'?`<a href="${log.demo}" target="_blank" rel="noopener" style="display:block;margin-top:10px;padding:13px;border-radius:10px;background:#2563EB;color:#fff;font-weight:700;text-decoration:none">▶ Voir la démo en ligne</a>`:''}</div>
-</div>
-<footer>SANIX Africa · ${r.gerant||''} · Abidjan, Côte d'Ivoire</footer>
+<div class="top"><div class="wrap"><div class="brand">${log&&log.icon?E(log.icon)+' ':''}${E(o.logNom)} <span>· SANIX Africa</span></div><a class="btn wa" href="${waLinkDirect}">📱 WhatsApp</a></div></div>
+
+<header class="hero"><div class="wrap">
+  ${o.offre?`<div class="chip">${E(o.offre)}</div>`:''}
+  <h1>${E(titre)}</h1>
+  <p class="sub">${E(cp.sub)}</p>
+  <div class="cta"><a class="btn wa" href="${waLinkDirect}">📱 Je veux ma démo gratuite</a>${demoBtn}</div>
+  <div class="proof"><span>✅ <b>Démo gratuite</b>, sans engagement</span>${nClients>0?`<span>🇨🇮 Déjà adopté par <b>${nClients} entreprise${nClients>1?'s':''}</b> en Côte d'Ivoire</span>`:'<span>🇨🇮 Conçu pour les entreprises ivoiriennes · SYSCOHADA</span>'}<span>⚡ Réponse rapide sur WhatsApp</span></div>
+</div></header>
+
+${pains?`<section class="pains"><div class="wrap"><h2>Vous reconnaissez-vous ?</h2><p class="lead">Ces problèmes coûtent de l'argent chaque mois. Ils se règlent.</p><ul>${pains}</ul></div></section>`:''}
+
+<section><div class="wrap"><h2>Ce que ${E(o.logNom)} change pour vous</h2><p class="lead">Tout ce qu'il faut, au même endroit.</p><div class="grid">${gains}</div></div></section>
+
+<section><div class="wrap"><h2>Comment ça se passe</h2><p class="lead">Simple, rapide, sans mauvaise surprise.</p>
+<div class="steps"><div class="step"><b>Démo de 20 minutes</b><span>Sur votre cas concret, en ligne ou chez vous. Gratuite.</span></div><div class="step"><b>Installation & prise en main</b><span>Nous configurons le logiciel et formons votre équipe.</span></div><div class="step"><b>Vous pilotez vos chiffres</b><span>Dès la première semaine, vous voyez la différence.</span></div></div></div></section>
+
+<section><div class="wrap"><div class="price">
+  <div class="timer" id="timer" style="display:none"></div>
+  <div style="font-weight:800;color:#CBD5E1">Licence définitive${prix?' · à partir de':''}</div>
+  ${prix?`<div class="big">${num(prix)} FCFA</div><div class="small">soit environ ${num(Math.round(prix/12))} FCFA par mois sur 12 mois${mens?` · ou formule mensuelle ${num(mens)} FCFA/mois`:''}</div>`:'<div class="big">Sur devis</div>'}
+  <ul><li>Installation et prise en main</li><li>Support et mises à jour${log&&log.support==='1an'?' (1 an)':''}</li><li>Paiement en 2 temps : avance puis solde</li><li>Démo gratuite avant de vous décider</li></ul>
+  ${o.offre?`<div style="color:#FCD34D;font-weight:800;margin-bottom:10px">${E(o.offre)}</div>`:''}
+  <a class="btn wa" href="${waLinkDirect}">📱 Réserver ma démo sur WhatsApp</a>
+  ${cp.roi?`<p class="roi">« ${E(cp.roi)} »</p>`:''}
+</div></div></section>
+
+<section><div class="wrap"><div class="form" id="form"><h2>Recevez votre démo</h2><p class="s">Laissez vos coordonnées, on vous répond sur WhatsApp.</p>
+<input id="lp-nom" placeholder="Votre nom / entreprise" autocomplete="organization"><input id="lp-tel" type="tel" placeholder="Votre numéro WhatsApp" autocomplete="tel"><input id="lp-act" placeholder="Votre activité (facultatif)">
+<button class="btn wa" onclick="lpSend()">📱 Je veux ma démo gratuite</button></div></div></section>
+
+<section><div class="wrap"><h2>Questions fréquentes</h2><p class="lead"></p>${faq}</div></section>
+
+<footer>SANIX Africa · ${E(o.gerant||'')} · Abidjan, Côte d'Ivoire${tel?` · 📞 ${E(tel)}`:''}</footer>
+
+<div class="sticky"><a class="btn wa" href="${waLinkDirect}">📱 Démo sur WhatsApp</a>${o.tel?`<a class="btn ghost" href="tel:+225${E(o.tel.replace(/^225/,''))}">📞 Appeler</a>`:''}</div>
 <script>
-var LP_LOG=${JSON.stringify(logNom||'')},LP_WA=${JSON.stringify(String(waNum||''))};
+var LP_LOG=${JSON.stringify(o.logNom||'')},LP_WA=${JSON.stringify(String(o.wa||''))},LP_REF=${JSON.stringify(slug)};
 function lpSend(){
-  var n=(document.getElementById('lp-nom').value||'').trim(),t=(document.getElementById('lp-tel').value||'').trim();
-  if(!n||!t){ alert('Merci de renseigner votre nom et votre téléphone.'); return; }
-  var msg='Bonjour, je suis '+n+' (tél : '+t+'). Je souhaite une démo de '+LP_LOG+'.';
+  var n=(document.getElementById('lp-nom').value||'').trim(),t=(document.getElementById('lp-tel').value||'').trim(),a=(document.getElementById('lp-act').value||'').trim();
+  if(!n||!t){ alert('Merci de renseigner votre nom et votre numéro WhatsApp.'); return; }
+  var msg='Bonjour, je suis '+n+(a?' ('+a+')':'')+', tél : '+t+'. Je souhaite une démo gratuite de '+LP_LOG+'. (Réf. '+LP_REF+')';
   window.location.href='https://wa.me/'+LP_WA+'?text='+encodeURIComponent(msg);
 }
+(function(){ var el=document.getElementById('timer'); if(!el) return;
+  function tick(){ var d=new Date(),end=new Date(d.getFullYear(),d.getMonth()+1,1)-d; var j=Math.floor(end/864e5); if(j<0) return;
+    el.style.display='inline-block'; el.textContent='⏳ Offre valable encore '+j+' jour'+(j>1?'s':'')+' — fin du mois'; }
+  ${o.offre?'tick();':''}
+})();
 <\/script></body></html>`;
-  const blob=new Blob([html],{type:'text/html'});
-  const url=URL.createObjectURL(blob); const a=document.createElement('a');
-  a.href=url; a.download='landing-'+(logNom||'sanix').toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.html';
-  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  document.getElementById('mkt-lp-info').innerHTML='✅ Landing page téléchargée. Hébergez-la (Vercel/Netlify) et diffusez le lien. Chaque lead ouvre WhatsApp vers ton numéro.';
+}
+function _lpOpts(){
+  const logNom=document.getElementById('mkt-lp-logiciel').value;
+  const log=LOGICIELS.find(l=>l.nom===logNom);
+  const r=(typeof relanceCfg==='function')?relanceCfg():{tel1:'',gerant:''};
+  const telRaw=(document.getElementById('mkt-lp-tel')||{}).value||r.tel1||'';
+  const a=waAnalyse(telRaw);
+  const wa=a.ok?a.num:'2250779181075';
+  return {logNom,log,titre:(document.getElementById('mkt-lp-titre').value||'').trim(),offre:((document.getElementById('mkt-lp-offre')||{}).value||'').trim(),
+    wa,tel:a.ok?a.num.slice(3):'',gerant:r.gerant||'',avert:a.ok?'':'⚠️ Numéro WhatsApp invalide : le numéro par défaut est utilisé.'};
+}
+function mktGenLanding(preview){
+  const o=_lpOpts(); if(!o.logNom){ showToast('❌ Choisissez un logiciel'); return; }
+  const html=lpBuildHtml(o);
+  const blob=new Blob([html],{type:'text/html'}); const url=URL.createObjectURL(blob);
+  if(preview===true){ window.open(url,'_blank'); document.getElementById('mkt-lp-info').innerHTML=(o.avert||'👁 Aperçu ouvert dans un nouvel onglet.'); return; }
+  const a=document.createElement('a'); a.href=url; a.download='landing-'+o.logNom.toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.html';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000);
+  document.getElementById('mkt-lp-info').innerHTML=(o.avert?o.avert+'<br>':'')+'✅ Landing page téléchargée. Hébergez-la (Vercel/Netlify) et diffusez le lien : chaque visiteur est envoyé sur WhatsApp vers '+('+'+o.wa)+' avec la référence de la page.';
 }
 
 
