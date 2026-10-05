@@ -73,6 +73,19 @@ input,textarea,select{font-family:var(--font-b);outline:none}
 .topbar-search{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:7px 12px;width:280px}
 .topbar-search input{background:none;border:none;font-size:13px;color:var(--text);width:100%}
 .topbar-search input::placeholder{color:var(--muted)}
+.topbar-search{position:relative}
+.topbar-search kbd{font-size:10px;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:1px 5px;background:var(--surface)}
+.gs-results{position:absolute;top:calc(100% + 8px);left:0;min-width:420px;max-width:92vw;max-height:70vh;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh-lg);z-index:1500;padding:6px}
+.gs-group{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding:8px 10px 4px}
+.gs-item{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px}
+.gs-item:hover,.gs-item.sel{background:var(--primary-l)}
+.gs-item b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gs-sub{font-size:11px;color:var(--muted);white-space:nowrap}
+.gs-empty{padding:18px;text-align:center;color:var(--muted);font-size:13px}
+.gs-mobile-btn{display:none}
+.flt-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:-4px 0 14px}
+.flt-bar select{width:auto;min-width:130px;height:34px;font-size:12px;padding:4px 10px}
+@media(max-width:768px){.gs-mobile-btn{display:inline-flex}.topbar-search.open{display:flex;position:fixed;top:var(--topbar-h);left:0;right:0;width:auto;z-index:998;border-radius:0}.gs-results{min-width:0;left:0;right:0}}
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--r-sm);font-size:13px;font-weight:600;transition:all .2s}
 .btn-primary{background:var(--primary);color:#fff}
 .btn-primary:hover{background:var(--primary-d);transform:translateY(-1px);box-shadow:0 4px 12px rgba(37,99,235,.3)}
@@ -863,10 +876,13 @@ select.form-input{cursor:pointer}
   <header class="topbar">
     <button class="hamburger" id="hamburger" onclick="toggleSidebar()">☰</button>
     <div class="topbar-title" id="topbar-title">Tableau de bord</div>
-    <div class="topbar-search">
+    <div class="topbar-search" id="topbar-search">
       <span>🔍</span>
-      <input type="text" placeholder="Rechercher client, deal, logiciel...">
+      <input type="text" id="global-search" placeholder="Rechercher client, deal, logiciel, commande..." autocomplete="off" oninput="gsSearch(this.value)" onkeydown="gsKey(event)" onfocus="gsSearch(this.value)">
+      <kbd title="Raccourci : touche /">/</kbd>
+      <div class="gs-results hidden" id="gs-results"></div>
     </div>
+    <button class="btn btn-outline btn-sm gs-mobile-btn" onclick="gsToggleMobile()" title="Rechercher">🔍</button>
     <div class="topbar-actions">
       <div id="sync-pill" class="sync-pill offline" onclick="navigate('parametrage',null);setTimeout(()=>paramTab('sync',document.querySelector('#param-tabs .tab:nth-child(3)')),200)" title="Statut synchronisation">
         <span id="sync-icon">📶</span><span id="sync-label">Local</span>
@@ -1012,6 +1028,10 @@ select.form-input{cursor:pointer}
 
       <!-- Filters -->
       <div class="flex items-center gap-3" style="margin-bottom:16px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:0 10px;height:36px">
+          <span style="color:var(--muted)">🔍</span>
+          <input type="text" id="filter-search" placeholder="Client, logiciel, commercial..." style="border:none;background:none;font-size:13px;width:190px;color:var(--text)" oninput="applyPipelineFilters()">
+        </div>
         <select class="form-input" id="filter-commercial" style="width:auto" onchange="filterPipeline(this)">
           <option value="">Tous les commerciaux</option>
         </select>
@@ -1395,7 +1415,28 @@ Seriez-vous disponible pour une démonstration {rdv} ?
       <!-- Barre recherche rapide -->
       <div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 12px;margin-bottom:14px">
         <span style="color:var(--muted)">🔍</span>
-        <input type="text" id="client-search" placeholder="Rechercher nom, téléphone, email..." style="flex:1;border:none;background:none;font-size:13px;color:var(--text)" oninput="searchClients(this.value)">
+        <input type="text" id="client-search" placeholder="Rechercher nom, téléphone, email, adresse, logiciel, notes..." style="flex:1;border:none;background:none;font-size:13px;color:var(--text)" oninput="searchClients(this.value)">
+        <span id="clients-count" style="font-size:11px;color:var(--muted);white-space:nowrap"></span>
+      </div>
+      <div class="flt-bar" id="clients-filters">
+        <select class="form-input" id="cf-secteur" onchange="clientFilterChange()"><option value="">Tous secteurs</option></select>
+        <select class="form-input" id="cf-logiciel" onchange="clientFilterChange()"><option value="">Tous logiciels</option></select>
+        <select class="form-input" id="cf-commercial" onchange="clientFilterChange()"><option value="">Tous commerciaux</option></select>
+        <select class="form-input" id="cf-zone" onchange="clientFilterChange()"><option value="">Toutes zones</option></select>
+        <select class="form-input" id="cf-contact" onchange="clientFilterChange()">
+          <option value="">Tout contact</option>
+          <option value="wa">📱 Mobile / WhatsApp</option>
+          <option value="email">✉️ Avec e-mail</option>
+          <option value="noemail">Sans e-mail</option>
+          <option value="nophone">Sans téléphone</option>
+        </select>
+        <select class="form-input" id="cf-sort" onchange="clientFilterChange()">
+          <option value="">Tri : par défaut</option>
+          <option value="nom">Nom A → Z</option>
+          <option value="valeur">Valeur ↓</option>
+          <option value="recent">Plus récents</option>
+        </select>
+        <button class="btn btn-outline btn-sm" onclick="clientFilterReset()">↺ Réinitialiser</button>
       </div>
 
       <!-- Vue TABLE (desktop) -->
@@ -1701,6 +1742,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
       <div class="card">
         <div class="card-header">
           <span class="card-title">📦 Déploiements en cours</span>
+          <input type="text" class="form-input" id="deploy-search" placeholder="🔍 Client, logiciel, phase, responsable..." style="width:260px;height:34px;font-size:12px;margin-left:auto">
           <button class="btn btn-primary btn-sm" onclick="openDeploiementModal()">+ Nouveau déploiement</button>
         </div>
         <table class="client-table">
@@ -1777,6 +1819,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
           <div class="card">
             <div class="card-header">
               <span class="card-title">📁 Historique rapports</span>
+              <input type="text" class="form-input" id="rapports-search" placeholder="🔍 Date, commercial, zone..." style="width:220px;height:34px;font-size:12px;margin-left:auto">
             </div>
             <div id="rapports-historique"></div>
           </div>
@@ -4925,6 +4968,73 @@ function openDupModal(){
   m.classList.remove('hidden');
 }
 
+// ═══════════════════════════════════════
+//  RECHERCHE GLOBALE (barre du haut) + filtres « live »
+// ═══════════════════════════════════════
+let _gsItems=[], _gsSel=-1;
+function _gsEsc(t){ return String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function _gsMatch(q,fields){ const h=_nrm(fields.join(' ')+' '+fields.map(f=>String(f||'').replace(/\D/g,'')).join(' ')); return q.every(w=>h.includes(w)); }
+function gsSearch(raw){
+  const box=document.getElementById('gs-results'); if(!box) return;
+  const q=_nrm(raw).split(/\s+/).filter(Boolean);
+  if(!q.length){ box.classList.add('hidden'); _gsItems=[]; return; }
+  const groups=[];
+  const add=(title,ico,arr,mk)=>{ if(arr.length) groups.push({title,ico,items:arr.slice(0,5).map(mk),more:Math.max(0,arr.length-5)}); };
+  const cl=CLIENTS.filter(c=>_gsMatch(q,[c.nom,c.phone,c.email,c.secteur,c.adresse,c.logiciel,c.commercial,c.notes]));
+  add('Clients & prospects','👤',cl,c=>({t:c.nom,s:(c.statut==='client'?'Client':c.statut==='prospect'?'Prospect':'Inactif')+(c.phone?' · '+c.phone:'')+(c.secteur?' · '+c.secteur:''),go:()=>{ navigate('clients',null); setTimeout(()=>{ try{ showClientDetail(c.id); }catch(e){} },250); }}));
+  add('Pipeline','🎯',DEALS.filter(d=>_gsMatch(q,[d.client,d.logiciel,d.commercial,d.notes])),d=>({t:d.client,s:(d.logiciel||'')+' · '+(d.stage||'')+' · '+((d.valeur||0).toLocaleString('fr-FR'))+' F',go:()=>{ navigate('pipeline',null); setTimeout(()=>{ const i=document.getElementById('filter-search'); if(i){ i.value=d.client; applyPipelineFilters(); } },200); }}));
+  add('Logiciels','💻',LOGICIELS.filter(l=>_gsMatch(q,[l.nom,l.cat,l.desc])),l=>({t:l.nom,s:l.cat+' · '+(l.prix||'')+' F',go:()=>{ navigate('logiciels',null); setTimeout(()=>{ const i=document.getElementById('log-search'); if(i){ i.value=l.nom; renderLogiciels(); } },200); }}));
+  const viaInput=(view,inputId,fn)=>(txt)=>()=>{ navigate(view,null); setTimeout(()=>{ const i=document.getElementById(inputId); if(i){ i.value=txt; try{ fn(); }catch(e){} } },250); };
+  add('Commandes','🛒',COMMANDES.filter(c=>_gsMatch(q,[c.ref,c.client,c.logiciel])),c=>({t:(c.ref||'')+' — '+c.client,s:c.logiciel+' · '+(c.statut||''),go:viaInput('commandes','cmd-search',renderCommandes)(c.ref||c.client)}));
+  add('Contrats','📝',CONTRATS.filter(c=>_gsMatch(q,[c.ref,c.client,c.logiciel])),c=>({t:(c.ref||'')+' — '+c.client,s:(c.logiciel||'')+' · '+(c.statut||''),go:viaInput('contrats','contrat-search',renderContrats)(c.ref||c.client)}));
+  add('Licences','🔑',LICENCES.filter(l=>_gsMatch(q,[l.key,l.client,l.logiciel])),l=>({t:l.key+' — '+l.client,s:(l.logiciel||'')+' · '+(l.statut||''),go:viaInput('licences','lic-search',renderLicences)(l.key||l.client)}));
+  add('Apporteurs','🤝',(typeof APPORTEURS!=='undefined'?APPORTEURS:[]).filter(a=>_gsMatch(q,[a.nom,a.phone,a.email])),a=>({t:a.nom,s:'Apporteur · '+(a.phone||''),go:viaInput('apporteurs','app-search',renderApporteurs)(a.nom)}));
+  add('Équipe','🏆',EQUIPE.filter(m=>_gsMatch(q,[m.nom,m.role,m.phone,m.email])),m=>({t:m.nom,s:(m.role||'')+(m.type==='apporteur'?' · apporteur':''),go:()=>navigate('equipe',null)}));
+  add('Déploiements','📦',DEPLOYMENTS.filter(d=>_gsMatch(q,[d.client,d.logiciel,d.phase,d.resp])),d=>({t:d.client,s:(d.logiciel||'')+' · '+(d.phase||'')+' · '+(d.avancement||0)+'%',go:viaInput('planning','deploy-search',()=>document.getElementById('deploy-search').dispatchEvent(new Event('input')))(d.client)}));
+  _gsItems=[]; _gsSel=-1;
+  box.innerHTML = groups.length ? groups.map(g=>'<div class="gs-group">'+g.title+'</div>'+g.items.map(it=>{ const i=_gsItems.push(it)-1; return '<div class="gs-item" data-i="'+i+'" onmousedown="gsOpen('+i+')"><span>'+g.ico+'</span><b>'+_gsEsc(it.t)+'</b><span class="gs-sub">'+_gsEsc(it.s)+'</span></div>'; }).join('')+(g.more?'<div class="gs-sub" style="padding:2px 10px 6px">+ '+g.more+' autre(s) — affinez la recherche</div>':'')).join('') : '<div class="gs-empty">Aucun résultat pour « '+_gsEsc(raw)+' »</div>';
+  box.classList.remove('hidden');
+}
+function gsOpen(i){
+  const it=_gsItems[i]; if(!it) return;
+  document.getElementById('gs-results').classList.add('hidden');
+  const inp=document.getElementById('global-search'); if(inp) inp.blur();
+  document.getElementById('topbar-search').classList.remove('open');
+  it.go();
+}
+function gsKey(e){
+  const box=document.getElementById('gs-results');
+  if(e.key==='Escape'){ box.classList.add('hidden'); e.target.blur(); return; }
+  if(!_gsItems.length) return;
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+    e.preventDefault();
+    _gsSel=(_gsSel+(e.key==='ArrowDown'?1:-1)+_gsItems.length)%_gsItems.length;
+    box.querySelectorAll('.gs-item').forEach(el=>el.classList.toggle('sel',+el.dataset.i===_gsSel));
+    const cur=box.querySelector('.gs-item.sel'); if(cur) cur.scrollIntoView({block:'nearest'});
+  } else if(e.key==='Enter'){ e.preventDefault(); gsOpen(_gsSel>=0?_gsSel:0); }
+}
+function gsToggleMobile(){
+  const t=document.getElementById('topbar-search'); t.classList.toggle('open');
+  if(t.classList.contains('open')) document.getElementById('global-search').focus();
+}
+document.addEventListener('keydown',e=>{
+  const tag=(e.target&&e.target.tagName)||''; const typing=/INPUT|TEXTAREA|SELECT/.test(tag)||(e.target&&e.target.isContentEditable);
+  if((e.key==='/'&&!typing)||((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k')){ e.preventDefault(); const i=document.getElementById('global-search'); if(i){ const t=document.getElementById('topbar-search'); if(getComputedStyle(t).display==='none') t.classList.add('open'); i.focus(); i.select(); } }
+});
+document.addEventListener('click',e=>{ if(!e.target.closest('#topbar-search')){ const b=document.getElementById('gs-results'); if(b) b.classList.add('hidden'); } });
+
+// Filtre « live » : masque les lignes non correspondantes, réappliqué après chaque rendu
+function liveFilter(inputId, containerSel, rowSel){
+  const inp=document.getElementById(inputId), box=document.querySelector(containerSel); if(!inp||!box) return;
+  const apply=()=>{ const w=_nrm(inp.value).split(/\s+/).filter(Boolean);
+    document.querySelectorAll(containerSel+' '+rowSel).forEach(r=>{ const t=_nrm(r.textContent); r.style.display = w.every(x=>t.includes(x))?'':'none'; }); };
+  inp.addEventListener('input',apply);
+  new MutationObserver(apply).observe(box,{childList:true});
+}
+liveFilter('deploy-search','#deploy-tbody','tr');
+liveFilter('deploy-search','#gantt-chart','.gantt-row');
+liveFilter('rapports-search','#rapports-historique','.activity-item');
+
 // Vues fusionnées : l'ancienne entrée ouvre l'écran qui la contient
 const MERGED_VIEWS = {cockpit:'direction', apporteurs:'equipe'};
 function eqSyncTab(orig){
@@ -4956,7 +5066,7 @@ function navigate(view, el) {
   }[view] || view;
   if(view === 'carte') setTimeout(()=>{ initMap(); updateCarteStats(); }, 100);
   if(view === 'clients') setTimeout(_dupUpdateBtn, 300);
-  if(view === 'pipeline') setTimeout(populatePipelineFilters, 60);
+  if(view === 'pipeline') setTimeout(()=>{ populatePipelineFilters(); initPipeline(); }, 60);
   if(view === 'commissions') setTimeout(initCommissions, 50);
   if(view === 'parametrage') setTimeout(initParametrage, 50);
   if(view === 'conversion') setTimeout(initConversion, 50);
@@ -5406,10 +5516,14 @@ function initPipeline() {
     const pct = total>0?((counts[s.id]/total)*100).toFixed(0):0;
     return `<div class="pipeline-seg" style="flex:${counts[s.id]||0.2};background:${s.color}" title="${s.label}: ${counts[s.id]}">${pct>8?counts[s.id]:''}${pct>15?' '+s.label:''}</div>`;
   }).join('');
-  // Kanban
+  renderKanban(_pipelineFiltered());
+  updatePipelineTotal(_pipelineFiltered());
+}
+// Affichage du kanban pour une liste d'affaires donnée (filtrée ou non)
+function renderKanban(list) {
   const board = document.getElementById('kanban-board');
   board.innerHTML = STAGES.map(s=>{
-    const sDeals = DEALS.filter(d=>d.stage===s.id);
+    const sDeals = list.filter(d=>d.stage===s.id);
     const total = sDeals.reduce((a,d)=>a+d.valeur,0);
     return `
     <div class="kanban-col" id="col-${s.id}" 
@@ -7060,13 +7174,54 @@ function toggleClientView() {
   renderClients(getFilteredClients());
 }
 
+const _CLIENT_ZONES=['Cocody','Yopougon','Koumassi','Marcory','Treichville','Port-Bouët','Abobo','Adjamé','Plateau','Attécoubé','Bingerville','Anyama','Songon','Grand-Bassam','Yamoussoukro','Bouaké','San-Pédro','Korhogo','Daloa','Divo','Man'];
+function _nrm(x){ return (x==null?'':String(x)).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+function clientZone(c){
+  const a=_nrm(c.adresse); if(!a) return '';
+  const z=_CLIENT_ZONES.find(z=>a.includes(_nrm(z)));
+  return z || (a.includes('abidjan') ? 'Abidjan (autre)' : '');
+}
+function _cfVal(id){ const e=document.getElementById(id); return e?e.value:''; }
 function getFilteredClients() {
   let list = clientCurrentFilter === 'all' ? CLIENTS : CLIENTS.filter(c=>c.statut===clientCurrentFilter);
-  if(clientSearchQuery) {
-    const q = clientSearchQuery.toLowerCase();
-    list = list.filter(c=> c.nom.toLowerCase().includes(q) || (c.phone||'').includes(q) || (c.email||'').toLowerCase().includes(q) || (c.secteur||'').toLowerCase().includes(q));
+  const words = _nrm(clientSearchQuery).split(/\s+/).filter(Boolean);
+  if(words.length) {
+    list = list.filter(c=>{
+      const hay = _nrm([c.nom,c.phone,(c.phone||'').replace(/\D/g,''),c.email,c.secteur,c.adresse,c.logiciel,c.commercial,c.notes].join(' '));
+      return words.every(w=>hay.includes(w));
+    });
   }
+  const fs=_cfVal('cf-secteur'), fl=_cfVal('cf-logiciel'), fc=_cfVal('cf-commercial'), fz=_cfVal('cf-zone'), fk=_cfVal('cf-contact'), so=_cfVal('cf-sort');
+  if(fs) list=list.filter(c=>c.secteur===fs);
+  if(fl) list=list.filter(c=>c.logiciel===fl);
+  if(fc) list=list.filter(c=>c.commercial===fc);
+  if(fz) list=list.filter(c=>clientZone(c)===fz);
+  if(fk==='wa') list=list.filter(c=>/^(01|05|07)/.test((c.phone||'').replace(/\D/g,'').replace(/^225/,'')) && c.wa!=='non');
+  if(fk==='email') list=list.filter(c=>c.email);
+  if(fk==='noemail') list=list.filter(c=>!c.email);
+  if(fk==='nophone') list=list.filter(c=>!(c.phone||'').trim());
+  if(so==='nom') list=[...list].sort((a,b)=>(a.nom||'').localeCompare(b.nom||'','fr'));
+  else if(so==='valeur') list=[...list].sort((a,b)=>(b.valeur||0)-(a.valeur||0));
+  else if(so==='recent') list=[...list].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')) || (b.id||0)-(a.id||0));
   return list;
+}
+let _cfSig='';
+function fillClientFilters(){
+  const sig=CLIENTS.length+':'+(CLIENTS.length?CLIENTS[CLIENTS.length-1].id:0)+':'+LOGICIELS.length;
+  if(sig===_cfSig) return; _cfSig=sig;
+  const uniq=a=>[...new Set(a.filter(Boolean))].sort((x,y)=>String(x).localeCompare(String(y),'fr'));
+  const fill=(id,first,vals)=>{ const e=document.getElementById(id); if(!e) return; const cur=e.value;
+    e.innerHTML='<option value="">'+first+'</option>'+vals.map(v=>'<option value="'+String(v).replace(/"/g,'&quot;')+'">'+v+'</option>').join(''); if(cur&&vals.includes(cur)) e.value=cur; };
+  fill('cf-secteur','Tous secteurs',uniq(CLIENTS.map(c=>c.secteur)));
+  fill('cf-logiciel','Tous logiciels',uniq([...LOGICIELS.map(l=>l.nom),...CLIENTS.map(c=>c.logiciel)]));
+  fill('cf-commercial','Tous commerciaux',uniq([...CLIENTS.map(c=>c.commercial),...EQUIPE.map(m=>m.nom)]));
+  fill('cf-zone','Toutes zones',uniq(CLIENTS.map(clientZone)));
+}
+function clientFilterChange(){ renderClients(getFilteredClients()); }
+function clientFilterReset(){
+  ['cf-secteur','cf-logiciel','cf-commercial','cf-zone','cf-contact','cf-sort'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+  const s=document.getElementById('client-search'); if(s) s.value=''; clientSearchQuery='';
+  renderClients(getFilteredClients());
 }
 function searchClients(q) { clientSearchQuery=q; renderClients(getFilteredClients()); }
 
@@ -7085,6 +7240,8 @@ const STATUT_LABEL = {client:'Client actif',prospect:'Prospect',inactif:'Inactif
 
 function renderClients(list) {
   updateClientCounts();
+  try{ fillClientFilters(); }catch(e){}
+  const _cc=document.getElementById('clients-count'); if(_cc) _cc.textContent=list.length+' résultat'+(list.length>1?'s':'');
   const mode = getViewMode();
   document.getElementById('clients-table-view').classList.toggle('hidden', mode!=='table');
   document.getElementById('clients-cards-view').classList.toggle('hidden', mode!=='cards');
@@ -7433,18 +7590,22 @@ function whatsappClient(id) {
 }
 
 // ─── PIPELINE FILTERS ───────────────────
-function filterPipeline(sel) {
-  const val = sel.value.toLowerCase();
-  const filtered = val ? DEALS.filter(d=>(d.commercial||'').toLowerCase().includes(val)) : DEALS;
+function _pipelineFiltered() {
+  const words = _nrm((document.getElementById('filter-search')||{}).value||'').split(/\s+/).filter(Boolean);
+  const com = (document.getElementById('filter-commercial')||{}).value||'';
+  const log = (document.getElementById('filter-logiciel')||{}).value||'';
+  return DEALS.filter(d=>
+    (!com || (d.commercial||'').toLowerCase().includes(com.toLowerCase())) &&
+    (!log || d.logiciel===log) &&
+    (!words.length || words.every(w=>_nrm([d.client,d.logiciel,d.commercial,d.notes].join(' ')).includes(w))));
+}
+function applyPipelineFilters() {
+  const filtered = _pipelineFiltered();
   renderKanban(filtered);
   updatePipelineTotal(filtered);
 }
-function filterByLogiciel(sel) {
-  const val = sel.value;
-  const filtered = val ? DEALS.filter(d=>d.logiciel===val) : DEALS;
-  renderKanban(filtered);
-  updatePipelineTotal(filtered);
-}
+function filterPipeline(sel) { applyPipelineFilters(); }
+function filterByLogiciel(sel) { applyPipelineFilters(); }
 function updatePipelineTotal(deals) {
   const total = deals.reduce((s,d)=>s+(d.valeur||0),0);
   const el = document.getElementById('pipeline-total');
@@ -7454,7 +7615,7 @@ function populatePipelineFilters() {
   const fComm = document.getElementById('filter-commercial');
   const fLog  = document.getElementById('filter-logiciel');
   if(fComm) {
-    const comms = [...new Set(EQUIPE.map(m=>m.nom))];
+    const comms = [...new Set([...EQUIPE.map(m=>m.nom),...DEALS.map(d=>d.commercial)].filter(Boolean))];
     fComm.innerHTML = '<option value="">Tous les commerciaux</option>' +
       comms.map(c=>`<option value="${c}">${c}</option>`).join('');
   }
