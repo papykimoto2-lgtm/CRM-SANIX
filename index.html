@@ -14302,6 +14302,8 @@ function waLink(phone,msg){
 function waOuvrir(phone,msg){
   const url=waLink(phone,msg);
   if(!url){ showToast('❌ '+waWhy(phone),'error'); return false; }
+  const a=waAnalyse(phone);
+  showToast('📱 WhatsApp → '+a.affiche+(a.converti?' (converti)':'')+' · '+String(msg||'').length+' car.');
   return _openWA(url);
 }
 function waBtnHtml(c,css,cls,label){
