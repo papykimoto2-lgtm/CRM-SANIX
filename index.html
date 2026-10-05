@@ -1224,7 +1224,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
     <div id="view-direction" class="hidden fade-in">
       <div style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px">
         <div>
-          <h1 class="page-title">👔 Tableau de bord dirigeant</h1>
+          <h1 class="page-title">👔 Direction & Cockpit</h1>
           <p class="page-sub">Vue direction — l'essentiel commercial en un coup d'œil</p>
         </div>
         <div class="flex gap-2" style="flex-wrap:wrap;align-items:center">
@@ -1274,16 +1274,14 @@ Seriez-vous disponible pour une démonstration {rdv} ?
           <div id="dir-taux"></div>
         </div>
       </div>
-    </div>
-
-    <!-- ══ VIEW: COCKPIT IA — DIRECTEUR COMMERCIAL ══ -->
-    <div id="view-cockpit" class="hidden fade-in">
+    <!-- ── Cockpit IA : fusionné dans l'écran Direction ── -->
+    <div id="view-cockpit" class="fade-in" style="margin-top:26px;padding-top:20px;border-top:2px solid var(--border)">
       <div style="margin-bottom:16px">
-        <h1 class="page-title">🧠 Cockpit IA — Directeur Commercial</h1>
+        <h2 style="font-family:var(--font-h);font-weight:800;font-size:18px;margin:0">🧠 Cockpit IA — priorités & prévisions</h2>
         <p class="page-sub">Prévisions, probabilités de signature, risques et priorités — calculés en continu</p>
       </div>
 
-      <div class="stats-grid" id="cok-kpis" style="margin-bottom:18px"></div>
+      <div class="stats-grid" id="cok-kpis" style="display:none"></div>
 
       <div class="flex" style="gap:16px;flex-wrap:wrap;margin-bottom:16px">
         <div class="card" style="padding:16px;flex:2;min-width:300px">
@@ -1322,6 +1320,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
         <p class="page-sub" style="margin:0 0 10px">Messages planifiés — envoi auto si API configurée, sinon rappel à l'échéance</p>
         <div id="cok-sched"></div>
       </div>
+    </div>
     </div>
 
     <!-- ══ VIEW: MOTEUR DE CONVERSION ══ -->
@@ -1381,6 +1380,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
         <div class="flex gap-2" style="flex-wrap:wrap">
           <button class="btn btn-outline btn-sm" id="btn-view-toggle" onclick="toggleClientView()">⊞ Cartes</button>
           <button class="btn btn-outline btn-sm" onclick="openImportProspectsModal()" style="color:var(--success);border-color:var(--success)">📲 Importer contacts</button>
+          <button class="btn btn-outline btn-sm" id="btn-dups" onclick="openDupModal()" style="color:var(--warning);border-color:var(--warning)">🧹 Doublons</button>
           <button class="btn btn-primary btn-sm" onclick="openNewClient()">+ Nouveau client</button>
         </div>
       </div>
@@ -1511,15 +1511,10 @@ Seriez-vous disponible pour une démonstration {rdv} ?
         <input type="text" class="form-input" id="equipe-search" placeholder="Rechercher..." oninput="filterTeamSearch()" style="width:200px;padding:7px 12px;font-size:12px">
       </div>
       <div class="grid-3" id="team-grid"></div>
-    </div>
-
     <!-- ══ VIEW: APPORTEURS D'AFFAIRES ══ -->
     <div id="view-apporteurs" class="hidden fade-in">
-      <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:8px;margin-bottom:6px">
-        <div>
-          <h1 class="page-title" style="margin-bottom:0">Apporteurs d'affaires</h1>
-          <p class="page-sub">Réseau d'apporteurs · Conventions · Commissions sur ventes apportées</p>
-        </div>
+      <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <p class="page-sub" style="margin:0">Réseau d'apporteurs · Conventions · Commissions sur ventes apportées</p>
         <button class="btn btn-primary btn-sm" onclick="openApporteurModal()">🤝 Nouvel apporteur</button>
       </div>
 
@@ -1544,6 +1539,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
 
       <!-- Liste apporteurs -->
       <div class="grid-3" id="apporteurs-grid"></div>
+    </div>
     </div>
 
     <!-- ══ VIEW: COMMISSIONS ══ -->
@@ -4778,8 +4774,8 @@ const NAV_GROUPS = {
   prod:   {views:[['logiciels','💻 Catalogue logiciels'],['presentations','🎬 Présentations & Démos']], badges:['sb-pres-badge']},
   conv:   {views:[['pipeline','🎯 Pipeline commercial'],['conversion','🚀 Moteur de conversion'],['agenda','📅 Agenda intelligent']], badges:['sb-conv-badge','sb-agenda-badge']},
   vente:  {views:[['commandes','🛒 Commandes'],['contrats','📝 Contrats & Conventions'],['licences','🔑 Licences'],['documents','📄 Documents & Modèles']], badges:['sb-cmd-badge','sb-lic-badge','sb-doc-badge']},
-  reseau: {views:[['equipe','🏆 Équipe'],['apporteurs','🤝 Apporteurs d\'affaires'],['commissions','💰 Commissions']], badges:['sb-app-badge','sb-comm-badge']},
-  pilot:  {views:[['direction','👔 Tableau dirigeant'],['cockpit','🧠 Cockpit IA'],['intel','🧬 CRM Intelligence']], badges:[]}
+  reseau: {views:[['equipe','🏆 Équipe & Apporteurs'],['commissions','💰 Commissions']], badges:['sb-app-badge','sb-comm-badge']},
+  pilot:  {views:[['direction','👔 Direction & Cockpit IA'],['intel','🧬 CRM Intelligence']], badges:[]}
 };
 function _grpOf(view){ return Object.keys(NAV_GROUPS).find(k=>NAV_GROUPS[k].views.some(v=>v[0]===view)); }
 function _canView(v){
@@ -4814,7 +4810,131 @@ function refreshGroupBadges(){
 }
 setInterval(refreshGroupBadges, 3000);
 
+// ═══════════════════════════════════════
+//  DOUBLONS CLIENTS / PROSPECTS — détection & fusion
+//  Doublon « sûr » = même nom (hors forme juridique). « À vérifier » = même téléphone seulement.
+// ═══════════════════════════════════════
+const _DUP_LEGAL = /\b(sarl|sasu|sas|sa|ets|etablissements?|entreprise|ste|societe|cie)\b/g;
+function _dupName(n){ return (n||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(_DUP_LEGAL,' ').replace(/[^a-z0-9]/g,''); }
+function _dupPhone(p){ const d=(p||'').replace(/\D/g,''); return d.length>=8 ? d.slice(-8) : ''; }
+function _dupScore(c){
+  const st = c.statut==='client' ? 3 : c.statut==='prospect' ? 2 : 1;
+  const filled = ['phone','email','adresse','secteur','logiciel','commercial','notes'].filter(k=>c[k]).length + (c.lat?1:0);
+  return st*100000 + (c.interactions||[]).length*100 + filled*5 - (c.id||0)/1e6;
+}
+function dupDetect(){
+  const list = CLIENTS.filter(c=>c && c.nom);
+  const parentOf = new Map(list.map(c=>[c.id,c.id]));
+  const find = x=>{ while(parentOf.get(x)!==x){ parentOf.set(x,parentOf.get(parentOf.get(x))); x=parentOf.get(x);} return x; };
+  const union = (a,b)=>{ a=find(a); b=find(b); if(a!==b) parentOf.set(a,b); };
+  const comps = (useNom,usePhone)=>{
+    list.forEach(c=>parentOf.set(c.id,c.id));
+    const seenN=new Map(), seenP=new Map();
+    list.forEach(c=>{
+      const kn=useNom?_dupName(c.nom):'', kp=usePhone?_dupPhone(c.phone):'';
+      if(kn){ if(seenN.has(kn)) union(c.id,seenN.get(kn)); else seenN.set(kn,c.id); }
+      if(kp){ if(seenP.has(kp)) union(c.id,seenP.get(kp)); else seenP.set(kp,c.id); }
+    });
+    const g=new Map(); list.forEach(c=>{ const r=find(c.id); if(!g.has(r)) g.set(r,[]); g.get(r).push(c); });
+    return [...g.values()].filter(a=>a.length>1);
+  };
+  const sure = comps(true,false);
+  const sureKeys = new Set(sure.map(a=>a.map(c=>c.id).sort().join(',')));
+  const all = comps(true,true);
+  return all.map(a=>{
+    const key=a.map(c=>c.id).sort().join(',');
+    a.sort((x,y)=>_dupScore(y)-_dupScore(x));
+    return {members:a, sure:sureKeys.has(key)};
+  }).sort((x,y)=>(y.sure-x.sure)||(y.members.length-x.members.length));
+}
+function dupMergeClients(keepId, loseIds){
+  const w = CLIENTS.find(c=>c.id===keepId); if(!w) return 0;
+  let n=0;
+  loseIds.forEach(id=>{
+    const l = CLIENTS.find(c=>c.id===id); if(!l||l===w) return;
+    ['phone','email','adresse','secteur','logiciel','commercial','effectif','caEstime','etablissements','wa','canal','lat','lng'].forEach(k=>{ if((w[k]===undefined||w[k]===null||w[k]==='') && l[k]) w[k]=l[k]; });
+    w.valeur = Math.max(w.valeur||0, l.valeur||0);
+    if(l.notes && (!w.notes || !w.notes.includes(l.notes))) w.notes = (w.notes?w.notes+' | ':'')+l.notes;
+    w.interactions = [...(w.interactions||[]),...(l.interactions||[])].sort((a,b)=>new Date(a.date)-new Date(b.date));
+    if(l.created_at && (!w.created_at || l.created_at<w.created_at)) w.created_at=l.created_at;
+    if(l.statut==='client') w.statut='client';
+    // références dans les autres modules (par identifiant et par nom)
+    [['DEALS'],['COMMANDES'],['CONTRATS'],['LICENCES'],['DEPLOYMENTS'],['PRESENTATIONS'],['DOCUMENTS'],['COMMISSIONS']].forEach(([nm])=>{
+      let arr; try{ arr = eval(nm); }catch(e){ return; }
+      if(!Array.isArray(arr)) return;
+      arr.forEach(r=>{ if(r.clientId===l.id){ r.clientId=w.id; r.client=w.nom; } else if(r.client===l.nom){ r.client=w.nom; if('clientId' in r) r.clientId=w.id; } });
+    });
+    CLIENTS.splice(CLIENTS.indexOf(l),1); n++;
+  });
+  // affaires : une seule affaire ouverte par client et logiciel
+  const seen=new Set();
+  for(let i=0;i<DEALS.length;i++){
+    const d=DEALS[i]; if(d.clientId!==w.id||d.stage==='gagne'||d.stage==='perdu') continue;
+    const k=(d.logiciel||'');
+    if(seen.has(k)){ DEALS.splice(i,1); i--; } else seen.add(k);
+  }
+  w.updated_at=new Date().toISOString();
+  return n;
+}
+function _dupSave(){ try{ saveAll(); }catch(e){ saveStore('clients'); saveStore('deals'); } }
+function _dupRefresh(){
+  try{ renderClients(getFilteredClients()); }catch(e){}
+  try{ updateSidebarBadges(); }catch(e){}
+  try{ refreshMapMarkers(); }catch(e){}
+  _dupUpdateBtn();
+}
+function _dupUpdateBtn(){
+  const b=document.getElementById('btn-dups'); if(!b) return;
+  const n=dupDetect().length; b.textContent = n ? '🧹 Doublons ('+n+')' : '🧹 Doublons';
+}
+function dupMerge(gi){
+  const g=window._dupGroups[gi]; if(!g) return;
+  const sel=document.querySelector('input[name="dupkeep-'+gi+'"]:checked');
+  const keep = sel ? parseInt(sel.value) : g.members[0].id;
+  const n = dupMergeClients(keep, g.members.map(c=>c.id).filter(id=>id!==keep));
+  _dupSave(); _dupRefresh(); showToast('✅ '+n+' fiche(s) fusionnée(s)'); openDupModal();
+}
+function dupMergeAllSure(){
+  const gs = dupDetect().filter(g=>g.sure);
+  if(!gs.length) return;
+  if(!confirm('Fusionner automatiquement '+gs.length+' groupe(s) de doublons sûrs (même nom) ?\nLa fiche la plus complète est conservée, les historiques sont réunis.')) return;
+  let n=0; gs.forEach(g=>{ n+=dupMergeClients(g.members[0].id, g.members.slice(1).map(c=>c.id)); });
+  _dupSave(); _dupRefresh(); showToast('✅ '+n+' doublon(s) fusionné(s)'); openDupModal();
+}
+function openDupModal(){
+  let m=document.getElementById('modal-dups');
+  if(!m){
+    m=document.createElement('div'); m.id='modal-dups'; m.className='modal-overlay hidden';
+    m.innerHTML='<div class="modal-box" style="max-width:760px;max-height:90vh;overflow-y:auto"><div class="modal-close" onclick="document.getElementById(\'modal-dups\').classList.add(\'hidden\')">&#10005;</div><div id="dups-body"></div></div>';
+    document.body.appendChild(m);
+  }
+  const groups = dupDetect(); window._dupGroups = groups;
+  const sure = groups.filter(g=>g.sure).length;
+  const esc = t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  let h='<div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:4px">🧹 Doublons clients & prospects</div>';
+  if(!groups.length){ h+='<div style="padding:30px 0;text-align:center;color:var(--success);font-weight:600">✅ Aucun doublon détecté</div>'; }
+  else {
+    h+='<div style="font-size:12px;color:var(--muted);margin-bottom:12px">'+groups.length+' groupe(s) — <b>Sûr</b> : même nom · <b>À vérifier</b> : même téléphone, noms différents. La fiche cochée est conservée ; historiques, notes, affaires, commandes et licences sont rattachés à elle.</div>';
+    if(sure) h+='<button class="btn btn-primary btn-sm" style="margin-bottom:14px" onclick="dupMergeAllSure()">⚡ Fusionner les '+sure+' groupe(s) sûrs</button>';
+    h+=groups.slice(0,60).map((g,gi)=>
+      '<div class="card" style="padding:12px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="badge '+(g.sure?'badge-success':'badge-warning')+'">'+(g.sure?'Sûr · même nom':'À vérifier · même téléphone')+'</span><button class="btn btn-outline btn-sm" onclick="dupMerge('+gi+')">Fusionner</button></div>'+
+      g.members.map((c,i)=>'<label style="display:flex;gap:8px;align-items:center;padding:5px 0;font-size:12px;cursor:pointer;border-top:1px solid var(--border)"><input type="radio" name="dupkeep-'+gi+'" value="'+c.id+'"'+(i===0?' checked':'')+'><b style="flex:1;min-width:0">'+esc(c.nom)+'</b><span>'+esc(c.statut)+'</span><span style="color:var(--muted)">'+esc(c.phone||'—')+'</span><span style="color:var(--muted)">'+((c.interactions||[]).length)+' interaction(s)</span></label>').join('')+'</div>').join('');
+    if(groups.length>60) h+='<div style="font-size:12px;color:var(--muted)">… et '+(groups.length-60)+' autre(s) groupe(s) — fusionnez ceux-ci puis rouvrez.</div>';
+  }
+  document.getElementById('dups-body').innerHTML=h;
+  m.classList.remove('hidden');
+}
+
+// Vues fusionnées : l'ancienne entrée ouvre l'écran qui la contient
+const MERGED_VIEWS = {cockpit:'direction', apporteurs:'equipe'};
+function eqSyncTab(orig){
+  var type = orig==='apporteurs' ? 'apporteur' : (typeof _currentEqFilter!=='undefined' ? _currentEqFilter : 'all');
+  var tab = [...document.querySelectorAll('#view-equipe .tab')].find(function(t){ return (t.getAttribute('onclick')||'').indexOf("'"+type+"'")>-1; });
+  filterTeam(type, tab||null);
+}
 function navigate(view, el) {
+  const _orig = view;
+  view = MERGED_VIEWS[view] || view;
   document.querySelectorAll('[id^="view-"]').forEach(v => v.classList.add('hidden'));
   document.getElementById('view-' + view)?.classList.remove('hidden');
   document.querySelectorAll('.sb-item').forEach(i => i.classList.remove('active'));
@@ -4828,19 +4948,21 @@ function navigate(view, el) {
   if(el && el.classList && el.classList.contains('sb-item')) el.classList.add('active');
   document.getElementById('topbar-title').textContent = {
     dashboard:'Tableau de bord',pipeline:'Pipeline Commercial',clients:'Clients & Prospects',
-    intel:'CRM Intelligence',agenda:'Agenda intelligent',marketing:'Moteur Marketing',direction:'Tableau dirigeant',cockpit:'Cockpit IA',conversion:'Moteur de Conversion',logiciels:'Catalogue Logiciels',equipe:'Équipe & Apporteurs',apporteurs:'Apporteurs d\'affaires',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
+    intel:'CRM Intelligence',agenda:'Agenda intelligent',marketing:'Moteur Marketing',direction:'Direction & Cockpit',cockpit:'Cockpit IA',conversion:'Moteur de Conversion',logiciels:'Catalogue Logiciels',equipe:'Équipe & Apporteurs',apporteurs:'Apporteurs d\'affaires',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
     planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
     parametrage:'Paramétrage',
     presentations:'Présentations & Démos',commandes:'Commandes Clients',contrats:'Contrats & Conventions',
     licences:'Licences Attribuées',documents:'Documents & Modèles',comptabilite:'Comptabilité SYSCOHADA'
   }[view] || view;
   if(view === 'carte') setTimeout(()=>{ initMap(); updateCarteStats(); }, 100);
+  if(view === 'clients') setTimeout(_dupUpdateBtn, 300);
   if(view === 'pipeline') setTimeout(populatePipelineFilters, 60);
   if(view === 'commissions') setTimeout(initCommissions, 50);
   if(view === 'parametrage') setTimeout(initParametrage, 50);
   if(view === 'conversion') setTimeout(initConversion, 50);
   if(view === 'cockpit') setTimeout(initCockpit, 50);
-  if(view === 'direction') setTimeout(initDirection, 50);
+  if(view === 'direction'){ setTimeout(initDirection, 50); setTimeout(initCockpit, 60); const _ck=document.getElementById('view-cockpit'); if(_ck) _ck.classList.remove('hidden'); }
+  if(view === 'equipe') eqSyncTab(_orig);
   if(view === 'marketing') setTimeout(initMarketing, 50);
   if(view === 'agenda') setTimeout(initAgenda, 50);
   if(view === 'intel') setTimeout(initIntel, 50);
@@ -4848,7 +4970,7 @@ function navigate(view, el) {
   if(view === 'documents') setTimeout(initDocuments, 50);
   _applyGroupUI(view);
   refreshGroupBadges();
-  document.dispatchEvent(new CustomEvent('sanix:navigate', {detail: view}));
+  document.dispatchEvent(new CustomEvent('sanix:navigate', {detail: _orig}));
   closeSidebar();
 }
 function toggleSidebar(){
@@ -6101,7 +6223,14 @@ function updateEquipeTabs() {
 function filterTeam(type, el) {
   _currentEqFilter = type;
   document.querySelectorAll('#view-equipe .tab').forEach(function(t){t.classList.remove('active');});
-  el.classList.add('active');
+  if(el) el.classList.add('active');
+  // Onglet « Apporteurs » : affiche le module Apporteurs d'affaires (fusionné dans cet écran)
+  var _isApp = type==='apporteur';
+  var _pane = document.getElementById('view-apporteurs'), _grid = document.getElementById('team-grid'), _srch = document.getElementById('equipe-search');
+  if(_pane) _pane.classList.toggle('hidden', !_isApp);
+  if(_grid) _grid.style.display = _isApp ? 'none' : '';
+  if(_srch) _srch.style.display = _isApp ? 'none' : '';
+  if(_isApp){ try{ initApporteurs(); }catch(e){} return; }
   var search = (document.getElementById('equipe-search')||{}).value||'';
   var filtered = type==='all' ? EQUIPE : EQUIPE.filter(function(m){return m.type===type;});
   if(search) {
@@ -10397,14 +10526,19 @@ function dirRender(){
   const nbClients=CLIENTS.filter(c=>c.statut==='client').length;
   const tauxConv=(nbClients+nbProspects)?Math.round(nbClients/(nbClients+nbProspects)*100):0;
 
-  // KPIs
+  // KPIs (ceux du Cockpit IA y sont fusionnés : signatures probables + prospects à risque)
+  const _dirPros=CLIENTS.filter(c=>c.statut==='prospect');
+  const _dirSign=(typeof cokProba==='function')?_dirPros.filter(c=>cokProba(c)>=55).length:0;
+  const _dirRisk=(typeof cokRisk==='function')?_dirPros.filter(c=>cokRisk(c).pct>=50).length:0;
   document.getElementById('dir-kpis').innerHTML=`
     ${convKpi('💵',_dirFmt(caMois),'CA '+rg.label+' (FCFA)','var(--success)')}
     ${convKpi('✅',_dirFmt(caTotal),'CA réalisé total','var(--success)')}
     ${convKpi('📈',_dirFmt(prev),'Prévision pondérée','var(--primary)')}
     ${convKpi('💼',_dirFmt(pipeBrut),'Pipeline brut','var(--muted)')}
     ${convKpi('📊',tauxWin+'%','Taux de transformation','var(--primary)')}
-    ${convKpi('🎯',open.length,'Deals en cours','var(--primary)')}`;
+    ${convKpi('🎯',open.length,'Deals en cours','var(--primary)')}
+    ${convKpi('🔥',_dirSign,'Signatures probables','var(--danger)')}
+    ${convKpi('⚠️',_dirRisk,'Prospects à risque',_dirRisk?'var(--warning)':'var(--muted)')}`;
 
   // Pipeline par étape
   const stages=(typeof STAGES!=='undefined'?STAGES:[]).filter(s=>s.id!=='gagne'&&s.id!=='perdu');
