@@ -4801,7 +4801,8 @@ const LOGICIELS_SEED = [
     prix:'600 000',
     prixMensuel:60000,
     remiseMax:10,
-    demo:'',
+    demo:'https://aluexpert-demo.vercel.app',
+    demo_acces:'Accès : identifiant demo · mot de passe Demo@2026',
     video:'',
     doc:'',
     icon:'🪟',
@@ -4919,7 +4920,7 @@ function fcFill(t,c){
   const log = LOGICIELS.find(l=>l.nom===c.logiciel) || {};
   const prix = ((c.valeur>0?c.valeur:log.prixNum)||0).toLocaleString('fr-FR');
   return fcSenderVars(t)
-    .replace(/{demo_line}/g, log.demo ? '📲 Démo en ligne : '+log.demo+'\n\n' : '')
+    .replace(/{demo_line}/g, log.demo ? '📲 Démo en ligne : '+log.demo+(log.demo_acces?'\n'+log.demo_acces:'')+'\n\n' : '')
     .replace(/{destinataire}/g, fcDestinataire(c))
     .replace(/{nom}/g, c.nom||'').replace(/{logiciel}/g, c.logiciel||'nos solutions de gestion')
     .replace(/{pitch}/g, (typeof relanceBuildPitch==='function') ? relanceBuildPitch(c) : '')
@@ -12056,6 +12057,16 @@ const CLIENTS_ALUEXPERT = [
   {nom:'100% INOX',phone:'',email:'',secteur:'Industrie',logiciel:'Sanix AluExpert ERP',statut:'client',commercial:'',valeur:300000,adresse:'',lat:null,lng:null,notes:'Inox / métallerie — client actuel de Sanix AluExpert ERP'}
 ];
 
+function _seedDemoLinkAluExpertOnce(){
+  const FLAG='sanix_crm_demo_link_aluexpert_v1';
+  if(localStorage.getItem(FLAG)) return;
+  const l=(typeof LOGICIELS!=='undefined')&&LOGICIELS.find(x=>x.id==='log_aluexpert');
+  if(!l) return;
+  if(!l.demo||l.demo==='#') l.demo='https://aluexpert-demo.vercel.app';
+  if(!l.demo_acces) l.demo_acces='Accès : identifiant demo · mot de passe Demo@2026';
+  try{ saveStore('logiciels'); }catch(e){}
+  localStorage.setItem(FLAG,'1');
+}
 function _seedClientsAluExpertOnce(){
   const FLAG='sanix_crm_seed_clients_aluexpert_v1';
   if(localStorage.getItem(FLAG)) return;
@@ -12098,7 +12109,7 @@ function _seedProspectsCliniqueOnce(){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
-  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedCommandesInitialesOnce(); _seedProspectsAluExpertOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
+  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedCommandesInitialesOnce(); _seedProspectsAluExpertOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
   // Refresh notifications toutes les 2 minutes
   setInterval(updateSidebarNotifications, 120000);
 });
