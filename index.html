@@ -12104,6 +12104,47 @@ function _seedCommandesInitialesOnce(){
 }
 
 // ═══════════════════════════════════════
+//  NOUVEAUX CLIENTS — AviNest Pro, AutoGarage Pro, Phyto Strike Force
+// ═══════════════════════════════════════
+const CLIENTS_NOUVEAUX_LOG = [
+  {nom:'Ferme Jolan',secteur:'Aviculture',logiciel:'AviNest Pro',valeur:400000,acompte:400000,statut_cmd:'livree',notes:'Client AviNest Pro — 400 000 FCFA, soldé'},
+  {nom:'Professeur Djohan',secteur:'Services',logiciel:'AutoGarage Pro',valeur:150000,acompte:0,statut_cmd:'en_cours',notes:'Client AutoGarage Pro — 150 000 FCFA'},
+  {nom:'PhytoStrikeForce',secteur:'Distribution',logiciel:'Phyto Strike Force',valeur:600000,acompte:100000,statut_cmd:'en_cours',notes:'Client Phyto Strike Force — 600 000 FCFA (avance 100 000 FCFA)'}
+];
+function _seedClientsNouveauxLogOnce(){
+  const FLAG='sanix_crm_seed_clients_avinest_garage_psf_v1';
+  if(localStorage.getItem(FLAG)) return;
+  const norm=x=>(x||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+  const now=new Date().toISOString(), today=now.split('T')[0];
+  let nextId=Math.max(0,...CLIENTS.map(c=>c.id||0))+1, addedC=0, addedO=0;
+  CLIENTS_NOUVEAUX_LOG.forEach(o=>{
+    let c=CLIENTS.find(x=>norm(x.nom)===norm(o.nom));
+    if(!c){
+      c={id:nextId++,nom:o.nom,phone:'',email:'',secteur:o.secteur,logiciel:o.logiciel,statut:'client',commercial:'',valeur:o.valeur,adresse:'',lat:null,lng:null,notes:o.notes,created_at:now,updated_at:now};
+      CLIENTS.push(c); addedC++;
+      try{ syncDealForClient(c.id); }catch(e){}
+    }
+    c.statut='client'; c.valeur=o.valeur;
+    const d=DEALS.find(x=>x.clientId===c.id); if(d) d.valeur=o.valeur;
+    if(COMMANDES.some(x=>norm(x.client)===norm(o.nom)&&x.logiciel===o.logiciel)) return;
+    const htNet=Math.round(o.valeur/1.18);
+    COMMANDES.push({
+      id:'cmd_init_'+c.id, ref:cmdNumero(), client:c.nom, date:today, logiciel:o.logiciel, typeLicence:'Perpetuelle',
+      htBrut:htNet, remise:0, htNet, tva:o.valeur-htNet, ttc:o.valeur, acompte:o.acompte, solde:Math.max(0,o.valeur-o.acompte),
+      commercial:'', statut:o.statut_cmd, presId:'',
+      notes:o.acompte>=o.valeur ? 'Soldé : '+o.valeur.toLocaleString('fr-FR')+' FCFA encaissés' : (o.acompte>0?'Avance versée : '+o.acompte.toLocaleString('fr-FR')+' FCFA':'Aucune avance versée')
+    });
+    addedO++;
+  });
+  saveStore('clients'); saveStore('deals'); if(addedO>0) saveStore('commandes');
+  localStorage.setItem(FLAG,'1');
+  try{ renderClients(getFilteredClients()); }catch(e){}
+  try{ initCommandes(); }catch(e){}
+  try{ refreshMapMarkers(); }catch(e){}
+  if((addedC||addedO) && typeof showToast==='function') showToast('✅ '+addedC+' client(s) et '+addedO+' commande(s) ajoutés');
+}
+
+// ═══════════════════════════════════════
 //  CLIENTS IMMOSUITE — Menko Holding & Zahara Multiservices
 // ═══════════════════════════════════════
 const CLIENTS_IMMOSUITE = [
@@ -12192,7 +12233,7 @@ function _seedProspectsCliniqueOnce(){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
-  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedCommandesInitialesOnce(); _seedProspectsAluExpertOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
+  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedCommandesInitialesOnce(); _seedClientsNouveauxLogOnce(); _seedProspectsAluExpertOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
   // Refresh notifications toutes les 2 minutes
   setInterval(updateSidebarNotifications, 120000);
 });
