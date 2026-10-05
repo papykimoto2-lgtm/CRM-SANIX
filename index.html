@@ -220,6 +220,9 @@ input,textarea,select{font-family:var(--font-b);outline:none}
 .team-kpi{display:flex;justify-content:center;gap:16px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
 .eq-color-swatch{width:26px;height:26px;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:transform .15s,border-color .15s}
 .eq-color-swatch:hover{transform:scale(1.15)}
+.sel-row{background:var(--primary-l)!important}
+#sel-bar{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:9000;background:#111827;color:#fff;padding:10px 14px;border-radius:14px;box-shadow:0 10px 34px rgba(0,0,0,.35);display:none;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;max-width:96vw}
+#sel-bar button{border:0;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;font-size:12px}
 .eq-color-swatch.selected{border-color:#fff;box-shadow:0 0 0 2px #334155;transform:scale(1.1)}
 .team-kpi-item{text-align:center}
 .team-kpi-val{font-family:var(--font-h);font-weight:700;font-size:16px}
@@ -1464,6 +1467,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
         <table class="client-table">
           <thead>
             <tr>
+              <th style="width:34px"><input type="checkbox" id="sel-all" title="Tout sélectionner (liste filtrée)" onchange="selAllToggle(this.checked)" style="width:16px;height:16px;cursor:pointer"></th>
               <th>Client / Entreprise</th>
               <th>Secteur</th>
               <th>Logiciel</th>
@@ -7462,6 +7466,7 @@ function clientInitials(nom) { return nom.split(/[\s\-&]+/).map(w=>w[0]||'').joi
 const STATUT_BADGE = {client:'badge-success',prospect:'badge-primary',inactif:'badge-muted'};
 const STATUT_LABEL = {client:'Client actif',prospect:'Prospect',inactif:'Inactif'};
 
+const _sel = new Set();   // ids des contacts cochés (conservés quand on change de filtre)
 function renderClients(list) {
   updateClientCounts();
   try{ fillClientFilters(); }catch(e){}
@@ -7473,7 +7478,8 @@ function renderClients(list) {
 
   if(mode === 'table') {
     document.getElementById('clients-tbody').innerHTML = list.map(c=>`
-      <tr onclick="showClientDetail(${c.id})" style="cursor:pointer">
+      <tr onclick="showClientDetail(${c.id})" style="cursor:pointer" class="${_sel.has(c.id)?'sel-row':''}">
+        <td onclick="event.stopPropagation()"><input type="checkbox" class="sel-chk" data-id="${c.id}" ${_sel.has(c.id)?'checked':''} onchange="selToggle(${c.id},this.checked)" style="width:16px;height:16px;cursor:pointer"></td>
         <td>
           <div style="display:flex;align-items:center;gap:8px">
             <div style="width:32px;height:32px;border-radius:8px;background:${clientColor(c.id)};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px;flex-shrink:0">${clientInitials(c.nom)}</div>
@@ -7496,8 +7502,9 @@ function renderClients(list) {
   }
   else if(mode === 'cards') {
     document.getElementById('clients-cards-grid').innerHTML = list.map(c=>`
-      <div class="client-card" onclick="showClientDetail(${c.id})">
+      <div class="client-card ${_sel.has(c.id)?'sel-row':''}" onclick="showClientDetail(${c.id})">
         <div class="client-card-top">
+          <input type="checkbox" class="sel-chk" data-id="${c.id}" ${_sel.has(c.id)?'checked':''} onclick="event.stopPropagation()" onchange="selToggle(${c.id},this.checked)" style="width:18px;height:18px;cursor:pointer;flex-shrink:0">
           <div class="client-initials" style="background:${clientColor(c.id)}">${clientInitials(c.nom)}</div>
           <div style="flex:1;min-width:0">
             <div class="client-card-name">${c.nom}</div>
@@ -7521,7 +7528,8 @@ function renderClients(list) {
   }
   else { // list
     document.getElementById('clients-list-items').innerHTML = list.map(c=>`
-      <div class="client-list-item" onclick="showClientDetail(${c.id})">
+      <div class="client-list-item ${_sel.has(c.id)?'sel-row':''}" onclick="showClientDetail(${c.id})">
+        <input type="checkbox" class="sel-chk" data-id="${c.id}" ${_sel.has(c.id)?'checked':''} onclick="event.stopPropagation()" onchange="selToggle(${c.id},this.checked)" style="width:18px;height:18px;cursor:pointer;flex-shrink:0;margin-right:8px">
         <div class="client-initials" style="background:${clientColor(c.id)};width:40px;height:40px;border-radius:10px;font-size:14px">${clientInitials(c.nom)}</div>
         <div class="cli-info">
           <div class="cli-name">${c.nom}</div>
@@ -7538,7 +7546,62 @@ function renderClients(list) {
         </div>
       </div>`).join('');
   }
+  try{ selRefresh(list); }catch(e){}
 }
+
+
+// ═══════ SÉLECTION MULTIPLE → ENVOI DE MESSAGES ═══════
+function selToggle(id,on){ if(on) _sel.add(id); else _sel.delete(id); selRefresh(); }
+function selAllToggle(on){
+  const list=getFilteredClients();
+  list.forEach(c=>{ if(on) _sel.add(c.id); else _sel.delete(c.id); });
+  renderClients(list);
+}
+function selClear(){ _sel.clear(); renderClients(getFilteredClients()); }
+function selRefresh(list){
+  list = list || getFilteredClients();
+  const all=document.getElementById('sel-all');
+  if(all){ const n=list.filter(c=>_sel.has(c.id)).length; all.checked = list.length>0 && n===list.length; all.indeterminate = n>0 && n<list.length; }
+  document.querySelectorAll('.sel-chk').forEach(x=>{ x.checked=_sel.has(Number(x.dataset.id)); });
+  let b=document.getElementById('sel-bar');
+  if(!b){ b=document.createElement('div'); b.id='sel-bar'; document.body.appendChild(b); }
+  const n=_sel.size;
+  if(!n){ b.style.display='none'; return; }
+  const sel=CLIENTS.filter(c=>_sel.has(c.id));
+  const nWa=sel.filter(c=>c.phone).length, nMail=sel.filter(c=>c.email).length;
+  b.style.display='flex';
+  b.innerHTML=`<span>☑️ <b>${n}</b> sélectionné(s)</span>
+    <button style="background:#25D366;color:#fff" onclick="selSend('wa')" title="${nWa} avec téléphone">📱 WhatsApp (${nWa})</button>
+    <button style="background:#2563eb;color:#fff" onclick="selSend('sms')">✉️ SMS (${nWa})</button>
+    <button style="background:#7c3aed;color:#fff" onclick="selSend('email')">📧 E-mail (${nMail})</button>
+    <button style="background:#374151;color:#fff" onclick="selClear()">Désélectionner</button>`;
+}
+// Ouvre le Moteur Marketing avec uniquement les contacts cochés comme cible
+function selSend(canal){
+  if(!_sel.size){ showToast('❌ Cochez au moins un contact'); return; }
+  window._mktSelIds=[..._sel]; window._mktSelCanal=canal;
+  navigate('marketing');
+  setTimeout(mktApplySelection,120);
+}
+function mktApplySelection(){
+  const ids=window._mktSelIds||[]; if(!ids.length) return;
+  const sel=CLIENTS.filter(c=>ids.includes(c.id));
+  const canalEl=document.getElementById('mkt-canal'); if(canalEl && window._mktSelCanal) canalEl.value=window._mktSelCanal;
+  // modèle de premier contact : celui du segment majoritaire de la sélection
+  const cnt={}; sel.forEach(c=>{ const k=fcSegment(c); cnt[k]=(cnt[k]||0)+1; });
+  const top=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0];
+  const mod=document.getElementById('mkt-modele'); if(mod && top){ mod.value=top; mktApplyModele(); }
+  const nom=document.getElementById('mkt-nom'); if(nom && !nom.value) nom.value='Sélection du '+new Date().toLocaleDateString('fr-FR')+' ('+sel.length+' contacts)';
+  mktSelBanner(); mktPreviewSegment();
+}
+function mktSelBanner(){
+  const ids=window._mktSelIds||[];
+  let b=document.getElementById('mkt-sel-banner');
+  if(!b){ b=document.createElement('div'); b.id='mkt-sel-banner'; b.style.cssText='background:var(--primary-l);border:1px solid var(--primary);border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:10px;display:flex;justify-content:space-between;gap:8px;align-items:center'; const host=document.getElementById('mkt-nom')?.closest('.form-group'); if(host) host.parentNode.insertBefore(b,host); }
+  if(!ids.length){ b.remove(); return; }
+  b.innerHTML=`<span>☑️ Cible = <b>${ids.length}</b> contact(s) coché(s) dans la liste (les filtres statut / secteur / score sont ignorés)</span><button class="btn btn-outline btn-sm" onclick="mktSelClear()">✕ Revenir au ciblage par filtres</button>`;
+}
+function mktSelClear(){ window._mktSelIds=[]; mktSelBanner(); mktPreviewSegment(); }
 
 function filterClients(type, el) {
   document.querySelectorAll('#clients-tabs .tab').forEach(t=>t.classList.remove('active'));
@@ -11075,6 +11138,8 @@ function mktTab(t,el){
 
 // Résolution du segment ciblé
 function mktResolveSegment(cfg){
+  const _ids=window._mktSelIds||[];
+  if(_ids.length) return CLIENTS.filter(c=>_ids.includes(c.id) && !(cfg.canal==='email' ? !c.email : !c.phone));
   return CLIENTS.filter(c=>{
     if(cfg.statut!=='all' && c.statut!==cfg.statut) return false;
     if(cfg.secteur && (c.secteur||'')!==cfg.secteur) return false;
@@ -11126,6 +11191,7 @@ function mktLaunch(){
   const camp={id,...cfg,cibles:seg.length,envoyes:0,date:new Date().toISOString(),status:'en_cours',contactIds:seg.map(s=>s.id)};
   CAMPAGNES.push(camp); campSave();
   _mktCampId=id; _mktQueue=seg; _mktQi=0;
+  if((window._mktSelIds||[]).length){ window._mktSelIds=[]; _sel.clear(); try{ mktSelBanner(); selRefresh(); }catch(e){} }
 
   const r=(typeof relanceCfg==='function')?relanceCfg():{};
   const apiWA=cfg.canal==='wa'&&r.waToken&&r.waPhoneId;
