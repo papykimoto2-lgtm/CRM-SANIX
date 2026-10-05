@@ -1861,6 +1861,32 @@ Seriez-vous disponible pour une démonstration {rdv} ?
     </div>
 
     <!-- ══ VIEW: MESSAGERIE ══ -->
+    <!-- ══ VIEW: JOURNAL DES CONTACTS & PV ══ -->
+    <div id="view-journal" class="hidden fade-in">
+      <h1 class="page-title">📋 Journal des contacts & PV</h1>
+      <p class="page-sub">État des messages envoyés aux prospects · procès-verbaux de contact (PV)</p>
+      <div id="jr-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px"></div>
+      <div class="flt-bar" id="jr-filters">
+        <select class="form-input" id="jr-logiciel" onchange="jrRender()"></select>
+        <select class="form-input" id="jr-periode" onchange="jrRender()">
+          <option value="all">Toute la période</option><option value="0" selected>Aujourd'hui</option><option value="2">3 derniers jours</option><option value="6">7 derniers jours</option><option value="29">30 derniers jours</option>
+        </select>
+        <select class="form-input" id="jr-etat" onchange="jrRender()">
+          <option value="contactes" selected>✉️ Contactés (message envoyé)</option><option value="sanspv">📝 Contactés sans PV</option><option value="avecpv">✅ Avec PV</option><option value="non">⏳ Pas encore contactés</option><option value="tous">Tous les prospects</option>
+        </select>
+        <select class="form-input" id="jr-canal" onchange="jrRender()"><option value="">Tous canaux</option><option value="wa">📱 WhatsApp</option><option value="sms">✉️ SMS</option><option value="email">📧 E-mail</option></select>
+        <input class="form-input" id="jr-q" placeholder="🔍 Rechercher…" oninput="jrRender()" style="min-width:140px">
+      </div>
+      <div class="flex gap-2" style="flex-wrap:wrap;margin-bottom:12px">
+        <button class="btn btn-primary btn-sm" onclick="jrPvSelection()">📝 Enregistrer le PV des cochés</button>
+        <button class="btn btn-outline btn-sm" onclick="jrToggleAll(true)">☑️ Tout cocher</button>
+        <button class="btn btn-outline btn-sm" onclick="jrToggleAll(false)">☐ Décocher</button>
+        <button class="btn btn-outline btn-sm" onclick="jrPrintEtat()">🖨 Imprimer l'état</button>
+        <button class="btn btn-outline btn-sm" onclick="jrExportCsv()">⬇️ Export CSV</button>
+      </div>
+      <div id="jr-list"></div>
+    </div>
+
     <div id="view-messagerie" class="hidden fade-in">
       <h1 class="page-title">Messagerie Commerciale</h1>
       <p class="page-sub">WhatsApp + Email — Envoi individuel et groupé</p>
@@ -4991,7 +5017,7 @@ const ACTIVITIES = [];
 //  Chaque groupe = 1 entrée de menu + barre d'onglets vers les vues d'origine
 // ═══════════════════════════════════════
 const NAV_GROUPS = {
-  com:    {views:[['marketing','🎯 Moteur Marketing'],['messagerie','💬 Messagerie']], badges:[]},
+  com:    {views:[['marketing','🎯 Moteur Marketing'],['journal','📋 Journal & PV de contact'],['messagerie','💬 Messagerie']], badges:[]},
   prod:   {views:[['logiciels','💻 Catalogue logiciels'],['presentations','🎬 Présentations & Démos']], badges:['sb-pres-badge']},
   conv:   {views:[['pipeline','🎯 Pipeline commercial'],['conversion','🚀 Moteur de conversion'],['agenda','📅 Agenda intelligent']], badges:['sb-conv-badge','sb-agenda-badge']},
   vente:  {views:[['commandes','🛒 Commandes'],['contrats','📝 Contrats & Conventions'],['licences','🔑 Licences'],['documents','📄 Documents & Modèles']], badges:['sb-cmd-badge','sb-lic-badge','sb-doc-badge']},
@@ -5296,7 +5322,7 @@ function navigate(view, el) {
   if(el && el.classList && el.classList.contains('sb-item')) el.classList.add('active');
   document.getElementById('topbar-title').textContent = {
     dashboard:'Tableau de bord',pipeline:'Pipeline Commercial',clients:'Clients & Prospects',
-    intel:'CRM Intelligence',agenda:'Agenda intelligent',marketing:'Moteur Marketing',direction:'Direction & Cockpit',cockpit:'Cockpit IA',conversion:'Moteur de Conversion',logiciels:'Catalogue Logiciels',equipe:'Équipe & Apporteurs',apporteurs:'Apporteurs d\'affaires',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
+    intel:'CRM Intelligence',agenda:'Agenda intelligent',marketing:'Moteur Marketing',journal:'Journal & PV de contact',direction:'Direction & Cockpit',cockpit:'Cockpit IA',conversion:'Moteur de Conversion',logiciels:'Catalogue Logiciels',equipe:'Équipe & Apporteurs',apporteurs:'Apporteurs d\'affaires',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
     planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
     parametrage:'Paramétrage',
     presentations:'Présentations & Démos',commandes:'Commandes Clients',contrats:'Contrats & Conventions',
@@ -5312,6 +5338,7 @@ function navigate(view, el) {
   if(view === 'direction'){ setTimeout(initDirection, 50); setTimeout(initCockpit, 60); const _ck=document.getElementById('view-cockpit'); if(_ck) _ck.classList.remove('hidden'); }
   if(view === 'equipe') eqSyncTab(_orig);
   if(view === 'marketing') setTimeout(initMarketing, 50);
+  if(view === 'journal') setTimeout(initJournal, 50);
   if(view === 'agenda') setTimeout(initAgenda, 50);
   if(view === 'intel') setTimeout(initIntel, 50);
   if(view === 'apporteurs') setTimeout(initApporteurs, 50);
@@ -7981,9 +8008,9 @@ const ROLE_BG = {
   apporteur:'#FFFBEB'
 };
 const PERMISSIONS = {
-  super_admin:['dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports','users','parametrage','parametres'],
-  manager:    ['dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports'],
-  commercial: ['dashboard','pipeline','clients','logiciels','messagerie','carte','rapports'],
+  super_admin:['journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports','users','parametrage','parametres'],
+  manager:    ['journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports'],
+  commercial: ['journal','dashboard','pipeline','clients','logiciels','messagerie','carte','rapports'],
   apporteur:  ['pipeline','clients','messagerie','rapports'],
 };
 const PERM_LABELS = {
@@ -11252,7 +11279,7 @@ function mktGuidedNext(){
   if(canal==='wa'){ waOuvrir(c.phone,msg); }
   else if(canal==='sms'){ const num=relancePhoneIntl(c.phone); window.location.href=`sms:+${num}?body=${encodeURIComponent(msg)}`; }
   else if(canal==='email'){ window.location.href=`mailto:${c.email}?subject=${encodeURIComponent(camp.subject ? mktRenderMsg(camp.subject,c) : 'SANIX Africa — '+(c.logiciel||'Solutions de gestion'))}&body=${encodeURIComponent(msg)}`; }
-  _mktLog(c,camp); if(camp.autoRelance) mktScheduleRelance(c,camp);
+  _mktLog(c,camp,msg); if(camp.autoRelance) mktScheduleRelance(c,camp);
   camp.envoyes=(camp.envoyes||0)+1; campSave();
   _mktQi++;
   showToast(`Envoi ${_mktQi}/${_mktQueue.length} — ${c.nom}`);
@@ -11268,9 +11295,10 @@ function mktGuideBar(){
 }
 function mktGuideBarClose(){ document.getElementById('mkt-guide-bar')?.remove(); }
 function escapeHtmlSafe(t){ return String(t).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
-function _mktLog(c,camp){
+function _mktLog(c,camp,msg){
   if(!c.interactions) c.interactions=[];
-  c.interactions.push({date:new Date().toISOString(),type:'Campagne '+camp.canal.toUpperCase(),note:'Campagne : '+camp.nom,etape:Math.max(aiGetEtape(c),1),ico:'📣',campId:camp.id});
+  try{ setTimeout(()=>saveStore('clients'),0); }catch(e){}
+  c.interactions.push({date:new Date().toISOString(),type:'Campagne '+camp.canal.toUpperCase(),note:'Campagne : '+camp.nom,msg:(msg||'').slice(0,600),canal:camp.canal,etape:Math.max(aiGetEtape(c),1),ico:'📣',campId:camp.id});
   c.updated_at=new Date().toISOString();
 }
 function mktScheduleRelance(c,camp){
@@ -12123,6 +12151,196 @@ function _seedCommandesInitialesOnce(){
   try{ renderClients(getFilteredClients()); }catch(e){}
   try{ initCommandes(); }catch(e){}
   if(added>0 && typeof showToast==='function') showToast('✅ '+added+' commande(s) avec avances enregistrées');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  JOURNAL DES CONTACTS & PROCÈS-VERBAUX (PV) DE CONTACT
+// ═══════════════════════════════════════════════════════════════
+const JR_RESULTATS = [
+  ['attente','⏳ Message envoyé — en attente de réponse'],
+  ['sans_reponse','🔇 Sans réponse'],
+  ['interesse','👍 A répondu — intéressé'],
+  ['demo','🎬 Demande une démonstration'],
+  ['rdv','📅 Rendez-vous fixé'],
+  ['rappeler','📞 À rappeler / à relancer'],
+  ['pas_interesse','👎 Pas intéressé'],
+  ['num_invalide','⚠️ Numéro invalide / pas sur WhatsApp']
+];
+const JR_CANAUX = {wa:'WhatsApp',sms:'SMS',email:'E-mail',appel:'Appel téléphonique',visite:'Visite / rencontre'};
+const _jrSel = new Set();
+function jrResLbl(k){ const r=JR_RESULTATS.find(x=>x[0]===k); return r?r[1]:(k||'—'); }
+function jrIsEnvoi(i){ return /^(Relance (WhatsApp|SMS|Email)|Campagne|Message WhatsApp)/i.test(i.type||'') ; }
+function jrCanalOf(i){
+  if(i.canal) return i.canal;
+  const t=(i.type||'').toLowerCase();
+  return t.includes('whatsapp')||t.endsWith(' wa')||t.includes(' wa ')||t.includes('(wa') ? 'wa' : t.includes('sms')?'sms' : (t.includes('email')||t.includes('e-mail'))?'email' : t.includes('appel')?'appel':'';
+}
+function jrCfg(){ if(!CONFIG.pvCompteur) CONFIG.pvCompteur=0; return CONFIG; }
+function jrNextRef(){ jrCfg(); CONFIG.pvCompteur++; try{ persistConfig(); }catch(e){} return 'PV-'+new Date().getFullYear()+'-'+String(CONFIG.pvCompteur).padStart(4,'0'); }
+function initJournal(){
+  const sel=document.getElementById('jr-logiciel'); if(!sel) return;
+  if(!sel.options.length){
+    const al=(LOGICIELS.find(l=>/aluexpert/i.test(l.nom))||{}).nom||'';
+    sel.innerHTML='<option value="">Tous les logiciels</option>'+LOGICIELS.map(l=>`<option value="${l.nom}" ${l.nom===al?'selected':''}>${l.nom}</option>`).join('');
+  }
+  jrRender();
+}
+function jrPeriodeStart(){
+  const v=document.getElementById('jr-periode').value; if(v==='all') return 0;
+  const d=new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-parseInt(v)); return d.getTime();
+}
+function jrRows(){
+  const log=document.getElementById('jr-logiciel').value, etat=document.getElementById('jr-etat').value;
+  const canal=document.getElementById('jr-canal').value, q=_nrm(document.getElementById('jr-q').value||''), t0=jrPeriodeStart();
+  const rows=[];
+  CLIENTS.forEach(c=>{
+    if(log && c.logiciel!==log) return;
+    if(q && !_nrm([c.nom,c.phone,c.email,c.secteur].join(' ')).includes(q)) return;
+    const its=(c.interactions||[]);
+    const envois=its.filter(i=>jrIsEnvoi(i) && new Date(i.date).getTime()>=t0 && (!canal||jrCanalOf(i)===canal));
+    const pvs=its.filter(i=>i.type==='PV de contact' && new Date(i.date).getTime()>=t0 && (!canal||jrCanalOf(i)===canal||i.canal===canal));
+    const contacte=envois.length>0||pvs.length>0;
+    if(etat==='contactes' && !contacte) return;
+    if(etat==='sanspv' && !(envois.length>0 && pvs.length===0)) return;
+    if(etat==='avecpv' && pvs.length===0) return;
+    if(etat==='non' && its.some(jrIsEnvoi)) return;
+    const last=[...envois,...pvs].sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+    rows.push({c,envois,pvs,last,lastPv:pvs.sort((a,b)=>new Date(b.date)-new Date(a.date))[0]});
+  });
+  rows.sort((a,b)=>new Date((b.last||{}).date||0)-new Date((a.last||{}).date||0) || String(a.c.nom).localeCompare(b.c.nom));
+  return rows;
+}
+function jrFmt(d){ const x=new Date(d); return isNaN(x)?'—':x.toLocaleDateString('fr-FR')+' '+x.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}); }
+function jrRender(){
+  const rows=jrRows();
+  const nEnv=rows.filter(r=>r.envois.length).length, nPv=rows.filter(r=>r.pvs.length).length;
+  const nSans=rows.filter(r=>r.envois.length&&!r.pvs.length).length;
+  const cnt={}; rows.forEach(r=>{ if(r.lastPv) cnt[r.lastPv.resultat]=(cnt[r.lastPv.resultat]||0)+1; });
+  const cnal={wa:0,sms:0,email:0}; rows.forEach(r=>r.envois.forEach(i=>{ const k=jrCanalOf(i); if(cnal[k]!=null) cnal[k]++; }));
+  const kp=(l,v,c)=>`<div class="card" style="padding:10px 12px;text-align:center"><div style="font-size:20px;font-weight:800;color:${c||'var(--text)'}">${v}</div><div style="font-size:11px;color:var(--muted)">${l}</div></div>`;
+  document.getElementById('jr-kpis').innerHTML = kp('Prospects listés',rows.length)+kp('Contactés',nEnv,'#2563eb')+kp('📱 WhatsApp',cnal.wa,'#16a34a')+kp('PV enregistrés',nPv,'#059669')+kp('À compléter (sans PV)',nSans,'#d97706')+kp('Intéressés / démo / RDV',(cnt.interesse||0)+(cnt.demo||0)+(cnt.rdv||0),'#7c3aed')+kp('Sans réponse',(cnt.sans_reponse||0)+(cnt.attente||0));
+  const host=document.getElementById('jr-list');
+  if(!rows.length){ host.innerHTML='<div class="card" style="padding:24px;text-align:center;color:var(--muted)">Aucun prospect pour ces critères.<br><small>Astuce : choisissez « Tous les prospects » puis cochez ceux que vous avez contactés, et cliquez sur « Enregistrer le PV des cochés ».</small></div>'; return; }
+  host.innerHTML = rows.slice(0,400).map(r=>{
+    const c=r.c, last=r.last, ok=waAnalyse(c.phone);
+    const badge=r.lastPv?`<span class="badge badge-primary" style="font-size:10px">${jrResLbl(r.lastPv.resultat)}</span>`:(r.envois.length?'<span class="badge badge-warning" style="font-size:10px">📝 PV à saisir</span>':'<span class="badge badge-muted" style="font-size:10px">Non contacté</span>');
+    return `<div class="card ${_jrSel.has(c.id)?'sel-row':''}" style="padding:10px 12px;margin-bottom:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input type="checkbox" ${_jrSel.has(c.id)?'checked':''} onchange="jrToggle(${c.id},this.checked)" style="width:20px;height:20px;flex:none">
+      <div style="flex:1;min-width:190px">
+        <div style="font-weight:700;font-size:13px">${_dEsc(c.nom)}</div>
+        <div style="font-size:11px;color:var(--muted)">${_dEsc(ok.ok?ok.affiche:(c.phone||'sans numéro'))} · ${_dEsc(c.secteur||'')}</div>
+        <div style="font-size:11px;margin-top:2px">${last?`${last.type==='PV de contact'?'📝':'✉️'} ${jrFmt(last.date)} · ${JR_CANAUX[jrCanalOf(last)]||jrCanalOf(last)||''}`:'—'}${r.envois.length>1?` · ${r.envois.length} envois`:''}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;min-width:150px">${badge}${r.lastPv&&r.lastPv.prochaine?`<span style="font-size:10px;color:var(--muted)">➡️ ${_dEsc(r.lastPv.prochaine)}${r.lastPv.relance?' ('+new Date(r.lastPv.relance+'T12:00:00').toLocaleDateString('fr-FR')+')':''}</span>`:''}</div>
+      <div class="flex gap-2" style="flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" onclick="jrOpenPV([${c.id}])">📝 PV</button>
+        ${r.lastPv?`<button class="btn btn-outline btn-sm" onclick="jrPrintPv(${c.id},'${r.lastPv.pvRef}')">🖨 PV</button>`:''}
+        <button class="btn btn-outline btn-sm" onclick="showClientDetail(${c.id})">👁</button>
+      </div></div>`;
+  }).join('') + (rows.length>400?`<div style="text-align:center;font-size:12px;color:var(--muted)">… ${rows.length-400} autres (affinez les filtres)</div>`:'');
+}
+function jrToggle(id,on){ if(on) _jrSel.add(id); else _jrSel.delete(id); jrRender(); }
+function jrToggleAll(on){ jrRows().forEach(r=>{ if(on) _jrSel.add(r.c.id); else _jrSel.delete(r.c.id); }); jrRender(); }
+function jrPvSelection(){ if(!_jrSel.size){ showToast('❌ Cochez au moins un prospect'); return; } jrOpenPV([..._jrSel]); }
+
+// ── Formulaire de PV (un ou plusieurs prospects) ──
+function jrOpenPV(ids){
+  const list=ids.map(id=>CLIENTS.find(c=>c.id===id)).filter(Boolean); if(!list.length) return;
+  let m=document.getElementById('modal-pv');
+  if(!m){ m=document.createElement('div'); m.id='modal-pv'; m.className='modal-overlay hidden'; document.body.appendChild(m); }
+  const now=new Date(); now.setMinutes(now.getMinutes()-now.getTimezoneOffset());
+  const last=list.length===1?((list[0].interactions||[]).filter(jrIsEnvoi).slice(-1)[0]||{}):{};
+  const r=(typeof relanceCfg==='function')?relanceCfg():{};
+  window._jrPvIds=list.map(c=>c.id);
+  m.innerHTML=`<div class="modal" style="max-width:560px;max-height:92vh;overflow:auto">
+    <div class="modal-close" onclick="document.getElementById('modal-pv').classList.add('hidden')">✕</div>
+    <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:2px">📝 Procès-verbal de contact</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${list.length===1?_dEsc(list[0].nom):'<b>'+list.length+'</b> prospects : un PV est créé pour chacun'}</div>
+    <div class="form-row" style="gap:10px;flex-wrap:wrap">
+      <div class="form-group" style="flex:1;min-width:170px"><label class="form-label">Date et heure du contact</label><input type="datetime-local" class="form-input" id="pv-date" value="${now.toISOString().slice(0,16)}"></div>
+      <div class="form-group" style="flex:1;min-width:140px"><label class="form-label">Canal</label><select class="form-input" id="pv-canal">${Object.entries(JR_CANAUX).map(([k,v])=>`<option value="${k}" ${k===(jrCanalOf(last)||'wa')?'selected':''}>${v}</option>`).join('')}</select></div>
+    </div>
+    <div class="form-group"><label class="form-label">Interlocuteur contacté</label><input class="form-input" id="pv-interloc" value="${list.length===1?_dEsc(fcDestinataire(list[0])==='Madame, Monsieur'?'':fcDestinataire(list[0])):''}" placeholder="Nom / fonction (facultatif)"></div>
+    <div class="form-group"><label class="form-label">Message envoyé / objet du contact</label><textarea class="form-input" id="pv-objet" rows="3" style="font-size:12px">${_dEsc(last.msg||'Premier contact — présentation de Sanix AluExpert ERP et proposition de démonstration.')}</textarea></div>
+    <div class="form-group"><label class="form-label">Réponse / échange</label><textarea class="form-input" id="pv-resume" rows="3" style="font-size:12px" placeholder="Ce que le prospect a répondu, objections, besoins exprimés…"></textarea></div>
+    <div class="form-group"><label class="form-label">Résultat du contact</label><select class="form-input" id="pv-resultat">${JR_RESULTATS.map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>
+    <div class="form-row" style="gap:10px;flex-wrap:wrap">
+      <div class="form-group" style="flex:2;min-width:170px"><label class="form-label">Prochaine action</label><input class="form-input" id="pv-prochaine" placeholder="Ex. relancer par appel, envoyer la démo…"></div>
+      <div class="form-group" style="flex:1;min-width:140px"><label class="form-label">Date de relance</label><input type="date" class="form-input" id="pv-relance"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Rédigé par</label><input class="form-input" id="pv-auteur" value="${_dEsc(r.gerant||'')}"></div>
+    <div class="flex gap-2" style="justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn btn-outline" onclick="document.getElementById('modal-pv').classList.add('hidden')">Annuler</button>
+      <button class="btn btn-primary" onclick="jrSavePV(false)">💾 Enregistrer</button>
+      ${list.length===1?'<button class="btn btn-primary" style="background:#059669" onclick="jrSavePV(true)">💾 Enregistrer et imprimer</button>':''}
+    </div></div>`;
+  m.classList.remove('hidden');
+}
+function jrSavePV(print){
+  const g=id=>document.getElementById(id).value.trim();
+  const dt=g('pv-date'); const iso=dt?new Date(dt).toISOString():new Date().toISOString();
+  let lastRef='', lastId=null;
+  (window._jrPvIds||[]).forEach(id=>{
+    const c=CLIENTS.find(x=>x.id===id); if(!c) return;
+    if(!c.interactions) c.interactions=[];
+    const ref=jrNextRef();
+    const res=g('pv-resultat');
+    c.interactions.push({date:iso,type:'PV de contact',pvRef:ref,canal:g('pv-canal'),interlocuteur:g('pv-interloc'),objet:g('pv-objet'),resume:g('pv-resume'),resultat:res,prochaine:g('pv-prochaine'),relance:g('pv-relance'),auteur:g('pv-auteur'),
+      note:'PV '+ref+' — '+jrResLbl(res).replace(/^[^A-Za-zÀ-ÿ]+/,''),etape:Math.max(aiGetEtape(c),1),ico:'📝'});
+    c.updated_at=new Date().toISOString();
+    if(res==='num_invalide') c.wa='non';
+    lastRef=ref; lastId=id;
+  });
+  saveStore('clients');
+  document.getElementById('modal-pv').classList.add('hidden');
+  showToast('✅ '+(window._jrPvIds||[]).length+' PV enregistré(s)');
+  (window._jrPvIds||[]).forEach(id=>_jrSel.delete(id));
+  try{ jrRender(); }catch(e){}
+  if(print && lastId) jrPrintPv(lastId,lastRef);
+}
+
+// ── Impression : PV de contact (avec en-tête société + QR d'authenticité) ──
+function _jrOpenPrint(title,html,meta){
+  const body=html+docSecurityFooter(meta,true);
+  const w=window.open('','_blank','width=900,height=1000');
+  if(!w){ showToast('⚠️ Autorisez les pop-ups pour imprimer'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${_dEsc(title)}</title><style>@page{size:A4;margin:14mm}body{font-family:Arial,Helvetica,sans-serif;font-size:12.5px;color:#111;max-width:800px;margin:0 auto;padding:16px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top}th{background:#f1f5f9;font-size:11px}h1{font-size:17px;text-align:center;margin:6px 0 14px;letter-spacing:.5px}.sig{display:flex;gap:30px;margin-top:34px}.sig div{flex:1;border-top:1px solid #111;padding-top:6px;text-align:center;font-size:11px;min-height:60px}@media print{body{padding:0}}</style></head><body>${body}</body></html>`);
+  w.document.close(); setTimeout(()=>w.print(),500);
+}
+function jrPrintPv(clientId,pvRef){
+  const c=CLIENTS.find(x=>x.id===clientId); if(!c) return;
+  const pv=(c.interactions||[]).find(i=>i.type==='PV de contact'&&i.pvRef===pvRef); if(!pv){ showToast('❌ PV introuvable'); return; }
+  const ok=waAnalyse(c.phone);
+  const row=(l,v)=>`<tr><th style="width:30%">${l}</th><td>${_dEsc(v||'—').replace(/\n/g,'<br>')}</td></tr>`;
+  const html=`${docHeader()}<h1>PROCÈS-VERBAL DE CONTACT — N° ${_dEsc(pv.pvRef)}</h1>
+    <table>${row('Prospect',c.nom)}${row('Logiciel proposé',c.logiciel)}${row('Téléphone',ok.ok?ok.affiche:c.phone)}${row('E-mail',c.email)}${row('Adresse',c.adresse)}
+    ${row('Date et heure du contact',jrFmt(pv.date))}${row('Canal',JR_CANAUX[pv.canal]||pv.canal)}${row('Interlocuteur',pv.interlocuteur)}
+    ${row('Objet / message envoyé',pv.objet)}${row('Réponse / échange',pv.resume)}${row('Résultat',jrResLbl(pv.resultat).replace(/^[^A-Za-zÀ-ÿ]+/,''))}
+    ${row('Prochaine action',pv.prochaine)}${row('Date de relance',pv.relance?new Date(pv.relance+'T12:00:00').toLocaleDateString('fr-FR'):'')}${row('Rédigé par',pv.auteur)}</table>
+    <div class="sig"><div>L'agent commercial<br>${_dEsc(pv.auteur||'')}</div><div>Visa du responsable</div></div>`;
+  _jrOpenPrint('PV '+pv.pvRef,html,{type:'pv_contact',ref:pv.pvRef,client:c.nom,montant:0,date:pv.date});
+}
+// ── État des contacts (impression / CSV) ──
+function jrPrintEtat(){
+  const rows=jrRows(); if(!rows.length){ showToast('❌ Rien à imprimer'); return; }
+  const log=document.getElementById('jr-logiciel').value||'Tous logiciels';
+  const per=document.getElementById('jr-periode').selectedOptions[0].textContent;
+  const ref='ETAT-'+new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const tr=rows.map((r,i)=>{ const ok=waAnalyse(r.c.phone), l=r.last;
+    return `<tr><td>${i+1}</td><td><b>${_dEsc(r.c.nom)}</b></td><td>${_dEsc(ok.ok?ok.affiche:(r.c.phone||'—'))}</td><td>${l?jrFmt(l.date):'—'}</td><td>${l?(JR_CANAUX[jrCanalOf(l)]||''):''}</td><td>${r.envois.length}</td><td>${r.lastPv?_dEsc(jrResLbl(r.lastPv.resultat).replace(/^[^A-Za-zÀ-ÿ]+/,''))+'<br><small>'+_dEsc(r.lastPv.pvRef)+'</small>':'<i>PV à saisir</i>'}</td><td>${r.lastPv?_dEsc(r.lastPv.prochaine||''):''}</td></tr>`; }).join('');
+  const html=`${docHeader()}<h1>ÉTAT DES CONTACTS PROSPECTS</h1>
+    <p style="text-align:center;margin:-6px 0 12px">${_dEsc(log)} · ${_dEsc(per)} · édité le ${new Date().toLocaleDateString('fr-FR')} · <b>${rows.length}</b> prospect(s), dont <b>${rows.filter(r=>r.pvs.length).length}</b> avec PV</p>
+    <table><thead><tr><th>#</th><th>Prospect</th><th>Téléphone</th><th>Dernier contact</th><th>Canal</th><th>Envois</th><th>Résultat / PV</th><th>Prochaine action</th></tr></thead><tbody>${tr}</tbody></table>
+    <div class="sig"><div>Établi par</div><div>Visa du responsable</div></div>`;
+  _jrOpenPrint('État des contacts',html,{type:'etat_contacts',ref:ref,client:log,montant:0,date:new Date().toISOString()});
+}
+function jrExportCsv(){
+  const rows=jrRows(); if(!rows.length){ showToast('❌ Rien à exporter'); return; }
+  const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+  const lines=[['Prospect','Téléphone','E-mail','Logiciel','Dernier contact','Canal','Nb envois','Résultat','N° PV','Prochaine action','Date relance'].map(q).join(';')];
+  rows.forEach(r=>{ const ok=waAnalyse(r.c.phone), l=r.last; lines.push([r.c.nom,ok.ok?ok.affiche:r.c.phone,r.c.email,r.c.logiciel,l?jrFmt(l.date):'',l?(JR_CANAUX[jrCanalOf(l)]||''):'',r.envois.length,r.lastPv?jrResLbl(r.lastPv.resultat).replace(/^[^A-Za-zÀ-ÿ]+/,''):'',r.lastPv?r.lastPv.pvRef:'',r.lastPv?r.lastPv.prochaine:'',r.lastPv?r.lastPv.relance:''].map(q).join(';')); });
+  const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='etat-contacts-'+new Date().toISOString().slice(0,10)+'.csv'; document.body.appendChild(a); a.click(); a.remove();
 }
 
 // ═══════════════════════════════════════
@@ -13326,7 +13544,7 @@ function docSecret(){
   }
   return CONFIG.docSecret;
 }
-const DOC_TYPE_LBL = {devis:'Devis',contrat:'Contrat de licence',bon_commande:'Bon de commande',rapport:'Rapport de direction',convention_apporteur:'Convention apporteur'};
+const DOC_TYPE_LBL = {pv_contact:'Procès-verbal de contact',etat_contacts:'État des contacts',devis:'Devis',contrat:'Contrat de licence',bon_commande:'Bon de commande',rapport:'Rapport de direction',convention_apporteur:'Convention apporteur'};
 function _docTypeLabel(t){ return (typeof DOC_TYPES!=='undefined' && DOC_TYPES[t] && DOC_TYPES[t].label) || DOC_TYPE_LBL[t] || t || 'Document'; }
 function _docIso(d){
   if(!d) return new Date().toISOString().slice(0,10);
