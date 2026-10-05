@@ -4,6 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SANIX CRM Pro v4 — Africa Division Technologies</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#2563EB">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<!-- Installation comme application (PC, smartphone, tablette) -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SANIX CRM">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -887,6 +897,7 @@ select.form-input{cursor:pointer}
       <div id="sync-pill" class="sync-pill offline" onclick="navigate('parametrage',null);setTimeout(()=>paramTab('sync',document.querySelector('#param-tabs .tab:nth-child(3)')),200)" title="Statut synchronisation">
         <span id="sync-icon">📶</span><span id="sync-label">Local</span>
       </div>
+      <button class="btn btn-outline btn-sm app-installer hidden" onclick="appInstaller()" title="Installer l'application sur cet appareil">📲 Installer</button>
       <div class="notif-btn">🔔<div class="notif-dot"></div></div>
       <button class="btn btn-outline btn-sm" onclick="navigate('parametrage',null)" title="Paramètres">⚙️</button>
       <button class="btn btn-primary btn-sm" onclick="openNewDeal()">+ Nouveau deal</button>
@@ -5034,6 +5045,65 @@ function liveFilter(inputId, containerSel, rowSel){
 liveFilter('deploy-search','#deploy-tbody','tr');
 liveFilter('deploy-search','#gantt-chart','.gantt-row');
 liveFilter('rapports-search','#rapports-historique','.activity-item');
+
+// ═══════════════════════════════════════
+//  APPLICATION INSTALLABLE (PC, smartphone, tablette) + mode hors ligne
+//  Chrome / Edge / Samsung Internet : invite native. iPhone / iPad (Safari) : marche à suivre.
+// ═══════════════════════════════════════
+window._pwa = window._pwa || {invite:null};
+function pwaEstInstallee(){ return ['standalone','window-controls-overlay','minimal-ui'].some(m=>window.matchMedia&&window.matchMedia('(display-mode: '+m+')').matches) || navigator.standalone===true; }
+function pwaAppareil(){
+  const ua=navigator.userAgent||'', ios=/iPhone|iPad|iPod/.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1);
+  const android=/Android/.test(ua), mobile=ios||android||/Mobi/.test(ua);
+  const nav=/Edg\//.test(ua)?'edge':/SamsungBrowser/.test(ua)?'samsung':/Firefox|FxiOS/.test(ua)?'firefox':/CriOS|Chrome/.test(ua)?'chrome':/Safari/.test(ua)?'safari':'autre';
+  return {ios,android,mobile,nav};
+}
+function pwaMajBoutons(){
+  const montrer = !pwaEstInstallee() && location.protocol!=='file:';
+  document.querySelectorAll('.app-installer').forEach(b=>b.classList.toggle('hidden',!montrer));
+}
+window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); window._pwa.invite=e; pwaMajBoutons(); });
+window.addEventListener('appinstalled',()=>{ window._pwa.invite=null; pwaMajBoutons(); try{ showToast('✅ Application installée — ouvrez « SANIX CRM » depuis votre écran d\'accueil ou le menu Démarrer.',5000); }catch(e){} });
+window.addEventListener('DOMContentLoaded',pwaMajBoutons);
+async function appInstaller(){
+  const inv=window._pwa.invite;
+  if(inv){
+    try{ await inv.prompt(); const r=await inv.userChoice; window._pwa.invite=null; pwaMajBoutons(); if(r.outcome!=='accepted') showToast('Installation annulée — le bouton 📲 reste disponible.'); }
+    catch(e){ pwaInstructions(); }
+    return;
+  }
+  pwaInstructions();
+}
+function pwaInstructions(){
+  const a=pwaAppareil();
+  const bloc=(actif,ico,titre,etapes)=>'<div style="border:1px solid '+(actif?'var(--primary)':'var(--border)')+';background:'+(actif?'var(--primary-l)':'transparent')+';border-radius:var(--r-sm);padding:12px;margin-bottom:10px"><div style="font-weight:700;margin-bottom:6px">'+ico+' '+titre+(actif?' <span style="font-size:11px;color:var(--primary)">· votre appareil</span>':'')+'</div><ol style="margin:0;padding-left:18px;font-size:12px;line-height:1.7;color:var(--text2)">'+etapes.map(x=>'<li>'+x+'</li>').join('')+'</ol></div>';
+  const ios=bloc(a.ios,'🍏','iPhone / iPad',["Ouvrez le CRM dans <b>Safari</b>.","Touchez <b>Partager</b> ⬆️.","Choisissez <b>« Sur l'écran d'accueil »</b>, puis <b>Ajouter</b>."]);
+  const android=bloc(a.android,'🤖','Android',["Ouvrez le CRM dans <b>Chrome</b>, <b>Edge</b> ou <b>Samsung Internet</b>.","Touchez le menu <b>⋮</b>.","Choisissez <b>« Installer l'application »</b> (ou « Ajouter à l'écran d'accueil »)."]);
+  const pc=bloc(!a.mobile,'💻','Ordinateur Windows / Mac / Linux',["Ouvrez le CRM dans <b>Chrome</b> ou <b>Microsoft Edge</b>.","Cliquez l'icône d'installation ⊕ à droite de la barre d'adresse (ou menu ⋮ → <b>Installer SANIX CRM</b>).","L'application s'ouvre dans sa propre fenêtre, avec une icône sur le bureau / menu Démarrer."]);
+  const ordre=a.ios?[ios,android,pc]:a.android?[android,ios,pc]:[pc,android,ios];
+  let m=document.getElementById('modal-install');
+  if(!m){ m=document.createElement('div'); m.id='modal-install'; m.className='modal-overlay hidden'; m.innerHTML='<div class="modal-box" style="max-width:480px;max-height:90vh;overflow-y:auto"><div class="modal-close" onclick="document.getElementById(\'modal-install\').classList.add(\'hidden\')">&#10005;</div><div id="install-body"></div></div>'; document.body.appendChild(m); }
+  document.getElementById('install-body').innerHTML='<div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:4px">📲 Installer SANIX CRM</div><div style="font-size:12px;color:var(--muted);margin-bottom:14px">Une fois installé, le CRM s\'ouvre comme un logiciel (icône sur l\'écran d\'accueil ou le bureau), en plein écran, et <b>fonctionne hors ligne</b>. Vos données restent sur cet appareil et se synchronisent avec le cloud si Supabase est configuré.</div>'
+    +(a.nav==='firefox'&&!a.mobile?'<div style="font-size:12px;background:var(--warning-l);color:var(--warning);border-radius:var(--r-sm);padding:8px 12px;margin-bottom:12px">Firefox ne permet pas d\'installer des applications web : ouvrez cette adresse dans Chrome ou Edge.</div>':'')
+    +ordre.join('')+'<div style="text-align:right;margin-top:10px"><button class="btn btn-primary btn-sm" onclick="document.getElementById(\'modal-install\').classList.add(\'hidden\')">Compris</button></div>';
+  m.classList.remove('hidden');
+}
+if('serviceWorker' in navigator && location.protocol!=='file:') window.addEventListener('load',()=>{
+  const dejaControle=!!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').then(r=>{ setInterval(()=>r.update().catch(()=>{}),60*60*1000); }).catch(()=>{});
+  // Nouvelle version déployée : proposer de recharger (jamais de rechargement forcé pendant une saisie)
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{ if(dejaControle) pwaAnnoncerMiseAJour(); });
+});
+function pwaAnnoncerMiseAJour(){
+  if(document.getElementById('pwaMaj')) return;
+  document.body.insertAdjacentHTML('beforeend','<div id="pwaMaj" style="position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:9998;background:#0B1628;color:#fff;border-radius:12px;padding:10px 14px;box-shadow:0 8px 30px rgba(0,0,0,.3);font-size:13px;display:flex;gap:12px;align-items:center">🔄 Nouvelle version disponible <button class="btn btn-primary btn-sm" onclick="location.reload()">Recharger</button><button class="btn btn-outline btn-sm" style="color:#fff;border-color:rgba(255,255,255,.3)" onclick="this.parentNode.remove()">Plus tard</button></div>');
+}
+// Raccourcis de l'icône (?page=clients, ?page=pipeline, ?page=new-deal, ?page=commandes)
+window.addEventListener('load',()=>{
+  const pg=new URLSearchParams(location.search).get('page'); if(!pg) return;
+  const go=()=>{ if(typeof currentUser==='undefined'||!currentUser) return false; if(pg==='new-deal'){ navigate('pipeline',null); setTimeout(()=>{ try{ openNewDeal(); }catch(e){} },300); } else if(document.getElementById('view-'+pg)) navigate(pg,null); return true; };
+  let n=0; const t=setInterval(()=>{ if(go()||++n>30) clearInterval(t); },300);
+});
 
 // Vues fusionnées : l'ancienne entrée ouvre l'écran qui la contient
 const MERGED_VIEWS = {cockpit:'direction', apporteurs:'equipe'};
