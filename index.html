@@ -1456,6 +1456,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
         <select class="form-input" id="cf-contact" onchange="clientFilterChange()">
           <option value="">Tout contact</option>
           <option value="wa">📱 Mobile / WhatsApp</option>
+          <option value="wainvalide">⚠️ Numéro à corriger (fixe / invalide)</option>
           <option value="email">✉️ Avec e-mail</option>
           <option value="noemail">Sans e-mail</option>
           <option value="nophone">Sans téléphone</option>
@@ -4052,7 +4053,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Téléphone *</label>
-        <input type="tel" class="form-input" id="c-phone" placeholder="07 XX XX XX XX">
+        <input type="tel" class="form-input" id="c-phone" placeholder="07 XX XX XX XX" onblur="phoneFormatInput(this)">
       </div>
       <div class="form-group">
         <label class="form-label">Email</label>
@@ -4946,6 +4947,7 @@ function fcFill(t,c){
     .replace(/{nom}/g, c.nom||'').replace(/{logiciel}/g, c.logiciel||'nos solutions de gestion')
     .replace(/{pitch}/g, (typeof relanceBuildPitch==='function') ? relanceBuildPitch(c) : '')
     .replace(/{prix}/g, prix)
+    .replace(/\{(salut|destinataire|nom|logiciel|pitch|demo_line|gerant|societe|tel|email|ville|rdv|prix)\}/g,'')
     .replace(/\n{3,}/g,'\n\n');
 }
 // → {subject, body} prêts à envoyer pour ce prospect ; canal : 'wa' (aussi SMS) ou 'email'
@@ -5685,7 +5687,7 @@ function initDashboard360() {
           <div style="font-size:10px;color:${c.daysSince>=14?'var(--danger)':'var(--warning)'}">${c.daysSince>=14?'🚨':'⚠️'} J-${c.daysSince} · ${c.logiciel||'—'}</div>
         </div>
         <div class="flex gap-1">
-          ${c.phone?`<a href="https://wa.me/225${c.phone.replace(/\D/g,'')}" target="_blank" style="padding:3px 6px;background:#25D366;color:#fff;border-radius:4px;font-size:10px;text-decoration:none">WA</a>`:''}
+          ${c.phone?waBtnHtml(c,'padding:3px 6px;background:#25D366;color:#fff;border-radius:4px;font-size:10px;text-decoration:none','','WA'):''}
           <button onclick="showClientDetail(${c.id})" style="padding:3px 6px;background:var(--primary-l);color:var(--primary);border:none;border-radius:4px;font-size:10px;cursor:pointer">IA</button>
         </div>
       </div>`).join('')
@@ -6597,11 +6599,12 @@ function filterTeamSearch() {
   renderTeam(filtered);
 }
 
+function waLink_(ph){ return (window.waLink && window.waLink(ph,'')) || '#'; }
 function renderTeam(list) {
   document.getElementById('team-grid').innerHTML = list.map(function(m, idx) {
     var realIdx = EQUIPE.indexOf(m);
     var phoneE = m.phone ? m.phone.replace(/\s/g,'') : '';
-    var waLink = phoneE ? 'https://wa.me/' + phoneE.replace('+','') : '#';
+    var waLink = waLink_(m.phone);
     var perf = m.objectif && m.objectif > 0 ? Math.min(Math.round(m.ca/m.objectif*100),100) : 0;
     var perfBar = m.objectif && m.objectif > 0 ?
       '<div style="margin-top:10px;padding:8px;background:var(--surface2);border-radius:var(--r-sm)">' +
@@ -7433,7 +7436,8 @@ function getFilteredClients() {
   if(fl) list=list.filter(c=>c.logiciel===fl);
   if(fc) list=list.filter(c=>c.commercial===fc);
   if(fz) list=list.filter(c=>clientZone(c)===fz);
-  if(fk==='wa') list=list.filter(c=>/^(01|05|07)/.test((c.phone||'').replace(/\D/g,'').replace(/^225/,'')) && c.wa!=='non');
+  if(fk==='wa') list=list.filter(c=>waAnalyse(c.phone).ok && c.wa!=='non');
+  if(fk==='wainvalide') list=list.filter(c=>c.phone && !waAnalyse(c.phone).ok);
   if(fk==='email') list=list.filter(c=>c.email);
   if(fk==='noemail') list=list.filter(c=>!c.email);
   if(fk==='nophone') list=list.filter(c=>!(c.phone||'').trim());
@@ -7842,7 +7846,7 @@ function showClientDetail(id) {
 
     <!-- ACTIONS RAPIDES -->
     <div style="display:flex;gap-6px;flex-wrap:wrap;gap:6px;margin-bottom:4px">
-      ${c.phone?`<a href="https://wa.me/225${c.phone.replace(/\D/g,'')}" target="_blank" class="btn btn-sm" style="background:#25D366;color:#fff;font-size:11px;padding:6px 10px;text-decoration:none">📱 WhatsApp</a>`:''}
+      ${c.phone?waBtnHtml(c,'background:#25D366;color:#fff;font-size:11px;padding:6px 10px;text-decoration:none','btn btn-sm','📱 WhatsApp'):''}
       ${c.phone?`<a href="tel:${c.phone}" class="btn btn-outline btn-sm" style="font-size:11px;text-decoration:none">📞 Appel</a>`:''}
       <button onclick="aiLogInteraction(${id},'appel','📞')" class="btn btn-outline btn-sm" style="font-size:11px">📞 Logger appel</button>
       <button onclick="aiLogInteraction(${id},'message_wa','💬')" class="btn btn-outline btn-sm" style="font-size:11px">💬 Logger WA</button>
@@ -7879,12 +7883,17 @@ function showClientDetail(id) {
   }
 }
 
+// À la saisie : met le numéro au format +225 XX XX XX XX XX ; avertit si ce n'est pas un mobile WhatsApp
+function phoneFormatInput(el){
+  const v=el.value.trim(); if(!v) return;
+  const a=waAnalyse(v);
+  if(a.ok){ el.value=a.affiche; if(a.converti) showToast('ℹ️ Ancien numéro à 8 chiffres converti : '+a.affiche); }
+  else showToast('⚠️ '+a.reason);
+}
 function whatsappClient(id) {
   const c = CLIENTS.find(x=>x.id===id);
   if(!c||!c.phone) { showToast('❌ Numéro manquant'); return; }
-  const num = c.phone.replace(/\D/g,'');
-  const msg = encodeURIComponent(`Bonjour ${c.nom},\n\nJe vous contacte concernant ${c.logiciel}.\n\nCordialement`);
-  _openWA(`https://wa.me/225${num}?text=${msg}`);
+  waOuvrir(c.phone, `Bonjour ${c.nom},\n\nJe vous contacte concernant ${c.logiciel}.\n\nCordialement`);
 }
 
 // ─── PIPELINE FILTERS ───────────────────
@@ -10290,10 +10299,6 @@ const RELANCE_DEFAULT = {
 function relanceCfg(){ CONFIG.relance = {...RELANCE_DEFAULT, ...(CONFIG.relance||{})}; return CONFIG.relance; }
 let _relanceClientId = null;
 
-function relancePhoneIntl(phone){
-  const n = importNormalizePhone(phone).replace(/\D/g,'');
-  return n.startsWith('225') ? n : (n.length===10 ? '225'+n : n);
-}
 
 // Formule de RDV adaptée au jour d'envoi (jours ouvrés CI)
 function relanceRDVPhrase(dt){
@@ -10459,7 +10464,7 @@ async function relanceSend(canal){
 
   if(canal==='wa'){
     const num = relancePhoneIntl(c.phone);
-    if(!num){ showToast('❌ Numéro manquant'); return; }
+    if(!num){ showToast('❌ '+waWhy(c.phone),'error'); return; }
     if(c.wa==='non' && !confirm('Ce numéro est marqué « pas sur WhatsApp ». Ouvrir quand même WhatsApp ?')) return;
     // Envoi automatique si API configurée
     if(r.waToken && r.waPhoneId){
@@ -10471,15 +10476,15 @@ async function relanceSend(canal){
         });
         if(!res.ok) throw new Error('HTTP '+res.status);
         _relanceLog(c,'WhatsApp (auto)'); showToast('✅ WhatsApp envoyé automatiquement');
-      }catch(e){ showToast('⚠️ API échec, ouverture manuelle'); _openWA(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`); _relanceLog(c,'WhatsApp'); }
+      }catch(e){ showToast('⚠️ API échec, ouverture manuelle'); waOuvrir(c.phone,msg); _relanceLog(c,'WhatsApp'); }
     } else {
-      _openWA(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`);
+      waOuvrir(c.phone,msg);
       _relanceLog(c,'WhatsApp'); showToast('📱 WhatsApp ouvert');
     }
   }
   else if(canal==='sms'){
     const num = relancePhoneIntl(c.phone);
-    if(!num){ showToast('❌ Numéro manquant'); return; }
+    if(!num){ showToast('❌ '+waWhy(c.phone),'error'); return; }
     if(r.smsUrl && r.smsKey){
       try{
         const res = await fetch(r.smsUrl,{method:'POST',headers:{'Authorization':'Bearer '+r.smsKey,'Content-Type':'application/json'},body:JSON.stringify({to:'+'+num,from:r.tel1,message:msg})});
@@ -10899,7 +10904,7 @@ async function schedFireAuto(s){
   const r=relanceCfg();
   try{
     if(s.canal==='wa' && r.waToken && r.waPhoneId){
-      const num=relancePhoneIntl(c.phone);
+      const num=relancePhoneIntl(c.phone); if(!num) throw new Error('numéro invalide');
       const res=await fetch(`https://graph.facebook.com/v21.0/${r.waPhoneId}/messages`,{method:'POST',
         headers:{'Authorization':'Bearer '+r.waToken,'Content-Type':'application/json'},
         body:JSON.stringify({messaging_product:'whatsapp',to:num,type:'text',text:{body:s.msg}})});
@@ -11150,14 +11155,13 @@ function mktTab(t,el){
 // Résolution du segment ciblé
 function mktResolveSegment(cfg){
   const _ids=window._mktSelIds||[];
-  if(_ids.length) return CLIENTS.filter(c=>_ids.includes(c.id) && !(cfg.canal==='email' ? !c.email : !c.phone));
+  if(_ids.length) return CLIENTS.filter(c=>_ids.includes(c.id) && (cfg.canal==='email' ? !!c.email : waAnalyse(c.phone).ok));
   return CLIENTS.filter(c=>{
     if(cfg.statut!=='all' && c.statut!==cfg.statut) return false;
     if(cfg.secteur && (c.secteur||'')!==cfg.secteur) return false;
     if(cfg.score>0 && aiProspectScore(c)<cfg.score) return false;
     if(cfg.waOnly && !(c.phone && c.wa!=='non')) return false;
-    if(cfg.canal==='wa' && !(c.phone)) return false;
-    if(cfg.canal==='sms' && !(c.phone)) return false;
+    if((cfg.canal==='wa'||cfg.canal==='sms') && !waAnalyse(c.phone).ok) return false;
     if(cfg.canal==='email' && !(c.email)) return false;
     return true;
   });
@@ -11216,6 +11220,7 @@ async function mktSendAllApi(camp,seg){
   for(const c of seg){
     const msg=mktRenderMsg(camp.msg,c);
     try{
+      if((camp.canal==='wa'||camp.canal==='sms') && !relancePhoneIntl(c.phone)) continue;
       if(camp.canal==='wa'){ const num=relancePhoneIntl(c.phone);
         const res=await fetch(`https://graph.facebook.com/v21.0/${r.waPhoneId}/messages`,{method:'POST',headers:{'Authorization':'Bearer '+r.waToken,'Content-Type':'application/json'},body:JSON.stringify({messaging_product:'whatsapp',to:num,type:'text',text:{body:msg}})});
         if(res.ok) ok++;
@@ -11237,7 +11242,14 @@ function mktGuidedNext(){
   if(_mktQi>=_mktQueue.length){ if(camp){camp.status='terminee';campSave();} showToast('🎉 Campagne terminée'); mktRenderList(); return; }
   const c=_mktQueue[_mktQi]; const msg=mktRenderMsg(camp.msg,c);
   const canal=camp.canal;
-  if(canal==='wa'){ const num=relancePhoneIntl(c.phone); _openWA(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`); }
+  // numéro invalide : on passe au suivant sans rien ouvrir
+  if((canal==='wa'||canal==='sms') && !relancePhoneIntl(c.phone)){
+    showToast('⏭️ '+(c.nom||'')+' ignoré — '+waWhy(c.phone));
+    _mktQi++; camp.ignores=(camp.ignores||0)+1; campSave();
+    if(_mktQi<_mktQueue.length){ return mktGuidedNext(); }
+    mktGuideBarClose(); camp.status='terminee'; campSave(); mktRenderList(); showToast('🎉 Campagne terminée'); return;
+  }
+  if(canal==='wa'){ waOuvrir(c.phone,msg); }
   else if(canal==='sms'){ const num=relancePhoneIntl(c.phone); window.location.href=`sms:+${num}?body=${encodeURIComponent(msg)}`; }
   else if(canal==='email'){ window.location.href=`mailto:${c.email}?subject=${encodeURIComponent(camp.subject ? mktRenderMsg(camp.subject,c) : 'SANIX Africa — '+(c.logiciel||'Solutions de gestion'))}&body=${encodeURIComponent(msg)}`; }
   _mktLog(c,camp); if(camp.autoRelance) mktScheduleRelance(c,camp);
@@ -11635,8 +11647,7 @@ function agInviteWA(id){
   if(!c||!c.phone){ showToast('❌ Numéro manquant'); return; }
   const g=(typeof relanceCfg==='function')?relanceCfg():{gerant:'Cyrille KESIE'};
   const msg=`Bonjour ${c.nom},\n\nConfirmation de notre ${r.type.toLowerCase()} :\n📅 ${agFmtHuman(r)}\n⏱️ ${r.duree} min\n${r.lieu?(r.visio?'🔗 Lien : '+r.lieu:'📍 Lieu : '+r.lieu):''}\n\nÀ très bientôt,\n${g.gerant} — SANIX Africa`;
-  const num=(typeof relancePhoneIntl==='function')?relancePhoneIntl(c.phone):c.phone.replace(/\D/g,'');
-  _openWA(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`);
+  waOuvrir(c.phone,msg);
 }
 function agInviteEmail(id){
   const r=RDVS.find(x=>x.id===id); if(!r) return;
@@ -12122,6 +12133,28 @@ const CLIENTS_NOUVEAUX_LOG = [
   {nom:'Professeur Djohan',secteur:'Services',logiciel:'AutoGarage Pro',valeur:150000,acompte:0,statut_cmd:'en_cours',notes:'Client AutoGarage Pro — 150 000 FCFA'},
   {nom:'PhytoStrikeForce',secteur:'Distribution',logiciel:'Phyto Strike Force',valeur:600000,acompte:100000,statut_cmd:'en_cours',notes:'Client Phyto Strike Force — 600 000 FCFA (avance 100 000 FCFA)'}
 ];
+// Remet une fois les numéros déjà enregistrés au bon format (ancien 8 chiffres → 10 chiffres, champ à plusieurs numéros → 1er mobile)
+function _migrerNumerosWAOnce(){
+  const FLAG='sanix_crm_phone_format_v1';
+  if(localStorage.getItem(FLAG)) return;
+  let n=0, aCorriger=0;
+  CLIENTS.forEach(c=>{
+    if(!c.phone) return;
+    const a=waAnalyse(c.phone);
+    if(!a.ok){ aCorriger++; return; }
+    if(a.affiche!==c.phone){
+      if(!c.phone_orig) c.phone_orig=c.phone;
+      const autres=a.all.filter(x=>x.n!==a.num.slice(3)).map(x=>x.brut);
+      if(autres.length) c.phone_autres=autres.join(' / ');
+      c.phone=a.affiche; n++;
+    }
+  });
+  if(n) saveStore('clients');
+  localStorage.setItem(FLAG,'1');
+  try{ renderClients(getFilteredClients()); }catch(e){}
+  if(n||aCorriger) showToast('📱 Numéros : '+n+' remis au bon format'+(aCorriger?' · '+aCorriger+' fixe(s)/invalide(s) à corriger (filtre « Numéro à corriger »)':''));
+}
+
 function _seedClientsNouveauxLogOnce(){
   const FLAG='sanix_crm_seed_clients_avinest_garage_psf_v1';
   if(localStorage.getItem(FLAG)) return;
@@ -12244,7 +12277,7 @@ function _seedProspectsCliniqueOnce(){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
-  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedCommandesInitialesOnce(); _seedClientsNouveauxLogOnce(); _seedProspectsAluExpertOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
+  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedCommandesInitialesOnce(); _seedClientsNouveauxLogOnce(); _seedProspectsAluExpertOnce(); _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
   // Refresh notifications toutes les 2 minutes
   setInterval(updateSidebarNotifications, 120000);
 });
@@ -13736,7 +13769,7 @@ function renderApporteurs() {
         ${a.phone?`<br>📞 ${a.phone}`:''}
       </div>
       <div class="flex gap-1" style="flex-wrap:wrap">
-        ${a.phone?`<a href="https://wa.me/225${a.phone.replace(/\\D/g,'')}" target="_blank" class="btn btn-sm" style="background:#25D366;color:#fff;font-size:10px;padding:5px 8px;text-decoration:none">📱</a>`:''}
+        ${a.phone?waBtnHtml(a,'background:#25D366;color:#fff;font-size:10px;padding:5px 8px;text-decoration:none','btn btn-sm','📱'):''}
         <button onclick="editApporteur('${a.id}')" class="btn btn-outline btn-sm" style="font-size:10px;padding:5px 8px">✏️</button>
         <button onclick="viewConventionApporteur('${a.id}')" class="btn btn-outline btn-sm" style="font-size:10px;padding:5px 8px">📄 Conv.</button>
         <button onclick="deleteApporteur('${a.id}')" class="btn btn-sm" style="font-size:10px;padding:5px 8px;background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2)">🗑</button>
@@ -14156,9 +14189,7 @@ function aiSendWA() {
   const c = CLIENTS.find(x=>x.id===_aiCurrentClientId);
   if(!c||!c.phone) { showToast('❌ Numéro manquant'); return; }
   const msg = _aiLastOutput || '';
-  const num = c.phone.replace(/\D/g,'');
-  const prefix = num.startsWith('225')?num:'225'+num;
-  _openWA(`https://wa.me/${prefix}?text=${encodeURIComponent(msg)}`);
+  if(!waOuvrir(c.phone, msg)) return;
   // Logger automatiquement
   if(!c.interactions) c.interactions=[];
   c.interactions.push({date:new Date().toISOString(),type:'Message WhatsApp (IA)',note:msg.substring(0,100)+'…',etape:1,ico:'🤖'});
@@ -14214,7 +14245,74 @@ function importTabSwitch(tab, el) {
 }
 
 // ─── Utilitaires ────────────────────────
+
+// ═══════════════════════════════════════════════════════════════
+//  NUMÉROS WHATSAPP — format garanti (Côte d'Ivoire, plan à 10 chiffres depuis 2021)
+//  Format attendu par wa.me : « 225 » + les 10 chiffres du numéro, sans « + » ni espaces (ex. 0707904919 → 2250707904919).
+//  • 10 chiffres 01/05/07 = mobile (Moov / MTN / Orange) → WhatsApp possible
+//  • 10 chiffres 21/22/23/24/25/27 = fixe → pas de WhatsApp
+//  • 8 chiffres (ancien plan) → converti avec le préfixe de l'opérateur d'origine (Moov 01, MTN 05, Orange 07)
+//  • champ contenant plusieurs numéros (« / », « , », « ou ») → on retient le premier mobile
+// ═══════════════════════════════════════════════════════════════
+const _CI_ANCIEN_8 = (()=>{ const m={};
+  [['01',['01','02','03','40','41','42','43','50','51','52','53','70','71','72','73']],
+   ['05',['04','05','06','44','45','46','54','55','56','64','65','66','74','75','76','84','85','86','94','95','96']],
+   ['07',['07','08','09','47','48','49','57','58','59','67','68','69','77','78','79','87','88','89','97','98']]
+  ].forEach(([pf,l])=>l.forEach(x=>m[x]=pf)); return m; })();
+function waCandidats(raw){
+  const parts = String(raw||'').replace(/[()]/g,'/').split(/[\/;,|\n]| ou | et /i);
+  const out=[];
+  parts.forEach(pt=>{
+    let d=pt.replace(/\D/g,''); if(!d) return;
+    if(d.startsWith('00225')) d=d.slice(5);
+    else if(d.startsWith('225') && (d.length===13||d.length===11)) d=d.slice(3);
+    // plusieurs numéros collés sans séparateur (ex. 20 chiffres)
+    if(d.length>10 && d.length%10===0){ for(let i=0;i<d.length;i+=10) out.push(d.slice(i,i+10)); }
+    else if(d.length>8 && d.length%8===0 && d.length!==10){ for(let i=0;i<d.length;i+=8) out.push(d.slice(i,i+8)); }
+    else out.push(d);
+  });
+  return out;
+}
+function waAnalyse(raw){
+  const cands = waCandidats(raw);
+  if(!cands.length) return {ok:false,num:'',reason:'Numéro manquant',kind:'vide',all:[]};
+  const all=[];
+  cands.forEach(d=>{
+    let kind='invalide', n=d, conv=false;
+    if(d.length===10){ kind = /^(01|05|07)/.test(d)?'mobile' : /^(21|22|23|24|25|27)/.test(d)?'fixe' : 'invalide'; }
+    else if(d.length===8){ const pf=_CI_ANCIEN_8[d.slice(0,2)]; if(pf){ n=pf+d; kind='mobile'; conv=true; } else kind = /^[23]/.test(d)?'fixe':'invalide'; }
+    all.push({brut:d,n,kind,conv});
+  });
+  const m = all.find(x=>x.kind==='mobile');
+  if(m) return {ok:true,num:'225'+m.n,kind:'mobile',converti:m.conv,reason:'',all,
+                affiche:'+225 '+m.n.replace(/(\d{2})(?=\d)/g,'$1 ').trim()};
+  if(all.some(x=>x.kind==='fixe')) return {ok:false,num:'',kind:'fixe',reason:'Numéro fixe : pas de WhatsApp (il faut un mobile 01 / 05 / 07)',all};
+  return {ok:false,num:'',kind:'invalide',reason:'Numéro invalide « '+String(raw).trim().slice(0,30)+' » (10 chiffres attendus : 07 XX XX XX XX)',all};
+}
+// Numéro prêt pour wa.me / API WhatsApp / SMS (« 225… » sans +) ou '' s'il est invalide
+function relancePhoneIntl(phone){ return waAnalyse(phone).num; }
+function waWhy(phone){ return waAnalyse(phone).reason; }
+// Lien wa.me garanti : numéro 225 + 10 chiffres, message encodé UTF-8 (retourne '' si le numéro est invalide)
+function waLink(phone,msg){
+  const a=waAnalyse(phone); if(!a.ok) return '';
+  const t=String(msg||'').replace(/\r\n?/g,'\n').trim();
+  return 'https://wa.me/'+a.num+(t?'?text='+encodeURIComponent(t):'');
+}
+// Envoi WhatsApp avec contrôle : ouvre le chat avec numéro ET message, ou explique pourquoi c'est impossible
+function waOuvrir(phone,msg){
+  const url=waLink(phone,msg);
+  if(!url){ showToast('❌ '+waWhy(phone),'error'); return false; }
+  return _openWA(url);
+}
+function waBtnHtml(c,css,cls,label){
+  const url=waLink(c.phone,'');
+  return url
+    ? `<a href="${url}" target="_blank" rel="noopener" class="${cls}" style="${css}">${label}</a>`
+    : `<span class="${cls}" style="${css.replace(/background:#25D366/,'background:#9ca3af')};opacity:.65;cursor:not-allowed" title="${waWhy(c.phone).replace(/"/g,'&quot;')}">${label} ✗</span>`;
+}
+
 function importNormalizePhone(raw) {
+  { const a=waAnalyse(raw); if(a.ok) return '+'+a.num; }
   if(!raw) return '';
   let n = raw.replace(/[\s\-\.\(\)]/g,'');
   // CI : convertir 07XXXXXXXX → +22507XXXXXXXX
