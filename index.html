@@ -1191,7 +1191,7 @@ select.form-input{cursor:pointer}
             <div class="form-group"><label class="form-label">Nom de la campagne</label><input class="form-input" id="mkt-nom" placeholder="Ex. Promoteurs immobiliers — Juillet"></div>
             <div class="form-row" style="gap:12px;flex-wrap:wrap">
               <div class="form-group" style="flex:1;min-width:130px"><label class="form-label">Canal</label>
-                <select class="form-input" id="mkt-canal">
+                <select class="form-input" id="mkt-canal" onchange="mktApplyModele()">
                   <option value="wa">📱 WhatsApp</option><option value="sms">✉️ SMS</option><option value="email">📧 Email</option>
                 </select></div>
               <div class="form-group" style="flex:1;min-width:130px"><label class="form-label">Statut cible</label>
@@ -1205,7 +1205,16 @@ select.form-input{cursor:pointer}
             </div>
             <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin:4px 0 10px;cursor:pointer">
               <input type="checkbox" id="mkt-wa-only"> Uniquement les numéros sur WhatsApp (canal WhatsApp)</label>
-            <div class="form-group"><label class="form-label">Message (variables : {nom} {logiciel} {rdv} {pitch} {gerant} {tel})</label>
+            <div class="form-group"><label class="form-label">Modèle de premier contact</label>
+              <select class="form-input" id="mkt-modele" onchange="mktApplyModele()">
+                <option value="">— Message libre —</option>
+                <option value="aluexpert">Menuiserie alu / inox — AluExpert</option>
+                <option value="immo">Immobilier — ImmoSuite</option>
+                <option value="generic">Autres secteurs — logiciel recommandé</option>
+              </select></div>
+            <div class="form-group" id="mkt-subject-wrap" style="display:none"><label class="form-label">Objet de l'e-mail</label>
+              <input type="text" class="form-input" id="mkt-subject" placeholder="Objet — variables : {nom} {logiciel}"></div>
+            <div class="form-group"><label class="form-label">Message (variables : {nom} {logiciel} {rdv} {pitch} {gerant} {tel} {salut} {destinataire})</label>
               <textarea class="form-input" id="mkt-msg" rows="5" style="font-size:12px">Bonjour {nom},
 
 {pitch}
@@ -2220,6 +2229,15 @@ Seriez-vous disponible pour une démonstration {rdv} ?
           </div>
         </div>
 
+        <!-- Premier contact : modèles WhatsApp & e-mail -->
+        <div class="card" style="padding:16px;margin-bottom:16px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:6px">👋 Messages de premier contact — WhatsApp & e-mail</div>
+          <p class="page-sub" style="margin:0 0 4px">Modèles prêts à l'emploi, choisis automatiquement selon le logiciel du prospect (AluExpert, ImmoSuite ou autre). Proposés à l'ouverture d'une relance au stade « Nouveau », dans les campagnes Marketing et la Messagerie.</p>
+          <p class="page-sub" style="margin:0 0 12px">Variables : <code>{salut}</code> <code>{destinataire}</code> <code>{nom}</code> <code>{logiciel}</code> <code>{pitch}</code> <code>{demo_line}</code> <code>{gerant}</code> <code>{societe}</code> <code>{tel}</code> <code>{email}</code> <code>{ville}</code> <code>{rdv}</code></p>
+          <div id="rel-cfg-firstcontact"></div>
+          <button class="btn btn-outline btn-sm" onclick="fcResetDefaults()">↺ Rétablir les modèles par défaut</button>
+        </div>
+
         <!-- Modèles par étape -->
         <div class="card" style="padding:16px;margin-bottom:16px">
           <div style="font-weight:700;font-size:13px;margin-bottom:6px">Modèles de message par étape</div>
@@ -2677,9 +2695,17 @@ Seriez-vous disponible pour une démonstration {rdv} ?
     <div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:2px">💬 Relance — <span id="rel-nom"></span></div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:14px" id="rel-etape-lbl"></div>
 
+    <div class="tabs" id="rel-version" style="margin-bottom:10px">
+      <div class="tab active" data-v="wa" onclick="relanceVersion('wa')">📱 Version WhatsApp / SMS</div>
+      <div class="tab" data-v="email" onclick="relanceVersion('email')">📧 Version e-mail</div>
+    </div>
+    <div class="form-group" id="rel-subject-wrap" style="display:none">
+      <label class="form-label">Objet de l'e-mail</label>
+      <input type="text" class="form-input" id="rel-subject">
+    </div>
     <div class="form-group">
       <label class="form-label">Message (modifiable)</label>
-      <textarea class="form-input" id="rel-msg" rows="8" style="font-size:13px;line-height:1.5"></textarea>
+      <textarea class="form-input" id="rel-msg" rows="9" style="font-size:13px;line-height:1.5"></textarea>
     </div>
 
     <div id="rel-canal-reco" style="font-size:12px;margin:2px 0 8px"></div>
@@ -4798,12 +4824,86 @@ let EQUIPE = [];
 
 const ABIDJAN_LOCS = [];
 
+// ═══════════════════════════════════════
+//  MESSAGES DE PREMIER CONTACT — WhatsApp & e-mail, prêts à l'emploi
+//  Un modèle par segment (logiciel) et par canal. Modifiables dans Paramétrage → Séquences.
+//  Variables : {salut} {destinataire} {nom} {logiciel} {pitch} {demo_line} {gerant} {societe} {tel} {email} {ville} {rdv} {prix}
+// ═══════════════════════════════════════
+const FIRST_CONTACT_DEFAULT = {
+  aluexpert: {
+    label: 'Menuiserie alu / inox — Sanix AluExpert ERP',
+    wa: "{salut} 👋 Je m'adresse bien à l'équipe de {nom} ?\n\nJe suis {gerant}, de {societe} à {ville}. Nous avons créé *AluExpert*, un logiciel pour les ateliers d'aluminium et d'inox : devis et proformas en quelques minutes, coût de revient et marge calculés, suivi des chantiers, stock, facturation FNE — et ça marche même sans connexion.\n\nDes ateliers d'Abidjan l'utilisent déjà. Seriez-vous partant pour une démo de 15 min {rdv} ?\n\n{demo_line}Si ce n'est pas le bon moment, dites-le-moi et je ne vous relancerai pas. 🙏",
+    emailSubject: "Devis, chantiers et stock de {nom} : un outil pensé pour les ateliers alu & inox",
+    email: "{salut} {destinataire},\n\nJe me permets de vous écrire car {nom} travaille l'aluminium / l'inox, et je pense que notre logiciel peut vous faire gagner un temps précieux.\n\nSanix AluExpert ERP est conçu pour les ateliers de menuiserie d'Abidjan :\n• devis et proformas chiffrés rapidement (profilés, vitrage, quincaillerie, pose) ;\n• coût de revient et marge calculés automatiquement ;\n• suivi des chantiers, fiches d'exécution et ordres de fabrication ;\n• gestion du stock et des achats ;\n• facturation conforme (FNE) et comptabilité SYSCOHADA ;\n• fonctionnement possible sans connexion internet.\n\nDes ateliers d'aluminium et d'inox d'Abidjan l'utilisent déjà au quotidien.\n\nPuis-je vous proposer une démonstration gratuite de 20 minutes, dans vos locaux ou à distance, {rdv} ?\n\n{demo_line}Cordialement,\n{gerant}\n{societe} — {ville}\n📞 {tel} · 📧 {email}\n\nSi ce message ne vous concerne pas, répondez simplement « stop » et je ne vous écrirai plus."
+  },
+  immo: {
+    label: 'Immobilier — ImmoSuite ERP',
+    wa: "{salut} 👋 Je m'adresse bien à l'équipe de {nom} ?\n\nJe suis {gerant}, de {societe} à {ville}. Nous avons développé *ImmoSuite ERP* pour les promoteurs et gestionnaires immobiliers : suivi des programmes, lots et ventes, souscripteurs (diaspora incluse), échéanciers de paiement, DQE et comptabilité SYSCOHADA.\n\nDes promoteurs l'utilisent déjà pour garder la main sur leurs ventes et leurs encaissements. Une démo de 15 min {rdv} vous intéresserait ?\n\n{demo_line}Si ce n'est pas le bon moment, dites-le-moi et je ne vous relancerai pas. 🙏",
+    emailSubject: "Programmes, lots et encaissements de {nom} : un seul outil de gestion",
+    email: "{salut} {destinataire},\n\nJe vous écris car {nom} intervient dans l'immobilier, et notre logiciel peut vous aider à piloter vos programmes avec plus de visibilité.\n\nImmoSuite ERP couvre :\n• programmes, lots et unités, avec l'état de chaque vente ;\n• suivi des souscripteurs (y compris diaspora) et des échéanciers ;\n• DQE / étude de prix ;\n• comptabilité SYSCOHADA et export FEC ;\n• portail client et messagerie interne.\n\nPuis-je vous présenter l'outil lors d'une démonstration gratuite de 20 minutes, dans vos locaux ou à distance, {rdv} ?\n\n{demo_line}Cordialement,\n{gerant}\n{societe} — {ville}\n📞 {tel} · 📧 {email}\n\nSi ce message ne vous concerne pas, répondez simplement « stop » et je ne vous écrirai plus."
+  },
+  generic: {
+    label: 'Autres secteurs — logiciel recommandé',
+    wa: "{salut} 👋 Je m'adresse bien à l'équipe de {nom} ?\n\nJe suis {gerant}, de {societe} à {ville}. Nous éditons des logiciels de gestion pensés pour les entreprises ivoiriennes (SYSCOHADA, utilisables hors connexion).\n\n{pitch}\n\nSeriez-vous partant pour une démo de 15 min {rdv} ?\n\n{demo_line}Si ce n'est pas le bon moment, dites-le-moi et je ne vous relancerai pas. 🙏",
+    emailSubject: "Un logiciel de gestion adapté à l'activité de {nom}",
+    email: "{salut} {destinataire},\n\nJe me permets de vous contacter au sujet de la gestion de {nom}. {societe} édite des logiciels pensés pour les entreprises ivoiriennes (conformes SYSCOHADA, utilisables hors connexion).\n\n{pitch}\n\nPuis-je vous proposer une démonstration gratuite de 20 minutes, dans vos locaux ou à distance, {rdv} ?\n\n{demo_line}Cordialement,\n{gerant}\n{societe} — {ville}\n📞 {tel} · 📧 {email}\n\nSi ce message ne vous concerne pas, répondez simplement « stop » et je ne vous écrirai plus."
+  }
+};
+function fcCfg(){
+  const o = (typeof relanceCfg==='function' ? relanceCfg().premierContact : null) || {};
+  const out = {};
+  Object.keys(FIRST_CONTACT_DEFAULT).forEach(k=>{ out[k] = {...FIRST_CONTACT_DEFAULT[k], ...(o[k]||{})}; });
+  return out;
+}
+function fcSegment(c){
+  const l = _nrm(c.logiciel||'');
+  if(l.includes('aluexpert')) return 'aluexpert';
+  if(l.includes('immo') || _nrm(c.secteur||'')==='immobilier') return 'immo';
+  return 'generic';
+}
+function fcSalut(){ const h=new Date().getHours(); return (h>=17||h<4) ? 'Bonsoir' : 'Bonjour'; }
+function fcDestinataire(c){
+  if(c.contact) return c.contact;
+  const m = /Responsable[^:]*:\s*([^—\n|]+?)\s*(?:—|\||$)/i.exec(c.notes||'');
+  return m ? m[1].trim() : 'Madame, Monsieur';
+}
+function fcSenderVars(t){
+  const r = relanceCfg();
+  return t.replace(/{gerant}/g,r.gerant).replace(/{societe}/g,r.societe).replace(/{tel}/g,r.tel1).replace(/{email}/g,r.email)
+          .replace(/{ville}/g,r.ville).replace(/{rdv}/g,relanceRDVPhrase()).replace(/{salut}/g,fcSalut());
+}
+function fcFill(t,c){
+  const log = LOGICIELS.find(l=>l.nom===c.logiciel) || {};
+  const prix = ((c.valeur>0?c.valeur:log.prixNum)||0).toLocaleString('fr-FR');
+  return fcSenderVars(t)
+    .replace(/{demo_line}/g, log.demo ? '📲 Démo en ligne : '+log.demo+'\n\n' : '')
+    .replace(/{destinataire}/g, fcDestinataire(c))
+    .replace(/{nom}/g, c.nom||'').replace(/{logiciel}/g, c.logiciel||'nos solutions de gestion')
+    .replace(/{pitch}/g, (typeof relanceBuildPitch==='function') ? relanceBuildPitch(c) : '')
+    .replace(/{prix}/g, prix)
+    .replace(/\n{3,}/g,'\n\n');
+}
+// → {subject, body} prêts à envoyer pour ce prospect ; canal : 'wa' (aussi SMS) ou 'email'
+function fcGet(c, canal){
+  const t = fcCfg()[fcSegment(c)];
+  return canal==='email'
+    ? {subject: fcFill(t.emailSubject,c), body: fcFill(t.email,c)}
+    : {subject: '', body: fcFill(t.wa,c)};
+}
+
 const MSG_TEMPLATES = [
   {canal:'wa',titre:'Présentation produit',msg:'Bonjour {prenom},\n\nJe suis {commercial} de SANIX Africa Division Technologies.\nNous développons des logiciels ERP sur mesure pour les entreprises ivoiriennes.\n\nJe souhaiterais vous présenter {logiciel} — la solution idéale pour votre secteur.\n\n📱 Lien démo gratuite : {demo}\n\nDisponible pour un échange cette semaine ?'},
   {canal:'wa',titre:'Relance prospect',msg:'Bonjour {prenom} 👋\n\nSuite à notre échange du {date}, je voulais savoir si vous aviez pu consulter la démo de {logiciel}.\n\nDes questions ? Je suis disponible.\n\n— {commercial}, SANIX Africa'},
   {canal:'email',titre:'Proposition commerciale',msg:'Objet : Proposition commerciale — {logiciel}\n\nBonjour {civilite} {nom},\n\nFaisant suite à notre rencontre, je vous adresse en pièce jointe notre proposition commerciale pour le déploiement de {logiciel} au sein de {entreprise}.\n\nMontant : {prix} FCFA HT\nDélai déploiement : 2 semaines\nFormation incluse : Oui\n\nCordialement,\n{commercial}\nSANIX Africa Division Technologies'},
   {canal:'email',titre:'Invitation démo',msg:'Objet : Invitation — Démo gratuite {logiciel}\n\nBonjour,\n\nNous vous invitons à une démonstration gratuite et sans engagement de {logiciel}.\n\n📅 Durée : 30 min\n🔗 Lien démo : {demo}\n📞 Ou contactez-nous : +225 XX XX XX XX\n\nRépondez à cet email pour fixer un créneau.\n\nCordialement,\nL\'équipe SANIX Africa'},
 ];
+
+// Premiers contacts : ajoutés en tête de la galerie de la Messagerie
+Object.keys(FIRST_CONTACT_DEFAULT).slice().reverse().forEach(k=>{
+  const t=FIRST_CONTACT_DEFAULT[k];
+  MSG_TEMPLATES.unshift({canal:'email',titre:'1er contact — '+t.label,msg:'Objet : '+t.emailSubject+'\n\n'+t.email,fc:k});
+  MSG_TEMPLATES.unshift({canal:'wa',titre:'1er contact — '+t.label,msg:t.wa,fc:k});
+});
 
 const DEPLOYMENTS_SEED = [];
 let DEPLOYMENTS = [...DEPLOYMENTS_SEED];
@@ -7009,7 +7109,8 @@ function initMessagerie() {
 function selectTemplate(i) {
   document.querySelectorAll('.msg-template').forEach(t=>t.classList.remove('selected'));
   document.querySelectorAll('.msg-template')[i].classList.add('selected');
-  document.getElementById('msg-text').value = MSG_TEMPLATES[i].msg;
+  const _t = MSG_TEMPLATES[i];
+  document.getElementById('msg-text').value = _t.fc ? fcSenderVars(_t.msg).replace(/{demo_line}/g,'').replace(/{pitch}\n*/g,'') : _t.msg;
 }
 function selectChannel(ch, el) {
   document.querySelectorAll('.channel-btn').forEach(b=>b.classList.remove('active'));
@@ -10097,7 +10198,8 @@ function relanceBuildPitch(c){
        + (best.prixNum?` À partir de ${prix} FCFA.`:'');
 }
 
-function relanceBuildMsg(c, etape){
+function relanceBuildMsg(c, etape, canal){
+  if(etape===0) return fcGet(c, canal==='email'?'email':'wa').body;   // premier contact : modèles WhatsApp / e-mail dédiés
   const r = relanceCfg();
   const log = LOGICIELS.find(l=>l.nom===c.logiciel);
   const prix = (c.valeur>0?c.valeur:(log?.prixNum||0)).toLocaleString('fr-FR');
@@ -10172,7 +10274,7 @@ function relanceOpen(id){
   const etape = aiGetEtape(c);
   document.getElementById('rel-nom').textContent = c.nom;
   document.getElementById('rel-etape-lbl').textContent = 'Étape : '+(CONV_ETAPES[etape]||'Nouveau')+' · '+(c.phone||'sans numéro')+(c.email?' · '+c.email:'');
-  document.getElementById('rel-msg').value = relanceBuildMsg(c, etape);
+  relanceVersion(bestChannel(c)==='email' ? 'email' : 'wa');
   { const si=document.getElementById('rel-sched-at'); if(si) si.value=schedToInputVal(schedDefaultAt()); }
   relanceRenderCanal();
   const r = relanceCfg();
@@ -10186,6 +10288,29 @@ function relanceOpen(id){
   document.getElementById('modal-relance').classList.remove('hidden');
 }
 
+// Version du message affichée : 'wa' (WhatsApp / SMS) ou 'email' (avec objet)
+let _relVersion = 'wa', _relAuto = '';
+function relanceBuildSubject(c, etape, v){
+  if(v!=='email') return '';
+  if(etape===0) return fcGet(c,'email').subject;
+  return (c.logiciel||'Solutions de gestion')+' — '+relanceCfg().societe;
+}
+function relanceVersion(v){
+  const c = CLIENTS.find(x=>x.id===_relanceClientId); if(!c) return;
+  _relVersion = v;
+  const et = aiGetEtape(c);
+  const txt = relanceBuildMsg(c, et, v);
+  document.getElementById('rel-msg').value = txt; _relAuto = txt;
+  document.getElementById('rel-subject').value = relanceBuildSubject(c, et, v);
+  document.getElementById('rel-subject-wrap').style.display = v==='email' ? '' : 'none';
+  document.querySelectorAll('#rel-version .tab').forEach(t=>t.classList.toggle('active', t.dataset.v===v));
+}
+// Si le texte n'a pas été modifié à la main, bascule sur la version du canal choisi
+function relanceEnsureVersion(canal){
+  const want = canal==='email' ? 'email' : 'wa';
+  if(_relVersion!==want && document.getElementById('rel-msg').value===_relAuto) relanceVersion(want);
+}
+
 function _relanceLog(c, canal){
   if(!c.interactions) c.interactions=[];
   const et = aiGetEtape(c);
@@ -10197,6 +10322,7 @@ function _relanceLog(c, canal){
 // Envoi réel selon canal
 async function relanceSend(canal){
   const c = CLIENTS.find(x=>x.id===_relanceClientId); if(!c) return;
+  relanceEnsureVersion(canal);
   const msg = document.getElementById('rel-msg').value;
   const r = relanceCfg();
 
@@ -10236,7 +10362,7 @@ async function relanceSend(canal){
   }
   else if(canal==='email'){
     if(!c.email){ showToast('❌ Email manquant'); return; }
-    const subj = encodeURIComponent(`${c.logiciel||'Solutions de gestion'} — ${r.societe}`);
+    const subj = encodeURIComponent((document.getElementById('rel-subject').value||'').trim() || `${c.logiciel||'Solutions de gestion'} — ${r.societe}`);
     window.location.href = `mailto:${c.email}?subject=${subj}&body=${encodeURIComponent(msg)}`;
     _relanceLog(c,'Email'); showToast('📧 Email ouvert');
   }
@@ -10261,12 +10387,33 @@ function initRelanceConfig(){
   g('rel-cfg-tel1').value=r.tel1; g('rel-cfg-tel2').value=r.tel2; g('rel-cfg-email').value=r.email;
   g('rel-cfg-waid').value=r.waPhoneId; g('rel-cfg-watoken').value=r.waToken;
   g('rel-cfg-smsurl').value=r.smsUrl; g('rel-cfg-smskey').value=r.smsKey;
+  g('rel-cfg-firstcontact').innerHTML = Object.entries(fcCfg()).map(([k,t])=>`
+    <div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:12px;margin-bottom:10px">
+      <div style="font-weight:700;font-size:12px;margin-bottom:8px">${t.label}</div>
+      <label class="form-label">📱 WhatsApp / SMS</label>
+      <textarea class="form-input fc-cfg" data-seg="${k}" data-key="wa" rows="6" style="font-size:12px;margin-bottom:8px">${t.wa}</textarea>
+      <label class="form-label">📧 E-mail — objet</label>
+      <input type="text" class="form-input fc-cfg" data-seg="${k}" data-key="emailSubject" value="${String(t.emailSubject).replace(/"/g,'&quot;')}" style="font-size:12px;margin-bottom:8px">
+      <label class="form-label">📧 E-mail — message</label>
+      <textarea class="form-input fc-cfg" data-seg="${k}" data-key="email" rows="9" style="font-size:12px">${t.email}</textarea>
+    </div>`).join('');
   const box=g('rel-cfg-templates');
   box.innerHTML = CONV_ETAPES.map((lbl,e)=>`
     <div class="form-group" style="margin-bottom:10px">
       <label class="form-label">${e+1}. ${lbl}</label>
       <textarea class="form-input rel-cfg-tpl" data-e="${e}" rows="4" style="font-size:12px">${r.templates[e]||''}</textarea>
     </div>`).join('');
+}
+function fcCollect(){
+  const out={};
+  document.querySelectorAll('.fc-cfg').forEach(el=>{ (out[el.dataset.seg]=out[el.dataset.seg]||{})[el.dataset.key]=el.value; });
+  return out;
+}
+function fcResetDefaults(){
+  if(!confirm('Rétablir les modèles de premier contact par défaut ? Vos modifications seront perdues.')) return;
+  const r=relanceCfg(); delete r.premierContact; CONFIG.relance=r;
+  if(typeof persistConfig==='function') persistConfig();
+  initRelanceConfig(); showToast('↺ Modèles par défaut rétablis');
 }
 function relanceSaveConfig(){
   const g=id=>document.getElementById(id).value;
@@ -10275,7 +10422,8 @@ function relanceSaveConfig(){
     gerant:g('rel-cfg-gerant'),societe:g('rel-cfg-societe'),ville:g('rel-cfg-ville'),
     tel1:g('rel-cfg-tel1'),tel2:g('rel-cfg-tel2'),email:g('rel-cfg-email'),
     waPhoneId:g('rel-cfg-waid'),waToken:g('rel-cfg-watoken'),smsUrl:g('rel-cfg-smsurl'),smsKey:g('rel-cfg-smskey'),
-    templates
+    templates,
+    premierContact:fcCollect()
   };
   if(typeof persistConfig==='function') persistConfig();
   showToast('✅ Séquences de relance enregistrées');
@@ -10594,11 +10742,13 @@ function relanceSchedule(){
   if(!atRaw){ showToast('❌ Choisissez une date/heure'); return; }
   const at = new Date(atRaw);
   if(isNaN(at) || at<=new Date()){ showToast('❌ Date invalide ou passée'); return; }
-  const msg = document.getElementById('rel-msg').value;
   // Canal via cascade (respecte "pas sur WhatsApp")
   const canal = (typeof bestChannel==='function') ? bestChannel(c) : (c.phone ? 'wa' : 'email');
+  relanceEnsureVersion(canal);
+  const msg = document.getElementById('rel-msg').value;
+  const subject = canal==='email' ? (document.getElementById('rel-subject').value||'').trim() : '';
   const id = SCHED.length ? Math.max(...SCHED.map(s=>s.id))+1 : 1;
-  SCHED.push({id, clientId:c.id, nom:c.nom, canal, msg, at:at.toISOString(), status:'pending', createdAt:new Date().toISOString()});
+  SCHED.push({id, clientId:c.id, nom:c.nom, canal, msg, subject, at:at.toISOString(), status:'pending', createdAt:new Date().toISOString()});
   schedSave();
   showToast(`🗓️ Relance programmée : ${c.nom} le ${at.toLocaleString('fr-FR',{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}`);
   document.getElementById('modal-relance').classList.add('hidden');
@@ -10879,6 +11029,15 @@ function mktResolveSegment(cfg){
     return true;
   });
 }
+// Charge le modèle de premier contact choisi pour le canal de la campagne (variables remplies par destinataire à l'envoi)
+function mktApplyModele(){
+  const canal=document.getElementById('mkt-canal').value, seg=document.getElementById('mkt-modele').value;
+  const wrap=document.getElementById('mkt-subject-wrap'); if(wrap) wrap.style.display = canal==='email' ? '' : 'none';
+  if(!seg) return;
+  const t=fcCfg()[seg]; if(!t) return;
+  document.getElementById('mkt-msg').value = canal==='email' ? t.email : t.wa;
+  document.getElementById('mkt-subject').value = canal==='email' ? t.emailSubject : '';
+}
 function mktReadForm(){
   return {
     nom:document.getElementById('mkt-nom').value.trim()||'Campagne sans nom',
@@ -10888,6 +11047,7 @@ function mktReadForm(){
     score:parseInt(document.getElementById('mkt-score').value)||0,
     waOnly:document.getElementById('mkt-wa-only').checked,
     msg:document.getElementById('mkt-msg').value,
+    subject:(document.getElementById('mkt-subject')||{}).value||'',
     autoRelance:document.getElementById('mkt-autorelance').checked,
   };
 }
@@ -10897,17 +11057,7 @@ function mktPreviewSegment(){
 }
 
 // Rendu message pour un contact (réutilise pitch + rdv + variables)
-function mktRenderMsg(tpl,c){
-  const r=(typeof relanceCfg==='function')?relanceCfg():{gerant:'Cyrille KESIE',tel1:'',email:'',ville:'',societe:'SANIX Africa'};
-  const pitch=(typeof relanceBuildPitch==='function')?relanceBuildPitch(c):'';
-  const rdv=(typeof relanceRDVPhrase==='function')?relanceRDVPhrase():'cette semaine';
-  const log=LOGICIELS.find(l=>l.nom===c.logiciel);
-  const prix=(c.valeur>0?c.valeur:(log?.prixNum||0)).toLocaleString('fr-FR');
-  return tpl.replace(/{nom}/g,c.nom||'').replace(/{logiciel}/g,c.logiciel||'nos solutions')
-    .replace(/{pitch}/g,pitch).replace(/{rdv}/g,rdv).replace(/{gerant}/g,r.gerant)
-    .replace(/{societe}/g,r.societe||'SANIX Africa').replace(/{tel}/g,r.tel1||'').replace(/{email}/g,r.email||'')
-    .replace(/{ville}/g,r.ville||'').replace(/{prix}/g,prix);
-}
+function mktRenderMsg(tpl,c){ return fcFill(tpl,c); }
 
 // Lancement : API auto si dispo, sinon file d'envoi guidée
 let _mktQueue=[], _mktQi=0, _mktCampId=null;
@@ -10955,7 +11105,7 @@ function mktGuidedNext(){
   const canal=camp.canal;
   if(canal==='wa'){ const num=relancePhoneIntl(c.phone); window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,'_blank'); }
   else if(canal==='sms'){ const num=relancePhoneIntl(c.phone); window.location.href=`sms:+${num}?body=${encodeURIComponent(msg)}`; }
-  else if(canal==='email'){ window.location.href=`mailto:${c.email}?subject=${encodeURIComponent('SANIX Africa — '+(c.logiciel||'Solutions de gestion'))}&body=${encodeURIComponent(msg)}`; }
+  else if(canal==='email'){ window.location.href=`mailto:${c.email}?subject=${encodeURIComponent(camp.subject ? mktRenderMsg(camp.subject,c) : 'SANIX Africa — '+(c.logiciel||'Solutions de gestion'))}&body=${encodeURIComponent(msg)}`; }
   _mktLog(c,camp); if(camp.autoRelance) mktScheduleRelance(c,camp);
   camp.envoyes=(camp.envoyes||0)+1; campSave();
   _mktQi++;
