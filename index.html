@@ -4893,6 +4893,15 @@ const FIRST_CONTACT_DEFAULT = {
     email: "{salut} {destinataire},\n\nJe me permets de vous contacter au sujet de la gestion de {nom}. {societe} édite des logiciels pensés pour les entreprises ivoiriennes (conformes SYSCOHADA, utilisables hors connexion).\n\n{pitch}\n\nPuis-je vous proposer une démonstration gratuite de 20 minutes, dans vos locaux ou à distance, {rdv} ?\n\n{demo_line}Cordialement,\n{gerant}\n{societe} — {ville}\n📞 {tel} · 📧 {email}\n\nSi ce message ne vous concerne pas, répondez simplement « stop » et je ne vous écrirai plus."
   }
 };
+// Ouvre WhatsApp ; si le navigateur bloque la fenêtre (pop-up), affiche un lien cliquable (un clic est toujours autorisé)
+function _openWA(url){
+  let w=null; try{ w=window.open(url,'_blank'); }catch(e){}
+  if(w) return true;
+  let b=document.getElementById('wa-popup-bar');
+  if(!b){ b=document.createElement('div'); b.id='wa-popup-bar'; b.style.cssText='position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:99999;background:#111827;color:#fff;padding:12px 16px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.35);display:flex;gap:12px;align-items:center;font-size:13px;max-width:92vw'; document.body.appendChild(b); }
+  b.innerHTML='<span>🚫 Le navigateur a bloqué l\'ouverture automatique.</span><a href="'+url.replace(/"/g,'&quot;')+'" target="_blank" rel="noopener" style="background:#25D366;color:#fff;font-weight:700;padding:8px 14px;border-radius:8px;text-decoration:none" onclick="setTimeout(()=>document.getElementById(\'wa-popup-bar\')?.remove(),300)">📱 Ouvrir WhatsApp</a><button onclick="this.parentNode.remove()" style="background:none;border:0;color:#9ca3af;font-size:18px;cursor:pointer">✕</button>';
+  return false;
+}
 function fcCfg(){
   const o = (typeof relanceCfg==='function' ? relanceCfg().premierContact : null) || {};
   const out = {};
@@ -7801,7 +7810,7 @@ function whatsappClient(id) {
   if(!c||!c.phone) { showToast('❌ Numéro manquant'); return; }
   const num = c.phone.replace(/\D/g,'');
   const msg = encodeURIComponent(`Bonjour ${c.nom},\n\nJe vous contacte concernant ${c.logiciel}.\n\nCordialement`);
-  window.open(`https://wa.me/225${num}?text=${msg}`, '_blank');
+  _openWA(`https://wa.me/225${num}?text=${msg}`);
 }
 
 // ─── PIPELINE FILTERS ───────────────────
@@ -10388,9 +10397,9 @@ async function relanceSend(canal){
         });
         if(!res.ok) throw new Error('HTTP '+res.status);
         _relanceLog(c,'WhatsApp (auto)'); showToast('✅ WhatsApp envoyé automatiquement');
-      }catch(e){ showToast('⚠️ API échec, ouverture manuelle'); window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,'_blank'); _relanceLog(c,'WhatsApp'); }
+      }catch(e){ showToast('⚠️ API échec, ouverture manuelle'); _openWA(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`); _relanceLog(c,'WhatsApp'); }
     } else {
-      window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,'_blank');
+      _openWA(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`);
       _relanceLog(c,'WhatsApp'); showToast('📱 WhatsApp ouvert');
     }
   }
@@ -11151,17 +11160,25 @@ function mktGuidedNext(){
   if(_mktQi>=_mktQueue.length){ if(camp){camp.status='terminee';campSave();} showToast('🎉 Campagne terminée'); mktRenderList(); return; }
   const c=_mktQueue[_mktQi]; const msg=mktRenderMsg(camp.msg,c);
   const canal=camp.canal;
-  if(canal==='wa'){ const num=relancePhoneIntl(c.phone); window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,'_blank'); }
+  if(canal==='wa'){ const num=relancePhoneIntl(c.phone); _openWA(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`); }
   else if(canal==='sms'){ const num=relancePhoneIntl(c.phone); window.location.href=`sms:+${num}?body=${encodeURIComponent(msg)}`; }
   else if(canal==='email'){ window.location.href=`mailto:${c.email}?subject=${encodeURIComponent(camp.subject ? mktRenderMsg(camp.subject,c) : 'SANIX Africa — '+(c.logiciel||'Solutions de gestion'))}&body=${encodeURIComponent(msg)}`; }
   _mktLog(c,camp); if(camp.autoRelance) mktScheduleRelance(c,camp);
   camp.envoyes=(camp.envoyes||0)+1; campSave();
   _mktQi++;
   showToast(`Envoi ${_mktQi}/${_mktQueue.length} — ${c.nom}`);
-  if(_mktQi<_mktQueue.length){
-    setTimeout(()=>{ if(confirm(`Continuer ? Destinataire suivant : ${_mktQueue[_mktQi].nom} (${_mktQi+1}/${_mktQueue.length})`)) mktGuidedNext(); else mktRenderList(); },600);
-  } else { camp.status='terminee'; campSave(); mktRenderList(); showToast('🎉 Campagne terminée'); }
+  if(_mktQi<_mktQueue.length){ mktGuideBar(); }
+  else { mktGuideBarClose(); camp.status='terminee'; campSave(); mktRenderList(); showToast('🎉 Campagne terminée'); }
 }
+// Un clic de l'utilisateur est nécessaire pour chaque ouverture : le navigateur bloque les pop-ups lancés par un minuteur
+function mktGuideBar(){
+  let b=document.getElementById('mkt-guide-bar');
+  if(!b){ b=document.createElement('div'); b.id='mkt-guide-bar'; b.style.cssText='position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:99998;background:#111827;color:#fff;padding:12px 16px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.35);display:flex;gap:12px;align-items:center;font-size:13px;max-width:94vw;flex-wrap:wrap'; document.body.appendChild(b); }
+  const nxt=_mktQueue[_mktQi];
+  b.innerHTML=`<span>✅ ${_mktQi}/${_mktQueue.length} envoyé(s) — suivant : <b>${escapeHtmlSafe(nxt.nom||'')}</b></span><button onclick="mktGuidedNext()" style="background:#25D366;color:#fff;font-weight:700;border:0;padding:8px 14px;border-radius:8px;cursor:pointer">▶ Envoyer au suivant</button><button onclick="mktGuideBarClose();mktRenderList()" style="background:#374151;color:#fff;border:0;padding:8px 12px;border-radius:8px;cursor:pointer">Arrêter</button>`;
+}
+function mktGuideBarClose(){ document.getElementById('mkt-guide-bar')?.remove(); }
+function escapeHtmlSafe(t){ return String(t).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 function _mktLog(c,camp){
   if(!c.interactions) c.interactions=[];
   c.interactions.push({date:new Date().toISOString(),type:'Campagne '+camp.canal.toUpperCase(),note:'Campagne : '+camp.nom,etape:Math.max(aiGetEtape(c),1),ico:'📣',campId:camp.id});
@@ -11542,7 +11559,7 @@ function agInviteWA(id){
   const g=(typeof relanceCfg==='function')?relanceCfg():{gerant:'Cyrille KESIE'};
   const msg=`Bonjour ${c.nom},\n\nConfirmation de notre ${r.type.toLowerCase()} :\n📅 ${agFmtHuman(r)}\n⏱️ ${r.duree} min\n${r.lieu?(r.visio?'🔗 Lien : '+r.lieu:'📍 Lieu : '+r.lieu):''}\n\nÀ très bientôt,\n${g.gerant} — SANIX Africa`;
   const num=(typeof relancePhoneIntl==='function')?relancePhoneIntl(c.phone):c.phone.replace(/\D/g,'');
-  window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,'_blank');
+  _openWA(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`);
 }
 function agInviteEmail(id){
   const r=RDVS.find(x=>x.id===id); if(!r) return;
@@ -14023,7 +14040,7 @@ function aiSendWA() {
   const msg = _aiLastOutput || '';
   const num = c.phone.replace(/\D/g,'');
   const prefix = num.startsWith('225')?num:'225'+num;
-  window.open(`https://wa.me/${prefix}?text=${encodeURIComponent(msg)}`,'_blank');
+  _openWA(`https://wa.me/${prefix}?text=${encodeURIComponent(msg)}`);
   // Logger automatiquement
   if(!c.interactions) c.interactions=[];
   c.interactions.push({date:new Date().toISOString(),type:'Message WhatsApp (IA)',note:msg.substring(0,100)+'…',etape:1,ico:'🤖'});
