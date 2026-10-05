@@ -4978,12 +4978,25 @@ function fcFill(t,c){
     .replace(/\{(salut|destinataire|nom|logiciel|pitch|demo_line|gerant|societe|tel|email|ville|rdv|prix)\}/g,'')
     .replace(/\n{3,}/g,'\n\n');
 }
+// Argument de vente commun : le portail client inclus dans chaque logiciel (inséré avant le dernier paragraphe)
+const FC_PORTAIL_WA = "🌐 Atout en plus : un *portail client* est inclus. Vos clients suivent eux-mêmes l'avancement de leur projet, leurs documents et leurs paiements, sans vous appeler.";
+const FC_PORTAIL_EMAIL = "Un atout supplémentaire : chaque logiciel inclut un portail client. Vos clients suivent eux-mêmes l'avancement de leur projet, leurs documents et leurs paiements, sans avoir à vous relancer.";
+function fcAddPortail(body, canal){
+  if(/portail/i.test(body)) return body;
+  const add = canal==='email'?FC_PORTAIL_EMAIL:FC_PORTAIL_WA;
+  const ci = body.search(/\n\n(Cordialement|Bien cordialement|Salutations)/i);
+  if(ci>0) return body.slice(0,ci)+'\n\n'+add+body.slice(ci);
+  const parts = body.split('\n\n');
+  if(parts.length<3) return body+'\n\n'+(canal==='email'?FC_PORTAIL_EMAIL:FC_PORTAIL_WA);
+  parts.splice(parts.length-1,0,canal==='email'?FC_PORTAIL_EMAIL:FC_PORTAIL_WA);
+  return parts.join('\n\n');
+}
 // → {subject, body} prêts à envoyer pour ce prospect ; canal : 'wa' (aussi SMS) ou 'email'
 function fcGet(c, canal){
   const t = fcCfg()[fcSegment(c)];
   return canal==='email'
-    ? {subject: fcFill(t.emailSubject,c), body: fcFill(t.email,c)}
-    : {subject: '', body: fcFill(t.wa,c)};
+    ? {subject: fcFill(t.emailSubject,c), body: fcAddPortail(fcFill(t.email,c),'email')}
+    : {subject: '', body: fcAddPortail(fcFill(t.wa,c),'wa')};
 }
 
 const MSG_TEMPLATES = [
@@ -4996,8 +5009,8 @@ const MSG_TEMPLATES = [
 // Premiers contacts : ajoutés en tête de la galerie de la Messagerie
 Object.keys(FIRST_CONTACT_DEFAULT).slice().reverse().forEach(k=>{
   const t=FIRST_CONTACT_DEFAULT[k];
-  MSG_TEMPLATES.unshift({canal:'email',titre:'1er contact — '+t.label,msg:'Objet : '+t.emailSubject+'\n\n'+t.email,fc:k});
-  MSG_TEMPLATES.unshift({canal:'wa',titre:'1er contact — '+t.label,msg:t.wa,fc:k});
+  MSG_TEMPLATES.unshift({canal:'email',titre:'1er contact — '+t.label,msg:'Objet : '+t.emailSubject+'\n\n'+fcAddPortail(t.email,'email'),fc:k});
+  MSG_TEMPLATES.unshift({canal:'wa',titre:'1er contact — '+t.label,msg:fcAddPortail(t.wa,'wa'),fc:k});
 });
 
 const DEPLOYMENTS_SEED = [];
