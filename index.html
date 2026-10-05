@@ -11398,14 +11398,19 @@ ${prix?`<div style="text-align:center" class="price">À partir de ${prix}</div>`
 <p style="color:#94A3B8;font-size:14px">Réponse rapide sur WhatsApp</p>
 <input id="lp-nom" placeholder="Votre nom / entreprise">
 <input id="lp-tel" placeholder="Votre téléphone">
-<button onclick="lpSend()">📱 Recevoir la démo sur WhatsApp</button></div>
+<button onclick="lpSend()">📱 Recevoir la démo sur WhatsApp</button>
+${log?.demo&&log.demo!=='#'?`<a href="${log.demo}" target="_blank" rel="noopener" style="display:block;margin-top:10px;padding:13px;border-radius:10px;background:#2563EB;color:#fff;font-weight:700;text-decoration:none">▶ Voir la démo en ligne</a>`:''}</div>
 </div>
 <footer>SANIX Africa · ${r.gerant||''} · Abidjan, Côte d'Ivoire</footer>
-<scr'+'ipt>
-function lpSend(){var n=document.getElementById('lp-nom').value||'',t=document.getElementById('lp-tel').value||'';
-var msg=encodeURIComponent('Bonjour, je suis '+n+' (tel: '+t+'). Je souhaite une démo de ${logNom}.');
-window.open('https://wa.me/${waNum}?text='+msg,'_blank');}
-</scr'+'ipt></body></html>`;
+<script>
+var LP_LOG=${JSON.stringify(logNom||'')},LP_WA=${JSON.stringify(String(waNum||''))};
+function lpSend(){
+  var n=(document.getElementById('lp-nom').value||'').trim(),t=(document.getElementById('lp-tel').value||'').trim();
+  if(!n||!t){ alert('Merci de renseigner votre nom et votre téléphone.'); return; }
+  var msg='Bonjour, je suis '+n+' (tél : '+t+'). Je souhaite une démo de '+LP_LOG+'.';
+  window.location.href='https://wa.me/'+LP_WA+'?text='+encodeURIComponent(msg);
+}
+<\/script></body></html>`;
   const blob=new Blob([html],{type:'text/html'});
   const url=URL.createObjectURL(blob); const a=document.createElement('a');
   a.href=url; a.download='landing-'+(logNom||'sanix').toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.html';
