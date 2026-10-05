@@ -222,6 +222,13 @@ input,textarea,select{font-family:var(--font-b);outline:none}
 .eq-color-swatch:hover{transform:scale(1.15)}
 .sel-row{background:var(--primary-l)!important}
 #sel-bar{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:9000;background:#111827;color:#fff;padding:10px 14px;border-radius:14px;box-shadow:0 10px 34px rgba(0,0,0,.35);display:none;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;max-width:96vw}
+@media(max-width:700px){
+  #sel-bar,#mkt-guide-bar,#wa-popup-bar{left:8px!important;right:8px!important;bottom:10px!important;transform:none!important;max-width:none!important;padding:8px 10px!important;gap:6px!important;justify-content:center}
+  #sel-bar>span,#mkt-guide-bar>span,#wa-popup-bar>span{width:100%;text-align:center}
+  #sel-bar button,#mkt-guide-bar button,#wa-popup-bar a{flex:1 1 auto;padding:10px 8px!important;font-size:12px!important;text-align:center}
+  #clients-cards-view,#clients-list-view{padding-bottom:110px}
+}
+#sel-all-m{display:none;align-items:center;gap:8px;font-size:13px;font-weight:600;padding:8px 4px 10px}
 #sel-bar button{border:0;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;font-size:12px}
 .eq-color-swatch.selected{border-color:#fff;box-shadow:0 0 0 2px #334155;transform:scale(1.1)}
 .team-kpi-item{text-align:center}
@@ -1481,6 +1488,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
         </table>
       </div>
 
+      <label id="sel-all-m"><input type="checkbox" id="sel-all-mc" onchange="selAllToggle(this.checked)" style="width:20px;height:20px"> Tout sélectionner (liste filtrée)</label>
       <!-- Vue CARTES (mobile par défaut) -->
       <div id="clients-cards-view" class="hidden">
         <div class="grid-auto" id="clients-cards-grid"></div>
@@ -5271,6 +5279,7 @@ function eqSyncTab(orig){
 }
 function navigate(view, el) {
   const _orig = view;
+  setTimeout(()=>{ try{ selRefresh(); }catch(e){} },0);
   view = MERGED_VIEWS[view] || view;
   document.querySelectorAll('[id^="view-"]').forEach(v => v.classList.add('hidden'));
   document.getElementById('view-' + view)?.classList.remove('hidden');
@@ -7472,6 +7481,7 @@ function renderClients(list) {
   try{ fillClientFilters(); }catch(e){}
   const _cc=document.getElementById('clients-count'); if(_cc) _cc.textContent=list.length+' résultat'+(list.length>1?'s':'');
   const mode = getViewMode();
+  const _sm=document.getElementById('sel-all-m'); if(_sm) _sm.style.display = mode==='table' ? 'none' : 'flex';
   document.getElementById('clients-table-view').classList.toggle('hidden', mode!=='table');
   document.getElementById('clients-cards-view').classList.toggle('hidden', mode!=='cards');
   document.getElementById('clients-list-view').classList.toggle('hidden', mode!=='list');
@@ -7560,13 +7570,14 @@ function selAllToggle(on){
 function selClear(){ _sel.clear(); renderClients(getFilteredClients()); }
 function selRefresh(list){
   list = list || getFilteredClients();
-  const all=document.getElementById('sel-all');
-  if(all){ const n=list.filter(c=>_sel.has(c.id)).length; all.checked = list.length>0 && n===list.length; all.indeterminate = n>0 && n<list.length; }
+  const nSel=list.filter(c=>_sel.has(c.id)).length;
+  ['sel-all','sel-all-mc'].forEach(id=>{ const all=document.getElementById(id); if(all){ all.checked = list.length>0 && nSel===list.length; all.indeterminate = nSel>0 && nSel<list.length; } });
+  const vc=document.getElementById('view-clients');
   document.querySelectorAll('.sel-chk').forEach(x=>{ x.checked=_sel.has(Number(x.dataset.id)); });
   let b=document.getElementById('sel-bar');
   if(!b){ b=document.createElement('div'); b.id='sel-bar'; document.body.appendChild(b); }
   const n=_sel.size;
-  if(!n){ b.style.display='none'; return; }
+  if(!n || (vc && vc.classList.contains('hidden'))){ b.style.display='none'; return; }
   const sel=CLIENTS.filter(c=>_sel.has(c.id));
   const nWa=sel.filter(c=>c.phone).length, nMail=sel.filter(c=>c.email).length;
   b.style.display='flex';
