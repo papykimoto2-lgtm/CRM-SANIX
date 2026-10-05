@@ -4801,7 +4801,7 @@ const LOGICIELS_SEED = [
     prix:'600 000',
     prixMensuel:60000,
     remiseMax:10,
-    demo:'https://aluexpert-demo.vercel.app',
+    demo:'https://sanix-aluexpet-erp-v2.vercel.app',
     demo_acces:'Accès : identifiant demo · mot de passe Demo@2026',
     video:'',
     doc:'',
@@ -12058,11 +12058,11 @@ const CLIENTS_ALUEXPERT = [
 ];
 
 function _seedDemoLinkAluExpertOnce(){
-  const FLAG='sanix_crm_demo_link_aluexpert_v1';
+  const FLAG='sanix_crm_demo_link_aluexpert_v2';
   if(localStorage.getItem(FLAG)) return;
   const l=(typeof LOGICIELS!=='undefined')&&LOGICIELS.find(x=>x.id==='log_aluexpert');
   if(!l) return;
-  if(!l.demo||l.demo==='#') l.demo='https://aluexpert-demo.vercel.app';
+  if(!l.demo||l.demo==='#'||l.demo==='https://aluexpert-demo.vercel.app') l.demo='https://sanix-aluexpet-erp-v2.vercel.app';
   if(!l.demo_acces) l.demo_acces='Accès : identifiant demo · mot de passe Demo@2026';
   try{ saveStore('logiciels'); }catch(e){}
   localStorage.setItem(FLAG,'1');
