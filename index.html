@@ -269,6 +269,11 @@ select.form-input{cursor:pointer}
 .client-card-info{font-size:11px;color:var(--muted)}
 
 /* ─── TABS ─────────────────────────────────────── */
+.grp-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 18px;padding:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh)}
+.grp-tab{padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .2s;white-space:nowrap}
+.grp-tab:hover{background:var(--primary-l);color:var(--primary)}
+.grp-tab.active{background:var(--primary);color:#fff;box-shadow:var(--sh)}
+@media(max-width:768px){.grp-tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}}
 .tabs{display:flex;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:4px;margin-bottom:20px;width:fit-content}
 .tab{padding:6px 16px;border-radius:6px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .2s}
 .tab.active{background:var(--surface);color:var(--text);box-shadow:var(--sh)}
@@ -703,8 +708,11 @@ select.form-input{cursor:pointer}
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-section">① Prospection</div>
+  <div class="sb-item active" onclick="navigate('dashboard',this)">
+    <div class="sb-icon">🏠</div><span>Accueil — Tableau de bord</span>
+  </div>
 
+  <div class="sb-section">① Prospection</div>
   <div class="sb-item" onclick="navigate('clients',this)">
     <div class="sb-icon">👤</div><span>Clients & Prospects</span>
     <span class="sb-badge warn" id="sb-prospects-badge">0</span>
@@ -712,25 +720,68 @@ select.form-input{cursor:pointer}
   <div class="sb-item" onclick="navigate('carte',this)">
     <div class="sb-icon">🗺️</div><span>Carte & Géoloc</span>
   </div>
-  <div class="sb-item" onclick="navigate('agenda',this)">
-    <div class="sb-icon">📅</div><span>Agenda intelligent</span>
-    <span class="sb-badge" id="sb-agenda-badge" style="display:none">0</span>
-  </div>
-  <div class="sb-item" onclick="navigate('marketing',this)">
-    <div class="sb-icon">🎯</div><span>Moteur Marketing</span>
-  </div>
   <div class="sb-item" onclick="navigate('rapports',this)">
     <div class="sb-icon">📋</div><span>Rapports terrain</span>
     <span class="sb-badge warn" id="sb-rapports-badge">0</span>
+  </div>
+
+  <div class="sb-section">② Communication</div>
+  <div class="sb-item" data-grp="com" onclick="navGroup('com',this)">
+    <div class="sb-icon">📣</div><span>Marketing & Messagerie</span>
+    <span class="sb-badge warn" id="grp-badge-com" style="display:none">0</span>
+  </div>
+
+  <div class="sb-section">③ Présentation</div>
+  <div class="sb-item" data-grp="prod" onclick="navGroup('prod',this)">
+    <div class="sb-icon">💻</div><span>Catalogue & Démos</span>
+    <span class="sb-badge warn" id="grp-badge-prod" style="display:none">0</span>
+  </div>
+
+  <div class="sb-section">④ Conversion</div>
+  <div class="sb-item" data-grp="conv" onclick="navGroup('conv',this)">
+    <div class="sb-icon">🎯</div><span>Pipeline & Conversion</span>
+    <span class="sb-badge warn" id="grp-badge-conv" style="display:none">0</span>
+  </div>
+
+  <div class="sb-section">⑤ Vente & Contrats</div>
+  <div class="sb-item" data-grp="vente" onclick="navGroup('vente',this)">
+    <div class="sb-icon">🛒</div><span>Commandes · Contrats · Licences</span>
+    <span class="sb-badge warn" id="grp-badge-vente" style="display:none">0</span>
+  </div>
+
+  <div class="sb-section">⑥ Déploiement</div>
+  <div class="sb-item" onclick="navigate('planning',this)">
+    <div class="sb-icon">📅</div><span>Planning déploiement</span>
+  </div>
+
+  <div class="sb-section">⑦ Encaissement</div>
+  <div class="sb-item" onclick="navigate('comptabilite',this)">
+    <div class="sb-icon">📒</div><span>Comptabilité</span>
+    <span class="sb-badge" id="sb-compta-badge" style="display:none">0</span>
+  </div>
+
+  <div class="sb-section">⑧ Réseau commercial</div>
+  <div class="sb-item" data-grp="reseau" onclick="navGroup('reseau',this)">
+    <div class="sb-icon">🏆</div><span>Équipe, Apporteurs & Commissions</span>
+    <span class="sb-badge warn" id="grp-badge-reseau" style="display:none">0</span>
+  </div>
+
+  <div class="sb-section">⑨ Pilotage</div>
+  <div class="sb-item" data-grp="pilot" onclick="navGroup('pilot',this)">
+    <div class="sb-icon">🧠</div><span>Direction, Cockpit & Intelligence</span>
+    <span class="sb-badge warn" id="grp-badge-pilot" style="display:none">0</span>
+  </div>
+
+
+  <!-- Entrées d'origine des modules regroupés : conservées (masquées) pour les badges et l'accès par code -->
+  <div id="sb-legacy" style="display:none">
+  <div class="sb-item" onclick="navigate('marketing',this)">
+    <div class="sb-icon">🎯</div><span>Moteur Marketing</span>
   </div>
   <div class="sb-item" onclick="navigate('messagerie',this)">
     <div class="sb-icon">💬</div><span>Messagerie</span>
     <span class="sb-badge">5</span>
   </div>
-
-  <div class="sb-divider"></div>
-  <div class="sb-section">② Présentation</div>
-
   <div class="sb-item" onclick="navigate('logiciels',this)">
     <div class="sb-icon">💻</div><span>Catalogue logiciels</span>
   </div>
@@ -738,22 +789,18 @@ select.form-input{cursor:pointer}
     <div class="sb-icon">🎬</div><span>Présentations & Démos</span>
     <span class="sb-badge" id="sb-pres-badge">0</span>
   </div>
-
-  <div class="sb-divider"></div>
-  <div class="sb-section">③ Conversion</div>
-
-  <div class="sb-item" onclick="navigate('conversion',this)">
-    <div class="sb-icon">🚀</div><span>Moteur de Conversion</span>
-    <span class="sb-badge warn" id="sb-conv-badge">0</span>
-  </div>
   <div class="sb-item" onclick="navigate('pipeline',this)">
     <div class="sb-icon">🎯</div><span>Pipeline commercial</span>
     <span class="sb-badge" id="sb-pipeline-badge">0</span>
   </div>
-
-  <div class="sb-divider"></div>
-  <div class="sb-section">④ Vente & Contractualisation</div>
-
+  <div class="sb-item" onclick="navigate('conversion',this)">
+    <div class="sb-icon">🚀</div><span>Moteur de Conversion</span>
+    <span class="sb-badge warn" id="sb-conv-badge">0</span>
+  </div>
+  <div class="sb-item" onclick="navigate('agenda',this)">
+    <div class="sb-icon">📅</div><span>Agenda intelligent</span>
+    <span class="sb-badge" id="sb-agenda-badge" style="display:none">0</span>
+  </div>
   <div class="sb-item" onclick="navigate('commandes',this)">
     <div class="sb-icon">🛒</div><span>Commandes clients</span>
     <span class="sb-badge warn" id="sb-cmd-badge">0</span>
@@ -770,17 +817,6 @@ select.form-input{cursor:pointer}
     <div class="sb-icon">📄</div><span>Documents & Modèles</span>
     <span class="sb-badge" id="sb-doc-badge" style="display:none">0</span>
   </div>
-
-  <div class="sb-divider"></div>
-  <div class="sb-section">⑤ Déploiement</div>
-
-  <div class="sb-item" onclick="navigate('planning',this)">
-    <div class="sb-icon">📅</div><span>Planning déploiement</span>
-  </div>
-
-  <div class="sb-divider"></div>
-  <div class="sb-section">⑥ Réseau commercial</div>
-
   <div class="sb-item" onclick="navigate('equipe',this)">
     <div class="sb-icon">🏆</div><span>Équipe & Apporteurs</span>
   </div>
@@ -792,29 +828,15 @@ select.form-input{cursor:pointer}
     <div class="sb-icon">💰</div><span>Commissions</span>
     <span class="sb-badge warn" id="sb-comm-badge" style="display:none">0</span>
   </div>
-
-  <div class="sb-divider"></div>
-  <div class="sb-section">⑦ Comptabilité SYSCOHADA</div>
-
-  <div class="sb-item" onclick="navigate('comptabilite',this)">
-    <div class="sb-icon">📒</div><span>Comptabilité</span>
-    <span class="sb-badge" id="sb-compta-badge" style="display:none">0</span>
-  </div>
-
-  <div class="sb-divider"></div>
-  <div class="sb-section">⑧ Pilotage & Reporting</div>
-
   <div class="sb-item" onclick="navigate('direction',this)">
     <div class="sb-icon">👔</div><span>Tableau dirigeant</span>
-  </div>
-  <div class="sb-item active" onclick="navigate('dashboard',this)">
-    <div class="sb-icon">📊</div><span>Tableau de bord</span>
   </div>
   <div class="sb-item" onclick="navigate('cockpit',this)">
     <div class="sb-icon">🧠</div><span>Cockpit IA</span>
   </div>
   <div class="sb-item" onclick="navigate('intel',this)">
     <div class="sb-icon">🧬</div><span>CRM Intelligence</span>
+  </div>
   </div>
 
   <div class="sb-divider"></div>
@@ -4747,6 +4769,51 @@ const ACTIVITIES = [];
 // ═══════════════════════════════════════
 //  NAVIGATION
 // ═══════════════════════════════════════
+// ═══════════════════════════════════════
+//  NAVIGATION PAR ÉTAPES — modules regroupés (marche en avant)
+//  Chaque groupe = 1 entrée de menu + barre d'onglets vers les vues d'origine
+// ═══════════════════════════════════════
+const NAV_GROUPS = {
+  com:    {views:[['marketing','🎯 Moteur Marketing'],['messagerie','💬 Messagerie']], badges:[]},
+  prod:   {views:[['logiciels','💻 Catalogue logiciels'],['presentations','🎬 Présentations & Démos']], badges:['sb-pres-badge']},
+  conv:   {views:[['pipeline','🎯 Pipeline commercial'],['conversion','🚀 Moteur de conversion'],['agenda','📅 Agenda intelligent']], badges:['sb-conv-badge','sb-agenda-badge']},
+  vente:  {views:[['commandes','🛒 Commandes'],['contrats','📝 Contrats & Conventions'],['licences','🔑 Licences'],['documents','📄 Documents & Modèles']], badges:['sb-cmd-badge','sb-lic-badge','sb-doc-badge']},
+  reseau: {views:[['equipe','🏆 Équipe'],['apporteurs','🤝 Apporteurs d\'affaires'],['commissions','💰 Commissions']], badges:['sb-app-badge','sb-comm-badge']},
+  pilot:  {views:[['direction','👔 Tableau dirigeant'],['cockpit','🧠 Cockpit IA'],['intel','🧬 CRM Intelligence']], badges:[]}
+};
+function _grpOf(view){ return Object.keys(NAV_GROUPS).find(k=>NAV_GROUPS[k].views.some(v=>v[0]===view)); }
+function _canView(v){
+  try{
+    if(typeof currentUser==='undefined' || !currentUser || currentUser.role==='super_admin') return true;
+    return (PERMISSIONS[currentUser.role]||[]).includes(v);
+  }catch(e){ return true; }
+}
+function navGroup(key, el){
+  const v = NAV_GROUPS[key].views.find(x=>_canView(x[0]));
+  if(!v){ showToast('🔒 Accès restreint — rôle insuffisant'); return; }
+  navigate(v[0], el);
+}
+function _applyGroupUI(view){
+  const key = _grpOf(view);
+  document.querySelectorAll('#sb-legacy .sb-item').forEach(i=>i.classList.remove('active'));
+  document.querySelectorAll('.sb-item[data-grp]').forEach(i=>i.classList.toggle('active', i.dataset.grp===key));
+  if(!key) return;
+  const host = document.getElementById('view-'+view); if(!host) return;
+  let bar = host.querySelector(':scope > .grp-tabs');
+  if(!bar){ bar=document.createElement('div'); bar.className='grp-tabs'; host.insertBefore(bar, host.firstChild); }
+  bar.innerHTML = NAV_GROUPS[key].views.filter(v=>_canView(v[0])).map(v=>
+    `<div class="grp-tab${v[0]===view?' active':''}" onclick="navigate('${v[0]}',null)">${v[1]}</div>`).join('');
+}
+function refreshGroupBadges(){
+  Object.keys(NAV_GROUPS).forEach(k=>{
+    const b = document.getElementById('grp-badge-'+k); if(!b) return;
+    let n = 0;
+    (NAV_GROUPS[k].badges||[]).forEach(id=>{ const e=document.getElementById(id); if(e && e.style.display!=='none') n += parseInt(e.textContent)||0; });
+    b.textContent = n; b.style.display = n ? '' : 'none';
+  });
+}
+setInterval(refreshGroupBadges, 3000);
+
 function navigate(view, el) {
   document.querySelectorAll('[id^="view-"]').forEach(v => v.classList.add('hidden'));
   document.getElementById('view-' + view)?.classList.remove('hidden');
@@ -4779,6 +4846,8 @@ function navigate(view, el) {
   if(view === 'intel') setTimeout(initIntel, 50);
   if(view === 'apporteurs') setTimeout(initApporteurs, 50);
   if(view === 'documents') setTimeout(initDocuments, 50);
+  _applyGroupUI(view);
+  refreshGroupBadges();
   document.dispatchEvent(new CustomEvent('sanix:navigate', {detail: view}));
   closeSidebar();
 }
