@@ -4937,6 +4937,8 @@ const FIRST_CONTACT_DEFAULT = {
 // Ouvre WhatsApp ; si le navigateur bloque la fenêtre (pop-up), affiche un lien cliquable (un clic est toujours autorisé)
 function _openWA(url,onBlockedClick){
   window._waBlockedCb=onBlockedClick||null;
+  // Mobile : on navigue dans l'onglet (wa.me ouvre l'appli WhatsApp) — jamais bloqué, contrairement à window.open
+  if(/Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent||'')){ window.location.href=url; return true; }
   let w=null; try{ w=window.open(url,'_blank'); }catch(e){}
   if(w) return true;
   let b=document.getElementById('wa-popup-bar');
@@ -11307,6 +11309,7 @@ function mktGuidedDone(c,camp,msg){
   _mktLog(c,camp,msg); if(camp.autoRelance) mktScheduleRelance(c,camp);
   camp.envoyes=(camp.envoyes||0)+1; campSave();
   _mktQi++;
+  mktPersist();
   showToast(`Envoi ${_mktQi}/${_mktQueue.length} — ${c.nom}`);
   if(_mktQi<_mktQueue.length){ mktGuideBar(); }
   else { mktGuideBarClose(); camp.status='terminee'; campSave(); mktRenderList(); showToast('🎉 Campagne terminée'); }
@@ -11318,7 +11321,25 @@ function mktGuideBar(){
   const nxt=_mktQueue[_mktQi];
   b.innerHTML=`<span>✅ ${_mktQi}/${_mktQueue.length} envoyé(s) — suivant : <b>${escapeHtmlSafe(nxt.nom||'')}</b></span><button onclick="mktGuidedNext()" style="background:#25D366;color:#fff;font-weight:700;border:0;padding:8px 14px;border-radius:8px;cursor:pointer">▶ Envoyer au suivant</button><button onclick="mktGuideBarClose();mktRenderList()" style="background:#374151;color:#fff;border:0;padding:8px 12px;border-radius:8px;cursor:pointer">Arrêter</button>`;
 }
-function mktGuideBarClose(){ document.getElementById('mkt-guide-bar')?.remove(); }
+// La file guidée survit à un changement d'appli (sur mobile, WhatsApp prend la place du CRM)
+function mktPersist(){
+  try{
+    if(_mktCampId && _mktQueue && _mktQi<_mktQueue.length) localStorage.setItem('sanix_mkt_queue',JSON.stringify({camp:_mktCampId,ids:_mktQueue.map(x=>x.id),qi:_mktQi}));
+    else localStorage.removeItem('sanix_mkt_queue');
+  }catch(e){}
+}
+function mktResume(){
+  try{
+    const o=JSON.parse(localStorage.getItem('sanix_mkt_queue')||'null'); if(!o) return;
+    if(!CAMPAGNES.length) campLoad();
+    const camp=CAMPAGNES.find(c=>c.id===o.camp); if(!camp||camp.status==='terminee'){ localStorage.removeItem('sanix_mkt_queue'); return; }
+    const q=o.ids.map(id=>CLIENTS.find(c=>c.id===id)).filter(Boolean);
+    if(o.qi>=q.length){ localStorage.removeItem('sanix_mkt_queue'); return; }
+    _mktCampId=o.camp; _mktQueue=q; _mktQi=o.qi; mktGuideBar();
+  }catch(e){}
+}
+window.addEventListener('load',()=>setTimeout(mktResume,600));
+function mktGuideBarClose(){ document.getElementById('mkt-guide-bar')?.remove(); try{ if(!_mktQueue||_mktQi>=_mktQueue.length) localStorage.removeItem('sanix_mkt_queue'); }catch(e){} }
 function escapeHtmlSafe(t){ return String(t).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 function _mktLog(c,camp,msg){
   if(!c.interactions) c.interactions=[];
