@@ -1524,7 +1524,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
           <option>Immobilier</option><option>Aviculture</option><option>Distribution</option>
           <option>Industrie</option><option>Ressources Humaines</option><option>Agriculture</option>
           <option>Commerce</option><option>Logistique</option><option>Santé</option>
-          <option>Finance</option><option>Autre</option>
+          <option>Finance</option><option>Hôtellerie</option><option>Autre</option>
         </select>
         <select class="form-input" id="log-filter-plateforme" style="width:auto;height:36px" onchange="renderLogiciels()">
           <option value="">Toutes plateformes</option>
@@ -4296,7 +4296,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
           <option>Immobilier</option><option>Aviculture</option><option>Distribution</option>
           <option>Industrie</option><option>Ressources Humaines</option><option>Agriculture</option>
           <option>Commerce</option><option>Logistique</option><option>Santé</option>
-          <option>Finance</option><option>Autre</option>
+          <option>Finance</option><option>Hôtellerie</option><option>Autre</option>
         </select>
       </div>
       <div class="form-group">
@@ -4923,6 +4923,54 @@ const LOGICIELS_SEED = [
     doc:'',
     icon:'🚚',
     color:'#0F766E',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_hotelsuite',
+    nom:'HotelSuite ERP',
+    version:'v1.0',
+    cat:'Hôtellerie',
+    plateforme:'Web',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'ERP hôtelier complet : réservations, plan et gestion des chambres, contrôle des accès, check-in / check-out, fichier clients, restaurant, salles de conférence, spa, stocks et dépôts, caisse, ressources humaines et rapports.',
+    modules:'Tableau de Bord,Réservations,Chambres,Accès,Check-in / Check-out,Clients,Restaurant,Conférences,Spa,Stocks & Dépôts,Caisse,RH,Rapports,Paramétrage',
+    prixNum:600000,
+    prix:'600 000',
+    prixMensuel:60000,
+    remiseMax:10,
+    demo:'https://hotel-suite-erp.vercel.app',
+    video:'',
+    doc:'',
+    icon:'🏨',
+    color:'#7C3AED',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_comptapro',
+    nom:'SANIX ComptaPro',
+    version:'v1.0',
+    cat:'Finance',
+    plateforme:'Web',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'Logiciel d\'expertise comptable SYSCOHADA : saisie des écritures, grand livre, balance, compte de résultat et bilan, à-nouveaux, lettrage, échéancier, comptes tiers et auxiliaires, fiscalité, états financiers, caisse, achats, stock, facturation, immobilisations, rentabilité, gestion des exercices.',
+    modules:'Cockpit,Écritures,Grand Livre,Balance,Résultat,Bilan,États Financiers,Lettrage,Échéancier,Tiers & Auxiliaires,Fiscalité,Caisse,Achats,Stock,Facturation,Immobilisations,Rentabilité,Exercices,Plan Comptable',
+    prixNum:600000,
+    prix:'600 000',
+    prixMensuel:60000,
+    remiseMax:10,
+    demo:'https://sanix-compta-pro.vercel.app',
+    video:'',
+    doc:'',
+    icon:'📊',
+    color:'#0369A1',
     commission:10,
     ventes:0,
     prospects:0,
