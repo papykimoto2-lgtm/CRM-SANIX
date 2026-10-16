@@ -1524,7 +1524,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
           <option>Immobilier</option><option>Aviculture</option><option>Distribution</option>
           <option>Industrie</option><option>Ressources Humaines</option><option>Agriculture</option>
           <option>Commerce</option><option>Logistique</option><option>Santé</option>
-          <option>Finance</option><option>Autre</option>
+          <option>Finance</option><option>Hôtellerie</option><option>Autre</option>
         </select>
         <select class="form-input" id="log-filter-plateforme" style="width:auto;height:36px" onchange="renderLogiciels()">
           <option value="">Toutes plateformes</option>
@@ -4296,7 +4296,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
           <option>Immobilier</option><option>Aviculture</option><option>Distribution</option>
           <option>Industrie</option><option>Ressources Humaines</option><option>Agriculture</option>
           <option>Commerce</option><option>Logistique</option><option>Santé</option>
-          <option>Finance</option><option>Autre</option>
+          <option>Finance</option><option>Hôtellerie</option><option>Autre</option>
         </select>
       </div>
       <div class="form-group">
@@ -4848,6 +4848,129 @@ const LOGICIELS_SEED = [
     doc:'',
     icon:'🪟',
     color:'#1D4ED8',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_angels_livraison',
+    nom:'Angel\'s Livraison',
+    version:'v1.0',
+    cat:'Logistique',
+    plateforme:'Web',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'ERP de livraison à moto : commandes à 12 statuts, centre de livraison et affectation, tournées multi-livraisons, application livreur mobile avec carte et GPS, preuve de livraison par code et signature, paiement à la livraison et reversement, commissions livreurs, rentabilité par livreur, zone et moto, entretien des motos, vendeurs partenaires, étiquettes QR, notifications WhatsApp. Regroupable avec Angel\'s Agro et Angel\'s Transport dans le Hub holding (vue consolidée trésorerie, CA, créances, résultat).',
+    modules:'Clients & Adresses,Commandes,Centre de Livraison,Tournées,Application Livreur,GPS & Carte,Preuve de Livraison,Paiement à la Livraison,Commissions,Motos & Entretien,Vendeurs Partenaires,Étiquettes QR,Factures & Avoirs,Rentabilité,Rôles & Audit,PWA Offline',
+    prixNum:600000,
+    prix:'600 000',
+    prixMensuel:60000,
+    remiseMax:10,
+    demo:'https://angelsgroups.vercel.app/distribution',
+    demo_acces:'Accès : PIN admin 1234',
+    video:'',
+    doc:'',
+    icon:'🛵',
+    color:'#EA580C',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_angels_agro',
+    nom:'Angel\'s Agro',
+    version:'v1.0',
+    cat:'Aviculture',
+    plateforme:'Web',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'ERP avicole : lots et élevage, suivi quotidien (mortalité, aliment, eau, pesée, œufs), prophylaxie avec délai d\'attente bloquant la vente, programme nutritionnel par souche, couvoir, conditionnement des œufs, stock, fabrication d\'aliment et achats, ventes et créances, trésorerie et rentabilité par lot, comptabilité SYSCOHADA, rapports WhatsApp. Remplace AviNest Pro dans le Hub Angel\'s Group. Regroupable dans le Hub holding.',
+    modules:'Tableau de Bord,Lots & Élevage,Suivi Quotidien,Prophylaxie,Programme Nutritionnel,Couvoir,Conditionnement,Stock & Fabrication,Achats,Ventes & Créances,Trésorerie & Rentabilité,SYSCOHADA,Rapports WhatsApp,Personnel & Rôles,PWA Offline',
+    prixNum:600000,
+    prix:'600 000',
+    prixMensuel:60000,
+    remiseMax:10,
+    demo:'https://angelsgroups.vercel.app/agro',
+    demo_acces:'Accès : PIN admin 1234',
+    video:'',
+    doc:'',
+    icon:'🐓',
+    color:'#65A30D',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_angels_transport',
+    nom:'Angel\'s Transport',
+    version:'v1.0',
+    cat:'Logistique',
+    plateforme:'Web',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'Gestion de flotte et de transport : véhicules et chauffeurs avec dossiers (carte grise, assurance, permis), contrats de recette ou de location avec avenants, échéances, encaissements (paiement partiel, mobile money), reçus, caisse et clôture, dépenses, GPS (zones, historique), maintenance, sinistres, portail chauffeur, comptabilité en partie double. Regroupable dans le Hub holding.',
+    modules:'Tableau de Bord,Véhicules,Chauffeurs,Contrats Recette & Location,Planning,Échéances,Encaissements,Reçus,Caisse & Clôture,Dépenses,GPS,Maintenance,Sinistres,Portail Chauffeur,Comptabilité,Droits & Audit',
+    prixNum:600000,
+    prix:'600 000',
+    prixMensuel:60000,
+    remiseMax:10,
+    demo:'https://angelsgroups.vercel.app/transport',
+    demo_acces:'Accès : PIN admin 1234',
+    video:'',
+    doc:'',
+    icon:'🚚',
+    color:'#0F766E',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_hotelsuite',
+    nom:'HotelSuite ERP',
+    version:'v1.0',
+    cat:'Hôtellerie',
+    plateforme:'Web',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'ERP hôtelier complet : réservations, plan et gestion des chambres, contrôle des accès, check-in / check-out, fichier clients, restaurant, salles de conférence, spa, stocks et dépôts, caisse, ressources humaines et rapports.',
+    modules:'Tableau de Bord,Réservations,Chambres,Accès,Check-in / Check-out,Clients,Restaurant,Conférences,Spa,Stocks & Dépôts,Caisse,RH,Rapports,Paramétrage',
+    prixNum:600000,
+    prix:'600 000',
+    prixMensuel:60000,
+    remiseMax:10,
+    demo:'https://hotel-suite-erp.vercel.app',
+    video:'',
+    doc:'',
+    icon:'🏨',
+    color:'#7C3AED',
+    commission:10,
+    ventes:0,
+    prospects:0,
+    actif:true
+  },
+  {
+    id:'log_comptapro',
+    nom:'SANIX ComptaPro',
+    version:'v1.0',
+    cat:'Finance',
+    plateforme:'Web',
+    type_licence:'Annuelle',
+    support:'1an',
+    desc:'Logiciel d\'expertise comptable SYSCOHADA : saisie des écritures, grand livre, balance, compte de résultat et bilan, à-nouveaux, lettrage, échéancier, comptes tiers et auxiliaires, fiscalité, états financiers, caisse, achats, stock, facturation, immobilisations, rentabilité, gestion des exercices.',
+    modules:'Cockpit,Écritures,Grand Livre,Balance,Résultat,Bilan,États Financiers,Lettrage,Échéancier,Tiers & Auxiliaires,Fiscalité,Caisse,Achats,Stock,Facturation,Immobilisations,Rentabilité,Exercices,Plan Comptable',
+    prixNum:600000,
+    prix:'600 000',
+    prixMensuel:60000,
+    remiseMax:10,
+    demo:'https://sanix-compta-pro.vercel.app',
+    video:'',
+    doc:'',
+    icon:'📊',
+    color:'#0369A1',
     commission:10,
     ventes:0,
     prospects:0,
