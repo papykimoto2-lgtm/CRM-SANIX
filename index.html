@@ -12432,11 +12432,47 @@ function _seedProspectsAluExpertOnce(){
 //  COMMANDES INITIALES — montants & avances des 4 clients
 // ═══════════════════════════════════════
 const COMMANDES_INITIALES = [
-  {client:'Beda Alu',logiciel:'Sanix AluExpert ERP',ttc:600000,acompte:500000},
+  {client:'Beda Alu',logiciel:'Sanix AluExpert ERP',ttc:700000,acompte:500000},
   {client:'100% INOX',logiciel:'Sanix AluExpert ERP',ttc:300000,acompte:100000},
   {client:'Menko Holding',logiciel:'ImmoSuite ERP',ttc:4000000,acompte:1250000},
   {client:'Zahara Multiservices',logiciel:'ImmoSuite ERP',ttc:5000000,acompte:1000000}
 ];
+
+// Correction soldes AluExpert : Beda Alu 700 000 (500 000 versés, reste 200 000) · 100% INOX 300 000 (100 000 versés, reste 200 000)
+function _fixSoldesAluOnce(){
+  const FLAG='sanix_crm_fix_soldes_alu_v1';
+  if(localStorage.getItem(FLAG)) return;
+  const norm=s=>(s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+  [['Beda Alu',700000,500000],['100% INOX',300000,100000]].forEach(([nom,ttc,ac])=>{
+    const c=CLIENTS.find(x=>norm(x.nom)===norm(nom)); if(c){ c.valeur=ttc; c.updated_at=new Date().toISOString(); const d=DEALS.find(x=>x.clientId===c.id); if(d) d.valeur=ttc; }
+    const htNet=Math.round(ttc/1.18);
+    COMMANDES.filter(x=>norm(x.client)===norm(nom)&&x.logiciel==='Sanix AluExpert ERP').forEach(o=>{
+      Object.assign(o,{htBrut:htNet,remise:0,htNet,tva:ttc-htNet,ttc,acompte:ac,solde:ttc-ac,notes:'Avance versée : '+ac.toLocaleString('fr-FR')+' FCFA — reste '+(ttc-ac).toLocaleString('fr-FR')+' FCFA'});
+    });
+  });
+  saveStore('clients'); saveStore('deals'); saveStore('commandes');
+  localStorage.setItem(FLAG,'1');
+  try{ renderClients(getFilteredClients()); }catch(e){}
+}
+
+// Notes Menko Holding / Zahara (soldes confirmés : Menko 4 000 000 dont 1 250 000 versés ; Zahara 5 000 000 dont 1 000 000 versés)
+function _noteImmoOnce(){
+  const FLAG='sanix_crm_note_immo_v1';
+  if(localStorage.getItem(FLAG)) return;
+  const norm=s=>(s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+  const info={
+    'Menko Holding':{ttc:4000000,ac:1250000,note:'Facture 4 000 000 FCFA — 7 lots de terrain à Yamoussoukro. Versé 1 250 000, reste 2 750 000. ⚠️ Documents de cession de terrain non encore effectifs.'},
+    'Zahara Multiservices':{ttc:5000000,ac:1000000,note:'Versé 1 000 000, reste 4 000 000.'}
+  };
+  Object.keys(info).forEach(nom=>{
+    const i=info[nom];
+    const c=CLIENTS.find(x=>norm(x.nom)===norm(nom)); if(c){ c.notes=i.note; c.updated_at=new Date().toISOString(); }
+    COMMANDES.filter(x=>norm(x.client)===norm(nom)&&x.logiciel==='ImmoSuite ERP').forEach(o=>{ Object.assign(o,{acompte:i.ac,solde:i.ttc-i.ac,notes:i.note}); });
+  });
+  saveStore('clients'); saveStore('commandes');
+  localStorage.setItem(FLAG,'1');
+  try{ renderClients(getFilteredClients()); }catch(e){}
+}
 
 function _seedCommandesInitialesOnce(){
   const FLAG='sanix_crm_seed_commandes_init_v1';
@@ -12787,7 +12823,7 @@ function _seedClientsImmoSuiteOnce(){
 //  CLIENTS ALUEXPERT — Beda Alu & 100% INOX
 // ═══════════════════════════════════════
 const CLIENTS_ALUEXPERT = [
-  {nom:'Beda Alu',phone:'',email:'',secteur:'Industrie',logiciel:'Sanix AluExpert ERP',statut:'client',commercial:'',valeur:600000,adresse:'',lat:null,lng:null,notes:'Menuiserie aluminium — client actuel de Sanix AluExpert ERP'},
+  {nom:'Beda Alu',phone:'',email:'',secteur:'Industrie',logiciel:'Sanix AluExpert ERP',statut:'client',commercial:'',valeur:700000,adresse:'',lat:null,lng:null,notes:'Menuiserie aluminium — client actuel de Sanix AluExpert ERP'},
   {nom:'100% INOX',phone:'',email:'',secteur:'Industrie',logiciel:'Sanix AluExpert ERP',statut:'client',commercial:'',valeur:300000,adresse:'',lat:null,lng:null,notes:'Inox / métallerie — client actuel de Sanix AluExpert ERP'}
 ];
 
@@ -12843,7 +12879,7 @@ function _seedProspectsCliniqueOnce(){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
-  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedClientsAngelsOnce(); _seedCommandesInitialesOnce(); _seedClientsNouveauxLogOnce(); _seedProspectsAluExpertOnce(); _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
+  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedClientsAngelsOnce(); _seedCommandesInitialesOnce(); _fixSoldesAluOnce(); _noteImmoOnce(); _seedClientsNouveauxLogOnce(); _seedProspectsAluExpertOnce(); _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
   // Refresh notifications toutes les 2 minutes
   setInterval(updateSidebarNotifications, 120000);
 });
