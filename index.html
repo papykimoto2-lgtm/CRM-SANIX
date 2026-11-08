@@ -5021,6 +5021,12 @@ const FIRST_CONTACT_DEFAULT = {
     emailSubject: "Programmes, lots et encaissements de {nom} : un seul outil de gestion",
     email: "{salut} {destinataire},\n\nJe vous écris car {nom} intervient dans l'immobilier, et notre logiciel peut vous aider à piloter vos programmes avec plus de visibilité.\n\nImmoSuite ERP couvre :\n• programmes, lots et unités, avec l'état de chaque vente ;\n• suivi des souscripteurs (y compris diaspora) et des échéanciers ;\n• DQE / étude de prix ;\n• comptabilité SYSCOHADA et export FEC ;\n• portail client et messagerie interne.\n\nPuis-je vous présenter l'outil lors d'une démonstration gratuite de 20 minutes, dans vos locaux ou à distance, {rdv} ?\n\n{demo_line}Cordialement,\n{gerant}\n{societe} — {ville}\n📞 {tel} · 📧 {email}\n\nSi ce message ne vous concerne pas, répondez simplement « stop » et je ne vous écrirai plus."
   },
+  livraison: {
+    label: "Livraison / coursiers — Angel's Livraison",
+    wa: "{salut} 👋 Je m'adresse bien à l'équipe de {nom} ?\n\nJe suis {gerant}, de {societe} à {ville}. Nous avons développé *Angel's Livraison*, un logiciel pour les agences de livraison à moto : commandes suivies de A à Z, affectation aux livreurs, application livreur avec carte et GPS, preuve de livraison par code ou signature, paiement à la livraison et reversement, commissions et rentabilité par livreur.\n\nUne entreprise de livraison à moto d'Abidjan l'utilise déjà au quotidien. Seriez-vous partant pour une démo de 15 min {rdv} ?\n\n{demo_line}Si ce n'est pas le bon moment, dites-le-moi et je ne vous relancerai pas. 🙏",
+    emailSubject: "Commandes, livreurs et encaissements de {nom} : un seul outil",
+    email: "{salut} {destinataire},\n\nJe vous écris car {nom} assure des livraisons à Abidjan, et notre logiciel peut vous aider à mieux suivre vos courses, vos livreurs et votre argent.\n\nAngel's Livraison couvre :\n• commandes suivies par statut, de la prise en charge à la livraison ;\n• affectation des livreurs et tournées multi-livraisons ;\n• application livreur mobile avec carte et GPS ;\n• preuve de livraison par code et signature ;\n• paiement à la livraison, reversements et commissions des livreurs ;\n• rentabilité par livreur, par zone et par moto, entretien des motos ;\n• notifications WhatsApp aux clients.\n\nPuis-je vous présenter l'outil lors d'une démonstration gratuite de 20 minutes, dans vos locaux ou à distance, {rdv} ?\n\n{demo_line}Cordialement,\n{gerant}\n{societe} — {ville}\n📞 {tel} · 📧 {email}\n\nSi ce message ne vous concerne pas, répondez simplement « stop » et je ne vous écrirai plus."
+  },
   generic: {
     label: 'Autres secteurs — logiciel recommandé',
     wa: "{salut} 👋 Je m'adresse bien à l'équipe de {nom} ?\n\nJe suis {gerant}, de {societe} à {ville}. Nous éditons des logiciels de gestion pensés pour les entreprises ivoiriennes (SYSCOHADA, utilisables hors connexion).\n\n{pitch}\n\nSeriez-vous partant pour une démo de 15 min {rdv} ?\n\n{demo_line}Si ce n'est pas le bon moment, dites-le-moi et je ne vous relancerai pas. 🙏",
@@ -5050,6 +5056,7 @@ function fcSegment(c){
   const l = _nrm(c.logiciel||'');
   if(l.includes('aluexpert')) return 'aluexpert';
   if(l.includes('immo') || _nrm(c.secteur||'')==='immobilier') return 'immo';
+  if(l.includes('livraison') || _nrm(c.secteur||'')==='logistique') return 'livraison';
   return 'generic';
 }
 function fcSalut(){ const h=new Date().getHours(); return (h>=17||h<4) ? 'Bonsoir' : 'Bonjour'; }
@@ -5080,6 +5087,7 @@ const FC_PORTAIL_WA = "🌐 Atout en plus : un *portail client* est inclus. Vos 
 const FC_PORTAIL_EMAIL = "Un atout supplémentaire : chaque logiciel inclut un portail client. Vos clients suivent eux-mêmes l'avancement de leur projet, leurs documents et leurs paiements, sans avoir à vous relancer.";
 function fcAddPortail(body, canal){
   if(/portail/i.test(body)) return body;
+  if(/Angel.s Livraison/i.test(body)) return body; // le portail « projet » ne concerne pas la livraison
   const add = canal==='email'?FC_PORTAIL_EMAIL:FC_PORTAIL_WA;
   const ci = body.search(/\n\n(Cordialement|Bien cordialement|Salutations)/i);
   if(ci>0) return body.slice(0,ci)+'\n\n'+add+body.slice(ci);
