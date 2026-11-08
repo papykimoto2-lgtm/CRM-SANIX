@@ -12665,7 +12665,7 @@ const CLIENTS_IMMOSUITE = [
 ];
 
 const CLIENTS_ANGELS = [
-  {nom:'Angel\'s Groupe',phone:'',email:'',secteur:'Logistique',logiciel:'Angel\'s Livraison',statut:'client',commercial:'',valeur:1200000,adresse:'',lat:null,lng:null,notes:'Premier client de Angel\'s Livraison (gestion de livraison)'}
+  {nom:'Angel\'s Groupe',phone:'',email:'',secteur:'Logistique',logiciel:'Angel\'s Livraison',statut:'client',commercial:'',valeur:1200000,adresse:'',lat:null,lng:null,notes:'Premier client — Hub Angel\'s : Angel\'s Livraison (600 000) + Angel\'s Transport (600 000), vendables séparément'}
 ];
 function _seedClientsAngelsOnce(){
   const FLAG='sanix_crm_seed_clients_angels_v1';
@@ -12681,6 +12681,18 @@ function _seedClientsAngelsOnce(){
     CLIENTS.push(c); seen.add(norm(p.nom)); added++;
     try{ syncDealForClient(c.id); }catch(e){}
   });
+  const cl=CLIENTS.find(x=>norm(x.nom)===norm('Angel\'s Groupe'));
+  if(cl){
+    const today=now.split('T')[0];
+    ['Angel\'s Livraison','Angel\'s Transport'].forEach((lg,i)=>{
+      if(COMMANDES.some(x=>norm(x.client)===norm(cl.nom)&&x.logiciel===lg)) return;
+      const ttc=600000, htNet=Math.round(ttc/1.18);
+      COMMANDES.push({id:'cmd_angels_'+(i?'trans':'liv'), ref:cmdNumero(), client:cl.nom, date:today, logiciel:lg, typeLicence:'Perpetuelle',
+        htBrut:htNet, remise:0, htNet, tva:ttc-htNet, ttc, acompte:0, solde:ttc, commercial:cl.commercial||'', statut:'en_cours', presId:'', notes:'Hub Angel\'s — module vendable séparément'});
+      added++;
+    });
+    saveStore('commandes');
+  }
   if(added>0) saveStore('clients');
   localStorage.setItem(FLAG,'1');
   try{ renderClients(getFilteredClients()); }catch(e){}
