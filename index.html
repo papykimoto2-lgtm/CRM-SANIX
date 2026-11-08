@@ -12688,7 +12688,7 @@ function _seedClientsAngelsOnce(){
       if(COMMANDES.some(x=>norm(x.client)===norm(cl.nom)&&x.logiciel===lg)) return;
       const ttc=600000, htNet=Math.round(ttc/1.18);
       COMMANDES.push({id:'cmd_angels_'+(i?'trans':'liv'), ref:cmdNumero(), client:cl.nom, date:today, logiciel:lg, typeLicence:'Perpetuelle',
-        htBrut:htNet, remise:0, htNet, tva:ttc-htNet, ttc, acompte:0, solde:ttc, commercial:cl.commercial||'', statut:'en_cours', presId:'', notes:'Hub Angel\'s — module vendable séparément'});
+        htBrut:htNet, remise:0, htNet, tva:ttc-htNet, ttc, acompte:ttc, solde:0, commercial:cl.commercial||'', statut:'livree', presId:'', notes:'Hub Angel\'s — module vendable séparément — soldé'});
       added++;
     });
     saveStore('commandes');
