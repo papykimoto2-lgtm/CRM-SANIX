@@ -741,11 +741,64 @@ select.form-input{cursor:pointer}
   </div>
 
   <div class="sb-divider"></div>
-  <div class="sb-item active" onclick="navigate('dashboard',this)">
+  <div class="sb-item active" data-grp="accueil" onclick="navGroup('accueil',this)">
     <div class="sb-icon">🏠</div><span>Accueil — Tableau de bord</span>
   </div>
 
-  <div class="sb-section">① Prospection</div>
+  <div class="sb-section">① Trouver</div>
+  <div class="sb-item" data-grp="trouver" onclick="navGroup('trouver',this)">
+    <div class="sb-icon">👤</div><span>Prospects & Clients</span>
+    <span class="sb-badge warn" id="grp-badge-trouver" style="display:none">0</span>
+  </div>
+
+  <div class="sb-section">② Convaincre</div>
+  <div class="sb-item" data-grp="convaincre" onclick="navGroup('convaincre',this)">
+    <div class="sb-icon">📣</div><span>Campagnes & Démos</span>
+    <span class="sb-badge warn" id="grp-badge-convaincre" style="display:none">0</span>
+  </div>
+
+  <div class="sb-section">③ Conclure</div>
+  <div class="sb-item" data-grp="ventes" onclick="navGroup('ventes',this)">
+    <div class="sb-icon">🎯</div><span>Ventes</span>
+    <span class="sb-badge warn" id="grp-badge-ventes" style="display:none">0</span>
+  </div>
+
+  <div class="sb-section">④ Livrer</div>
+  <div class="sb-item" data-grp="livraison" onclick="navGroup('livraison',this)">
+    <div class="sb-icon">🚚</div><span>Livraison</span>
+    <span class="sb-badge warn" id="grp-badge-livraison" style="display:none">0</span>
+  </div>
+
+  <div class="sb-section">⑤ Encaisser</div>
+  <div class="sb-item" data-grp="finance" onclick="navGroup('finance',this)">
+    <div class="sb-icon">💰</div><span>Finance</span>
+    <span class="sb-badge warn" id="grp-badge-finance" style="display:none">0</span>
+  </div>
+
+  <div class="sb-section">⑥ Fidéliser</div>
+  <div class="sb-item" data-grp="apres" onclick="navGroup('apres',this)">
+    <div class="sb-icon">🔁</div><span>Après-vente</span>
+    <span class="sb-badge warn" id="grp-badge-apres" style="display:none">0</span>
+  </div>
+
+  <div class="sb-section">⑦ Piloter</div>
+  <div class="sb-item" data-grp="pilot" onclick="navGroup('pilot',this)">
+    <div class="sb-icon">🧠</div><span>Pilotage</span>
+    <span class="sb-badge warn" id="grp-badge-pilot" style="display:none">0</span>
+  </div>
+
+  <div class="sb-divider"></div>
+  <div class="sb-section">⚙️ Réglages</div>
+  <div class="sb-item" data-grp="reglages" id="sb-reglages-item" onclick="navGroup('reglages',this)">
+    <div class="sb-icon">⚙️</div><span>Équipe · Documents · Paramétrage</span>
+  </div>
+
+
+  <!-- Entrées d'origine des modules regroupés : conservées (masquées) pour les badges et l'accès par code -->
+  <div id="sb-legacy" style="display:none">
+  <div class="sb-item" id="sb-parametrage-item" onclick="navigate('parametrage',this)">
+    <div class="sb-icon">⚙️</div><span>Paramétrage</span>
+  </div>
   <div class="sb-item" onclick="navigate('clients',this)">
     <div class="sb-icon">👤</div><span>Clients & Prospects</span>
     <span class="sb-badge warn" id="sb-prospects-badge">0</span>
@@ -757,57 +810,13 @@ select.form-input{cursor:pointer}
     <div class="sb-icon">📋</div><span>Rapports terrain</span>
     <span class="sb-badge warn" id="sb-rapports-badge">0</span>
   </div>
-
-  <div class="sb-section">② Communication</div>
-  <div class="sb-item" data-grp="com" onclick="navGroup('com',this)">
-    <div class="sb-icon">📣</div><span>Marketing & Messagerie</span>
-    <span class="sb-badge warn" id="grp-badge-com" style="display:none">0</span>
-  </div>
-
-  <div class="sb-section">③ Présentation</div>
-  <div class="sb-item" data-grp="prod" onclick="navGroup('prod',this)">
-    <div class="sb-icon">💻</div><span>Catalogue & Démos</span>
-    <span class="sb-badge warn" id="grp-badge-prod" style="display:none">0</span>
-  </div>
-
-  <div class="sb-section">④ Conversion</div>
-  <div class="sb-item" data-grp="conv" onclick="navGroup('conv',this)">
-    <div class="sb-icon">🎯</div><span>Pipeline & Conversion</span>
-    <span class="sb-badge warn" id="grp-badge-conv" style="display:none">0</span>
-  </div>
-
-  <div class="sb-section">⑤ Vente & Contrats</div>
-  <div class="sb-item" data-grp="vente" onclick="navGroup('vente',this)">
-    <div class="sb-icon">🛒</div><span>Commandes · Contrats · Licences</span>
-    <span class="sb-badge warn" id="grp-badge-vente" style="display:none">0</span>
-  </div>
-
-  <div class="sb-section">⑥ Déploiement</div>
   <div class="sb-item" onclick="navigate('planning',this)">
     <div class="sb-icon">📅</div><span>Planning déploiement</span>
   </div>
-
-  <div class="sb-section">⑦ Encaissement</div>
   <div class="sb-item" onclick="navigate('comptabilite',this)">
     <div class="sb-icon">📒</div><span>Comptabilité</span>
     <span class="sb-badge" id="sb-compta-badge" style="display:none">0</span>
   </div>
-
-  <div class="sb-section">⑧ Réseau commercial</div>
-  <div class="sb-item" data-grp="reseau" onclick="navGroup('reseau',this)">
-    <div class="sb-icon">🏆</div><span>Équipe, Apporteurs & Commissions</span>
-    <span class="sb-badge warn" id="grp-badge-reseau" style="display:none">0</span>
-  </div>
-
-  <div class="sb-section">⑨ Pilotage</div>
-  <div class="sb-item" data-grp="pilot" onclick="navGroup('pilot',this)">
-    <div class="sb-icon">🧠</div><span>Direction, Cockpit & Intelligence</span>
-    <span class="sb-badge warn" id="grp-badge-pilot" style="display:none">0</span>
-  </div>
-
-
-  <!-- Entrées d'origine des modules regroupés : conservées (masquées) pour les badges et l'accès par code -->
-  <div id="sb-legacy" style="display:none">
   <div class="sb-item" onclick="navigate('marketing',this)">
     <div class="sb-icon">🎯</div><span>Moteur Marketing</span>
   </div>
@@ -872,11 +881,6 @@ select.form-input{cursor:pointer}
   </div>
   </div>
 
-  <div class="sb-divider"></div>
-  <div class="sb-section" id="sb-admin-section">⚙️ Administration</div>
-  <div class="sb-item" id="sb-parametrage-item" onclick="navigate('parametrage',this)">
-    <div class="sb-icon">⚙️</div><span>Paramétrage</span>
-  </div>
 
   <div class="sb-user" id="sb-user-block">
     <div class="sb-avatar" id="sb-user-avatar">CK</div>
@@ -2710,6 +2714,21 @@ Seriez-vous disponible pour une démonstration {rdv} ?
     </div>
 
     <!-- ══ VIEW: COMPTABILITÉ SYSCOHADA ══ -->
+    <!-- ══ VIEW: APRÈS-VENTE ══ -->
+    <div id="view-apresvente" class="hidden fade-in">
+      <h1 class="page-title">🔁 Après-vente & fidélisation</h1>
+      <p class="page-sub">Renouveler les licences, relancer les clients silencieux, développer le portefeuille</p>
+      <div class="stats-grid" id="av-kpis" style="margin-bottom:18px"></div>
+      <div class="card" style="padding:16px;margin-bottom:18px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:10px">🔑 Licences à renouveler (≤ 60 jours ou expirées)</div>
+        <div id="av-renew"></div>
+      </div>
+      <div class="card" style="padding:16px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:10px">💤 Clients sans activité depuis 90 jours</div>
+        <div id="av-dormant"></div>
+      </div>
+    </div>
+
     <div id="view-comptabilite" class="hidden fade-in">
       <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:8px;margin-bottom:6px">
         <div>
@@ -5110,13 +5129,30 @@ const ACTIVITIES = [];
 //  Chaque groupe = 1 entrée de menu + barre d'onglets vers les vues d'origine
 // ═══════════════════════════════════════
 const NAV_GROUPS = {
-  com:    {views:[['marketing','🎯 Moteur Marketing'],['journal','📋 Journal & PV de contact'],['messagerie','💬 Messagerie']], badges:[]},
-  prod:   {views:[['logiciels','💻 Catalogue logiciels'],['presentations','🎬 Présentations & Démos']], badges:['sb-pres-badge']},
-  conv:   {views:[['pipeline','🎯 Pipeline commercial'],['conversion','🚀 Moteur de conversion'],['agenda','📅 Agenda intelligent']], badges:['sb-conv-badge','sb-agenda-badge']},
-  vente:  {views:[['commandes','🛒 Commandes'],['contrats','📝 Contrats & Conventions'],['licences','🔑 Licences'],['documents','📄 Documents & Modèles']], badges:['sb-cmd-badge','sb-lic-badge','sb-doc-badge']},
-  reseau: {views:[['equipe','🏆 Équipe & Apporteurs'],['commissions','💰 Commissions']], badges:['sb-app-badge','sb-comm-badge']},
-  pilot:  {views:[['direction','👔 Direction & Cockpit IA'],['intel','🧬 CRM Intelligence']], badges:[]}
+  accueil:   {views:[['dashboard','🏠 Tableau de bord'],['agenda','📅 Agenda du jour']], badges:['sb-agenda-badge']},
+  trouver:   {views:[['clients','👤 Clients & Prospects'],['carte','🗺️ Carte'],['rapports','📋 Rapports terrain'],['journal','📝 Journal & PV']], badges:['sb-prospects-badge','sb-rapports-badge']},
+  convaincre:{views:[['marketing','🎯 Moteur Marketing'],['messagerie','💬 Messagerie'],['logiciels','💻 Catalogue'],['presentations','🎬 Démos']], badges:['sb-pres-badge']},
+  ventes:    {views:[['pipeline','🎯 Pipeline'],['conversion','🚀 Relances prioritaires'],['commandes','🛒 Commandes'],['contrats','📝 Contrats']], badges:['sb-conv-badge','sb-cmd-badge','sb-contrat-badge']},
+  livraison: {views:[['licences','🔑 Licences'],['planning','📅 Planning déploiement']], badges:['sb-lic-badge']},
+  finance:   {views:[['comptabilite','📒 Comptabilité'],['commissions','💰 Commissions']], badges:['sb-compta-badge','sb-comm-badge']},
+  apres:     {views:[['apresvente','🔁 Renouvellements & fidélisation']], badges:[]},
+  pilot:     {views:[['direction','👔 Direction'],['cockpit','🧠 Cockpit IA'],['intel','🧬 Intelligence']], badges:[]},
+  reglages:  {views:[['equipe','🏆 Équipe & Apporteurs'],['documents','📄 Documents & Modèles'],['parametrage','🛠️ Paramétrage']], badges:['sb-app-badge','sb-doc-badge']}
 };
+// Écrans fusionnés : la vue d'origine est déplacée dans l'écran d'accueil de son module
+const SECTION_HOST = {conversion:'pipeline', cockpit:'direction', intel:'direction', journal:'rapports'};
+const SECTION_TITLE = {conversion:'🚀 Relances prioritaires & conversion', intel:'🧬 CRM Intelligence', journal:'📝 Journal des contacts & PV'};
+(function fuseViews(){
+  Object.keys(SECTION_HOST).forEach(function(k){
+    var v=document.getElementById('view-'+k), h=document.getElementById('view-'+SECTION_HOST[k]);
+    if(!v||!h||h.contains(v)) return;
+    v.classList.remove('hidden');
+    v.style.cssText='margin-top:26px;padding-top:20px;border-top:2px solid var(--border)';
+    if(SECTION_TITLE[k]){ var t=document.createElement('h2'); t.style.cssText='font-family:var(--font-h);font-weight:800;font-size:18px;margin:0 0 12px'; t.textContent=SECTION_TITLE[k]; v.insertBefore(t,v.firstChild); }
+    v.querySelectorAll(':scope > .page-title,:scope > .page-sub,:scope > div:first-child > .page-title').forEach(function(x){ if(x.classList.contains('page-title')) x.style.display='none'; });
+    h.appendChild(v);
+  });
+})();
 function _grpOf(view){ return Object.keys(NAV_GROUPS).find(k=>NAV_GROUPS[k].views.some(v=>v[0]===view)); }
 function _canView(v){
   try{
@@ -5129,8 +5165,9 @@ function navGroup(key, el){
   if(!v){ showToast('🔒 Accès restreint — rôle insuffisant'); return; }
   navigate(v[0], el);
 }
-function _applyGroupUI(view){
-  const key = _grpOf(view);
+function _applyGroupUI(view,orig){
+  orig = orig||view;
+  const key = _grpOf(orig)||_grpOf(view);
   document.querySelectorAll('#sb-legacy .sb-item').forEach(i=>i.classList.remove('active'));
   document.querySelectorAll('.sb-item[data-grp]').forEach(i=>i.classList.toggle('active', i.dataset.grp===key));
   if(!key) return;
@@ -5138,7 +5175,7 @@ function _applyGroupUI(view){
   let bar = host.querySelector(':scope > .grp-tabs');
   if(!bar){ bar=document.createElement('div'); bar.className='grp-tabs'; host.insertBefore(bar, host.firstChild); }
   bar.innerHTML = NAV_GROUPS[key].views.filter(v=>_canView(v[0])).map(v=>
-    `<div class="grp-tab${v[0]===view?' active':''}" onclick="navigate('${v[0]}',null)">${v[1]}</div>`).join('');
+    `<div class="grp-tab${v[0]===orig?' active':''}" onclick="navigate('${v[0]}',null)">${v[1]}</div>`).join('');
 }
 function refreshGroupBadges(){
   Object.keys(NAV_GROUPS).forEach(k=>{
@@ -5392,7 +5429,7 @@ window.addEventListener('load',()=>{
 });
 
 // Vues fusionnées : l'ancienne entrée ouvre l'écran qui la contient
-const MERGED_VIEWS = {cockpit:'direction', apporteurs:'equipe'};
+const MERGED_VIEWS = {cockpit:'direction', apporteurs:'equipe', conversion:'pipeline', intel:'direction', journal:'rapports'};
 function eqSyncTab(orig){
   var type = orig==='apporteurs' ? 'apporteur' : (typeof _currentEqFilter!=='undefined' ? _currentEqFilter : 'all');
   var tab = [...document.querySelectorAll('#view-equipe .tab')].find(function(t){ return (t.getAttribute('onclick')||'').indexOf("'"+type+"'")>-1; });
@@ -5404,6 +5441,7 @@ function navigate(view, el) {
   view = MERGED_VIEWS[view] || view;
   document.querySelectorAll('[id^="view-"]').forEach(v => v.classList.add('hidden'));
   document.getElementById('view-' + view)?.classList.remove('hidden');
+  Object.keys(SECTION_HOST).forEach(k=>{ if(SECTION_HOST[k]===view) document.getElementById('view-'+k)?.classList.remove('hidden'); });
   document.querySelectorAll('.sb-item').forEach(i => i.classList.remove('active'));
   // Si pas d'élément fourni, retrouver l'item sidebar correspondant
   if(!el) {
@@ -5417,7 +5455,7 @@ function navigate(view, el) {
     dashboard:'Tableau de bord',pipeline:'Pipeline Commercial',clients:'Clients & Prospects',
     intel:'CRM Intelligence',agenda:'Agenda intelligent',marketing:'Moteur Marketing',journal:'Journal & PV de contact',direction:'Direction & Cockpit',cockpit:'Cockpit IA',conversion:'Moteur de Conversion',logiciels:'Catalogue Logiciels',equipe:'Équipe & Apporteurs',apporteurs:'Apporteurs d\'affaires',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
     planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
-    parametrage:'Paramétrage',
+    parametrage:'Paramétrage',apresvente:'Après-vente & fidélisation',
     presentations:'Présentations & Démos',commandes:'Commandes Clients',contrats:'Contrats & Conventions',
     licences:'Licences Attribuées',documents:'Documents & Modèles',comptabilite:'Comptabilité SYSCOHADA'
   }[view] || view;
@@ -5426,9 +5464,11 @@ function navigate(view, el) {
   if(view === 'pipeline') setTimeout(()=>{ populatePipelineFilters(); initPipeline(); }, 60);
   if(view === 'commissions') setTimeout(initCommissions, 50);
   if(view === 'parametrage') setTimeout(initParametrage, 50);
-  if(view === 'conversion') setTimeout(initConversion, 50);
+  if(view === 'pipeline') setTimeout(initConversion, 70);
+  if(view === 'rapports') setTimeout(initJournal, 70);
+  if(view === 'apresvente') setTimeout(initApresVente, 50);
   if(view === 'cockpit') setTimeout(initCockpit, 50);
-  if(view === 'direction'){ setTimeout(initDirection, 50); setTimeout(initCockpit, 60); const _ck=document.getElementById('view-cockpit'); if(_ck) _ck.classList.remove('hidden'); }
+  if(view === 'direction'){ setTimeout(initIntel, 70); setTimeout(initDirection, 50); setTimeout(initCockpit, 60); const _ck=document.getElementById('view-cockpit'); if(_ck) _ck.classList.remove('hidden'); }
   if(view === 'equipe') eqSyncTab(_orig);
   if(view === 'marketing') setTimeout(initMarketing, 50);
   if(view === 'journal') setTimeout(initJournal, 50);
@@ -5436,8 +5476,9 @@ function navigate(view, el) {
   if(view === 'intel') setTimeout(initIntel, 50);
   if(view === 'apporteurs') setTimeout(initApporteurs, 50);
   if(view === 'documents') setTimeout(initDocuments, 50);
-  _applyGroupUI(view);
+  _applyGroupUI(view,_orig);
   refreshGroupBadges();
+  if(SECTION_HOST[_orig]) setTimeout(()=>document.getElementById('view-'+_orig)?.scrollIntoView({behavior:'smooth',block:'start'}),120);
   document.dispatchEvent(new CustomEvent('sanix:navigate', {detail: _orig}));
   closeSidebar();
 }
@@ -10252,6 +10293,28 @@ function convProspects(){
   return CLIENTS.filter(c=>c.statut==='prospect');
 }
 
+
+// ═══ APRÈS-VENTE : renouvellements & clients dormants ═══
+function initApresVente(){
+  const E=_dEsc, num=v=>Number(v||0).toLocaleString('fr-FR');
+  const lics=LICENCES.map(l=>({l,d:l.type==='Perpetuelle'?null:licDaysLeft(l.fin)})).filter(x=>x.d!==null&&x.d<=60).sort((a,b)=>a.d-b.d);
+  const lim=Date.now()-90*864e5;
+  const dormants=CLIENTS.filter(c=>c.statut==='client'&&new Date(c.updated_at||c.created_at||0).getTime()<lim);
+  const expirees=lics.filter(x=>x.d<0).length;
+  const clientsN=CLIENTS.filter(c=>c.statut==='client').length;
+  const kp=(ico,lab,val,col)=>`<div class="stat-card"><div class="stat-label">${ico} ${lab}</div><div class="stat-value" style="color:${col}">${val}</div></div>`;
+  document.getElementById('av-kpis').innerHTML=kp('🔑','À renouveler',lics.length,'var(--warning)')+kp('🔴','Expirées',expirees,'var(--danger)')+kp('💤','Clients dormants',dormants.length,'var(--muted)')+kp('✅','Clients actifs',clientsN,'var(--success)');
+  const wa=(ph,msg)=>{ const u=typeof waLink==='function'?waLink(ph,msg):''; return u?`<a class="btn btn-outline btn-sm" href="${u}" target="_blank" rel="noopener">📱 WhatsApp</a>`:'<span style="font-size:11px;color:var(--muted)">pas de n° WhatsApp</span>'; };
+  document.getElementById('av-renew').innerHTML=lics.length?lics.map(({l,d})=>{
+    const c=CLIENTS.find(x=>x.nom===l.client)||{};
+    const msg='Bonjour, votre licence '+l.logiciel+' '+(d<0?'est expirée':'expire dans '+d+' jour(s)')+'. Souhaitez-vous la renouveler ?';
+    return `<div class="flex justify-between items-center" style="padding:8px 0;border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap"><div><b>${E(l.client)}</b> · ${E(l.logiciel)}<div style="font-size:11px;color:var(--muted)">Fin : ${E(l.fin||'—')}</div></div><div class="flex gap-2 items-center">${licDaysLeftHtml(d,l.type)}${wa(c.phone,msg)}</div></div>`;
+  }).join(''):'<div style="color:var(--muted);font-size:13px">Aucune licence à renouveler.</div>';
+  document.getElementById('av-dormant').innerHTML=dormants.length?dormants.map(c=>{
+    const msg='Bonjour '+c.nom+', comment se passe l\'utilisation de votre logiciel ? Nous sommes disponibles pour vous aider.';
+    return `<div class="flex justify-between items-center" style="padding:8px 0;border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap"><div><b>${E(c.nom)}</b> · ${E(c.logiciel||'')}<div style="font-size:11px;color:var(--muted)">${num(c.valeur)} FCFA</div></div>${wa(c.phone,msg)}</div>`;
+  }).join(''):'<div style="color:var(--muted);font-size:13px">Tous les clients sont actifs.</div>';
+}
 function initConversion(){ convRender(); }
 
 function convRender(){
@@ -12688,7 +12751,7 @@ function _seedClientsAngelsOnce(){
       if(COMMANDES.some(x=>norm(x.client)===norm(cl.nom)&&x.logiciel===lg)) return;
       const ttc=600000, htNet=Math.round(ttc/1.18);
       COMMANDES.push({id:'cmd_angels_'+(i?'trans':'liv'), ref:cmdNumero(), client:cl.nom, date:today, logiciel:lg, typeLicence:'Perpetuelle',
-        htBrut:htNet, remise:0, htNet, tva:ttc-htNet, ttc, acompte:0, solde:ttc, commercial:cl.commercial||'', statut:'en_cours', presId:'', notes:'Hub Angel\'s — module vendable séparément'});
+        htBrut:htNet, remise:0, htNet, tva:ttc-htNet, ttc, acompte:ttc, solde:0, commercial:cl.commercial||'', statut:'livree', presId:'', notes:'Hub Angel\'s — module vendable séparément — soldé'});
       added++;
     });
     saveStore('commandes');
