@@ -12496,6 +12496,86 @@ function _seedProspectsLivraisonOnce(){
   if(added>0 && typeof showToast==='function') showToast('✅ '+added+' agences de livraison ajoutées (prospects Angel\'s Livraison)');
 }
 
+// ═══════════════════════════════════════════════════════════
+//  RDV AGENCES DE LIVRAISON — démos proposées + 1er contact WhatsApp / email + relance
+//  Cible : les 30 prospects PROSPECTS_LIVRAISON (Angel's Livraison) déjà importés.
+//  Logistica est exclue (proforma déjà en cours : pas de message de prospection à froid).
+//  Import unique, idempotent : ne crée rien si un RDV ou une relance existe déjà pour le contact.
+// ═══════════════════════════════════════════════════════════
+const LIVRAISON_RDV_EXCLUS = ['logistica'];
+const LIVRAISON_RDV_JOURS = ['2026-11-12','2026-11-13','2026-11-16','2026-11-17','2026-11-18']; // 6 démos par jour ouvré
+const LIVRAISON_RDV_HEURES = ['09:00','10:30','11:45','14:00','15:15','16:30'];                 // heure d'Abidjan (UTC)
+const LIVRAISON_ENVOI_AT = '2026-11-09T09:00:00Z';   // 1er contact : lundi 9 novembre, 9h (un envoi toutes les 3 min)
+const LIVRAISON_RELANCE_AT = '2026-11-11T10:00:00Z'; // relance sans réponse : mercredi 11 novembre, 10h
+
+function _livraisonMsg(nom,quand,relance){
+  if(relance) return `Bonjour ${nom}, je reviens vers vous au sujet de la démonstration de notre logiciel de gestion de livraison proposée le ${quand}. Ce créneau tient-il toujours ? Je peux m'adapter à votre agenda. Bonne journée — SANIX Africa`;
+  return `Bonjour ${nom},
+
+Je vous contacte de la part de SANIX Africa (Abidjan). Nous éditons un logiciel de gestion pour les sociétés de livraison, déjà en service à Abidjan :
+• commandes suivies en temps réel et affectation des livreurs
+• application livreur avec GPS et preuve de livraison (code / signature)
+• encaissements à la livraison, reversements et commissions livreurs
+• rentabilité par livreur, par zone et par moto
+
+Je vous propose une démonstration gratuite de 30 minutes dans vos locaux le ${quand}. Ce créneau vous convient-il ? Sinon, indiquez-moi le moment qui vous arrange.
+
+Merci et bonne journée,
+SANIX Africa`;
+}
+
+function _planifierRdvLivraisonOnce(){
+  const FLAG='sanix_crm_rdv_livraison_v1';
+  if(localStorage.getItem(FLAG)) return;
+  if(typeof PROSPECTS_LIVRAISON==='undefined') return;
+  const norm=s=>(s||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,'');
+  const digits=s=>(s||'').replace(/\D/g,'').slice(-10);
+  const isMail=e=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((e||'').trim());
+  try{ rdvLoad(); }catch(e){}
+  try{ schedLoad(); }catch(e){}
+  let rdvId=RDVS.length?Math.max(...RDVS.map(r=>r.id))+1:1;
+  let schedId=SCHED.length?Math.max(...SCHED.map(s=>s.id))+1:1;
+  const now=new Date().toISOString();
+  let slot=0, rdvAdded=0, waN=0, mailN=0, appelN=0;
+  PROSPECTS_LIVRAISON.forEach(p=>{
+    if(LIVRAISON_RDV_EXCLUS.includes(norm(p.nom))) return;
+    const c=CLIENTS.find(x=>norm(x.nom)===norm(p.nom)) || CLIENTS.find(x=>digits(x.phone) && digits(x.phone)===digits(p.phone));
+    if(!c || c.statut!=='prospect') return;
+    if(slot>=LIVRAISON_RDV_JOURS.length*LIVRAISON_RDV_HEURES.length) return;
+    if(RDVS.some(r=>r.clientId===c.id && r.statut!=='annule' && r.statut!=='fait')) return;
+    if(SCHED.some(s=>s.clientId===c.id && (s.status==='pending'||s.status==='due'))) return;
+    const i=slot++;
+    const date=LIVRAISON_RDV_JOURS[Math.floor(i/6)], heure=LIVRAISON_RDV_HEURES[i%6];
+    const quand=new Date(date+'T'+heure).toLocaleString('fr-FR',{weekday:'long',day:'numeric',month:'long'})+' à '+heure.replace(':','h');
+    // Démo proposée, à confirmer par le prospect
+    RDVS.push({id:rdvId++,clientId:c.id,client:c.nom,type:'Démonstration',date,heure,duree:30,visio:'',lieu:c.adresse||'',
+      notes:`Créneau proposé — à confirmer · ${c.logiciel||"Angel's Livraison"}`,statut:'prevu',createdAt:now,campagne:'Livraison 30'});
+    rdvAdded++;
+    if(!c.interactions) c.interactions=[];
+    c.interactions.push({date:now,type:'RDV proposé',note:`Démonstration proposée le ${quand} (à confirmer)`,etape:1,ico:'📅'});
+    c.updated_at=now;
+    // Canaux : WhatsApp si mobile, email si adresse valide, sinon script d'appel (numéro fixe)
+    const wa=(typeof waAnalyse==='function')?waAnalyse(c.phone):{ok:false};
+    if(!wa.ok && c.wa!=='non') c.wa='non';
+    const canaux=[];
+    if(wa.ok) canaux.push('wa');
+    if(isMail(c.email)) canaux.push('email');
+    if(!canaux.length) canaux.push('appel');
+    const t1=new Date(LIVRAISON_ENVOI_AT).getTime()+i*3*60000, t2=new Date(LIVRAISON_RELANCE_AT).getTime()+i*3*60000;
+    canaux.forEach(canal=>{
+      const subject=canal==='email'?`Démonstration logiciel de livraison — ${c.nom} · ${quand}`:'';
+      SCHED.push({id:schedId++,clientId:c.id,nom:c.nom,canal,msg:_livraisonMsg(c.nom,quand,false),subject,at:new Date(t1).toISOString(),status:'pending',createdAt:now,campagne:'Livraison 30'});
+      SCHED.push({id:schedId++,clientId:c.id,nom:c.nom,canal,msg:_livraisonMsg(c.nom,quand,true),subject:subject?'Relance — '+subject:'',at:new Date(t2).toISOString(),status:'pending',createdAt:now,campagne:'Livraison 30',relance:true});
+      if(canal==='wa') waN++; else if(canal==='email') mailN++; else appelN++;
+    });
+  });
+  saveStore('clients'); rdvSave(); schedSave();
+  localStorage.setItem(FLAG,'1');
+  try{ agRenderList(); }catch(e){}
+  try{ cokRenderSched(); }catch(e){}
+  if(rdvAdded && typeof showToast==='function') showToast(`📅 ${rdvAdded} démos proposées aux agences de livraison · ${waN} WhatsApp, ${mailN} emails, ${appelN} appels programmés`);
+}
+
 function _seedCommandesInitialesOnce(){
   const FLAG='sanix_crm_seed_commandes_init_v1';
   if(localStorage.getItem(FLAG)) return;
@@ -12901,7 +12981,7 @@ function _seedProspectsCliniqueOnce(){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
-  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedClientsAngelsOnce(); _seedCommandesInitialesOnce(); _fixSoldesAluOnce(); _noteImmoOnce(); _seedProspectsLivraisonOnce(); _seedClientsNouveauxLogOnce(); _seedProspectsAluExpertOnce(); _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
+  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedClientsAngelsOnce(); _seedCommandesInitialesOnce(); _fixSoldesAluOnce(); _noteImmoOnce(); _seedProspectsLivraisonOnce(); _planifierRdvLivraisonOnce(); _seedClientsNouveauxLogOnce(); _seedProspectsAluExpertOnce(); _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
   // Refresh notifications toutes les 2 minutes
   setInterval(updateSidebarNotifications, 120000);
 });
