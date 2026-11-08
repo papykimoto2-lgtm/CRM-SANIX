@@ -12664,6 +12664,29 @@ const CLIENTS_IMMOSUITE = [
   {nom:'Zahara Multiservices',phone:'',email:'',secteur:'Immobilier',logiciel:'ImmoSuite ERP',statut:'client',commercial:'',valeur:5000000,adresse:'',lat:null,lng:null,notes:'Client actuel de ImmoSuite ERP'}
 ];
 
+const CLIENTS_ANGELS = [
+  {nom:'Angel\'s Groupe',phone:'',email:'',secteur:'Logistique',logiciel:'Angel\'s Livraison',statut:'client',commercial:'',valeur:600000,adresse:'',lat:null,lng:null,notes:'Premier client de Angel\'s Livraison (gestion de livraison)'}
+];
+function _seedClientsAngelsOnce(){
+  const FLAG='sanix_crm_seed_clients_angels_v1';
+  if(localStorage.getItem(FLAG)) return;
+  const norm=s=>(s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+  const seen=new Set(CLIENTS.map(c=>norm(c.nom)));
+  let nextId=Math.max(0,...CLIENTS.map(c=>c.id||0))+1;
+  const now=new Date().toISOString();
+  let added=0;
+  CLIENTS_ANGELS.forEach(p=>{
+    if(seen.has(norm(p.nom))) return;
+    const c={id:nextId++,...p,created_at:now,updated_at:now};
+    CLIENTS.push(c); seen.add(norm(p.nom)); added++;
+    try{ syncDealForClient(c.id); }catch(e){}
+  });
+  if(added>0) saveStore('clients');
+  localStorage.setItem(FLAG,'1');
+  try{ renderClients(getFilteredClients()); }catch(e){}
+  if(added>0 && typeof showToast==='function') showToast('✅ Angel\'s Groupe ajouté (Angel\'s Livraison)');
+}
+
 function _seedClientsImmoSuiteOnce(){
   const FLAG='sanix_crm_seed_clients_immosuite_v1';
   if(localStorage.getItem(FLAG)) return;
@@ -12745,7 +12768,7 @@ function _seedProspectsCliniqueOnce(){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
-  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedCommandesInitialesOnce(); _seedClientsNouveauxLogOnce(); _seedProspectsAluExpertOnce(); _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
+  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedClientsAngelsOnce(); _seedCommandesInitialesOnce(); _seedClientsNouveauxLogOnce(); _seedProspectsAluExpertOnce(); _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
   // Refresh notifications toutes les 2 minutes
   setInterval(updateSidebarNotifications, 120000);
 });
