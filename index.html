@@ -3039,7 +3039,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
 
     <div class="form-group">
       <label class="form-label">Logiciels promus (optionnel)</label>
-      <input type="text" class="form-input" id="app-logiciels" placeholder="Ex: AviNest Pro, ImmoSuite (séparés par virgule)">
+      <input type="text" class="form-input" id="app-logiciels" placeholder="Ex: Angel's Agro, ImmoSuite (séparés par virgule)">
     </div>
     <div class="form-group">
       <label class="form-label">Notes</label>
@@ -3088,7 +3088,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
         Format accepté : <strong>Nom ; Téléphone ; Secteur ; Logiciel</strong> (séparateur ; ou , ou tab)
       </div>
       <textarea id="import-rapide-text" class="form-input" rows="10" style="font-family:monospace;font-size:12px;resize:vertical"
-        placeholder="ABou Elevage ; 05 05 75 81 59 ; Aviculture ; AviNest Pro&#10;Koné Distribution ; 07 12 34 56 78 ; Distribution ; DistriPro ERP&#10;Fatou COULIBALY ; +225 01 23 45 67 ; Immobilier ; ImmoSuite ERP&#10;..."></textarea>
+        placeholder="ABou Elevage ; 05 05 75 81 59 ; Aviculture ; Angel's Agro&#10;Koné Distribution ; 07 12 34 56 78 ; Distribution ; DistriPro ERP&#10;Fatou COULIBALY ; +225 01 23 45 67 ; Immobilier ; ImmoSuite ERP&#10;..."></textarea>
       <div class="flex gap-2" style="margin-top:10px">
         <button class="btn btn-outline btn-sm" onclick="importRapidePreview()">👁 Prévisualiser</button>
         <button class="btn btn-primary btn-sm" onclick="importRapideConfirm()">✅ Importer tout</button>
@@ -4517,30 +4517,6 @@ const LOGICIELS_SEED = [
     actif:true
   },
   {
-    id:'log_avinest',
-    nom:'AviNest Pro',
-    version:'v2.1',
-    cat:'Aviculture',
-    plateforme:'Web',
-    type_licence:'Annuelle',
-    support:'1an',
-    desc:'ERP avicole complet : gestion des lots, bandes, couvoir/reproduction, GMQ, IC, mortalité, OHADA, TVA 18%, timbre fiscal, BI analytique avec régression linéaire, PWA offline.',
-    modules:'Lots & Bandes,Couvoir / Reproduction,Alimentation & Intrants,Mortalité & Rebuts,Performance GMQ/IC,Ventes & Facturation,Stock & Fournisseurs,SYSCOHADA,BI & Prévisions,PWA Offline,Paramétrage',
-    prixNum:500000,
-    prix:'500 000',
-    prixMensuel:50000,
-    remiseMax:10,
-    demo:'',
-    video:'',
-    doc:'',
-    icon:'🐔',
-    color:'#92400E',
-    commission:10,
-    ventes:0,
-    prospects:0,
-    actif:true
-  },
-  {
     id:'log_distripro',
     nom:'DistriPro ERP',
     version:'v2.0',
@@ -4703,30 +4679,6 @@ const LOGICIELS_SEED = [
     doc:'',
     icon:'🌾',
     color:'#1B5E3B',
-    commission:10,
-    ventes:0,
-    prospects:0,
-    actif:true
-  },
-  {
-    id:'log_menkoimmo',
-    nom:'Menko Immo',
-    version:'v1.0',
-    cat:'Immobilier',
-    plateforme:'Web',
-    type_licence:'Annuelle',
-    support:'1an',
-    desc:'ERP immobilier offline-first (IndexedDB), 36 modules CSV import, contrôle Cloud/Synchro par module, white-label, réinitialisation production 5 étapes admin niveau 4.',
-    modules:'Programmes & Lots,Ventes & Contrats,DQE & Coût de Revient,Comptabilité SYSCOHADA,FEC DGI,CSV Import 36 modules,Cloud Sync par module,White-Label,Reset Production',
-    prixNum:700000,
-    prix:'700 000',
-    prixMensuel:70000,
-    remiseMax:10,
-    demo:'https://menco-holding.vercel.app',
-    video:'',
-    doc:'',
-    icon:'🏗️',
-    color:'#1D4ED8',
     commission:10,
     ventes:0,
     prospects:0,
@@ -8572,10 +8524,12 @@ function forceSaveAll() { saveAll(); showToast('✅ Toutes les données sauvegar
 function loadAll() {
   let loaded = 0;
   Object.entries(LS_STORES).forEach(([key, store]) => {
-    const data = lsLoad(key);
+    let data = lsLoad(key);
     if(data && Array.isArray(data) && data.length > 0) {
       // Pour logiciels : merger le seed pour les IDs absents
       if(key === 'logiciels') {
+        const _dup = new Set(['log_avinest','log_menkoimmo']);
+        data = data.filter(l=>!_dup.has(l.id));
         const existingIds = new Set(data.map(l=>l.id));
         const missing = LOGICIELS_SEED.filter(l=>!existingIds.has(l.id));
         if(missing.length > 0) {
@@ -11540,8 +11494,8 @@ const LP_COPY = {
     pains:['Vos devis prennent des heures et les prix « à l\'œil » rognent votre marge','Vous ne savez pas si un chantier a vraiment été rentable avant de l\'avoir terminé','Profilés, vitrages, quincaillerie : le stock ne tombe jamais juste','Les ordres de fabrication et les mesures se perdent entre papier et WhatsApp'],
     gains:[['🧮','Devis & proformas rapides','Profilés, vitrage, quincaillerie et pose chiffrés automatiquement, prêts à envoyer au client'],['📈','Coût de revient & marge','Matière, main-d\'œuvre et pose : vous voyez votre marge avant de signer'],['🏭','Fabrication & chantiers','Ordres de fabrication, fiches d\'exécution, planning et suivi journalier'],['📦','Stock & achats','Valorisation du stock, alertes de réapprovisionnement, bons de commande fournisseurs'],['🧾','Facturation conforme FNE','Factures, acomptes et soldes suivis, certification FNE'],['📴','Fonctionne sans connexion','Continuez à travailler à l\'atelier même quand le réseau saute']],
     roi:'Une seule erreur de métrage ou une marge mal calculée sur un chantier coûte souvent plus cher que le logiciel.' },
-  log_avinest:{ hook:'Pilotez vos bandes avicoles : mortalité, indice de consommation et marge, lot par lot.',
-    sub:'AviNest Pro : l\'ERP des éleveurs de volaille — lots, aliments, performances (GMQ / IC), ventes et comptabilité.',
+  log_angels_agro:{ hook:'Pilotez vos bandes avicoles : mortalité, indice de consommation et marge, lot par lot.',
+    sub:'Angel\'s Agro : l\'ERP des éleveurs de volaille — lots, aliments, performances (GMQ / IC), ventes et comptabilité.',
     pains:['Vous découvrez les pertes quand la bande est déjà terminée','Le coût de l\'aliment et des intrants n\'est pas rapporté à chaque lot','Pas de vision claire de la rentabilité par bande','Les cahiers papier se perdent et se contredisent'],
     gains:[['🐔','Lots & bandes','Effectifs, mortalité, rebuts et suivi quotidien'],['🥚','Couvoir / reproduction','Cycles et résultats de reproduction'],['🌾','Alimentation & intrants','Coût réel de chaque lot'],['📊','Performance GMQ / IC','Indicateurs clés et comparaison entre bandes'],['🧾','Ventes & facturation','Facturation, TVA 18 %, timbre fiscal'],['📴','Hors connexion','Saisie à la ferme, synchronisation ensuite']],
     roi:'Repérer une dérive de mortalité ou d\'indice de consommation une semaine plus tôt peut sauver une bande entière.' },
@@ -11567,7 +11521,7 @@ const LP_COPY = {
     roi:'Réduire les ruptures et les créances oubliées pèse directement sur votre chiffre d\'affaires.' }
 };
 const LP_COPY_CAT = {
-  'Immobilier':'log_immo','Aviculture':'log_avinest','Industrie':'log_aluexpert','Distribution':'log_distripro'
+  'Immobilier':'log_immo','Aviculture':'log_angels_agro','Industrie':'log_aluexpert','Distribution':'log_distripro'
 };
 function lpCopyFor(log){
   if(!log) return null;
@@ -14850,7 +14804,7 @@ function importGuessSecteur(nom, phone) {
 
 function importGuessLogiciel(secteur) {
   const map = {
-    'Aviculture':'AviNest Pro','Immobilier':'ImmoSuite ERP','Distribution':'DistriPro ERP',
+    'Aviculture':'Angel\'s Agro','Immobilier':'ImmoSuite ERP','Distribution':'DistriPro ERP',
     'Agriculture':'Menko Agro','Santé':'MediCore Suite','Industrie':'SANIX Factory 4.0',
     'Commerce':'SANIX EasyStock'
   };
