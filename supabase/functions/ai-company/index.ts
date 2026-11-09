@@ -1,9 +1,10 @@
 // SANIX AI VIRTUAL COMPANY — point d'entrée unique.
-//  Président (JWT opérateur « direction ») : instruction · report_now · report_resend
+//  Président (JWT opérateur « direction ») : instruction · assign_mission · request_report · report_now · report_resend
 //  Planificateur (x-cron-secret)           : tick (chaque minute) · report_tick (toutes les 5 minutes)
 import { audit, clip, cors, db, env, errMsg, HttpError, json, requireOperator, safeEqual } from "../_shared/core.ts";
 import { BudgetError, TransientLlmError } from "../_shared/llm.ts";
 import { createInstructionTask, runTask } from "../_shared/company/engine.ts";
+import { assignMission, requestReport } from "../_shared/company/president.ts";
 import { runBudgetMs, tickCompany } from "../_shared/company/tick.ts";
 import { generateAndSend, reportTick, resend } from "../_shared/reports/builder.ts";
 
@@ -53,6 +54,9 @@ Deno.serve(async (req) => {
         audit({ agent: "director", action: "instruction_erreur", task_id: r.task_id, ok: false, payload: { e: errMsg(e) } })));
       return json(req, { ok: true, task_id: r.task_id }, 202);
     }
+
+    if (action === "assign_mission") return json(req, await assignMission(op, body), 201);
+    if (action === "request_report") return json(req, await requestReport(op, body), 201);
 
     if (action === "report_now") {
       const type = REPORT_TYPES.find((t) => t === body.type);

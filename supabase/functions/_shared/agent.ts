@@ -6,6 +6,7 @@ import { audit, db, errMsg } from "./core.ts";
 import { callClaude, textOf } from "./llm.ts";
 import { crmTool, type CrmCtx, runCrmTool } from "./crm_tools.ts";
 import { V1_SYSTEM } from "./prompts.ts";
+import { activityFor, Presence, publishActivity } from "./company/presence.ts";
 
 export type RunMode =
   | { mode: "conversation"; prospect_id: string }   // message entrant (WhatsApp / e-mail)
@@ -14,6 +15,19 @@ export type RunMode =
   | { mode: "mission"; mission_id: string };
 
 const MAX_TURNS = 12;
+
+let _sd: string | null | undefined;
+/** Le directeur commercial IA incarne les conversations (v1) dans le bureau virtuel. */
+async function salesDirectorId(): Promise<string | null> {
+  if (_sd !== undefined) return _sd;
+  let id: string | null = null;
+  try {
+    const { data } = await db().from("ai_agents").select("id").eq("code", "sanix_ai_sales_director").maybeSingle();
+    id = data?.id ?? null;
+  } catch { /* présence facultative */ }
+  _sd = id;
+  return id;
+}
 
 const TOOLSETS: Record<RunMode["mode"], string[]> = {
   conversation: ["get_prospect", "recommend_products", "get_product", "update_prospect", "set_stage", "send_message",
@@ -47,7 +61,9 @@ export async function runAgent(run: RunMode, brief: string): Promise<{ resume: s
   }
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: brief }];
   let resume = "", tours = 0;
-
+  const sd = run.mode === "mission" ? null : await salesDirectorId();
+  const pres = sd ? new Presence(sd) : null;
+  try {
   for (; tours < MAX_TURNS; tours++) {
     const { message: res } = await callClaude({
       label, prospectId: pid, missionId: mid, system: V1_SYSTEM, messages, tools,
@@ -63,6 +79,8 @@ export async function runAgent(run: RunMode, brief: string): Promise<{ resume: s
 
     const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
     for (const u of uses) {   // séquentiel : les outils modifient l'état (ordre des écritures)
+      const act = activityFor(u.name, (u.input ?? {}) as Record<string, unknown>);
+      if (act && pres) await pres.activity(act);
       try {
         const out = await runCrmTool(ctx, u.name, u.input as Record<string, unknown>);
         await audit({ agent: label, action: u.name, prospect_id: pid, mission_id: mid, payload: { input: u.input } });
@@ -74,6 +92,9 @@ export async function runAgent(run: RunMode, brief: string): Promise<{ resume: s
       }
     }
     messages.push({ role: "user", content: results });
+  }
+  } finally {
+    if (sd && pres) await publishActivity(sd, "disponible");
   }
   if (tours >= MAX_TURNS) resume ||= "Limite de tours atteinte.";
   return { resume, created: ctx.created, tours };

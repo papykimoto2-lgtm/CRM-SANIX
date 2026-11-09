@@ -8,6 +8,7 @@ import { COMMERCIAL_RULES, charterToText, COMPANY_RULES, DG_RULES, MANAGER_METHO
 import { CRM_TOOL_NAMES, type CrmCtx, uuidsIn } from "../crm_tools.ts";
 import { type AgentRow, loadGovernance, OPEN_STATES, Org, type TaskRow } from "./org.ts";
 import { type CoCtx, runCompanyTool, toolsFor } from "./tools.ts";
+import { flushMoves, Presence, publishActivity } from "./presence.ts";
 
 export type RunOutcome = "terminee" | "bloquee" | "attente" | "reportee" | "echec" | "ignoree";
 
@@ -147,7 +148,8 @@ export async function runTask(taskId: string, opts: { deadline: number }): Promi
     agentLabel: `agent:${agent.code}`, agentId: agent.id, scope: new Set(), taskId: task.id, missionId: null,
     createCap: 100, created: 0, source: `agent:${agent.code}`,
   };
-  const ctx: CoCtx = { agent, task, org, gov, departments: deps ?? [], crm, journal: [], posted: [], acted: false, memWrites: 0 };
+  const ctx: CoCtx = { agent, task, org, gov, departments: deps ?? [], crm, journal: [], posted: [], acted: false, memWrites: 0,
+    presence: new Presence(agent.id, task.id), moves: [], assigned: new Set() };
   let cout = 0;
   await setActivite(agent.id, "en_analyse");
   try {
@@ -155,6 +157,7 @@ export async function runTask(taskId: string, opts: { deadline: number }): Promi
     const brief = await buildBrief(ctx);
     for (const id of uuidsIn(...brief.seeds)) crm.scope.add(id);
     const tools = toolsFor(agent, ctx.departments.map((d) => d.id));
+    await ctx.presence!.activity("consultation_documents");   // lecture de la mission
     const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: brief.text }];
     let activiteMission = false;
     const result = await (async (): Promise<Loop> => {
@@ -164,6 +167,10 @@ export async function runTask(taskId: string, opts: { deadline: number }): Promi
           label: `agent:${agent.code}`, agentId: agent.id, taskId: task.id, system, messages, tools, effort: agent.effort,
         });
         cout += cost;
+        // Recherche web (outil serveur) : l'agent consulte des sources → animation d'écran
+        if (res.content.some((b) => (b as { type: string; name?: string }).type === "server_tool_use" && (b as { name?: string }).name === "web_search")) {
+          await ctx.presence!.activity(agent.outils.includes("create_prospect") ? "recherche_prospects" : "recherche_web");
+        }
         if (res.stop_reason === "refusal") return { kind: "refusal" };
         messages.push({ role: "assistant", content: res.content });
         if (res.stop_reason === "pause_turn") continue;
@@ -183,6 +190,7 @@ export async function runTask(taskId: string, opts: { deadline: number }): Promi
             results.push({ type: "tool_result", tool_use_id: u.id, content: msg, is_error: true });
           }
         }
+        await flushMoves(agent, ctx.moves!, ctx.assigned!, task.id);   // déplacements du tour (visites, cadrage, supervision)
         if (ctx.acted && !activiteMission) { activiteMission = true; await setActivite(agent.id, "en_mission"); }
         if (ctx.finish) return { kind: "fini" };
         if (ctx.parked) return { kind: "parque" };
@@ -214,6 +222,7 @@ async function finalize(ctx: CoCtx, r: Loop): Promise<RunOutcome> {
     const ok = f.statut === "terminee";
     await db().from("ai_agents").update({ incidents_consecutifs: ok ? 0 : agent.incidents_consecutifs, activite: ok ? "mission_terminee" : "en_difficulte" })
       .eq("id", agent.id).not("activite", "eq", "en_reunion");
+    await publishActivity(agent.id, ok ? "mission_terminee" : "en_difficulte", task.id);
     if (task.donneur_agent_id) {
       await db().from("ai_agent_communications").insert({
         de_agent_id: agent.id, vers_agent_id: task.donneur_agent_id, task_id: task.id, type: ok ? "rapport" : "alerte",
@@ -233,6 +242,7 @@ async function finalize(ctx: CoCtx, r: Loop): Promise<RunOutcome> {
     await db().from("ai_agent_tasks").update({ progression: await saveJournal(ctx) }).eq("id", task.id);
     await db().from("ai_agents").update({ activite: ctx.parked === "attente_validation" ? "attente_validation" : "en_mission" })
       .eq("id", agent.id).not("activite", "eq", "en_reunion");
+    await publishActivity(agent.id, "attente", task.id);
     return "attente";
   }
 
@@ -243,6 +253,7 @@ async function finalize(ctx: CoCtx, r: Loop): Promise<RunOutcome> {
     if (agent.manager_id) await db().from("ai_agent_communications").insert({ de_agent_id: agent.id, vers_agent_id: agent.manager_id, task_id: task.id,
       type: "alerte", objet: `Mission refusée par le modèle : ${clip(task.titre, 120)}`, contenu: "Reformuler la mission ou la traiter manuellement." });
     await db().from("ai_agents").update({ activite: "en_difficulte" }).eq("id", agent.id).not("activite", "eq", "en_reunion");
+    await publishActivity(agent.id, "en_difficulte", task.id);
     return "bloquee";
   }
 
@@ -252,6 +263,7 @@ async function finalize(ctx: CoCtx, r: Loop): Promise<RunOutcome> {
     progression: await saveJournal(ctx, r.kind === "deadline" ? "[Système] Échéance d'exécution atteinte : reprise." : "[Système] Nombre maximal de tours atteint : reprise."),
   }).eq("id", task.id);
   await db().from("ai_agents").update({ activite: ctx.acted ? "en_mission" : "disponible" }).eq("id", agent.id).not("activite", "eq", "en_reunion");
+  await publishActivity(agent.id, "disponible", task.id);
   return "reportee";
 }
 
@@ -263,6 +275,7 @@ async function onError(ctx: CoCtx, e: unknown): Promise<RunOutcome> {
       progression: await saveJournal(ctx, note),
     }).eq("id", task.id);
     await db().from("ai_agents").update({ activite: ctx.acted ? "en_mission" : "disponible" }).eq("id", agent.id).not("activite", "eq", "en_reunion");
+    await publishActivity(agent.id, "disponible", task.id);
   };
   if (e instanceof BudgetError) {
     await release(`[Système] ${e.message} : reprise ultérieure.`, true);
@@ -278,6 +291,7 @@ async function onError(ctx: CoCtx, e: unknown): Promise<RunOutcome> {
   console.error("runTask", agent.code, msg);
   await release(`[Système] Erreur d'exécution : ${clip(msg, 300)}`, false);
   await db().rpc("ai_register_incident", { p_agent: agent.id, p_task: task.id, p_type: "erreur_execution", p_gravite: "attention", p_message: clip(msg, 500), p_echec: true });
+  await publishActivity(agent.id, "en_difficulte", task.id);
   const { data: a } = await db().from("ai_agents").select("etat").eq("id", agent.id).single();
   if (a?.etat === "suspendu") {
     await db().from("ai_agent_tasks").update({ statut: "bloquee" }).eq("id", task.id);

@@ -6,6 +6,7 @@ import { crmTool, CRM_TOOL_NAMES, type CrmCtx, runCrmTool } from "../crm_tools.t
 import { CHARTER_KEYS } from "../prompts.ts";
 import { BASE_TOOLS, CATALOG_BY_NAME, catalogText, checkGrant, EXTERNAL_TOOLS } from "./catalog.ts";
 import { type AgentRow, type Governance, loadGovernance, norm, OPEN_STATES, Org, slugCode, type TaskRow } from "./org.ts";
+import { activityFor, type PendingMove, type Presence, publishMove } from "./presence.ts";
 
 export type CoCtx = {
   agent: AgentRow; task: TaskRow; org: Org; gov: Governance;
@@ -17,7 +18,12 @@ export type CoCtx = {
   posted: string[];
   acted: boolean;
   memWrites: number;
+  /** Présence 3D : activité suivie, déplacements du tour, agents à qui une mission a été confiée ce tour. */
+  presence?: Presence;
+  moves?: PendingMove[];
+  assigned?: Set<string>;
 };
+const move = (ctx: CoCtx, who: string, key: string, m: PendingMove["move"]) => { (ctx.moves ??= []).push({ who, key, move: m }); };
 
 // ─── Schémas ───────────────────────────────────────────────────────
 const str = (description?: string, extra: Record<string, unknown> = {}) => ({ type: "string", ...(description ? { description } : {}), ...extra });
@@ -165,6 +171,8 @@ export async function runCompanyTool(ctx: CoCtx, name: string, input: Record<str
   if (!allowedTools(ctx.agent).includes(name)) throw new Error(`Outil non autorisé pour ${ctx.agent.nom} : ${name}`);
   const tag = `${name}(${clip(input, 140)})`;
   try {
+    const act = activityFor(name, input ?? {});
+    if (act && ctx.presence) await ctx.presence.activity(act);
     const out = CRM_TOOL_NAMES.includes(name) ? await runCrmTool(ctx.crm, name, input) : await IMPL[name](ctx, input ?? {});
     if (ACTION_TOOLS.has(name)) ctx.acted = true;
     if (ctx.journal.length < 60) ctx.journal.push(`${tag} → ${clip(out, 160)}`);
@@ -279,6 +287,7 @@ const IMPL: Record<string, (ctx: CoCtx, i: Record<string, any>) => Promise<unkno
       de_agent_id: ctx.agent.id, vers_agent_id: target.id, task_id: t.id, type: "transmission",
       objet: clip(i.titre, 200), contenu: clip(i.instructions, 8000), donnees: { task_id: t.id, depuis: ctx.task.id },
     });
+    move(ctx, ctx.agent.id, `transmettre:${target.id}`, { lieu: "poste_agent", cible: target.id, ms: 9000, motif: "dossier" });
     return { task_id: t.id, vers: target.code };
   },
 
@@ -340,6 +349,7 @@ const IMPL: Record<string, (ctx: CoCtx, i: Record<string, any>) => Promise<unkno
       dep.responsable_id = ag.id;
     }
     ctx.org = await Org.load();
+    if (!needsApproval) move(ctx, me.id, `accueil:${ag.id}`, { lieu: "poste_agent", cible: ag.id, ms: 8000, motif: "accueil" });
     return { agent_code: ag.code, etat: ag.etat, niveau,
       consigne: needsApproval ? "Agent en attente de validation du président : ne lui assigne pas de mission pour l'instant." : "Agent actif : tu peux lui assigner des missions." };
   },
@@ -397,6 +407,7 @@ const IMPL: Record<string, (ctx: CoCtx, i: Record<string, any>) => Promise<unkno
     await db().from("ai_agent_communications").insert({ de_agent_id: ctx.agent.id, vers_agent_id: target.id, task_id: ctx.task.id,
       type: "decision", objet: "Cahier des charges révisé", contenu: `Motif : ${motif}`.slice(0, 8000) });
     ctx.org = await Org.load();
+    move(ctx, ctx.agent.id, `revision:${target.id}`, { lieu: "poste_agent", cible: target.id, ms: 8000, motif: "revision" });
     return { ok: true, charte_version: version, notes };
   },
 
@@ -436,6 +447,8 @@ const IMPL: Record<string, (ctx: CoCtx, i: Record<string, any>) => Promise<unkno
       const { error: e2 } = await db().from("ai_task_dependencies").insert(deps.map((d) => ({ task_id: t.id, depend_de: d })));
       if (e2) { await db().from("ai_agent_tasks").update({ statut: "annulee" }).eq("id", t.id); throw new Error(e2.message); }
     }
+    (ctx.assigned ??= new Set()).add(target.id);
+    move(ctx, ctx.agent.id, `assign:${target.id}`, { lieu: "poste_agent", cible: target.id, ms: 12000, motif: "brief" });
     return { task_id: t.id, agent: target.code, statut: "a_faire", depend_de: deps };
   },
 
@@ -465,6 +478,7 @@ const IMPL: Record<string, (ctx: CoCtx, i: Record<string, any>) => Promise<unkno
     await db().from("ai_agent_tasks").update({ evaluation: note, evaluation_commentaire: commentaire }).eq("id", t.id);
     await db().from("ai_agent_communications").insert({ de_agent_id: ctx.agent.id, vers_agent_id: t.agent_id, task_id: t.id, type: "decision",
       objet: `Évaluation : ${note}/100 — ${clip(t.titre, 100)}`, contenu: commentaire });
+    move(ctx, ctx.agent.id, `eval:${t.agent_id}`, { lieu: "poste_agent", cible: t.agent_id, ms: 8000, motif: "evaluation" });
     return { ok: true };
   },
 
@@ -472,6 +486,7 @@ const IMPL: Record<string, (ctx: CoCtx, i: Record<string, any>) => Promise<unkno
     const jours = num(i.jours, 1, 30, 7);
     const { data, error } = await db().rpc("ai_agent_stats", { p_debut: new Date(Date.now() - jours * 86400e3).toISOString(), p_fin: new Date().toISOString() });
     if (error) throw new Error(error.message);
+    move(ctx, ctx.agent.id, "supervision", { lieu: "supervision", ms: 20000, motif: "performance" });
     const scope = ctx.agent.niveau === 1 ? null : ctx.org.descendants(ctx.agent.id);
     return (data ?? []).filter((r: Record<string, any>) => r.etat !== "archive" && (!scope || scope.has(r.agent_id))).slice(0, 40)
       .map((r: Record<string, any>) => ({ code: ctx.org.byId(r.agent_id)?.code ?? r.nom, fonction: r.fonction, etat: r.etat, attribuees: r.attribuees,
@@ -481,6 +496,7 @@ const IMPL: Record<string, (ctx: CoCtx, i: Record<string, any>) => Promise<unkno
 
   async consulter_indicateurs(ctx, i) {
     const jours = num(i.jours, 1, 30, 1);
+    move(ctx, ctx.agent.id, "supervision", { lieu: "supervision", ms: 20000, motif: "indicateurs" });
     const { data, error } = await db().rpc("ai_report_data", { p_debut: new Date(Date.now() - jours * 86400e3).toISOString(), p_fin: new Date().toISOString() });
     if (error) throw new Error(error.message);
     const d = data as Record<string, any>;
@@ -507,11 +523,16 @@ const IMPL: Record<string, (ctx: CoCtx, i: Record<string, any>) => Promise<unkno
     if ((count ?? 0) >= 3) throw new Error("Plafond de 3 réunions par jour atteint : décide avec les informations disponibles");
     const { data: m, error } = await db().from("ai_agent_meetings").insert({
       titre: txt(i.titre, 200, "titre", 3), ordre_du_jour: txt(i.ordre_du_jour, 4000, "ordre_du_jour", 3),
-      convoque_par: ctx.agent.id, statut: "planifiee", task_id: ctx.task.id,
+      convoque_par: ctx.agent.id, statut: "planifiee", task_id: ctx.task.id, phase: "convocation",
     }).select("id").single();
     if (error) throw new Error(error.message);
     const { error: e2 } = await db().from("ai_meeting_participants").insert(agents.map((a, n) => ({ meeting_id: m.id, agent_id: a.id, ordre: n + 1 })));
     if (e2) throw new Error(e2.message);
+    // 1. Les participants sont avertis ; 2. ils quittent leur poste pour la salle de réunion (retour automatique à la clôture)
+    const titre = clip(i.titre, 150), tous = [ctx.agent.id, ...agents.map((a) => a.id)];
+    await db().from("ai_agent_communications").insert(agents.map((a) => ({ de_agent_id: ctx.agent.id, vers_agent_id: a.id, type: "information",
+      objet: `Réunion convoquée : ${titre}`, contenu: `Ordre du jour : ${clip(i.ordre_du_jour, 600)}` })));
+    for (const id of tous) await publishMove(id, { lieu: "reunion", ms: 8 * 60000, motif: "convocation" }, { kind: "reunion", meetingId: m.id, taskId: ctx.task.id, participants: tous });
     return { meeting_id: m.id, participants: agents.map((a) => a.code), consigne: "Réunion planifiée : appelle attendre_sous_taches pour reprendre avec le procès-verbal." };
   },
 
