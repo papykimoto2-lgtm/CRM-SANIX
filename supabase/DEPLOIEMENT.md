@@ -15,6 +15,17 @@ Projet `izgpvhwhbrgeagjfhfli`. Prérequis : schéma appliqué (`setup_all.sql`) 
 
 Le script passe par les mêmes règles que la création par le directeur IA (hiérarchie, plafond, charte obligatoire), peut être relancé sans doublon et trace l'opération au journal d'audit. Le plafond de gouvernance (25 agents actifs) est atteint : l'augmenter dans *Gouvernance* avant d'autoriser d'autres créations. Aucun message externe ne part sans votre validation. Les agents apparaissent en direct dans le bureau 3D, sans recharger la page.
 
+## 0 bis. Assigner une mission à chaque agent d'après le CRM (SQL, immédiat)
+*SQL Editor* → coller `supabase/seed_crm_missions.sql` → **Run** (après le §0). Le script :
+1. **importe les prospects du CRM** dans l'entreprise IA (504 fiches sur 511 ; les doublons de numéro ou d'e-mail sont ignorés), avec le produit recommandé par segment ;
+2. aligne le superviseur « distribution » sur les segments réels du CRM (**Industrie 213** et **Logistique 30**, absents de l'organisation de départ) ;
+3. **assigne une mission à chacun des 25 agents**, formulée avec les chiffres du CRM : 511 prospects (Industrie 213, Santé 173, Immobilier 95, Logistique 30), 486 avec téléphone dont 253 mobiles valides, 118 avec e-mail, 23 sans aucun contact, 8 clients, 9 commandes.
+
+Arbre des missions : président → directeur général → directeurs (commercial, marketing, intelligence, relation client, administration) → responsable de la prospection → 3 superviseurs → agents. Les missions de direction attendent leurs subordonnés (reprise automatique) ; **le contact dépend de la qualification, les rendez-vous du contact, l'offre du rendez-vous**. Aucun message externe ne part sans votre validation. Le script est relançable sans doublon.
+
+Les missions démarrent dès que les fonctions (§1) et les secrets (§2) sont en place. Budget IA par défaut : 20 $ par jour et 5 $ par agent (onglet *Gouvernance*). Les données du CRM quittent le navigateur : elles sont copiées dans **votre** projet Supabase, protégé par la connexion d'opérateur.
+Régénération : `node supabase/tools/export_crm.js > crm_export.json && python3 supabase/tools/gen_seed_crm_missions.py crm_export.json`.
+
 ## 1. Les trois fonctions (tableau de bord)
 Supabase → **Edge Functions** → **Deploy a new function** → **Via Editor**. Pour chacune : saisir le nom exact, effacer l'exemple, coller **tout** le fichier (GitHub → fichier → *Copy raw file*), **Deploy**.
 
