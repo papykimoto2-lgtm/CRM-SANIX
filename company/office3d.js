@@ -553,7 +553,9 @@ export async function createOffice(container, hooks = {}) {
     // création progressive des avatars
     spawnQueued(Q.perFrame);
     if (simMs - (step.last ?? -1e9) > 1000) { step.last = simMs; reconcileAll(); assignDetail(); }   // échéances de déplacement, pauses détente
+    const iconS = clampN(0.012 + ((80 - orbit.r) / 68) * 0.014, 0.012, 0.026);   // icônes d'état : discrètes en vue d'ensemble, lisibles de près
     for (const av of avatars.values()) {
+      av.icon.scale.set(iconS, iconS, 1);
       stepAvatar(av, dt);
       av.frame++;
       const dc = Math.hypot(camera.position.x - av.root.position.x, camera.position.z - av.root.position.z);
