@@ -873,6 +873,10 @@ select.form-input{cursor:pointer}
   <div class="sb-item" onclick="navigate('direction',this)">
     <div class="sb-icon">👔</div><span>Tableau dirigeant</span>
   </div>
+  <div class="sb-item" onclick="navigate('aisales',this)">
+    <div class="sb-icon">🤖</div><span>Directeur IA</span>
+    <span class="sb-badge warn" id="sb-ais-badge" style="display:none">0</span>
+  </div>
   <div class="sb-item" onclick="navigate('cockpit',this)">
     <div class="sb-icon">🧠</div><span>Cockpit IA</span>
   </div>
@@ -1081,6 +1085,54 @@ select.form-input{cursor:pointer}
 
 
     <!-- ══ VIEW: CRM INTELLIGENCE ══ -->
+    <!-- ══ VIEW: DIRECTEUR COMMERCIAL IA ══ -->
+    <div id="view-aisales" class="hidden fade-in">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <div>
+          <h1 class="page-title">🤖 Directeur commercial IA</h1>
+          <p class="page-sub">Prospection, qualification /100, conversations, relances et validations — piloté par l'agent SANIX AI SALES DIRECTOR</p>
+        </div>
+        <div id="ais-conn" style="font-size:12px"></div>
+      </div>
+      <div class="stats-grid" id="ais-kpis"></div>
+      <div class="tabs" id="ais-tabs" style="max-width:100%;overflow-x:auto">
+        <div class="tab active" onclick="aisTab('score',this)">🎯 Prospects scorés</div>
+        <div class="tab" onclick="aisTab('missions',this)">🛰️ Missions IA</div>
+        <div class="tab" onclick="aisTab('valid',this)">✅ Validations</div>
+      </div>
+      <div id="ais-pane-score">
+        <div class="flex" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <select class="form-input" id="ais-f-prio" style="max-width:200px" onchange="aisRenderScores()">
+            <option value="">Toutes priorités</option><option value="prioritaire">Prioritaire (80-100)</option>
+            <option value="interessant">Intéressant (60-79)</option><option value="a_developper">À développer (40-59)</option>
+            <option value="a_surveiller">À surveiller (&lt;40)</option>
+          </select>
+          <input class="form-input" id="ais-f-q" placeholder="Rechercher…" style="max-width:240px" oninput="aisRenderScores()">
+        </div>
+        <div class="card" style="padding:0;overflow-x:auto">
+          <table class="client-table"><thead><tr><th>Prospect</th><th>Secteur</th><th>Score</th><th>Logiciel recommandé</th><th>Action suivante</th><th></th></tr></thead>
+          <tbody id="ais-score-body"></tbody></table>
+        </div>
+        <p class="page-sub" style="margin-top:8px">Score calculé localement (produit 25 · besoin 20 · finance 15 · décideur 15 · court terme 15 · disponibilité 10). L'agent affine ce score à partir des conversations.</p>
+      </div>
+      <div id="ais-pane-missions" class="hidden">
+        <div class="card" style="padding:16px;margin-bottom:14px">
+          <div style="font-weight:700;margin-bottom:10px">Nouvelle mission Lead Hunter</div>
+          <div class="form-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
+            <input class="form-input" id="ais-m-titre" maxlength="150" placeholder="Titre — ex : Livraison Abidjan T1">
+            <select class="form-input" id="ais-m-prod"></select>
+            <input class="form-input" id="ais-m-secteur" maxlength="80" placeholder="Secteur — ex : livraison">
+            <input class="form-input" id="ais-m-ville" maxlength="80" value="Abidjan">
+            <input class="form-input" id="ais-m-obj" type="number" min="1" max="100" value="20">
+          </div>
+          <textarea class="form-input" id="ais-m-consigne" maxlength="2000" rows="3" style="margin-top:10px" placeholder="Consigne : ex. Trouver 100 entreprises de livraison à Abidjan susceptibles d'utiliser Angel's ; priorité à celles qui recrutent des livreurs."></textarea>
+          <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="aisLaunchMission()">🚀 Lancer la mission</button>
+        </div>
+        <div id="ais-missions"></div>
+      </div>
+      <div id="ais-pane-valid" class="hidden"><div id="ais-approvals"></div></div>
+    </div>
+
     <div id="view-intel" class="hidden fade-in">
       <div style="margin-bottom:16px">
         <h1 class="page-title">🧬 CRM Intelligence</h1>
@@ -5144,7 +5196,7 @@ const NAV_GROUPS = {
   livraison: {views:[['licences','🔑 Licences'],['planning','📅 Planning déploiement']], badges:['sb-lic-badge']},
   finance:   {views:[['comptabilite','📒 Comptabilité'],['commissions','💰 Commissions']], badges:['sb-compta-badge','sb-comm-badge']},
   apres:     {views:[['apresvente','🔁 Renouvellements & fidélisation']], badges:[]},
-  pilot:     {views:[['direction','👔 Direction'],['cockpit','🧠 Cockpit IA'],['intel','🧬 Intelligence']], badges:[]},
+  pilot:     {views:[['direction','👔 Direction'],['aisales','🤖 Directeur IA'],['cockpit','🧠 Cockpit IA'],['intel','🧬 Intelligence']], badges:['sb-ais-badge']},
   reglages:  {views:[['equipe','🏆 Équipe & Apporteurs'],['documents','📄 Documents & Modèles'],['parametrage','🛠️ Paramétrage']], badges:['sb-app-badge','sb-doc-badge']}
 };
 // Écrans fusionnés : la vue d'origine est déplacée dans l'écran d'accueil de son module
@@ -5461,7 +5513,7 @@ function navigate(view, el) {
   if(el && el.classList && el.classList.contains('sb-item')) el.classList.add('active');
   document.getElementById('topbar-title').textContent = {
     dashboard:'Tableau de bord',pipeline:'Pipeline Commercial',clients:'Clients & Prospects',
-    intel:'CRM Intelligence',agenda:'Agenda intelligent',marketing:'Moteur Marketing',journal:'Journal & PV de contact',direction:'Direction & Cockpit',cockpit:'Cockpit IA',conversion:'Moteur de Conversion',logiciels:'Catalogue Logiciels',equipe:'Équipe & Apporteurs',apporteurs:'Apporteurs d\'affaires',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
+    intel:'CRM Intelligence',agenda:'Agenda intelligent',marketing:'Moteur Marketing',journal:'Journal & PV de contact',direction:'Direction & Cockpit',cockpit:'Cockpit IA',aisales:'Directeur commercial IA',conversion:'Moteur de Conversion',logiciels:'Catalogue Logiciels',equipe:'Équipe & Apporteurs',apporteurs:'Apporteurs d\'affaires',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
     planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
     parametrage:'Paramétrage',apresvente:'Après-vente & fidélisation',
     presentations:'Présentations & Démos',commandes:'Commandes Clients',contrats:'Contrats & Conventions',
@@ -5476,6 +5528,7 @@ function navigate(view, el) {
   if(view === 'rapports') setTimeout(initJournal, 70);
   if(view === 'apresvente') setTimeout(initApresVente, 50);
   if(view === 'cockpit') setTimeout(initCockpit, 50);
+  if(view === 'aisales') setTimeout(initAiSales, 50);
   if(view === 'direction'){ setTimeout(initIntel, 70); setTimeout(initDirection, 50); setTimeout(initCockpit, 60); const _ck=document.getElementById('view-cockpit'); if(_ck) _ck.classList.remove('hidden'); }
   if(view === 'equipe') eqSyncTab(_orig);
   if(view === 'marketing') setTimeout(initMarketing, 50);
@@ -8150,19 +8203,19 @@ const ROLE_BG = {
   apporteur:'#FFFBEB'
 };
 const PERMISSIONS = {
-  super_admin:['journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports','users','parametrage','parametres'],
-  manager:    ['journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports'],
+  super_admin:['aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports','users','parametrage','parametres'],
+  manager:    ['aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports'],
   commercial: ['journal','dashboard','pipeline','clients','logiciels','messagerie','carte','rapports'],
   apporteur:  ['pipeline','clients','messagerie','rapports'],
 };
 const PERM_LABELS = {
   dashboard:'Tableau de bord',pipeline:'Pipeline',clients:'Clients',logiciels:'Logiciels',
   equipe:'Équipe',commissions:'Commissions',messagerie:'Messagerie',carte:'Carte',planning:'Planning',
-  rapports:'Rapports',users:'Gestion utilisateurs',parametrage:'Paramétrage',parametres:'Sync cloud'
+  rapports:'Rapports',aisales:'Directeur IA',users:'Gestion utilisateurs',parametrage:'Paramétrage',parametres:'Sync cloud'
 };
 const PERM_ICONS = {
   dashboard:'📊',pipeline:'🎯',clients:'👤',logiciels:'💻',equipe:'🏆',
-  commissions:'💰',messagerie:'💬',carte:'🗺️',planning:'📅',rapports:'📋',users:'🔐',parametrage:'🛠️',parametres:'⚙️'
+  commissions:'💰',messagerie:'💬',carte:'🗺️',planning:'📅',rapports:'📋',aisales:'🤖',users:'🔐',parametrage:'🛠️',parametres:'⚙️'
 };
 
 // Raw user store — passwords hashed on init
@@ -16262,6 +16315,204 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     enterApp(currentUser);
   }
 });
+
+// ═══════════════════════════════════════
+//  DIRECTEUR COMMERCIAL IA — scoring local, missions, validations
+//  Sécurité : aucune clé secrète côté client. Accès agent = session Supabase Auth (opérateur) + RLS + Edge Function.
+// ═══════════════════════════════════════
+const AIS_PRODUCTS = [
+  {id:'aluexpert',  nom:'Sanix AluExpert',  kw:['menuiserie','aluminium','alu','vitrerie']},
+  {id:'inox100',    nom:'100-Inox ERP',     kw:['inox','metallerie','chaudronnerie','soudure']},
+  {id:'immosuite',  nom:'ImmoSuite ERP',    kw:['immobilier','promoteur','promotion','amenageur','lotissement']},
+  {id:'distripro',  nom:'Sanix DistriPro',  kw:['distribution','grossiste','depot','boisson','negoce','commerce de gros']},
+  {id:'comptapro',  nom:'Sanix Compta Pro', kw:['comptab','cabinet comptable','expert-comptable','audit','fiscal']},
+  {id:'medicor',    nom:'MedicorERP',       kw:['sante','clinique','medical','hopital','laboratoire','pharmacie']},
+  {id:'avicosuite', nom:'AvicoSuite',       kw:['avicole','aviculture','ferme','elevage','poulet','agro','agricult']},
+  {id:'angels',     nom:"Angel's",          kw:['livraison','logistique','expedition','transport','coursier','colis']},
+  {id:'snifi',      nom:'SNIFI',            kw:['foncier','cadastre','geometre','notaire','fiscalite immobiliere','collectivite']},
+  {id:'cilegrenier',nom:'CI-LeGrenier',     kw:['e-commerce','marketplace','boutique','vente en ligne','commerce']},
+];
+const AIS_PRIO = {prioritaire:['Prioritaire','badge-success'],interessant:['Intéressant','badge-primary'],a_developper:['À développer','badge-warning'],a_surveiller:['À surveiller','badge-muted']};
+const _aisEsc = t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function aisRecommend(c){
+  const txt = _nrm([c.secteur,c.logiciel,c.notes,c.activite].filter(Boolean).join(' '));
+  if(!_nrm(c.secteur||'').trim() && !txt.trim()) return [];
+  return AIS_PRODUCTS.map(p=>({p, n:p.kw.filter(k=>txt.includes(k)).length})).filter(x=>x.n>0).sort((a,b)=>b.n-a.n).slice(0,2).map(x=>x.p);
+}
+function aisScore(c){
+  const ints = c.interactions||[];
+  const last = ints.length ? new Date(ints[ints.length-1].date) : null;
+  const days = last && !isNaN(last) ? (Date.now()-last)/864e5 : 999;
+  const deal = DEALS.find(d=>(d.clientId===c.id || d.client===c.nom) && d.stage!=='perdu');
+  const reco = aisRecommend(c);
+  const crit = {
+    produit:   reco.length ? 25 : (c.logiciel ? 12 : 0),
+    besoin:    Math.min(20, (c.notes ? 8 : 0) + Math.min(12, ints.length*3)),
+    finance:   deal && deal.valeur ? (deal.valeur>=1000000 ? 15 : 10) : (c.budget ? 8 : 4),
+    decideur:  (c.contact ? 7 : 0) + (c.phone ? 5 : 0) + (c.email ? 3 : 0),
+    court:     deal ? ({negociation:15,proposition:12,demo:9,contact:5}[deal.stage]||2) : 0,
+    dispo:     days<=7 ? 10 : days<=30 ? 6 : days<=90 ? 3 : 0,
+  };
+  const score = Object.values(crit).reduce((a,b)=>a+b,0);
+  const prio = score>=80?'prioritaire':score>=60?'interessant':score>=40?'a_developper':'a_surveiller';
+  const action = !reco.length ? 'Identifier secteur & besoins (découverte)' :
+    prio==='prioritaire' ? 'Proposer une démo / RDV cette semaine' :
+    prio==='interessant' ? 'Approfondir le besoin, envoyer la démo '+reco[0].nom :
+    prio==='a_developper' ? 'Nurturing : contenu ciblé + relance J+7' : 'Veille — signal à surveiller';
+  return {score, prio, crit, reco, action};
+}
+function aisRenderScores(){
+  const fp = document.getElementById('ais-f-prio')?.value||'', q=_nrm(document.getElementById('ais-f-q')?.value||'');
+  const rows = CLIENTS.filter(c=>c.statut!=='client').map(c=>({c, s:aisScore(c)}))
+    .filter(x=>(!fp||x.s.prio===fp) && (!q||_nrm(x.c.nom+' '+(x.c.secteur||'')).includes(q)))
+    .sort((a,b)=>b.s.score-a.s.score).slice(0,300);
+  const body = document.getElementById('ais-score-body'); if(!body) return;
+  body.innerHTML = rows.length ? rows.map(({c,s})=>{
+    const [pl,pc] = AIS_PRIO[s.prio];
+    const tip = `Produit ${s.crit.produit}/25 · Besoin ${s.crit.besoin}/20 · Finance ${s.crit.finance}/15 · Décideur ${s.crit.decideur}/15 · Court terme ${s.crit.court}/15 · Dispo ${s.crit.dispo}/10`;
+    return `<tr><td><b>${_aisEsc(c.nom)}</b><div style="font-size:11px;color:var(--muted)">${_aisEsc(c.phone||c.email||'')}</div></td>
+      <td>${_aisEsc(c.secteur||'—')}</td>
+      <td title="${_aisEsc(tip)}"><b>${s.score}</b>/100 <span class="badge ${pc}">${pl}</span></td>
+      <td>${s.reco.length?s.reco.map(p=>_aisEsc(p.nom)).join(', '):'<span style="color:var(--muted)">Secteur à préciser</span>'}</td>
+      <td style="font-size:12px">${_aisEsc(s.action)}</td>
+      <td><button class="btn btn-outline btn-sm" onclick="aisDelegate(${Number(c.id)||0})" title="Confier ce prospect à l'agent IA (qualification)">🤖 Confier</button></td></tr>`;
+  }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Aucun prospect</td></tr>';
+}
+
+// ─── Session opérateur Supabase (jeton court, sessionStorage uniquement) ───
+const AIS_TOK='sanix_ais_session';
+let _aisFails=0, _aisLockUntil=0;
+function aisSession(){ try{ const s=JSON.parse(sessionStorage.getItem(AIS_TOK)||'null'); return s && s.exp>Date.now()+30000 ? s : null; }catch(e){ return null; } }
+function aisRenderConn(){
+  const el=document.getElementById('ais-conn'); if(!el) return;
+  const s=aisSession();
+  if(!SB_CONFIG){ el.innerHTML='<span class="badge badge-muted">Supabase non configuré — mode local</span>'; return; }
+  el.innerHTML = s ? `<span class="badge badge-success">Agent connecté · ${_aisEsc(s.email)}</span> <button class="btn btn-outline btn-sm" onclick="aisLogout()">Déconnexion</button>`
+    : `<form onsubmit="aisLogin(event)" class="flex" style="gap:6px;flex-wrap:wrap">
+        <input class="form-input" id="ais-email" type="email" autocomplete="username" placeholder="E-mail opérateur" required style="max-width:190px">
+        <input class="form-input" id="ais-pass" type="password" autocomplete="current-password" placeholder="Mot de passe" required style="max-width:150px">
+        <button class="btn btn-primary btn-sm">Connecter l'agent</button></form>`;
+}
+async function aisLogin(ev){
+  ev.preventDefault();
+  if(Date.now()<_aisLockUntil){ showToast('⏳ Trop de tentatives — réessayez dans une minute'); return; }
+  const email=document.getElementById('ais-email').value.trim(), password=document.getElementById('ais-pass').value;
+  try{
+    const r=await withTimeout(fetch(`${SB_CONFIG.url}/auth/v1/token?grant_type=password`,{method:'POST',
+      headers:{apikey:SB_CONFIG.key,'Content-Type':'application/json'},body:JSON.stringify({email,password})}),10000);
+    const j=await r.json();
+    if(!r.ok||!j.access_token) throw new Error(j.error_description||j.msg||'Identifiants invalides');
+    sessionStorage.setItem(AIS_TOK, JSON.stringify({t:j.access_token, exp:Date.now()+(j.expires_in||3600)*1000, email}));
+    _aisFails=0; showToast('✅ Agent IA connecté'); initAiSales();
+  }catch(e){
+    if(++_aisFails>=5){ _aisLockUntil=Date.now()+60000; _aisFails=0; }
+    showToast('❌ '+e.message);
+  }finally{ const p=document.getElementById('ais-pass'); if(p) p.value=''; }
+}
+function aisLogout(){ sessionStorage.removeItem(AIS_TOK); initAiSales(); }
+async function aisApi(path, opt={}){
+  const s=aisSession(); if(!s||!SB_CONFIG) throw new Error('Connectez l\'agent IA (session opérateur)');
+  const r=await withTimeout(fetch(SB_CONFIG.url+path,{...opt,headers:{apikey:SB_CONFIG.key,Authorization:'Bearer '+s.t,'Content-Type':'application/json',...(opt.headers||{})}}), opt.timeout||15000);
+  if(r.status===401){ sessionStorage.removeItem(AIS_TOK); aisRenderConn(); }
+  const txt=await r.text(); let j=null; try{ j=txt?JSON.parse(txt):null; }catch(e){}
+  if(!r.ok) throw new Error((j&&(j.error||j.message))||('HTTP '+r.status));
+  return j;
+}
+
+// ─── KPI, missions, validations ───
+async function aisRenderKpis(){
+  const el=document.getElementById('ais-kpis'); if(!el) return;
+  const local=CLIENTS.filter(c=>c.statut!=='client').map(aisScore);
+  let k=null; try{ if(aisSession()) k=(await aisApi('/rest/v1/ai_kpis?select=*'))[0]; }catch(e){}
+  const f=n=>(n==null?'—':Number(n).toLocaleString('fr-FR'));
+  el.innerHTML = k ? [
+    convKpi('🎯',f(k.prospects_total),'Prospects agent','var(--primary)'),
+    convKpi('⭐',f(k.prospects_prioritaires),'Prioritaires (≥80)','var(--success)'),
+    convKpi('💬',f(k.conversations),'Conversations','var(--purple)'),
+    convKpi('📨',(k.taux_reponse_pct??'—')+' %','Taux de réponse','var(--primary)'),
+    convKpi('📅',f(k.rdv_a_venir),'RDV à venir','var(--orange)'),
+    convKpi('📄',f(k.offres_transmises),'Offres transmises','var(--primary)'),
+    convKpi('🏆',f(k.marches_gagnes),'Marchés gagnés','var(--success)'),
+    convKpi('🔁',(k.taux_transformation_pct??'—')+' %','Transformation','var(--success)'),
+    convKpi('💰',f(k.ca_gagne_ht),'CA gagné HT (FCFA)','var(--success)'),
+    convKpi('✅',f(k.validations_en_attente),'Validations en attente',k.validations_en_attente?'var(--danger)':'var(--muted)'),
+  ].join('') : [
+    convKpi('🎯',local.length,'Prospects (local)','var(--primary)'),
+    convKpi('⭐',local.filter(s=>s.prio==='prioritaire').length,'Prioritaires (≥80)','var(--success)'),
+    convKpi('👍',local.filter(s=>s.prio==='interessant').length,'Intéressants (60-79)','var(--primary)'),
+    convKpi('🌱',local.filter(s=>s.prio==='a_developper').length,'À développer','var(--warning)'),
+    convKpi('❓',local.filter(s=>!s.reco.length).length,'Secteur à préciser','var(--muted)'),
+  ].join('');
+  const b=document.getElementById('sb-ais-badge');
+  if(b){ const n=k?Number(k.validations_en_attente)||0:0; b.textContent=n; b.style.display=n?'':'none'; }
+}
+async function aisRenderMissions(){
+  const sel=document.getElementById('ais-m-prod');
+  if(sel && !sel.options.length) sel.innerHTML='<option value="">Produit visé (auto)</option>'+AIS_PRODUCTS.map(p=>`<option value="${p.id}">${_aisEsc(p.nom)}</option>`).join('');
+  const el=document.getElementById('ais-missions'); if(!el) return;
+  if(!aisSession()){ el.innerHTML='<p class="page-sub">Connectez l\'agent pour lancer et suivre les missions.</p>'; return; }
+  try{
+    const ms=await aisApi('/rest/v1/ai_missions?select=id,titre,secteur,ville,objectif,trouves,statut,rapport,created_at&order=created_at.desc&limit=20');
+    const st={en_cours:'badge-warning',terminee:'badge-success',echec:'badge-orange',en_attente:'badge-muted',annulee:'badge-muted'};
+    el.innerHTML = ms.length ? ms.map(m=>`<div class="card" style="padding:14px;margin-bottom:10px">
+      <div class="flex" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><b>${_aisEsc(m.titre)}</b><span class="badge ${st[m.statut]||'badge-muted'}">${_aisEsc(m.statut)}</span></div>
+      <div style="font-size:12px;color:var(--muted)">${_aisEsc(m.secteur)} · ${_aisEsc(m.ville)} · ${m.trouves}/${m.objectif} prospects · ${new Date(m.created_at).toLocaleString('fr-FR')}</div>
+      ${m.rapport?`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px">Rapport</summary><pre style="white-space:pre-wrap;font-size:12px;font-family:inherit">${_aisEsc(m.rapport)}</pre></details>`:''}
+    </div>`).join('') : '<p class="page-sub">Aucune mission.</p>';
+  }catch(e){ el.innerHTML=`<p class="page-sub">⚠️ ${_aisEsc(e.message)}</p>`; }
+}
+async function aisLaunchMission(){
+  const v=id=>document.getElementById(id).value.trim();
+  const body={action:'mission',titre:v('ais-m-titre'),consigne:v('ais-m-consigne'),secteur:v('ais-m-secteur'),ville:v('ais-m-ville'),objectif:Number(v('ais-m-obj'))||20,product_id:v('ais-m-prod')||null};
+  if(!body.titre||!body.consigne||!body.secteur){ showToast('⚠️ Titre, secteur et consigne requis'); return; }
+  try{ await aisApi('/functions/v1/ai-sales-director',{method:'POST',body:JSON.stringify(body)}); showToast('🚀 Mission lancée — résultats dans quelques minutes'); aisRenderMissions(); }
+  catch(e){ showToast('❌ '+e.message); }
+}
+async function aisRenderApprovals(){
+  const el=document.getElementById('ais-approvals'); if(!el) return;
+  if(!aisSession()){ el.innerHTML='<p class="page-sub">Connectez l\'agent pour voir les validations.</p>'; return; }
+  try{
+    const ap=await aisApi('/rest/v1/ai_approvals?select=id,type,motif,payload,created_at,ai_prospects(entreprise)&statut=eq.en_attente&order=created_at.asc&limit=50');
+    const lbl={remise:'💸 Remise',contrat:'📝 Contrat',paiement:'💰 Paiement',engagement:'⚖️ Engagement',transfert_humain:'🙋 Transfert humain',message:'💬 Message'};
+    el.innerHTML = ap.length ? ap.map(a=>`<div class="card" style="padding:14px;margin-bottom:10px">
+      <div class="flex" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><b>${lbl[a.type]||_aisEsc(a.type)} — ${_aisEsc(a.ai_prospects?.entreprise||'')}</b>
+      <span style="font-size:11px;color:var(--muted)">${new Date(a.created_at).toLocaleString('fr-FR')}</span></div>
+      <div style="font-size:13px;margin:6px 0">${_aisEsc(a.motif)}</div>
+      ${a.payload&&a.payload.total_ht?`<div style="font-size:12px;color:var(--muted)">Offre ${_aisEsc(a.payload.reference)} · ${Number(a.payload.total_ht).toLocaleString('fr-FR')} FCFA HT</div>`:''}
+      <div class="flex" style="gap:6px;margin-top:8px"><button class="btn btn-primary btn-sm" onclick="aisDecide('${_aisEsc(a.id)}',true)">✔ Approuver / traité</button>
+      <button class="btn btn-outline btn-sm" onclick="aisDecide('${_aisEsc(a.id)}',false)">✖ Refuser</button></div></div>`).join('')
+      : '<p class="page-sub">Aucune validation en attente. 👌</p>';
+  }catch(e){ el.innerHTML=`<p class="page-sub">⚠️ ${_aisEsc(e.message)}</p>`; }
+}
+async function aisDecide(id, ok){
+  if(!/^[0-9a-f-]{36}$/i.test(id)) return;
+  const com = ok ? '' : (prompt('Motif du refus (optionnel) :')||'');
+  try{ await aisApi('/rest/v1/rpc/ai_decide_approval',{method:'POST',body:JSON.stringify({p_id:id,p_ok:ok,p_commentaire:com.slice(0,500)||null})});
+    showToast(ok?'✅ Validé':'✖ Refusé'); aisRenderApprovals(); aisRenderKpis(); }
+  catch(e){ showToast('❌ '+e.message); }
+}
+async function aisDelegate(clientId){
+  const c=CLIENTS.find(x=>Number(x.id)===clientId); if(!c) return;
+  if(!aisSession()){ showToast('🔐 Connectez d\'abord l\'agent IA'); return; }
+  const reco=aisRecommend(c).map(p=>p.id);
+  const row={crm_client_id:c.id,entreprise:String(c.nom||'').slice(0,200),secteur:c.secteur||null,ville:c.ville||null,adresse:c.adresse||null,
+    decideur:c.contact||null,telephone:c.phone||null,email:(c.email&&/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email))?c.email:null,
+    produits_recommandes:reco,source:'crm',stage:'enregistre',resume_ia:c.notes?String(c.notes).slice(0,2000):null};
+  try{
+    let p; try{ p=(await aisApi('/rest/v1/ai_prospects?select=id',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(row)}))[0]; }
+    catch(e){ p=(await aisApi(`/rest/v1/ai_prospects?select=id&crm_client_id=eq.${Number(c.id)}&limit=1`))[0]; if(!p) throw e; }
+    showToast('🤖 Qualification IA en cours…');
+    await aisApi('/functions/v1/ai-sales-director',{method:'POST',body:JSON.stringify({action:'qualifier',prospect_id:p.id}),timeout:120000});
+    showToast('✅ '+c.nom+' qualifié par l\'agent'); aisRenderKpis();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+function aisTab(t, el){
+  ['score','missions','valid'].forEach(k=>document.getElementById('ais-pane-'+k)?.classList.toggle('hidden',k!==t));
+  document.querySelectorAll('#ais-tabs .tab').forEach(x=>x.classList.toggle('active',x===el));
+  if(t==='missions') aisRenderMissions(); else if(t==='valid') aisRenderApprovals(); else aisRenderScores();
+}
+function initAiSales(){ aisRenderConn(); aisRenderKpis(); aisRenderScores(); }
 </script>
 </body>
 </html>
