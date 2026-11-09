@@ -2,9 +2,9 @@
    Garde en cache l'application (index.html) et les bibliothèques CDN (Chart.js, Leaflet, polices) pour
    qu'elle s'ouvre sans connexion. Les données restent dans le navigateur (localStorage) et la synchro
    Supabase ne passe pas par ici (requêtes non interceptées). */
-const VERSION = 'sanixcrm-v9';
+const VERSION = 'sanixcrm-v10';
 const CACHE_CDN = 'sanixcrm-cdn';
-const COQUILLE = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-192.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png', './icons/favicon-32.png'];
+const COQUILLE = ['./', './index.html', './shared/pager.js', './manifest.webmanifest', './icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-192.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png', './icons/favicon-32.png'];
 const BIBLIOTHEQUES = [
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',

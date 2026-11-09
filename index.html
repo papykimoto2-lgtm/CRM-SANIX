@@ -18,6 +18,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="shared/pager.js" defer></script>
 <style>
 :root{
   --bg:#F0F5FF;--surface:#FFFFFF;--surface2:#F8FAFF;
@@ -44,6 +45,7 @@ a{text-decoration:none;color:inherit}
 button{cursor:pointer;font-family:var(--font-b);border:none;outline:none}
 input,textarea,select{font-family:var(--font-b);outline:none}
 .hidden{display:none!important}
+.sec-off{display:none!important}
 @keyframes spin{to{transform:rotate(360deg)}}
 .flex{display:flex}.flex-col{flex-direction:column}.items-center{align-items:center}.justify-between{justify-content:space-between}.gap-2{gap:8px}.gap-3{gap:12px}.gap-4{gap:16px}.gap-6{gap:24px}
 .w-full{width:100%}.h-full{height:100%}
@@ -164,7 +166,7 @@ input,textarea,select{font-family:var(--font-b);outline:none}
 .stage-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .stage-label{font-size:12px;font-weight:700;color:var(--text2);font-family:var(--font-h)}
 .stage-count{background:var(--border);color:var(--muted);border-radius:12px;padding:1px 7px;font-size:11px;font-weight:600}
-.kanban-cards{padding:8px;flex:1;display:flex;flex-direction:column;gap:8px;min-height:80px}
+.kanban-cards{padding:8px;flex:1;display:flex;flex-direction:column;gap:8px;min-height:80px;max-height:max(360px,calc(100vh - 330px));overflow-y:auto;overscroll-behavior:contain}
 .deal-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px;cursor:grab;transition:box-shadow .2s,transform .2s;position:relative}
 .deal-card:hover{box-shadow:var(--sh-md);transform:translateY(-1px)}
 .deal-card.dragging{opacity:.5;transform:scale(.95)}
@@ -1131,9 +1133,9 @@ select.form-input{cursor:pointer}
           <textarea class="form-input" id="ais-m-consigne" maxlength="2000" rows="3" style="margin-top:10px" placeholder="Consigne : ex. Trouver 100 entreprises de livraison à Abidjan susceptibles d'utiliser Angel's ; priorité à celles qui recrutent des livreurs."></textarea>
           <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="aisLaunchMission()">🚀 Lancer la mission</button>
         </div>
-        <div id="ais-missions"></div>
+        <div id="ais-missions" data-paginate></div>
       </div>
-      <div id="ais-pane-valid" class="hidden"><div id="ais-approvals"></div></div>
+      <div id="ais-pane-valid" class="hidden"><div id="ais-approvals" data-paginate></div></div>
     </div>
 
     <div id="view-intel" class="hidden fade-in">
@@ -1478,7 +1480,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
             <button class="btn btn-outline btn-sm" onclick="convRender()">↻</button>
           </div>
         </div>
-        <div id="conv-list"></div>
+        <div id="conv-list" data-paginate data-pg-size="10" data-pg-sizes="10,25,50"></div>
       </div>
     </div>
 
@@ -1553,12 +1555,12 @@ Seriez-vous disponible pour une démonstration {rdv} ?
       <label id="sel-all-m"><input type="checkbox" id="sel-all-mc" onchange="selAllToggle(this.checked)" style="width:20px;height:20px"> Tout sélectionner (liste filtrée)</label>
       <!-- Vue CARTES (mobile par défaut) -->
       <div id="clients-cards-view" class="hidden">
-        <div class="grid-auto" id="clients-cards-grid"></div>
+        <div class="grid-auto" id="clients-cards-grid" data-paginate data-pg-size="12" data-pg-sizes="12,24,48,96"></div>
       </div>
 
       <!-- Vue LISTE mobile compacte -->
       <div id="clients-list-view" class="hidden">
-        <div id="clients-list-items"></div>
+        <div id="clients-list-items" data-paginate></div>
       </div>
     </div>
 
@@ -1609,7 +1611,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
       </div>
 
       <!-- Grille produits -->
-      <div class="grid-auto" id="logiciels-grid"></div>
+      <div class="grid-auto" id="logiciels-grid" data-paginate data-pg-size="9" data-pg-sizes="9,18,36"></div>
 
       <!-- Manuel section -->
       <div class="card" style="margin-top:24px">
@@ -1645,7 +1647,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
         </div>
         <input type="text" class="form-input" id="equipe-search" placeholder="Rechercher..." oninput="filterTeamSearch()" style="width:200px;padding:7px 12px;font-size:12px">
       </div>
-      <div class="grid-3" id="team-grid"></div>
+      <div class="grid-3" id="team-grid" data-paginate data-pg-size="9" data-pg-sizes="9,18,36"></div>
     <!-- ══ VIEW: APPORTEURS D'AFFAIRES ══ -->
     <div id="view-apporteurs" class="hidden fade-in">
       <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
@@ -1808,7 +1810,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
           <span class="card-title">📍 Clients sans coordonnées GPS</span>
           <span class="badge badge-warning" id="carte-missing-count">0</span>
         </div>
-        <div id="carte-missing-list" style="max-height:200px;overflow-y:auto"></div>
+        <div id="carte-missing-list" style="max-height:200px;overflow-y:auto" data-paginate data-pg-size="10" data-pg-sizes="10,25,50"></div>
       </div>
 
       <div class="card" style="margin-top:16px">
@@ -1915,7 +1917,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
               <span class="card-title">📁 Historique rapports</span>
               <input type="text" class="form-input" id="rapports-search" placeholder="🔍 Date, commercial, zone..." style="width:220px;height:34px;font-size:12px;margin-left:auto">
             </div>
-            <div id="rapports-historique"></div>
+            <div id="rapports-historique" data-paginate data-pg-size="10" data-pg-sizes="10,25,50"></div>
           </div>
         </div>
       </div>
@@ -1945,7 +1947,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
         <button class="btn btn-outline btn-sm" onclick="jrPrintEtat()">🖨 Imprimer l'état</button>
         <button class="btn btn-outline btn-sm" onclick="jrExportCsv()">⬇️ Export CSV</button>
       </div>
-      <div id="jr-list"></div>
+      <div id="jr-list" data-paginate data-pg-size="10" data-pg-sizes="10,25,50"></div>
     </div>
 
     <div id="view-messagerie" class="hidden fade-in">
@@ -2776,11 +2778,11 @@ Seriez-vous disponible pour une démonstration {rdv} ?
       <div class="stats-grid" id="av-kpis" style="margin-bottom:18px"></div>
       <div class="card" style="padding:16px;margin-bottom:18px">
         <div style="font-weight:700;font-size:14px;margin-bottom:10px">🔑 Licences à renouveler (≤ 60 jours ou expirées)</div>
-        <div id="av-renew"></div>
+        <div id="av-renew" data-paginate data-pg-size="10" data-pg-sizes="10,25,50"></div>
       </div>
       <div class="card" style="padding:16px">
         <div style="font-weight:700;font-size:14px;margin-bottom:10px">💤 Clients sans activité depuis 90 jours</div>
-        <div id="av-dormant"></div>
+        <div id="av-dormant" data-paginate data-pg-size="10" data-pg-sizes="10,25,50"></div>
       </div>
     </div>
 
@@ -5210,12 +5212,23 @@ const SECTION_TITLE = {conversion:'🚀 Relances prioritaires & conversion', int
     var v=document.getElementById('view-'+k), h=document.getElementById('view-'+SECTION_HOST[k]);
     if(!v||!h||h.contains(v)) return;
     v.classList.remove('hidden');
-    v.style.cssText='margin-top:26px;padding-top:20px;border-top:2px solid var(--border)';
+    v.dataset.section='1';
     if(SECTION_TITLE[k]){ var t=document.createElement('h2'); t.style.cssText='font-family:var(--font-h);font-weight:800;font-size:18px;margin:0 0 12px'; t.textContent=SECTION_TITLE[k]; v.insertBefore(t,v.firstChild); }
     v.querySelectorAll(':scope > .page-title,:scope > .page-sub,:scope > div:first-child > .page-title').forEach(function(x){ if(x.classList.contains('page-title')) x.style.display='none'; });
     h.appendChild(v);
   });
 })();
+/** Onglets de section : dans un écran qui en héberge d'autres, une seule section est affichée (plus de pile verticale à faire défiler). */
+function _applySectionTabs(host, active){
+  const el=document.getElementById('view-'+host); if(!el) return;
+  const hosted=Object.keys(SECTION_HOST).filter(k=>SECTION_HOST[k]===host); if(!hosted.length) return;
+  const only=hosted.includes(active)?active:null;
+  [...el.children].forEach(c=>{
+    if(c.classList.contains('grp-tabs')) return;
+    const k=hosted.find(h=>c.id==='view-'+h);
+    c.classList.toggle('sec-off', k ? k!==only : !!only);
+  });
+}
 function _grpOf(view){ return Object.keys(NAV_GROUPS).find(k=>NAV_GROUPS[k].views.some(v=>v[0]===view)); }
 function _canView(v){
   try{
@@ -5542,7 +5555,8 @@ function navigate(view, el) {
   if(view === 'documents') setTimeout(initDocuments, 50);
   _applyGroupUI(view,_orig);
   refreshGroupBadges();
-  if(SECTION_HOST[_orig]) setTimeout(()=>document.getElementById('view-'+_orig)?.scrollIntoView({behavior:'smooth',block:'start'}),120);
+  _applySectionTabs(view,_orig);
+  document.querySelector('.content')?.scrollTo({top:0});
   document.dispatchEvent(new CustomEvent('sanix:navigate', {detail: _orig}));
   closeSidebar();
 }
@@ -6001,7 +6015,7 @@ function renderKanban(list) {
         <span class="stage-count">${sDeals.length}</span>
       </div>
       ${total>0?`<div style="padding:6px 10px 0;font-size:10px;color:var(--muted)">💰 ${(total/1000).toFixed(0)}k FCFA</div>`:''}
-      <div class="kanban-cards" id="cards-${s.id}">
+      <div class="kanban-cards" id="cards-${s.id}" data-paginate="more" data-pg-item=".deal-card" data-pg-size="20">
         ${sDeals.map(d=>dealCard(d)).join('')}
         <div class="drop-zone">Déposer ici</div>
       </div>
@@ -6066,6 +6080,7 @@ function dropDeal(e,stage) {
     }
     saveStore('deals');
     initPipeline();
+    try{ SanixPager.reveal(document.getElementById('deal-'+deal.id)); }catch(e){}
   }
 }
 
@@ -12672,7 +12687,7 @@ function jrRender(){
         ${r.lastPv?`<button class="btn btn-outline btn-sm" onclick="jrPrintPv(${c.id},'${r.lastPv.pvRef}')">🖨 PV</button>`:''}
         <button class="btn btn-outline btn-sm" onclick="showClientDetail(${c.id})">👁</button>
       </div></div>`;
-  }).join('') + (rows.length>400?`<div style="text-align:center;font-size:12px;color:var(--muted)">… ${rows.length-400} autres (affinez les filtres)</div>`:'');
+  }).join('') + (rows.length>400?`<div data-pg-skip style="text-align:center;font-size:12px;color:var(--muted)">… ${rows.length-400} autres (affinez les filtres)</div>`:'');
 }
 function jrToggle(id,on){ if(on) _jrSel.add(id); else _jrSel.delete(id); jrRender(); }
 function jrToggleAll(on){ jrRows().forEach(r=>{ if(on) _jrSel.add(r.c.id); else _jrSel.delete(r.c.id); }); jrRender(); }
@@ -16154,27 +16169,8 @@ function toggleMediaSection() {
   ico.style.transform = hidden ? '' : 'rotate(-90deg)';
 }
 
-// Wrap critical functions to auto-save after changes + log stage changes
-const _origDropDeal = dropDeal;
-function dropDeal(e, stage) {
-  const deal = DEALS.find(d=>d.id===draggedId);
-  const prevStage = deal ? deal.stage : null;
-  _origDropDeal(e, stage);
-  if(deal && prevStage && prevStage !== stage) {
-    if(!deal.history) deal.history = [];
-    const stageLabels = {prospect:'Prospect',contact:'Contact',demo:'Démo',proposition:'Proposition',negociation:'Négociation',gagne:'Gagné ✓',perdu:'Perdu ✗'};
-    deal.history.push({
-      date: new Date().toISOString(),
-      type: 'stage_change',
-      ico: '🔄',
-      label: "Changement d'étape",
-      note: `${stageLabels[prevStage]||prevStage} → ${stageLabels[stage]||stage}`,
-      resultat: '',
-      commercial: (typeof currentUser !== 'undefined' && currentUser) ? currentUser.nom||currentUser.email||'—' : '—'
-    });
-  }
-  saveStore('deals');
-}
+// dropDeal : l'historique d'étape et l'enregistrement sont déjà assurés par la fonction d'origine (voir « PIPELINE KANBAN »).
+// (Une enveloppe « const _orig = dropDeal; function dropDeal… » se rappelait elle-même — les déclarations sont remontées — et faisait planter le glisser-déposer.)
 
 
 // ═══════════════════════════════════════
