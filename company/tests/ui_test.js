@@ -1,6 +1,6 @@
 const { chromium } = require("playwright");
 const fs = require("fs"), path = require("path");
-const { launch, newPage, ok, OUT } = require("./harness.js");
+const { launch, newPage, ok, OUT, loadFixture } = require("./harness.js");
 const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`); await page.waitForTimeout(250); };
 
 (async () => {
@@ -144,6 +144,26 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     await L.page.waitForSelector("#app:not([hidden])");
     ok(true, "identifiants valides : accès au bureau");
     await L.ctx.close();
+
+    console.log("▶ Pagination des listes longues");
+    const fx = loadFixture(), tpl = fx.ai_agent_tasks.find((t) => !t.parent_id);
+    fx.ai_agent_tasks = Array.from({ length: 60 }, (_, i) => ({ ...tpl, id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, parent_id: null, titre: `Mission de test ${String(i + 1).padStart(2, "0")}`, created_at: new Date(Date.now() - i * 60000).toISOString() }));
+    const PG = await newPage(browser, { fixture: JSON.stringify(fx) });
+    await PG.page.goto("http://localhost:4173/company/?debug=1"); await PG.page.waitForSelector("#app:not([hidden])"); await PG.page.waitForTimeout(800);
+    ok(await PG.page.evaluate(() => typeof window.SanixPager === "object"), "paginateur partagé chargé (CSP de production)");
+    ok(!(await PG.page.evaluate(() => window.SanixPager.stats().some((s) => s.id === "sup-body"))), "tableau de supervision exclu (il a déjà « Afficher plus »)");
+    await tab(PG.page, "tasks");
+    const titles = () => PG.page.evaluate(() => [...document.querySelectorAll("#task-roots > details.t")].filter((d) => d.getAttribute("data-pg") !== "off").map((d) => d.querySelector("b").textContent));
+    let t = await titles(); const st = await PG.page.evaluate(() => window.SanixPager.stats().find((s) => s.id === "task-roots"));
+    ok(t.length === 10 && st.total === 60, `missions : ${st.total} en tête d'arbre, 10 affichées`);
+    ok(/1–10 sur 60/.test(await PG.page.locator("#task-roots + .sx-pager .sx-info").innerText()), "barre « 1–10 sur 60 »");
+    await PG.page.click('#task-roots + .sx-pager button[data-a="next"]'); const t2 = await titles();
+    ok(t2.length === 10 && t2[0] !== t[0], "page suivante : autres missions");
+    await PG.page.selectOption("#task-roots + .sx-pager select", "25"); ok((await titles()).length === 25, "25 missions par page");
+    await PG.page.fill("#f-q", "Mission de test 07"); await PG.page.waitForTimeout(700);
+    t = await titles(); ok(t.length === 1 && t[0].includes("07"), "recherche : une seule mission, sans barre de pagination");
+    ok(PG.errors.length === 0, `aucune erreur (${PG.errors.join(" | ")})`);
+    await PG.ctx.close();
 
     console.log("▶ Mobile (390×844)");
     const m = await newPage(browser, { w: 390, h: 844, mobile: true });

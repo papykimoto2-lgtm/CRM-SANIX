@@ -1,0 +1,10 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Banc d'essai du paginateur</title>
+<!-- Page de test : conteneurs de chaque type géré par shared/pager.js -->
+<table id="tbl1"><thead><tr><th>Nom</th></tr></thead><tbody id="t1"></tbody></table>
+<div style="overflow:auto;max-height:300px"><table id="tbl2"><tbody id="t2"></tbody></table></div>
+<div id="cards" data-paginate="more" data-pg-item=".c" data-pg-size="20"></div>
+<div id="grid" data-paginate data-pg-size="9" data-pg-sizes="9,18,36"></div>
+<table data-paginate="off"><tbody id="t3"></tbody></table>
+<script src="/shared/pager.js"></script>

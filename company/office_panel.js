@@ -149,7 +149,7 @@ function ensureSupMarkup() {
   sup.innerHTML = html`<h2>Supervision en temps réel</h2><p class="sub" id="sup-count"></p>
     <div class="sup-tools"><input type="search" data-input="sup-q" placeholder="Rechercher un collaborateur" aria-label="Rechercher un collaborateur" maxlength="60">
     <select data-change="sup-status" aria-label="Filtrer par statut">${STATUS_FILTERS.map(([v, l]) => html`<option value="${v}">${l}</option>`)}</select></div>
-    <div class="scroll sup-scroll"><table class="tbl sup"><thead><tr><th>Agent</th><th>Activité</th><th>Statut</th></tr></thead><tbody id="sup-body"></tbody></table></div>
+    <div class="scroll sup-scroll"><table class="tbl sup" data-paginate="off"><thead><tr><th>Agent</th><th>Activité</th><th>Statut</th></tr></thead><tbody id="sup-body"></tbody></table></div>
     <div class="actions" id="sup-more" hidden><button class="btn sm" type="button" data-act="sup-more">Afficher plus</button></div>
     <p class="small muted" style="margin-top:12px"><b>Navigation :</b> glisser pour pivoter · molette ou pincement pour zoomer · clic droit ou Maj + glisser pour déplacer · double-clic sur un collaborateur pour le centrer.</p>
     <p class="small muted">Les animations représentent le statut déclaré par le moteur IA. Les traitements s'exécutent sur les serveurs, interface fermée : à la réouverture, les états réels sont restitués.</p>`.s;

@@ -248,7 +248,7 @@ function renderValid(main) {
   const groups = {}; for (const a of S.approvals) (groups[a.type] ??= []).push(a);
   main.innerHTML = html`<section class="panel"><h2>Validations en attente</h2><p class="sub">Décisions qui dépassent les délégations des collaborateurs IA.</p>
     ${Object.keys(groups).length ? Object.entries(groups).map(([t, l]) => html`<div style="display:flex;align-items:center;gap:10px;margin:16px 0 4px"><h3 style="margin:0">${APP_LABEL[t] ?? t} (${l.length})</h3>
-      ${isDir() && l.length > 1 ? html`<button class="btn sm ok" type="button" data-act="decide-batch" data-type="${t}" data-ok="1">Tout approuver</button><button class="btn sm bad" type="button" data-act="decide-batch" data-type="${t}" data-ok="0">Tout refuser</button>` : ""}</div><div class="grid g2">${l.map(approvalCard)}</div>`) : html`<div class="card muted">Aucune validation en attente. 👌</div>`}</section>`.s;
+      ${isDir() && l.length > 1 ? html`<button class="btn sm ok" type="button" data-act="decide-batch" data-type="${t}" data-ok="1">Tout approuver</button><button class="btn sm bad" type="button" data-act="decide-batch" data-type="${t}" data-ok="0">Tout refuser</button>` : ""}</div><div class="grid g2" data-paginate data-pg-size="10" data-pg-sizes="10,25,50">${l.map(approvalCard)}</div>`) : html`<div class="card muted">Aucune validation en attente. 👌</div>`}</section>`.s;
 }
 async function decide(ids, ok, commentaire = null) {
   try {
@@ -284,7 +284,7 @@ function renderTasks(main) {
     <div class="filters"><select id="f-st" aria-label="Statut"><option value="">Tous les statuts</option>${Object.entries(TASK_ST).map(([k, v]) => html`<option value="${k}" ${f.statut === k ? "selected" : ""}>${v[0]}</option>`)}</select>
     <select id="f-ag" aria-label="Agent"><option value="">Tous les agents</option>${live().map((a) => html`<option value="${a.id}" ${f.agent === a.id ? "selected" : ""}>${a.nom}</option>`)}</select>
     <input id="f-q" type="search" placeholder="Rechercher une mission" value="${f.q}"></div>
-    ${roots.length ? roots.map(row) : html`<div class="card muted">Aucune mission${S.tasks.length ? " pour ces filtres" : " pour le moment : donnez une instruction au directeur général IA"}.</div>`}</section>`.s;
+    ${roots.length ? html`<div id="task-roots" data-paginate data-pg-size="10" data-pg-sizes="10,25,50">${roots.map(row)}</div>` : html`<div class="card muted">Aucune mission${S.tasks.length ? " pour ces filtres" : " pour le moment : donnez une instruction au directeur général IA"}.</div>`}</section>`.s;
   $("#f-st").onchange = (e) => { f.statut = e.target.value; renderTasks(main); };
   $("#f-ag").onchange = (e) => { f.agent = e.target.value; renderTasks(main); };
   $("#f-q").oninput = (e) => { f.q = e.target.value; clearTimeout(S.qt); S.qt = setTimeout(() => { renderTasks(main); const i = $("#f-q"); i.focus(); i.setSelectionRange(f.q.length, f.q.length); }, 250); };
