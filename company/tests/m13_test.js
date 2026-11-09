@@ -146,6 +146,7 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
     await page.waitForTimeout(300);
     await page.waitForFunction(() => [...document.querySelectorAll(".bubble")].some((b) => b.textContent.includes("Cocody")), null, { timeout: 4000 }).catch(() => {});
     const bi = await insp(page, A.ia_dir_marketing), bc = await page.locator(".bubble", { hasText: "Cocody" }).count();
+    if (!(bi.bubble && bi.bubble.includes("Cocody") && bc === 1)) console.log("DEBUG", JSON.stringify({ bubble: bi.bubble, speaking: bi.speaking, bc, all: await page.locator(".bubble").allTextContents(), pos: await ev(page, (id) => window.__vc.office.screenPositionOf(id), A.ia_dir_marketing), st: await ev(page, () => window.__vc.office.stats()), view: await ev(page, () => window.__vc.office.view) }).slice(0, 900));
     ok(bi.bubble && bi.bubble.includes("Cocody") && bc === 1, "prise de parole : extrait affiché en bulle");
     await emit(page, "ai_agent_meetings", "UPDATE", { id: MT, orateur_id: A.sanix_ai_general_director, phase: "synthese" }); await page.waitForTimeout(500);
     ok((await insp(page, A.sanix_ai_general_director)).anim === "speak" && (await insp(page, A.ia_dir_marketing)).anim === "meeting", "synthèse : le directeur IA prend la parole");
