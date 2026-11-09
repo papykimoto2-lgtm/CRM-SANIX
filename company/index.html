@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>SANIX AI VIRTUAL COMPANY</title>
+<meta name="description" content="L'entreprise virtuelle intelligente de SANIX AFRICA">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0B1220">
+<link rel="icon" href="../icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="company.css">
+</head>
+<body>
+<div id="app" hidden>
+  <header class="topbar">
+    <div class="brand"><b>SANIX AI VIRTUAL COMPANY</b><span>L'entreprise virtuelle intelligente de SANIX AFRICA</span></div>
+    <div class="chips" id="status-chips" aria-live="polite"></div>
+    <div class="grow"></div>
+    <a class="btn sm" href="../" title="Retour à SANIX CRM">← SANIX CRM</a>
+    <span class="chip" id="who"></span>
+    <button class="btn sm" id="logout" type="button">Déconnexion</button>
+  </header>
+  <nav id="tabs" role="tablist" aria-label="Sections"></nav>
+  <main id="main"></main>
+</div>
+
+<div id="gate" class="overlay">
+  <div class="loginbox" id="gate-box" role="dialog" aria-labelledby="gate-title"></div>
+</div>
+<div id="modal" class="modal" hidden role="dialog" aria-modal="true"><div class="box" id="modal-box"></div></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

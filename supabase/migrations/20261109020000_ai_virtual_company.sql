@@ -664,7 +664,7 @@ language sql stable set search_path = public as $$
     round(least(100, 100.0 * t.term / nullif(t.attr, 0)), 1),
     round(t.qual, 1), round(t.delais, 1),
     coalesce(c.prod, 0)::int, round(coalesce(c.cout, 0), 4), coalesce(i.n, 0)::int,
-    case when t.attr = 0 and t.term = 0 then null else round(
+    case when t.term + t.ech = 0 and coalesce(i.n, 0) = 0 then null else round(
         0.3 * least(100, coalesce(100.0 * t.term / nullif(t.attr, 0), case when t.term > 0 then 100 else 0 end))
       + 0.3 * coalesce(t.qual, 70) + 0.2 * coalesce(t.delais, 100)
       + 0.2 * greatest(0, 100 - 25 * coalesce(i.n, 0)), 1) end
