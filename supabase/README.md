@@ -19,6 +19,8 @@ Deux ensembles livrés ensemble :
 | `migrations/20261109031000_ai_realtime_participants.sql` | Participants de réunion diffusés en temps réel |
 | `functions/_shared/company/presence.ts` | Publication de la présence par le moteur (activités, déplacements, prises de parole) |
 | `../company/` | Interface : bureau 3D animé, supervision, bureau du président, organisation, missions, réunions, performance, rapports, gouvernance, validations |
+| `../company/assets/` | Personnages humains GLB et clips d'animation générés avec Blender (scripts Python reproductibles), voir `company/assets/README.md` |
+| `../company/vendor/` | Three.js 0.170 + GLTFLoader en bundle local (aucune dépendance CDN pour la 3D) |
 | `../company/tests/` | Tests d'interface (Playwright) : recette du Module 13 et parcours complet |
 | `../vercel.json` | En-têtes de sécurité (CSP) de `/company/` |
 
@@ -115,11 +117,13 @@ Le moteur IA **écrit l'état réel** ; le bureau 3D le **représente** (il ne s
 
 **Déplacements** (déduits des missions réelles) : salle de réunion · visite d'un subordonné · supervision · espace de collaboration · département voisin · espace détente (disponible depuis 3 min sans mission). Les trajets suivent les allées (aucune traversée de bureau, testé). Le retour au poste est automatique à l'échéance `lieu_jusqua`, même sans nouvel événement.
 
-**Interface** : supervision *Agent · Activité · Statut* (🟢 🟡 🔴 ⚪, recherche, filtre, pagination) → fiche (identité, cahier des charges, missions, résultats, échanges internes, conversations prospects) → *Assigner une mission*, *Demander un rapport*, *Suspendre*. Un clic sur le directeur IA ouvre le dialogue. Notification cliquable quand une mission demandée par le président se termine. Caméras : d'ensemble, département, bureau du directeur, réunion, supervision, activités en cours, suivi d'un collaborateur, vue libre (rotation, déplacement, zoom, clavier, tactile).
+**Rendu** : bureau de jour (ciel clair, murs blancs et vitrages, bureaux, chaises, bibliothèques, plantes, salle de réunion à table ronde, salle de supervision, espace détente), façades qui s'abaissent quand la caméra est derrière elles. Avatars humains en GLB (4 silhouettes × peau, cheveux, tenue et couleur de département déduits de l'identifiant, ~6 000 triangles, 1 appel de dessin) animés par 27 clips (marche, assis/debout : écran, frappe, appel, documents, parole, écoute, réussite, alerte, pause…). Qualité **élevée** : éclairage PBR, environnement, ombres portées ; **réduite / éco** : éclairage par sommet, sans ombres portées.
+
+**Interface** : supervision *Agent · Activité · Statut* (🟢 🟡 🔴 ⚪, recherche, filtre, pagination) → fiche (identité, cahier des charges, missions, résultats, échanges internes, conversations prospects) → *Assigner une mission*, *Demander un rapport*, *Suspendre*. Un clic sur le directeur IA ouvre le dialogue. Notification cliquable quand une mission demandée par le président se termine. Caméras : d'ensemble, étage de direction (vue d'ouverture tant que l'entreprise compte ≤ 8 collaborateurs : on démarre par le prototype), département, bureau du directeur, réunion, supervision, activités en cours, suivi d'un collaborateur, vue libre (rotation, déplacement, zoom, clavier, tactile).
 
 **Performance** : création progressive des avatars, avatars simplifiés au-delà du seuil (30 mobile · 90 poste · 18 éco), qualité automatique (mobile / appareil modeste → réduite), sélecteur Auto · Élevée · Réduite · Éco, mise en veille hors écran / onglet masqué, `prefers-reduced-motion` respecté (placement direct, sans marche), synchronisation incrémentale sans rechargement, rattrapage complet à la reconnexion et au retour sur l'onglet.
 
-**Limites connues** : avatars procéduraux (Three.js, sans fichier externe) — `company/avatar.js` n'expose qu'une interface (`makeAvatar`) : un modèle GLB (Blender) peut la remplacer sans toucher au moteur ; pas de React Three Fiber (Three.js direct, plus léger) ; « appel téléphonique » = planification d'appel (aucun appel vocal réel) ; la restitution est celle de l'état en base, jamais une relecture des opérations.
+**Limites connues** : les clips d'animation sont écrits en code (Mixamo exige un compte Adobe et ne peut pas être automatisé) : `company/assets/README.md` explique comment les remplacer par des animations Mixamo ou d'autres modèles ; sans ressources GLB (hors ligne, fichier absent) le bureau bascule sur des avatars procéduraux ; pas de React Three Fiber (Three.js direct, plus léger) ; « appel téléphonique » = planification d'appel (aucun appel vocal réel) ; la restitution est celle de l'état en base, jamais une relecture des opérations.
 
 ## Tests
 
@@ -135,11 +139,11 @@ Les tests exécutent le moteur sur un vrai PostgreSQL (triggers, contraintes, fo
 **Interface (Playwright + Chromium, WebGL logiciel)** : `company/tests/` — jeu de données exporté du vrai schéma PostgreSQL, faux client Supabase (requêtes journalisées, Realtime pilotable), CSP réelle de `vercel.json`.
 
 ```bash
-npm i --no-save playwright three@0.170.0
+npm i --no-save playwright
 supabase/functions/tests/setup_db.sh && company/tests/build_fixture.sh   # base modèle puis jeu de données (PG* requis)
 node company/tests/ui_test.js        # parcours complet : onglets, validations, rapports, mobile, repli 2D
 node company/tests/m13_test.js       # recette Module 13 (9 critères : avatars, animations, temps réel, déplacements, réunions, interactions, missions, réouverture, mobile/performance)
 company/tests/schema_check.py        # chaque colonne utilisée par l'interface existe dans le schéma réel
 ```
 
-**Non couverts :** appels réels à Claude, WhatsApp et Resend ; API REST Supabase (PostgREST) et Realtime réels (simulés côté test) ; rendu sur GPU réel (testé en rendu logiciel : les fréquences d'images mesurées n'ont pas de valeur absolue).
+**Non couverts :** appels réels à Claude, WhatsApp et Resend ; API REST Supabase (PostgREST) et Realtime réels (simulés côté test) ; rendu sur GPU réel (testé en rendu logiciel SwiftShader, ~5-10 images/s : les fréquences mesurées n'ont pas de valeur absolue et les tests pilotent le temps avec `office.advance`).

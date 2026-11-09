@@ -101,7 +101,24 @@ export function poseFor(anim, posture, t, o = {}) {
 }
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-/** Construit un avatar. `env` = { THREE, mats(key, make), geos(key, make), seg, props } ; `a` = agent. */
+/** Repères visuels communs à tous les avatars (procéduraux ou GLB) : halo d'état, anneau d'analyse, icône, zone cliquable, marqueur léger. */
+export function makeIndicators(env, a, root, markerMat) {
+  const { THREE } = env;
+  const halo = new THREE.Mesh(env.geos("halo", () => new THREE.RingGeometry(0.62, 0.82, 36)), new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
+  halo.rotation.x = -Math.PI / 2; halo.position.y = 0.04; root.add(halo);
+  const spin = new THREE.Mesh(env.geos("spin", () => new THREE.TorusGeometry(0.42, 0.03, 6, 24)), new THREE.MeshBasicMaterial({ color: 0x06b6d4 }));
+  spin.rotation.x = Math.PI / 2; spin.visible = false; root.add(spin);
+  const icon = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, sizeAttenuation: false })); icon.scale.set(0.036, 0.036, 1); icon.visible = false; icon.renderOrder = 10; root.add(icon);
+  const hit = new THREE.Mesh(env.geos("hit", () => new THREE.CylinderGeometry(0.8, 0.8, 2.3, 8)), new THREE.MeshBasicMaterial({ visible: false }));   // non dessinée, mais sélectionnable au rayon hit.position.y = 1.15; root.add(hit);
+  const marker = new THREE.Mesh(env.geos(`marker${env.seg}`, () => new THREE.CapsuleGeometry(0.28, 0.9, 3, env.seg)), markerMat); marker.position.y = 0.8; marker.visible = false; root.add(marker);
+  // ombre portée simplifiée (qualités sans carte d'ombre) : disque dégradé sous l'avatar
+  const blob = new THREE.Mesh(env.geos("blob", () => new THREE.CircleGeometry(0.85, 24)), env.blobMat ?? new THREE.MeshBasicMaterial({ visible: false }));
+  blob.rotation.x = -Math.PI / 2; blob.position.y = 0.03; blob.renderOrder = 1; blob.visible = !env.shadows; root.add(blob);
+  root.userData.agentId = a.id; hit.userData.agentId = a.id;
+  return { halo, spin, icon, hit, marker, blob };
+}
+
+/** Construit un avatar procédural (repli sans ressources GLB). `env` = { THREE, mats(key, make), geos(key, make), seg, props } ; `a` = agent. */
 export function makeAvatar(env, a, deptColor) {
   const { THREE } = env;
   const lvl = a.niveau, S = lvl === 1 ? 1.12 : lvl === 2 ? 1.06 : 1;
@@ -170,20 +187,14 @@ export function makeAvatar(env, a, deptColor) {
   if (lvl === 2) torso.add(mk(box(0.1, 0.16, 0.012, "tie"), std(0xcbd5e1, { metalness: 0.4 }), 0, 0.33, -0.2));
 
   // repères visuels (hors corps) : halo d'état, anneau d'analyse, icône, zone cliquable, marqueur léger
-  const halo = new THREE.Mesh(env.geos("halo", () => new THREE.RingGeometry(0.62, 0.82, 36)), new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
-  halo.rotation.x = -Math.PI / 2; halo.position.y = 0.04; root.add(halo);
-  const spin = new THREE.Mesh(env.geos("spin", () => new THREE.TorusGeometry(0.42, 0.03, 6, 24)), new THREE.MeshBasicMaterial({ color: 0x06b6d4 }));
-  spin.rotation.x = Math.PI / 2; spin.visible = false; root.add(spin);
-  const icon = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false })); icon.scale.set(0.8, 0.8, 1); icon.visible = false; icon.renderOrder = 10; root.add(icon);
-  const hit = new THREE.Mesh(env.geos("hit", () => new THREE.CylinderGeometry(0.8, 0.8, 2.3, 8)), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })); hit.position.y = 1.15; root.add(hit);
-  const marker = mk(env.geos(`marker${env.seg}`, () => new THREE.CapsuleGeometry(0.28, 0.9, 3, env.seg)), shirt, 0, 0.8, 0); marker.visible = false; root.add(marker);
-  root.userData.agentId = a.id; hit.userData.agentId = a.id;
+  const { halo, spin, icon, hit, marker } = makeIndicators(env, a, root, shirt);
+  shirtMeshes.push(marker);
 
   // ── état d'animation ──
   const pose = { ...STAND }, seed = (hash(a.id) % 1000) / 100;
   const av = {
     id: a.id, root, body, hips, torso, head, legL: L.pivot, shinL: L.shin, legR: R.pivot, shinR: R.shin, armL: AL, armR: AR, props, halo, spin, icon, hit, marker, shirt,
-    S, seed, pose, anim: "idle", posture: "stand", walking: false, detail: "full", animSince: 0, speakerYaw: 0, hopUntil: 0,
+    S, top: 2.2 * S, seed, pose, anim: "idle", posture: "stand", walking: false, detail: "full", animSince: 0, speakerYaw: 0, hopUntil: 0,
     agent: a, lod: 0, frame: 0,
     setAnim(anim, now) { if (anim !== this.anim) { this.anim = anim; this.animSince = now; } },
     setPosture(p) { this.posture = p; },

@@ -4,20 +4,26 @@
 // déclaré par le moteur, jamais chaque opération technique.
 import { ACTIVITIES, animOf, DEPT_COLORS, STATUS } from "./activity.js";
 import { DESK_FOR, makeAvatar } from "./avatar.js";
+import { makeGlbAvatar } from "./avatar_glb.js";
+import { loadAssets } from "./assets.js";
+import { CHAIR_DZ, createKit } from "./office_props.js";
 
-const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js";
+const SKY = 0x9ab6ce;            // ciel clair (fond et brouillard)
+const EXEC_DZ = 1.3;             // bureau du directeur : distance bureau → fauteuil
+const AISLE_DZ = 2.4;            // allée de circulation : distance bureau → axe de l'allée (entre la chaise et le bureau suivant)
+const SEAT_R = 3.55, EXIT_R = 4.7;   // sièges autour de la table de réunion ; anneau de circulation extérieur
 
 export { STATUS, DEPT_COLORS };
 
 const GRID = [["reunion", "direction", "supervision"], ["commercial", "marketing", "intelligence"], ["relation_client", "administratif", "collab"], ["detente", "datacenter", null]];
 const SPECIAL = { reunion: "Salle de réunion", supervision: "Salle de supervision", datacenter: "Centre de données", collab: "Espace de collaboration", detente: "Espace détente" };
-const ROOM_W = 19, GAP = 2.4, COLS = 4, SLOT_X = 4.4, SLOT_Z = 4.7, COLX = [-(ROOM_W + GAP), 0, ROOM_W + GAP];
+const ROOM_W = 17, GAP = 2.4, COLS = 4, SLOT_X = 3.7, SLOT_Z = 4.1, COLX = [-(ROOM_W + GAP), 0, ROOM_W + GAP];
 const IDLE_MS = 180000;          // disponible sans mission depuis 3 min → espace détente
-const WALK = 3.4;                // vitesse de marche (unités / s)
+const WALK = 2.2;                // vitesse de marche (unités / s) : calée sur le clip « Walk » (assets.js : BASE_WALK)
 const QUALITY = {
-  high: { dpr: 2, seg: 14, props: true, maxFull: 90, fps: 60, perFrame: 8, labelEvery: 1, blink: true },
-  low: { dpr: 1.25, seg: 8, props: true, maxFull: 30, fps: 45, perFrame: 3, labelEvery: 2, blink: true },
-  eco: { dpr: 1, seg: 6, props: false, maxFull: 18, fps: 30, perFrame: 2, labelEvery: 3, blink: false },
+  high: { dpr: 2, seg: 14, props: true, maxFull: 90, fps: 60, perFrame: 6, labelEvery: 1, blink: true, shadows: true, env: true },
+  low: { dpr: 1.25, seg: 8, props: true, maxFull: 30, fps: 45, perFrame: 3, labelEvery: 2, blink: true, shadows: false, env: true },
+  eco: { dpr: 1, seg: 6, props: false, maxFull: 18, fps: 30, perFrame: 2, labelEvery: 3, blink: false, shadows: false, env: false },
 };
 const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
 const hexToNum = (h) => parseInt(h.replace("#", ""), 16);
@@ -34,34 +40,41 @@ export function detectQuality(pref = "auto") {
 }
 
 export async function createOffice(container, hooks = {}) {
-  const THREE = await import(THREE_URL);
+  const THREE = await import("./vendor/three.bundle.js");   // Three.js local (aucun CDN) : voir tools/build-vendor.sh
   const probe = document.createElement("canvas");
   if (!(probe.getContext("webgl2") || probe.getContext("webgl"))) throw new Error("WebGL indisponible");
 
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   let qName = detectQuality(hooks.quality), Q = QUALITY[qName];
-  const renderer = new THREE.WebGLRenderer({ antialias: qName === "high", powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, Q.dpr));
-  renderer.setClearColor(0x0b1220);
+  const renderer = new THREE.WebGLRenderer({ antialias: qName !== "eco", powerPreference: "high-performance" });
+  const dprOverride = Number(new URLSearchParams(location.search).get("dpr")) || null;   // ?dpr=0.5 : résolution de rendu réduite (machines lentes, tests)
+  const pixelRatio = () => Math.min(devicePixelRatio || 1, dprOverride ?? Q.dpr);
+  renderer.setPixelRatio(pixelRatio());
+  renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.12;
+  renderer.shadowMap.enabled = Q.shadows; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.setClearColor(SKY);
   const dom = renderer.domElement;
   dom.setAttribute("aria-label", "Bureau virtuel 3D de SANIX AI VIRTUAL COMPANY");
   dom.style.cssText = "display:block;width:100%;height:100%;touch-action:none;outline:none";
   container.appendChild(dom);
   const labels = document.createElement("div"); labels.className = "np-layer"; container.appendChild(labels);
 
-  const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x0b1220, 110, 260);
-  const camera = new THREE.PerspectiveCamera(42, 1, 0.5, 420);
-  scene.add(new THREE.HemisphereLight(0xcfdcff, 0x1a2238, 1.35));
-  const sun = new THREE.DirectionalLight(0xffffff, 1.9); sun.position.set(24, 48, 30); scene.add(sun);
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshStandardMaterial({ color: 0x0e1628, roughness: 1 })); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.12; scene.add(ground);
-  const grid = new THREE.GridHelper(360, 120, 0x1c2a4a, 0x131d36); grid.position.y = -0.1; scene.add(grid);
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(SKY); scene.fog = new THREE.Fog(SKY, 150, 340);
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.5, 520);
+  scene.add(new THREE.HemisphereLight(0xd9efff, 0x526176, 1.7));
+  const sun = new THREE.DirectionalLight(0xfff6ea, 2.7); sun.castShadow = Q.shadows; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.06;
+  Object.assign(sun.shadow.camera, { near: 10, far: 260 }); scene.add(sun, sun.target);
+  const pmrem = new THREE.PMREMGenerator(renderer); scene.environment = pmrem.fromScene(new THREE.RoomEnvironment(), 0.04).texture; scene.environmentIntensity = Q.env ? 0.32 : 0;
+  let K = createKit(THREE, { lambert: qName !== "high" });
+  let assets = null;   // personnages GLB + clips ; sans eux (hors ligne, ressource absente) on bascule sur les avatars procéduraux
+  try { assets = await loadAssets(THREE); } catch (e) { console.warn("Avatars GLB indisponibles, repli procédural :", e.message); }
 
   // ── caches ──
   const mats = new Map(), geos = new Map();
   const M = (k, f) => (mats.has(k) ? mats.get(k) : (mats.set(k, f()), mats.get(k)));
   const G = (k, f) => (geos.has(k) ? geos.get(k) : (geos.set(k, f()), geos.get(k)));
-  const std = (c, o = {}) => M(`s${c}${JSON.stringify(o)}`, () => new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, ...o }));
+  const pbr = () => qName === "high";   // qualités réduite / éco : éclairage par sommet (Lambert)
+  const std = (c, o = {}) => M(`s${c}${JSON.stringify(o)}${pbr()}`, () => { const { roughness, metalness, ...rest } = { roughness: 0.65, ...o }; return pbr() ? new THREE.MeshStandardMaterial({ color: c, roughness, metalness, ...rest }) : new THREE.MeshLambertMaterial({ color: c, ...rest }); });
   const glass = (c) => M(`g${c}`, () => new THREE.MeshStandardMaterial({ color: c, transparent: true, opacity: 0.1, roughness: 0.2, depthWrite: false }));
 
   // ── textures canvas (sans police emoji) ──
@@ -92,7 +105,7 @@ export async function createOffice(container, hooks = {}) {
       else if (kind === "doc") { x.strokeRect(40, 28, 48, 72); x.beginPath(); for (const y of [50, 66, 82]) { x.moveTo(50, y); x.lineTo(78, y); } x.stroke(); }
       else if (kind === "chat") { x.beginPath(); x.moveTo(34, 40); x.lineTo(94, 40); x.lineTo(94, 80); x.lineTo(64, 80); x.lineTo(48, 96); x.lineTo(48, 80); x.lineTo(34, 80); x.closePath(); x.stroke(); }
       else if (kind === "phone") { x.beginPath(); x.arc(40, 70, 10, 0, 7); x.arc(88, 70, 10, 0, 7); x.fill(); x.beginPath(); x.arc(64, 70, 30, Math.PI, 0); x.stroke(); }
-      iconCache.set(kind, new THREE.SpriteMaterial({ map: tex(c), transparent: true, depthTest: false }));
+      iconCache.set(kind, new THREE.SpriteMaterial({ map: tex(c), transparent: true, depthTest: false, sizeAttenuation: false }));   // taille constante à l'écran
     }
     return iconCache.get(kind);
   }
@@ -107,11 +120,11 @@ export async function createOffice(container, hooks = {}) {
 
   // ── état ──
   const S = { rooms: [], byRoom: new Map(), slotOf: new Map(), layoutKey: "", group: new THREE.Group(), desks: new Map(), seats: [], supSlots: [], collabSlots: [], detenteSlots: [],
-    rowSouth: [], board: null, screens: [], racks: [], dgSeat: null, ownMats: [], deskIdx: new Map() };
+    rowSouth: [], board: null, screens: [], racks: [], dgSeat: null, ownMats: [], deskIdx: new Map(), walls: [] };
   scene.add(S.group);
   const avatars = new Map(), queue = [], feed = [];
   let data = { agents: [], departments: [], stats: {}, meetings: [], openByAgent: {} };
-  let simMs = 0, wallOffset = 0, hovered = null, selectedId = null, followId = null, viewMode = "general", viewArg = null, viewOpts = {}, activityView = false, lastStructure = "";
+  let autoViewDone = false, simMs = 0, wallOffset = 0, hovered = null, selectedId = null, followId = null, viewMode = "general", viewArg = null, viewOpts = {}, activityView = false, lastStructure = "";
   const wallNow = () => Date.now() + wallOffset;
 
   // ─────────────────────────── mise en page ───────────────────────────
@@ -158,117 +171,161 @@ export async function createOffice(container, hooks = {}) {
       r.agents.forEach((a) => {
         const i = seatOf.get(a.id), col = i % COLS, row = Math.floor(i / COLS) + r.rowOffset;
         const lx = (col - (COLS - 1) / 2) * SLOT_X, lz = -r.d / 2 + 2.6 + row * SLOT_Z;
-        S.slotOf.set(a.id, { x: r.x + lx, z: r.z + lz + 1.35, deskX: r.x + lx, deskZ: r.z + lz, room: r, row });
+        S.slotOf.set(a.id, { x: r.x + lx, z: r.z + lz + CHAIR_DZ, deskX: r.x + lx, deskZ: r.z + lz, room: r, row });
       });
     }
     const dir = S.byRoom.get("direction");
-    S.dgSeat = dir ? { x: dir.x, z: dir.z - dir.d / 2 + 4.1, room: dir } : null;
+    S.dgSeat = dir ? { x: dir.x, z: dir.z - dir.d / 2 + 2.2 + EXEC_DZ, room: dir } : null;
     const dg = live.find((a) => a.niveau === 1);
     if (dg && S.dgSeat) S.slotOf.set(dg.id, { ...S.dgSeat, deskX: dir.x, deskZ: dir.z - dir.d / 2 + 2.2, row: -1 });
     return rooms;
   }
 
-  function disposeStatic() {
-    S.group.traverse((o) => { if (o.userData.own) { o.geometry?.dispose(); if (o.material?.map) o.material.map.dispose(); o.material?.dispose?.(); } });
-    scene.remove(S.group); S.group = new THREE.Group(); scene.add(S.group);
-    for (const m of S.ownMats) m.dispose();
-    S.desks.clear(); S.seats = []; S.supSlots = []; S.collabSlots = []; S.detenteSlots = []; S.screens = []; S.racks = []; S.board = null; S.ownMats = [];
+  // ─────────────────────────── bâtiment : sols, murs, vitrages, mobilier ───────────────────────────
+  const WALL_H = 3.3;
+  const wallMat = std(0xeaf0f6, { roughness: 0.92 }), trimMat = std(0x087db8, { roughness: 0.45 }), plinthMat = std(0xc9d3de, { roughness: 0.8 });
+  const glassMat = M("glass" + (qName === "high"), () => (qName === "high" ? new THREE.MeshStandardMaterial({ color: 0xb9e0f4, transparent: true, opacity: 0.24, roughness: 0.06, depthWrite: false, side: THREE.DoubleSide }) : new THREE.MeshBasicMaterial({ color: 0xb9e0f4, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide })));
+  const floorTex = new Map();
+  function floorTexture(kind) {
+    if (floorTex.has(kind)) return floorTex.get(kind);
+    const c = document.createElement("canvas"); c.width = c.height = 512; const x = c.getContext("2d"); x.fillStyle = "#ffffff"; x.fillRect(0, 0, 512, 512);
+    if (kind === "carpet") {
+      for (let i = 0; i < 2600; i++) { x.fillStyle = `rgba(${i % 2 ? "0,0,0" : "255,255,255"},${0.03 + Math.random() * 0.05})`; x.fillRect(Math.random() * 512, Math.random() * 512, 2, 2); }
+      x.strokeStyle = "rgba(0,0,0,.07)"; x.lineWidth = 2; x.beginPath(); for (const p of [1, 257]) { x.moveTo(p, 0); x.lineTo(p, 512); x.moveTo(0, p); x.lineTo(512, p); } x.stroke();
+    } else if (kind === "wood") {
+      for (let col = 0; col < 8; col++) for (let seg = 0; seg < 2; seg++) {
+        const y0 = (seg * 256 + (col % 2) * 128 + (col * 37) % 90) % 512; x.fillStyle = `rgba(0,0,0,${Math.random() * 0.07})`; x.fillRect(col * 64, y0, 64, 256);
+        x.fillStyle = "rgba(0,0,0,.2)"; x.fillRect(col * 64, 0, 2, 512); x.fillRect(col * 64, y0, 64, 2);
+      }
+    } else { x.strokeStyle = "rgba(0,0,0,.16)"; x.lineWidth = 3; x.beginPath(); for (let p = 0; p <= 512; p += 128) { x.moveTo(p + 1, 0); x.lineTo(p + 1, 512); x.moveTo(0, p + 1); x.lineTo(512, p + 1); } x.stroke(); }
+    const t = tex(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; floorTex.set(kind, t); return t;
   }
-  const own = (m) => { m.userData.own = true; return m; };
+  const own = (m, geo = true, mat = false) => { if (geo) m.userData.ownGeo = true; if (mat) m.userData.own = true; return m; };
+  const mesh = (geo, mat, x = 0, y = 0, z = 0, shadow = false, receive = false) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = shadow && Q.shadows; m.receiveShadow = receive; m.userData.ownGeo = true; return m; };
+  const boxM = (w, h, d, mat, x, y, z, shadow = false, receive = false) => mesh(new THREE.BoxGeometry(w, h, d), mat, x, y, z, shadow, receive);
+
+  function disposeStatic() {
+    S.group.traverse((o) => { if (o.userData.ownGeo) o.geometry?.dispose(); if (o.userData.own) { if (o.material?.map) o.material.map.dispose(); o.material?.dispose?.(); } });
+    for (const m of S.ownMats) m.dispose();
+    scene.remove(S.group); S.group = new THREE.Group(); scene.add(S.group);
+    S.desks.clear(); S.seats = []; S.supSlots = []; S.collabSlots = []; S.detenteSlots = []; S.screens = []; S.racks = []; S.board = null; S.ownMats = []; S.walls = [];
+  }
 
   function buildRoom(r) {
-    const g = new THREE.Group(); g.position.set(r.x, 0, r.z);
-    const c = hexToNum(r.color), tint = new THREE.Color(c).lerp(new THREE.Color(0x0e1628), 0.82).getHex();
-    g.add(own(new THREE.Mesh(new THREE.BoxGeometry(r.w, 0.2, r.d), std(tint))));
-    g.add(own(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(r.w, 0.2, r.d)), new THREE.LineBasicMaterial({ color: c }))));
-    for (const [w, d, x, z] of [[r.w, 0.12, 0, -r.d / 2], [0.12, r.d, -r.w / 2, 0], [0.12, r.d, r.w / 2, 0]]) {
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(w, 2.4, d), glass(c)); wall.position.set(x, 1.3, z); g.add(wall);
-      const top = new THREE.Mesh(new THREE.BoxGeometry(w + 0.04, 0.08, d + 0.04), std(c, { emissive: c, emissiveIntensity: 0.35 })); top.position.set(x, 2.5, z); g.add(top);
-    }
-    const label = own(new THREE.Mesh(new THREE.PlaneGeometry(10.5, 2.1), new THREE.MeshBasicMaterial({ map: tex(textCanvas([r.title, r.special ? "" : `${r.count} collaborateur${r.count > 1 ? "s" : ""}`].filter((x, i) => i === 0 || x), { w: 640, h: 128, size: 52 })), transparent: true })));
-    label.rotation.x = -Math.PI / 2; label.position.set(-r.w / 2 + 5.8, 0.13, r.d / 2 - 1.5); g.add(label);
+    const g = new THREE.Group(); g.position.set(r.x, 0, r.z); S.group.add(g);
+    const accent = hexToNum(r.color), dark = r.special === "supervision" || r.special === "datacenter", top = r.row === 0;
+    const kind = r.special === "datacenter" ? "tile" : r.special === "detente" || r.id === "direction" ? "wood" : "carpet";
+    const base = ({ datacenter: 0x4a586b, detente: 0xdcc4a2, supervision: 0x33445a, reunion: 0xe2e9f0, collab: 0xe8eff5 })[r.special] ?? (r.id === "direction" ? 0xa98462 : new THREE.Color(accent).lerp(new THREE.Color(0xf4f7fb), 0.72).getHex());
+    const ft = floorTexture(kind).clone(); ft.repeat.set(r.w / 4.6, r.d / 4.6); ft.needsUpdate = true;
+    const floor = mesh(new THREE.BoxGeometry(r.w, 0.1, r.d), pbr() ? new THREE.MeshStandardMaterial({ color: base, map: ft, roughness: kind === "wood" ? 0.5 : 0.88 }) : new THREE.MeshLambertMaterial({ color: base, map: ft }), 0, 0.05, 0, false, true); own(floor, true, true); g.add(floor);
+    g.add(boxM(r.w, 0.13, 0.34, std(accent, { roughness: 0.5 }), 0, 0.065, r.d / 2 - 0.2));                                   // seuil aux couleurs du département
+
+    // murs : nord, ouest, est (pleins ou vitrés côté façade) ; sud : cloison vitrée avec porte. Ils s'abaissent quand la caméra est derrière eux.
+    const wall = (w, d, x, z, nx, nz, opts = {}) => {
+      const wg = new THREE.Group(); wg.position.set(x, 0, z); const hz = w > d, len = hz ? w : d, th = hz ? d : w;
+      const solid = [], pane = [], WALL = "#eaf0f6", TRIM = "#087db8";           // pièces opaques fusionnées (1 appel de dessin) + vitrage (1 appel)
+      const add = (bw, bh, bd, hex, bxx, by, bz) => solid.push(K.bx(bw, bh, bd, hex, bxx, by, bz));
+      if (opts.glass) {
+        add(w, 0.55, d, WALL, 0, 0.275, 0); pane.push(new THREE.BoxGeometry(hz ? w - 0.1 : 0.05, WALL_H - 0.7, hz ? 0.05 : d - 0.1).translate(0, 0.55 + (WALL_H - 0.7) / 2, 0));
+        const n = Math.max(1, Math.round(len / 3.2)); for (let i = 0; i <= n; i++) { const o = -len / 2 + (len * i) / n; add(hz ? 0.09 : th + 0.04, WALL_H - 0.6, hz ? th + 0.04 : 0.09, TRIM, hz ? o : 0, 0.55 + (WALL_H - 0.6) / 2, hz ? 0 : o); }
+      } else if (opts.window) {
+        add(w, 1.0, d, WALL, 0, 0.5, 0); add(w, 0.5, d, WALL, 0, WALL_H - 0.25, 0); pane.push(new THREE.BoxGeometry(hz ? w - 0.1 : 0.05, 1.8, hz ? 0.05 : d - 0.1).translate(0, 1.9, 0));
+        const n = Math.max(1, Math.round(len / 3.6)); for (let i = 0; i <= n; i++) { const o = -len / 2 + (len * i) / n; add(hz ? 0.1 : th + 0.05, 1.85, hz ? th + 0.05 : 0.1, TRIM, hz ? o : 0, 1.9, hz ? 0 : o); }
+        add(hz ? w : th + 0.12, 0.05, hz ? th + 0.12 : d, "#ffffff", 0, 1.0, 0);
+      } else add(w, WALL_H, d, WALL, 0, WALL_H / 2, 0);
+      if (!opts.glass) add(hz ? w : th + 0.02, 0.22, hz ? th + 0.02 : d, "#c9d3de", 0, 0.11, 0);
+      add(w + (hz ? 0.04 : 0.02), 0.07, d + (hz ? 0.02 : 0.04), TRIM, 0, WALL_H + 0.035, 0);
+      const sm = new THREE.Mesh(K.mergeGeos(solid), K.matte); sm.castShadow = Q.shadows; sm.receiveShadow = true; sm.userData.ownGeo = true; wg.add(sm);
+      if (pane.length) { const gm = new THREE.Mesh(K.mergeGeos(pane.map((p) => (p.index ? p.toNonIndexed() : p))), glassMat); gm.userData.ownGeo = true; wg.add(gm); }
+      g.add(wg); S.walls.push({ g: wg, nx, nz, x: r.x + x, z: r.z + z, s: 1 });
+    };
+    const windowN = top && r.id !== "direction";
+    wall(r.w, 0.25, 0, -r.d / 2, 0, -1, { window: windowN });
+    wall(0.25, r.d, -r.w / 2, 0, -1, 0, { window: r.col === 0 }); wall(0.25, r.d, r.w / 2, 0, 1, 0, { window: r.col === 2 });
+    for (const sx of [-1, 1]) { const L = r.w / 2 - 1.4; wall(L, 0.14, sx * (1.4 + L / 2), r.d / 2, 0, 1, { glass: true }); }
+    for (const sx of [-1, 1]) g.add(boxM(0.14, 2.9, 0.18, trimMat, sx * 1.4, 1.45, r.d / 2));
+    g.add(boxM(2.94, 0.14, 0.18, trimMat, 0, 2.9, r.d / 2));
+
+    // étiquette au sol (lisible depuis la caméra d'ensemble)
+    const lines = [r.title, r.special ? "" : `${r.count} collaborateur${r.count > 1 ? "s" : ""}`].filter((x, i) => i === 0 || x);
+    const label = mesh(new THREE.PlaneGeometry(10.5, 2.1), new THREE.MeshBasicMaterial({ map: tex(textCanvas(lines, { w: 640, h: 128, size: 52, color: dark ? "#d7e4f4" : "#16324d" })), transparent: true, opacity: 0.85, depthWrite: false }));
+    own(label, true, true); label.rotation.x = -Math.PI / 2; label.position.set(-r.w / 2 + 5.9, 0.12, r.d / 2 - 1.5); g.add(label);
+
+    const plantAt = (x, z, s = 1) => { const p = K.make("plant", true); p.position.set(x, 0, z); p.scale.setScalar(s); g.add(p); };
+    plantAt(-r.w / 2 + 1.0, -r.d / 2 + 1.0, 1.2); plantAt(r.w / 2 - 1.0, -r.d / 2 + 1.0, 1.0);
 
     if (!r.special) {
       r.agents.forEach((a) => {
-        const sl = S.slotOf.get(a.id), lx = sl.deskX - r.x, lz = sl.deskZ - r.z;
-        const desk = new THREE.Group(); desk.position.set(lx, 0, lz);
-        const top = new THREE.Mesh(G("deskTop", () => new THREE.BoxGeometry(2.7, 0.1, 1.3)), std(0x2b3a5c)); top.position.y = 0.82; desk.add(top);
-        for (const sx of [-1.25, 1.25]) { const leg = new THREE.Mesh(G("deskLeg", () => new THREE.BoxGeometry(0.1, 0.8, 1.15)), std(0x1b2745)); leg.position.set(sx, 0.4, 0); desk.add(leg); }
-        const monMat = new THREE.MeshStandardMaterial({ color: 0x0b1220, emissive: 0x22c55e, emissiveIntensity: 0.9, roughness: 0.4 }); S.ownMats.push(monMat);
-        const mon = new THREE.Mesh(G("mon", () => new THREE.BoxGeometry(1.0, 0.62, 0.06)), monMat); mon.position.set(0, 1.32, -0.2); desk.add(mon);
-        const mon2 = new THREE.Mesh(G("mon", () => new THREE.BoxGeometry(1.0, 0.62, 0.06)), monMat); mon2.position.set(-1.05, 1.28, -0.12); mon2.rotation.y = 0.4; mon2.visible = false; desk.add(mon2);
-        const mon3 = new THREE.Mesh(G("mon", () => new THREE.BoxGeometry(1.0, 0.62, 0.06)), monMat); mon3.position.set(1.05, 1.28, -0.12); mon3.rotation.y = -0.4; mon3.visible = false; desk.add(mon3);
-        const stand = new THREE.Mesh(G("stand", () => new THREE.BoxGeometry(0.12, 0.3, 0.1)), std(0x1b2745)); stand.position.set(0, 0.98, -0.16); desk.add(stand);
-        const kb = new THREE.Mesh(G("kb", () => new THREE.BoxGeometry(0.7, 0.03, 0.25)), std(0x111827)); kb.position.set(0, 0.88, 0.22); desk.add(kb);
-        const docs = new THREE.Mesh(G("docs", () => new THREE.BoxGeometry(0.42, 0.05, 0.3)), std(0xf1f5f9)); docs.position.set(0.8, 0.9, 0.25); docs.rotation.y = 0.2; docs.visible = false; desk.add(docs);
-        const chair = new THREE.Mesh(G("chair", () => new THREE.BoxGeometry(0.8, 0.12, 0.8)), std(0x16213a)); chair.position.set(0, 0.5, 1.35); desk.add(chair);
-        const back = new THREE.Mesh(G("chairBack", () => new THREE.BoxGeometry(0.8, 0.9, 0.1)), std(0x16213a)); back.position.set(0, 1.0, 1.78); desk.add(back);
-        g.add(desk); S.desks.set(a.id, { monMat, mon2, mon3, docs });
+        const sl = S.slotOf.get(a.id), lx = sl.deskX - r.x, lz = sl.deskZ - r.z, ws = K.workstation();
+        ws.group.position.set(lx, 0, lz); g.add(ws.group);
+        const ch = K.chair(((hash(a.id) % 9) - 4) * 0.05); ch.position.set(lx, 0, lz + CHAIR_DZ); g.add(ch);
+        S.desks.set(a.id, { monMat: ws.mat, mon2: ws.mon2, mon3: ws.mon3, docs: ws.docs }); S.ownMats.push(ws.mat);
       });
+      if (r.id !== "direction") { const cab = K.make("cabinet"); cab.position.set(0, 0, -r.d / 2 + 0.5); g.add(cab); }
+    }
+    if (r.id === "direction") {                                                                                                // bureau du directeur : mobilier de direction, bibliothèques, enseigne
+      const dz = -r.d / 2 + 2.2;
+      const desk = K.make("execDesk"); desk.position.set(0, 0, dz); g.add(desk);
+      const ch = K.make("execChair"); ch.position.set(0, 0, dz + EXEC_DZ); g.add(ch);
+      for (const sx of [-1, 1]) { const b = K.make("bookshelf"); b.position.set(sx * 6.0, 0, -r.d / 2 + 0.45); g.add(b); }
+      const sc = document.createElement("canvas"); sc.width = 1024; sc.height = 160; const cx = sc.getContext("2d"); cx.fillStyle = "#12263b"; cx.fillRect(0, 0, 1024, 160); cx.fillStyle = "#087db8"; cx.fillRect(0, 148, 1024, 12);
+      cx.fillStyle = "#8bdcff"; cx.font = "800 62px system-ui,Arial"; cx.textAlign = "center"; cx.textBaseline = "middle"; cx.fillText("SANIX AI VIRTUAL COMPANY", 512, 70);
+      const sign = mesh(new THREE.PlaneGeometry(7.4, 1.16), new THREE.MeshBasicMaterial({ map: tex(sc) })); own(sign, true, true); sign.position.set(0, 2.6, -r.d / 2 + 0.2); g.add(sign);
+      const sf = K.make("sofa"); sf.position.set(r.w / 2 - 3.2, 0, r.d / 2 - 2.4); sf.rotation.y = -Math.PI / 2 + Math.PI; g.add(sf);
+      const ct = K.make("coffeeTable"); ct.position.set(r.w / 2 - 5.2, 0, r.d / 2 - 2.4); g.add(ct);
     }
     if (r.special === "reunion") {
-      const table = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 0.18, 40), std(0x3b2a5f)); table.position.y = 0.85; g.add(table);
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.8, 0.85, 16), std(0x241a3d)); leg.position.y = 0.42; g.add(leg);
+      const table = K.make("meetTable"); g.add(table);
       for (let i = 0; i < 12; i++) {
-        const a = (i / 12) * Math.PI * 2, sx = Math.sin(a) * 4.1, sz = Math.cos(a) * 4.1;
-        const seat = new THREE.Mesh(G("seat", () => new THREE.CylinderGeometry(0.4, 0.4, 0.1, 14)), std(0x241a3d)); seat.position.set(sx, 0.5, sz); g.add(seat);
+        const a = (i / 12) * Math.PI * 2, sx = Math.sin(a) * SEAT_R, sz = Math.cos(a) * SEAT_R;
+        const c = K.make("meetChair"); c.position.set(sx, 0, sz); c.rotation.y = a; g.add(c);
         S.seats.push({ x: r.x + sx, z: r.z + sz, a, cx: r.x, cz: r.z });
       }
-      const bc = textCanvas("", { w: 768, h: 256, bg: "#1a1230" }); const bt = tex(bc);
-      const board = new THREE.Mesh(new THREE.PlaneGeometry(8, 2.6), new THREE.MeshBasicMaterial({ map: bt })); board.position.set(0, 2.0, -r.d / 2 + 0.2); g.add(board);
+      const bc = textCanvas("", { w: 768, h: 256, bg: "#1a1230" }), bt = tex(bc);
+      const board = mesh(new THREE.PlaneGeometry(8, 2.6), new THREE.MeshBasicMaterial({ map: bt }), 0, 2.0, -r.d / 2 + 0.2); own(board, true, false); g.add(board);
+      g.add(boxM(8.3, 2.9, 0.1, std(0x0b1220), 0, 2.0, -r.d / 2 + 0.12));
       S.board = { canvas: bc, tex: bt, mesh: board };
     }
     if (r.special === "supervision") {
       for (let i = 0; i < 3; i++) {
-        const mat = new THREE.MeshBasicMaterial({ map: tex(textCanvas("…", { w: 512, h: 288, bg: "#0b1a33" })) });
-        const scr = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 2.9), mat); scr.position.set(-5.6 + i * 5.6, 2.1, -r.d / 2 + 0.25); g.add(scr);
-        const frame = new THREE.Mesh(new THREE.BoxGeometry(5.35, 3.05, 0.1), std(0x1b2745)); frame.position.set(scr.position.x, scr.position.y, scr.position.z - 0.07); g.add(frame);
-        S.screens.push(scr);
+        const scr = mesh(new THREE.PlaneGeometry(5.2, 2.9), new THREE.MeshBasicMaterial({ map: tex(textCanvas("…", { w: 512, h: 288, bg: "#0b1a33" })) }), -5.6 + i * 5.6, 2.1, -r.d / 2 + 0.25); own(scr, true, true); g.add(scr);
+        g.add(boxM(5.4, 3.1, 0.12, std(0x0e1726), scr.position.x, scr.position.y, scr.position.z - 0.08)); S.screens.push(scr);
       }
-      const con = new THREE.Mesh(new THREE.BoxGeometry(11, 0.9, 1.6), std(0x1b2745)); con.position.set(0, 0.5, 1.8); g.add(con);
+      g.add(boxM(11, 0.12, 1.5, std(0x2a3a4e), 0, 0.9, 1.8, true), boxM(10.6, 0.8, 1.3, std(0x1b2745), 0, 0.45, 1.8, true));
       for (let i = 0; i < 6; i++) S.supSlots.push({ x: r.x + (i - 2.5) * 2.1, z: r.z - r.d / 2 + 3.9 });
     }
     if (r.special === "datacenter") {
       for (let i = 0; i < 6; i++) {
-        const rack = new THREE.Mesh(new THREE.BoxGeometry(1.5, 3.2, 1.2), std(0x151f38)); rack.position.set(-6.2 + i * 2.5, 1.7, -r.d / 2 + 1.5); g.add(rack);
-        for (let k = 0; k < 5; k++) {
-          const led = own(new THREE.Mesh(G("led", () => new THREE.BoxGeometry(0.22, 0.08, 0.04)), new THREE.MeshBasicMaterial({ color: 0x22c55e })));
-          led.position.set(rack.position.x + 0.45, 0.8 + k * 0.55 + 0.5, rack.position.z + 0.62); g.add(led); S.racks.push({ m: led, phase: Math.random() * 6 });
-        }
+        const rack = K.make("rack"); rack.position.set(-6.2 + i * 2.5, 0, -r.d / 2 + 1.5); g.add(rack);
+        for (let k = 0; k < 5; k++) { const led = mesh(G("led", () => new THREE.BoxGeometry(0.22, 0.08, 0.04)), new THREE.MeshBasicMaterial({ color: 0x22c55e }), rack.position.x + 0.45, 0.8 + k * 0.55 + 0.5, rack.position.z + 0.63); led.userData.ownGeo = false; g.add(led); S.racks.push({ m: led, phase: Math.random() * 6 }); S.ownMats.push(led.material); }
       }
-      const scr = new THREE.Mesh(new THREE.PlaneGeometry(6, 3), new THREE.MeshBasicMaterial({ map: tex(textCanvas("…", { w: 512, h: 256, bg: "#0b1a33" })) })); scr.position.set(0, 2.2, r.d / 2 - 0.4); scr.rotation.y = Math.PI; g.add(scr); S.screens.push(scr);
+      const scr = mesh(new THREE.PlaneGeometry(6, 3), new THREE.MeshBasicMaterial({ map: tex(textCanvas("…", { w: 512, h: 256, bg: "#0b1a33" })) }), 0, 2.2, r.d / 2 - 0.4); own(scr, true, true); scr.rotation.y = Math.PI; g.add(scr); S.screens.push(scr);
     }
     if (r.special === "collab") {
-      const table = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.14, 2.2), std(0x314158)); table.position.set(0, 1.0, 1.2); g.add(table);
-      for (const sx of [-2.4, 2.4]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.0, 1.8), std(0x1b2745)); l.position.set(sx, 0.5, 1.2); g.add(l); }
-      const wb = new THREE.Mesh(new THREE.PlaneGeometry(9, 3), new THREE.MeshBasicMaterial({ map: tex(textCanvas(["Cadrage des missions", "Objectifs · répartition · échéances"], { w: 768, h: 256, bg: "#f8fafc", color: "#0f172a", size: 52 })) })); wb.position.set(0, 2.1, -r.d / 2 + 0.2); g.add(wb);
+      const t = K.make("meetTable"); t.scale.set(0.72, 1, 0.72); t.position.set(0, 0, 1.2); g.add(t);
+      const wb = mesh(new THREE.PlaneGeometry(9, 3), new THREE.MeshBasicMaterial({ map: tex(textCanvas(["Cadrage des missions", "Objectifs · répartition · échéances"], { w: 768, h: 256, bg: "#f8fafc", color: "#0f172a", size: 52 })) }), 0, 2.1, -r.d / 2 + 0.2); own(wb, true, true); g.add(wb);
       for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; S.collabSlots.push({ x: r.x + Math.sin(a) * 3.7, z: r.z + 1.2 + Math.cos(a) * 2.2, a, cx: r.x, cz: r.z + 1.2 }); }
     }
     if (r.special === "detente") {
-      for (const sx of [-4.2, 4.2]) {
-        const s = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.5, 1.2), std(0x7c3aed)); s.position.set(sx, 0.35, 1.5); g.add(s);
-        const b = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.9, 0.3), std(0x6d28d9)); b.position.set(sx, 0.8, 2.0); g.add(b);
-        for (const dx of [-0.9, 0.9]) S.detenteSlots.push({ x: r.x + sx + dx, z: r.z + 1.4, sit: true, yaw: Math.PI });   // assis, face à la table
-      }
-      const ct = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 0.5, 16), std(0x3b2a5f)); ct.position.set(0, 0.3, -0.3); g.add(ct);
-      const cm = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.7, 0.9), std(0x111827)); cm.position.set(r.w / 2 - 2, 0.9, -r.d / 2 + 1.2); g.add(cm);
-      const cmled = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.2, 0.05), std(0xf59e0b, { emissive: 0xf59e0b, emissiveIntensity: 0.9 })); cmled.position.set(r.w / 2 - 2, 1.4, -r.d / 2 + 1.7); g.add(cmled);
-      const plant = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.8, 8), std(0x15803d)); plant.position.set(-r.w / 2 + 1.4, 1.0, -r.d / 2 + 1.4); g.add(plant);
-      S.detenteSlots.push({ x: r.x + r.w / 2 - 2.6, z: r.z - r.d / 2 + 3.0, sit: false, yaw: Math.PI * 0.9 }, { x: r.x + r.w / 2 - 4.0, z: r.z - r.d / 2 + 3.2, sit: false, yaw: Math.PI * 0.9 });
+      const z0 = -1.9;
+      for (const sx of [-4.2, 4.2]) { const s = K.make("sofa"); s.position.set(sx, 0, z0); s.rotation.y = Math.PI; g.add(s); for (const dx of [-0.9, 0.9]) S.detenteSlots.push({ x: r.x + sx + dx, z: r.z + z0 + 0.05, sit: true, yaw: Math.PI }); }
+      const ct = K.make("coffeeTable"); ct.position.set(0, 0, z0 + 2.4); g.add(ct);
+      const cn = K.make("counter"); cn.position.set(r.w / 2 - 1.5, 0, -r.d / 2 + 1.0); cn.rotation.y = -Math.PI / 2 + Math.PI; g.add(cn);
+      plantAt(-r.w / 2 + 1.0, r.d / 2 - 2.0, 1.4);
+      S.detenteSlots.push({ x: r.x + r.w / 2 - 3.0, z: r.z - r.d / 2 + 3.0, sit: false, yaw: Math.PI * 0.9 }, { x: r.x + r.w / 2 - 4.4, z: r.z - r.d / 2 + 3.2, sit: false, yaw: Math.PI * 0.9 });
     }
-    if (r.id === "direction") {
-      const big = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.14, 1.9), std(0x3a2a14, { metalness: 0.2 })); big.position.set(0, 0.88, -r.d / 2 + 2.2); g.add(big);
-      const mon = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.9, 0.07), M("dgmon", () => new THREE.MeshStandardMaterial({ color: 0x0b1220, emissive: 0xfacc15, emissiveIntensity: 0.9 }))); mon.position.set(0, 1.55, -r.d / 2 + 2.0); g.add(mon);
-      const chair = new THREE.Mesh(G("chair", () => new THREE.BoxGeometry(0.9, 0.12, 0.9)), std(0x2a1d0e)); chair.position.set(0, 0.5, -r.d / 2 + 4.1); g.add(chair);
-    }
-    S.group.add(g);
   }
 
   function rebuild() {
     const rooms = computeLayout();
-    const key = rooms.map((r) => `${r.id}:${r.d}:${r.title}:${r.agents.map((a) => `${a.id}@${S.deskIdx.get(a.id)?.idx}`).join(",")}`).join("|");
+    const key = rooms.map((r) => `${r.id}:${r.d}:${r.title}:${r.agents.map((a) => `${a.id}@${S.deskIdx.get(a.id)?.idx}`).join(",")}`).join("|") + `|${qName}`;
     if (key === S.layoutKey) return false;
-    S.layoutKey = key; disposeStatic(); rooms.forEach(buildRoom); return true;
+    S.layoutKey = key; disposeStatic();
+    const minX = Math.min(...rooms.map((r) => r.x - r.w / 2)) - 4, maxX = Math.max(...rooms.map((r) => r.x + r.w / 2)) + 4, minZ = Math.min(...rooms.map((r) => r.z - r.d / 2)) - 4, maxZ = Math.max(...rooms.map((r) => r.z + r.d / 2)) + 4;
+    const st = floorTexture("tile").clone(); st.repeat.set((maxX - minX) / 5, (maxZ - minZ) / 5); st.needsUpdate = true;
+    const slab = mesh(new THREE.BoxGeometry(maxX - minX, 0.6, maxZ - minZ), (pbr() ? new THREE.MeshStandardMaterial({ color: 0xe4ebf2, map: st, roughness: 0.7 }) : new THREE.MeshLambertMaterial({ color: 0xe4ebf2, map: st })), (minX + maxX) / 2, -0.3, (minZ + maxZ) / 2, false, true); own(slab, true, true); S.group.add(slab);
+    S.group.add(mesh(new THREE.BoxGeometry(maxX - minX + 0.6, 0.18, maxZ - minZ + 0.6), trimMat, (minX + maxX) / 2, -0.58, (minZ + maxZ) / 2));
+    rooms.forEach(buildRoom); return true;
   }
 
   // ─────────────────────────── itinéraires (couloirs et allées) ───────────────────────────
@@ -278,14 +335,14 @@ export async function createOffice(container, hooks = {}) {
   const nearestRow = (z) => { let best = 0, bd = 1e9; S.rowSouth.forEach((s, i) => { const d = Math.abs(z - (s + GAP / 2)); if (d < bd) { bd = d; best = i; } }); return best; };
   const nearestCol = (x) => COLX.reduce((b, cx, i) => (Math.abs(x - cx) < Math.abs(x - COLX[b]) ? i : b), 0);
   function aisleZ(room, z) {
-    const k = clampN(Math.round((z - room.z + room.d / 2 - 2.6 - 1.35) / SLOT_Z), 0, 40);
-    return Math.min(room.z - room.d / 2 + 2.6 + k * SLOT_Z + 3.0, south(room) - 0.9);
+    const k = clampN(Math.round((z - room.z + room.d / 2 - 2.6 - CHAIR_DZ) / SLOT_Z), 0, 40);
+    return Math.min(room.z - room.d / 2 + 2.6 + k * SLOT_Z + AISLE_DZ, south(room) - 0.9);
   }
   /** Points menant d'un point intérieur P à la porte (côté sud) de la salle. */
   function exitPts(room, P) {
     const door = { x: room.x, z: south(room) + 0.35 }, pts = [];
     if (room.special === "reunion" || room.special === "collab") {
-      const cx = room.x, cz = room.special === "collab" ? room.z + 1.2 : room.z, R = room.special === "collab" ? 4.6 : 5.4;
+      const cx = room.x, cz = room.special === "collab" ? room.z + 1.2 : room.z, R = room.special === "collab" ? 4.6 : EXIT_R;
       const a0 = Math.atan2(P.x - cx, P.z - cz), da = angDiff(a0, 0), n = Math.max(1, Math.ceil(Math.abs(da) / (Math.PI / 4)));
       for (let i = 0; i <= n; i++) { const a = a0 + da * (i / n); pts.push({ x: cx + Math.sin(a) * R, z: Math.min(cz + Math.cos(a) * R, south(room) - 0.7) }); }
     } else if (room.special === "supervision") {
@@ -399,10 +456,14 @@ export async function createOffice(container, hooks = {}) {
   }
 
   // ─────────────────────────── avatars ───────────────────────────
-  const aenv = () => ({ THREE, mats: M, geos: G, seg: Q.seg, props: Q.props });
+  const blobMat = (() => { const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d"), gr = x.createRadialGradient(32, 32, 2, 32, 32, 31); gr.addColorStop(0, "rgba(10,20,40,.55)"); gr.addColorStop(1, "rgba(10,20,40,0)"); x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+    return new THREE.MeshBasicMaterial({ map: tex(c), transparent: true, depthWrite: false }); })();
+  const aenv = () => ({ THREE, mats: M, geos: G, seg: Q.seg, props: Q.props, assets, walk: WALK, blobMat, shadows: Q.shadows });
   function spawn(a) {
-    const av = makeAvatar(aenv(), a, hexToNum(DEPT_COLORS[a.departement_id] ?? "#475569"));
-    av.el = document.createElement("div"); av.el.className = "np"; av.el.textContent = a.nom; labels.appendChild(av.el);
+    const col = hexToNum(DEPT_COLORS[a.departement_id] ?? "#475569");
+    const av = assets ? makeGlbAvatar(aenv(), a, col) : makeAvatar(aenv(), a, col);
+    av.root.traverse((o) => { if (o.isMesh && o !== av.hit && o !== av.halo && o !== av.spin && o !== av.marker) o.castShadow = Q.shadows; });
+    av.el = document.createElement("div"); av.el.className = "np"; av.el.innerHTML = "<b></b><i></i>"; av.el.firstChild.textContent = a.nom; av.el.lastChild.textContent = `AGENT IA · ${(a.fonction ?? "").toUpperCase()}`; labels.appendChild(av.el);
     av.bub = null; av.nav = null; av.place = null; av.placed = false;
     scene.add(av.root); avatars.set(a.id, av);
     return av;
@@ -504,9 +565,9 @@ export async function createOffice(container, hooks = {}) {
       if (!reduced) {
         const k = av.agent.activite;
         av.halo.material.opacity = k === "en_difficulte" ? 0.4 + 0.5 * Math.abs(Math.sin(simMs / 200)) : k === "attente_validation" ? 0.45 + 0.4 * Math.sin(simMs / 420) ** 2 : av.agent.etat === "suspendu" ? 0.35 : 0.85;
-        av.spin.rotation.z = simMs / 330; av.icon.position.y = 2.45 * av.S + Math.sin(simMs / 500 + av.seed) * 0.06;
-      } else av.icon.position.y = 2.45 * av.S;
-      if (av.spin.visible) av.spin.position.y = 2.15 * av.S;
+        av.spin.rotation.z = simMs / 330; av.icon.position.y = av.top + 0.4 + Math.sin(simMs / 500 + av.seed) * 0.06;
+      } else av.icon.position.y = av.top + 0.4;
+      if (av.spin.visible) av.spin.position.y = av.top - 0.2;
     }
     if (!reduced && Q.blink) for (const r of S.racks) r.m.visible = Math.sin(simMs / 300 + r.phase) > -0.5;
     // caméra : suivi d'un collaborateur
@@ -548,21 +609,22 @@ export async function createOffice(container, hooks = {}) {
     const cx = (Math.min(...pts.map((p) => p.x)) + Math.max(...pts.map((p) => p.x))) / 2, cz = (Math.min(...pts.map((p) => p.z)) + Math.max(...pts.map((p) => p.z))) / 2;
     const cam = camera.clone(); cam.aspect = camera.aspect || 1.5; cam.updateProjectionMatrix();
     const v = new THREE.Vector3(), mx = cam.aspect < 0.9 ? 1.12 : 0.97;
-    const P3 = pts.flatMap((p) => [new THREE.Vector3(p.x, 0, p.z), new THREE.Vector3(p.x, 3, p.z)]);
+    const P3 = pts.flatMap((p) => [new THREE.Vector3(p.x, 0, p.z), new THREE.Vector3(p.x, 3.4, p.z)]);
     for (let r = 12; r < 260; r *= 1.03) {
       cam.position.set(cx + r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi), cz + r * Math.sin(phi) * Math.cos(theta)); cam.lookAt(cx, 0, cz); cam.updateMatrixWorld(true);
       if (P3.every((p) => { v.copy(p).project(cam); return Math.abs(v.x) < mx && Math.abs(v.y) < 0.9 && v.z < 1; })) return { tx: cx, tz: cz, r, phi, theta };
     }
     return { tx: cx, tz: cz, r: 170, phi, theta };
   }
-  const roomPts = (r) => [{ x: r.x - r.w / 2, z: r.z - r.d / 2 }, { x: r.x + r.w / 2, z: r.z + r.d / 2 }];
+  const roomPts = (r) => [{ x: r.x - r.w / 2, z: r.z - r.d / 2 }, { x: r.x + r.w / 2, z: r.z - r.d / 2 }, { x: r.x - r.w / 2, z: r.z + r.d / 2 }, { x: r.x + r.w / 2, z: r.z + r.d / 2 }];   // 4 coins : la caméra est en 3/4
   function applyView() {
     const rooms = S.rooms; if (!rooms.length) return;
     let t = null;
-    if (viewMode === "general") t = fitPoints(rooms.flatMap(roomPts));
+    if (viewMode === "general") t = fitPoints(rooms.flatMap(roomPts), 0.92, 0.42);
+    else if (viewMode === "executive") { const row = rooms.filter((r) => r.row === 0); t = row.length ? fitPoints(row.flatMap(roomPts), 0.95, 0.3) : null; }   // étage de direction : réunion, bureau du directeur, supervision
     else if (viewMode === "dept" || viewMode === "direction" || viewMode === "meeting" || viewMode === "supervision") {
       const id = viewMode === "dept" ? viewArg : viewMode === "meeting" ? "reunion" : viewMode, r = S.byRoom.get(id);
-      t = r ? fitPoints(roomPts(r), 0.95) : null;
+      t = r ? fitPoints(roomPts(r), 0.95, 0.3) : null;
     } else if (viewMode === "activity") {
       const act = [...avatars.values()].filter((v) => !["disponible", "mission_terminee"].includes(v.agent.activite) || v.agent.lieu !== "poste");
       const pts = (act.length ? act : [...avatars.values()]).map((v) => ({ x: v.root.position.x, z: v.root.position.z })).concat(act.length ? [] : []);
@@ -648,7 +710,7 @@ export async function createOffice(container, hooks = {}) {
     const near = orbit.r < 40, now = wallNow(), placed = [];
     for (const av of avatars.values()) {
       const a = av.agent, sel = av.id === selectedId, hov = av.id === hovered;
-      V.set(av.root.position.x, 2.75 * av.S + 0.45, av.root.position.z).project(camera);
+      V.set(av.root.position.x, av.top + 0.75, av.root.position.z).project(camera);
       av.sx = (V.x * 0.5 + 0.5) * w; av.sy = (-V.y * 0.5 + 0.5) * h; av.vis = V.z < 1 && Math.abs(V.x) < 1.05 && Math.abs(V.y) < 1.05;
       av.want = av.vis && (sel || hov || a.niveau <= 2 || near || av.id === followId); av.prio = sel ? 0 : hov ? 1 : a.niveau;
       // bulle de parole
@@ -668,14 +730,29 @@ export async function createOffice(container, hooks = {}) {
     }
     for (const [id, av] of avatars) {
       const show = av.want && av.show; av.el.style.display = show ? "" : "none";
-      if (show) { av.el.style.transform = `translate(-50%,-100%) translate(${av.sx}px,${av.sy}px)`; av.el.classList.toggle("sel", id === selectedId); }
+      if (show) { av.el.style.transform = `translate(-50%,-100%) translate(${av.sx}px,${av.sy}px)`; av.el.classList.toggle("sel", id === selectedId); av.el.classList.toggle("hov", id === hovered); }
     }
   }
 
   // ─────────────────────────── boucle de rendu ───────────────────────────
   let running = false, active = true, onScreen = true, lastTs = 0, lastRender = 0, fpsAvg = 60;
+  const wallCut = (dt) => {
+    const low = orbit.phi > 1.18;
+    for (const w of S.walls) {
+      const outside = (camera.position.x - w.x) * w.nx + (camera.position.z - w.z) * w.nz > 0;
+      const target = outside || low ? 0.16 : 1; w.s += (target - w.s) * Math.min(1, dt * 7); w.g.scale.y = Math.max(0.1, w.s);
+    }
+  };
+  let lastFrameT = 0;
   function renderOnce() {
     applyCamera();
+    const nowT = performance.now(), fdt = Math.min(0.1, (nowT - (lastFrameT || nowT)) / 1000); lastFrameT = nowT;
+    wallCut(reduced ? 1 : fdt);
+    if (Q.shadows) {   // la zone ombrée suit la cible de la caméra : ombres nettes partout où l'on regarde
+      const r = clampN(orbit.r * 0.95, 24, 90), c = sun.shadow.camera;
+      sun.target.position.set(orbit.tx, 0, orbit.tz); sun.position.set(orbit.tx - 34, 78, orbit.tz + 46);
+      c.left = -r; c.right = r; c.top = r; c.bottom = -r; c.updateProjectionMatrix(); sun.target.updateMatrixWorld();
+    }
     if (!(labelFrame++ % Q.labelEvery)) { updateLabels(); }
     drawLinks();
     renderer.render(scene, camera);
@@ -718,7 +795,9 @@ export async function createOffice(container, hooks = {}) {
     for (const av of avatars.values()) { av.agent = data.agents.find((x) => x.id === av.id) ?? av.agent; }
     // meilleure restitution à l'ouverture : tout le monde apparaît à sa place réelle (pas de marche artificielle)
     reconcileAll(); drawBoard(); feedDirty = true;
-    if (!userMoved && viewMode === "general") applyView();
+    // entreprise naissante (prototype : direction + quelques collaborateurs) : la vue s'ouvre sur l'étage de direction
+    if (!autoViewDone && data.agents.length) { autoViewDone = true; if (!userMoved && viewMode === "general" && data.agents.length <= 8) { viewMode = "executive"; hooks.onView?.({ mode: "executive" }); } }
+    if (!userMoved && (viewMode === "general" || viewMode === "executive")) applyView();
     if (!running) { step(0); renderOnce(); }
   }
   function patchAgent(row) {
@@ -765,7 +844,10 @@ export async function createOffice(container, hooks = {}) {
     if (!QUALITY[name] || name === qName) return;
     qName = name; Q = QUALITY[name];
     if (persist) try { localStorage.setItem("sanix_company_quality", name); } catch { /* sans stockage */ }
-    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, Q.dpr)); renderer.setSize(w, h, false);
+    renderer.setPixelRatio(pixelRatio()); renderer.setSize(w, h, false);
+    renderer.shadowMap.enabled = Q.shadows; sun.castShadow = Q.shadows; scene.environmentIntensity = Q.env ? 0.32 : 0; S.layoutKey = ""; mats.clear(); K = createKit(THREE, { lambert: qName !== "high" });   // mobilier et matières reconstruits (ombres, éclairage)
+    scene.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) m.needsUpdate = true; });
+    rebuild();
     const agents = [...avatars.values()].map((v) => v.agent); for (const id of [...avatars.keys()]) removeAvatar(id);
     queue.push(...agents); hooks.onQuality?.(name);
   }
@@ -783,7 +865,7 @@ export async function createOffice(container, hooks = {}) {
     return S.rooms.some((r) => r.special === "reunion" && Math.hypot(x - r.x, z - r.z) < 3.05);
   };
   const desk = (id) => { const d = S.desks.get(id); return d ? { multi: d.mon2.visible, docs: d.docs.visible, intensity: d.monMat.emissiveIntensity } : null; };
-  const stats = () => ({ avatars: avatars.size, queued: queue.length, rooms: S.rooms.length, quality: qName, dpr: renderer.getPixelRatio(), markers: [...avatars.values()].filter((v) => v.detail !== "full").length, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, fps: Math.round(fpsAvg), reduced, running });
+  const stats = () => ({ avatars: avatars.size, queued: queue.length, rooms: S.rooms.length, quality: qName, dpr: renderer.getPixelRatio(), markers: [...avatars.values()].filter((v) => v.detail !== "full").length, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, fps: Math.round(fpsAvg), reduced, running, avatarMode: assets ? "glb" : "procedural", shadows: Q.shadows, cam: Object.fromEntries(Object.entries(orbit).map(([k, v]) => [k, Math.round(v * 100) / 100])), aspect: Math.round(camera.aspect * 100) / 100 });
   const board = () => (S.board ? { meeting: activeMeetings().length } : null);
   const feedLines = () => [...feed];
   const has = (id) => data.agents.some((a) => a.id === id);
@@ -792,5 +874,5 @@ export async function createOffice(container, hooks = {}) {
 
   start();
   return { update, patchAgent, pushEvent, setMeetings, select: (id, f) => select(id, f), setView, resetView, zoom, setQuality, setActive, dispose, element: dom, screenPositionOf, advance, inspect, desk, collides, stats, board, feedLines, now, has,
-    get quality() { return qName; }, get view() { return { mode: viewMode, arg: viewArg, follow: followId }; } };
+    get quality() { return qName; }, get _scene() { return scene; }, get view() { return { mode: viewMode, arg: viewArg, follow: followId }; } };
 }

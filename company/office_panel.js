@@ -99,7 +99,7 @@ function render2D() {
 function fillViewOptions() {
   const sel = $("#view-sel"); if (!sel) return;
   const cur = sel.value || "general", a = S.selected && agentBy(S.selected);
-  const opts = [["general", "Vue d'ensemble"], ...S.depts.filter((d) => d.id !== "direction").map((d) => [`dept:${d.id}`, `Département : ${d.nom}`]),
+  const opts = [["general", "Vue d'ensemble"], ["executive", "Étage de direction"], ...S.depts.filter((d) => d.id !== "direction").map((d) => [`dept:${d.id}`, `Département : ${d.nom}`]),
     ["direction", "Bureau du directeur IA"], ["meeting", "Salle de réunion"], ["supervision", "Salle de supervision"], ["activity", "Activités en cours"], ["follow", a ? `Suivre : ${a.nom}` : "Suivre un collaborateur (sélectionnez-en un)"], ["free", "Vue libre"]];
   sel.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}"${v === "follow" && !a ? " disabled" : ""}${v === "free" ? " hidden" : ""}>${esc(l)}</option>`).join("");
   sel.value = opts.some(([v]) => v === cur) ? cur : "general";

@@ -121,7 +121,7 @@ function subscribe() {
       else if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) { wasDown = true; P.setSync("reconnecting"); }
     });
   } catch (e) { console.warn("realtime", e.message); P.setSync("offline"); }
-  setInterval(() => { if (!document.hidden) scheduleRefresh(); }, 20000);   // filet de sécurité si le temps réel est coupé
+  setInterval(() => { if (S.heartbeat !== false && !document.hidden) scheduleRefresh(); }, 20000);   // (S.heartbeat = false : désactivé par les tests de synchronisation incrémentale)   // filet de sécurité si le temps réel est coupé
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) hiddenAt = Date.now();
     else if (Date.now() - hiddenAt > 15000) scheduleRefresh(50);   // retour sur l'onglet : état réel immédiat

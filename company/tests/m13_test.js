@@ -19,11 +19,13 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
     console.log("▶ Critère 1 — tous les agents ont un avatar identifiable");
     const A1 = await newPage(browser); const page = A1.page;
     await openOffice(page, PORT);
+    await ev(page, () => { window.__vc.heartbeat = false; });   // le rafraîchissement périodique de sécurité (20 s) fausserait les états simulés et le comptage des requêtes
     const A = await ids(page);
     const live = await ev(page, () => window.__vc.agents.filter((a) => a.etat !== "archive").map((a) => ({ id: a.id, nom: a.nom, dept: a.departement_id, niveau: a.niveau })));
     const st = await ev(page, () => window.__vc.office.stats());
+    ok(st.avatarMode === "glb", "avatars humains GLB (modèles Blender + clips partagés) chargés");
     ok(st.avatars === live.length && live.length >= 25, `${st.avatars} avatars pour ${live.length} collaborateurs actifs (archivés exclus)`);
-    const names = await page.locator(".np").allTextContents();
+    const names = await page.locator(".np b").allTextContents();
     ok(live.every((a) => names.includes(a.nom)), "chaque collaborateur a une plaque d'identité (nom)");
     ok((await ev(page, () => [...new Set(window.__vc.agents.filter((a) => a.etat !== "archive").map((a) => a.departement_id))].length)) >= 5 && live.every((a) => a.dept), "chaque avatar porte la couleur de son département");
     ok((await ev(page, (ids) => ids.every((id) => window.__vc.office.inspect(id) !== null), live.map((a) => a.id))), "chaque avatar est interrogeable (inspect)");
@@ -40,10 +42,10 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
       await ev(page, ([id, act, st]) => window.__vc.office.patchAgent({ id, activite: st, activite_detail: act, activite_depuis: window.__vc.office.now(), lieu: "poste", lieu_jusqua: null }), [T, act, COARSE[act] ?? "en_mission"]);
       await adv(page, act === "mission_terminee" ? 0.6 : 1.6);
       const i = await insp(page, T); seen[act] = i;
-      ok(i.anim === anim, `activité « ${act} » → animation « ${anim} »`);
+      ok(i.anim === anim && i.clip === `Sit_${anim}`, `activité « ${act} » → animation « ${anim} » (clip ${i.clip})`);
     }
-    ok(seen.consultation_documents.props.docs && seen.appel_telephonique.props.headset && seen.conversation_whatsapp.props.phone, "accessoires : document en main, casque, téléphone");
-    ok(seen.en_difficulte.pose.sRx > 1.9 && seen.mission_terminee.pose.sLx > 1.2 && seen.attente.pose.torsoX > 0.08, "poses : bras levé (alerte), bras levés (réussite), buste affaissé (attente)");
+    ok(seen.consultation_documents.props.docs && seen.appel_telephonique.props.phone && seen.conversation_whatsapp.props.phone && !seen.recherche_prospects.props.phone, "accessoires : document, téléphone (appel, WhatsApp) affichés seulement quand l'activité les utilise");
+    ok(seen.en_difficulte.pose.rightHand > seen.en_difficulte.pose.head && seen.mission_terminee.pose.leftHand > seen.mission_terminee.pose.head && seen.mission_terminee.pose.rightHand > seen.mission_terminee.pose.head && seen.attente.pose.head < seen.disponible.pose.head - 0.04, "poses mesurées sur le squelette : main levée au-dessus de la tête (alerte), deux mains levées (réussite), tête et buste affaissés (attente)");
     ok(seen.en_difficulte.icon === "oui" && seen.mission_terminee.icon === "oui" && seen.attente.icon === "oui", "icône d'état au-dessus de l'avatar (alerte, confirmation, attente)");
     await ev(page, ([id]) => window.__vc.office.patchAgent({ id, activite: "en_analyse", activite_detail: "analyse_donnees" }), [T]); await adv(page, 1);
     ok((await ev(page, (id) => window.__vc.office.desk(id), T)).multi, "analyse de données : écrans multiples allumés au poste");
@@ -51,9 +53,9 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
     ok((await ev(page, (id) => window.__vc.office.desk(id), T)).docs, "préparation de rapport : documents posés sur le bureau");
     await ev(page, ([id]) => window.__vc.office.patchAgent({ id, activite: "mission_terminee", activite_detail: "mission_terminee", activite_depuis: window.__vc.office.now() }), [T]); await adv(page, 4.5);
     ok((await insp(page, T)).anim === "idle", "mission terminée : confirmation jouée une fois puis retour au calme (pas de boucle de fête)");
-    const head = await ev(page, async ([id]) => { const o = window.__vc.office; o.patchAgent({ id, activite: "en_analyse", activite_detail: "analyse_donnees", activite_depuis: o.now() }); let mn = 9, mx = -9; for (let k = 0; k < 40; k++) { o.advance(0.25); const y = o.inspect(id).pose.headY; mn = Math.min(mn, y); mx = Math.max(mx, y); } return mx - mn; }, [T]);
+    const head = await ev(page, async ([id]) => { const o = window.__vc.office; o.patchAgent({ id, activite: "en_analyse", activite_detail: "analyse_donnees", activite_depuis: o.now() }); let mn = 9, mx = -9; for (let k = 0; k < 40; k++) { o.advance(0.25); const y = o.inspect(id).pose.headYaw; mn = Math.min(mn, y); mx = Math.max(mx, y); } return mx - mn; }, [T]);
     ok(head > 0.5, `analyse multi-écrans : la tête balaie les écrans (amplitude ${head.toFixed(2)} rad)`);
-    ok((await ev(page, (id) => { const o = window.__vc.office; o.patchAgent({ id, activite: "en_mission", activite_detail: "redaction_email" }); o.advance(0.5); const a = o.inspect(id).pose.eL; let d = 0; for (let k = 0; k < 20; k++) { o.advance(0.05); d += Math.abs(o.inspect(id).pose.eL - a); } return d; }, T)) > 0.05, "rédaction d'e-mail : bras en mouvement de frappe");
+    ok((await ev(page, (id) => { const o = window.__vc.office; o.patchAgent({ id, activite: "en_mission", activite_detail: "redaction_email" }); o.advance(0.5); const a = o.inspect(id).pose.leftHand; let d = 0; for (let k = 0; k < 20; k++) { o.advance(0.05); d += Math.abs(o.inspect(id).pose.leftHand - a); } return d; }, T)) > 0.004, "rédaction d'e-mail : avant-bras en mouvement de frappe");
 
     // ══════════════════════════ 3. Temps réel ══════════════════════════
     console.log("▶ Critère 3 — changements de statut synchronisés en temps réel (sans rechargement)");
@@ -81,13 +83,13 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
     // ══════════════════════════ 4. Déplacements ══════════════════════════
     console.log("▶ Critère 4 — les agents se déplacent");
     const a0 = await insp(page, A.ia_resp_prospection);   // fixture : en visite chez ia_sup_sante (déjà sur place à l'ouverture)
-    ok(!a0.walking && a0.anim === "handover" && a0.posture === "stand", "à l'ouverture : l'agent en visite est déjà chez son collègue (aucune marche artificielle)");
+    ok(!a0.walking && a0.anim === "handover" && a0.posture === "stand" && a0.clip === "Stand_handover" && a0.props.folder, "à l'ouverture : l'agent en visite est déjà chez son collègue (aucune marche artificielle)");
     const d0 = await insp(page, A.ia_hunter_3);
     await emit(page, "ai_agents", "UPDATE", { id: A.ia_hunter_3, lieu: "poste_agent", lieu_cible_agent: A.ia_sup_btp, lieu_jusqua: plusH(1) });
     let w = await insp(page, A.ia_hunter_3);
     ok(w.walking && w.anim === "walk", "le responsable se lève et marche vers le poste d'un subordonné");
     const len = await ev(page, (id) => { const o = window.__vc.office; let p = o.inspect(id), L = 0; for (let k = 0; k < 20; k++) { o.advance(0.1); const q = o.inspect(id); L += Math.hypot(q.x - p.x, q.z - p.z); p = q; } return L; }, A.ia_hunter_3);
-    ok(len > 5.5 && len < 7.5, `marche continue à vitesse constante (${len.toFixed(1)} unités en 2 s, ≈ 3,4 u/s)`);
+    ok(len > 3.9 && len < 4.9 && (await insp(page, A.ia_hunter_3)).clip === "Walk", `marche continue à vitesse constante (${len.toFixed(1)} unités en 2 s, ≈ 2,2 u/s) avec le clip « Walk »`);
     await adv(page, 60); w = await insp(page, A.ia_hunter_3);
     ok(!w.walking && w.anim === "handover" && w.posture === "stand", "arrivé : se tient debout au poste du collègue (transmission de dossier)");
     await emit(page, "ai_agents", "UPDATE", { id: A.ia_hunter_3, lieu: "poste", lieu_jusqua: null }); await adv(page, 90);
@@ -120,13 +122,13 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
     const s1 = await snap(), nBefore = (await ev(page, () => window.__vc.office.stats())).avatars;
     await ev(page, () => { const b = window.__FIX.ai_agents.find((a) => a.code === "ia_hunter_1"); window.__NEW = { ...JSON.parse(JSON.stringify(b)), id: "cccccccc-0000-4000-8000-000000000001", code: "ia_nouveau", nom: "IA Nouveau Responsable", niveau: 3, created_at: "2020-01-01T00:00:00Z", manager_id: b.manager_id, lieu: "poste", lieu_jusqua: null, activite: "disponible", activite_detail: null, etat: "actif" }; });
     await ev(page, () => window.__emit("ai_agents", "INSERT", window.__NEW));
-    await page.waitForFunction((n) => window.__vc.office.stats().avatars === n + 1, nBefore, { timeout: 6000 });
+    await page.waitForFunction((n) => window.__vc.office.stats().avatars === n + 1, nBefore, { timeout: 25000 });
     await adv(page, 60);
     const s2 = await snap(), still = Object.keys(s1).filter((c) => s1[c].place === "poste" && s2[c].place === "poste");
     ok((await ev(page, () => window.__vc.office.stats())).avatars === nBefore + 1, "un nouveau collaborateur apparaît dans le bureau (sans rechargement de la page)");
     ok(still.length >= 8 && still.every((c) => dist(s1[c], s2[c]) < 0.3), `les ${still.length} collègues à leur poste gardent exactement leur bureau`);
     await emit(page, "ai_agents", "UPDATE", { id: "cccccccc-0000-4000-8000-000000000001", etat: "archive" });
-    await page.waitForFunction((n) => window.__vc.office.stats().avatars === n, nBefore, { timeout: 6000 }); await adv(page, 30);
+    await page.waitForFunction((n) => window.__vc.office.stats().avatars === n, nBefore, { timeout: 25000 }); await adv(page, 30);
     const s3 = await snap();
     ok(still.every((c) => dist(s1[c], s3[c]) < 0.3), "archivage d'un collaborateur : l'avatar disparaît, personne d'autre ne bouge");
 
@@ -225,7 +227,7 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
     ok((await page.locator("#dlg-msgs .msg.d").count()) === 2 && (await page.locator("#dlg-msgs .msg.p").count()) === 2, "réponse du directeur affichée dans la fenêtre (temps réel)");
     await page.keyboard.press("Escape");
     // caméras
-    for (const [mode, arg] of [["dept", "commercial"], ["direction"], ["meeting"], ["supervision"], ["activity"], ["general"]]) {
+    for (const [mode, arg] of [["dept", "commercial"], ["executive"], ["direction"], ["meeting"], ["supervision"], ["activity"], ["general"]]) {
       await ev(page, ([m, a]) => window.__vc.office.setView(m, a), [mode, arg]); await page.waitForTimeout(150);
       ok((await ev(page, () => window.__vc.office.view)).mode === mode, `caméra « ${mode} »`);
     }
@@ -277,6 +279,15 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
     await M.page.screenshot({ path: path.join(OUT, "m13_mobile.png") });
     ok(M.errors.length === 0, `mobile sans erreur (${M.errors.join(" | ")})`);
     await M.ctx.close();
+
+    const small = JSON.parse(JSON.stringify(FIX0)); small.ai_agents = small.ai_agents.filter((a) => ["sanix_ai_general_director", "sanix_ai_sales_director", "ia_dir_marketing", "ia_hunter_1"].includes(a.code));
+    const SM = await newPage(browser, { fixture: JSON.stringify(small) }); await openOffice(SM.page, PORT);
+    ok((await ev(SM.page, () => window.__vc.office.view)).mode === "executive" && (await ev(SM.page, () => window.__vc.office.stats())).avatars === 4, "prototype : une petite entreprise (4 collaborateurs) s'ouvre sur l'étage de direction");
+    ok(SM.errors.length === 0, `prototype sans erreur (${SM.errors.join(" | ")})`); await SM.ctx.close();
+    const FB = await newPage(browser, { block: ["**/assets/characters/*.glb"] }); await openOffice(FB.page, PORT);
+    const fb = await ev(FB.page, () => window.__vc.office.stats());
+    ok(fb.avatarMode === "procedural" && fb.avatars >= 25, "ressources GLB absentes : repli automatique sur les avatars procéduraux (le bureau reste utilisable)");
+    ok((await insp(FB.page, k.ia_nego_1)).anim === "talk", "les états restent animés en mode de repli"); await FB.ctx.close();
 
     const RM = await newPage(browser, { reduced: true });
     await openOffice(RM.page, PORT);

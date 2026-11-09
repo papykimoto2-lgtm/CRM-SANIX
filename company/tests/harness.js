@@ -5,17 +5,12 @@ const { start } = require("./server.js");
 const HERE = __dirname, OUT = path.join(__dirname, "out");
 fs.mkdirSync(OUT, { recursive: true });
 const FAKE = fs.readFileSync(path.join(HERE, "fakesb.js"), "utf8");
-const findThree = () => {   // même version que le CDN (0.170.0) : npm i --no-save three@0.170.0 playwright
-  for (const base of [...module.paths, ...(process.env.NODE_PATH ?? "").split(path.delimiter)].filter(Boolean)) { const f = path.join(base, "three/build/three.module.min.js"); if (fs.existsSync(f)) return f; }
-  throw new Error("three introuvable : npm i --no-save three@0.170.0 playwright");
-};
-const THREE = fs.readFileSync(findThree(), "utf8");
 const CORS = { "Access-Control-Allow-Origin": "*" };
 const GL = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--enable-webgl"];
 exports.OUT = OUT; exports.HERE = HERE;
 exports.launch = async (port) => ({ server: await start(port), browser: await chromium.launch({ args: GL }), port });
 exports.ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  ✓ " + m); };
-exports.newPage = async (browser, { w = 1440, h = 900, mobile = false, reduced = false, fixture = null, init = null } = {}) => {
+exports.newPage = async (browser, { w = 1440, h = 900, mobile = false, reduced = false, fixture = null, init = null, block = [] } = {}) => {
   const FIX = fixture ?? fs.readFileSync(path.join(HERE, "fixture.json"), "utf8");
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1, hasTouch: mobile, isMobile: mobile, reducedMotion: reduced ? "reduce" : "no-preference" });
   const page = await ctx.newPage(); const errors = [];
@@ -24,10 +19,10 @@ exports.newPage = async (browser, { w = 1440, h = 900, mobile = false, reduced =
   page.on("dialog", (d) => { errors.push("DIALOG: " + d.message()); d.dismiss(); });
   await ctx.addInitScript({ content: `window.__FIX = ${FIX};` + (init ?? "") + FAKE });
   await ctx.addInitScript(() => localStorage.setItem("sanix_crm_supabase_config", JSON.stringify({ url: "https://demo.supabase.co", key: "eyJhbGciOiJIUzI1NiJ9." + btoa(JSON.stringify({ role: "anon" })) + ".sig" })));
+  for (const pattern of block) await ctx.route(pattern, (r) => r.abort());   // ressources indisponibles (repli)
   await ctx.route("https://cdn.jsdelivr.net/**", (r) => {
     const u = r.request().url();
     if (u.includes("supabase-js")) return r.fulfill({ status: 200, contentType: "text/javascript", headers: CORS, body: "/* fake: défini par addInitScript */" });
-    if (u.includes("three@0.170.0/build/three.module.min.js")) return r.fulfill({ status: 200, contentType: "text/javascript", headers: CORS, body: THREE });
     return r.fulfill({ status: 404, body: "" });
   });
   return { page, errors, ctx };
