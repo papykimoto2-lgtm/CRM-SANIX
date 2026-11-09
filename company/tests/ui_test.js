@@ -133,6 +133,7 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     ok((await L.page.locator("#l-err img").count()) === 0 && msg.includes("<img"), "message serveur hostile affiché en texte brut (aucun HTML interprété)");
     ok(!L.errors.some((e) => /DIALOG|pageerror/.test(e)), "aucune boîte de dialogue ni erreur de page");
     // accès commun avec le CRM : l'identifiant du CRM est accepté et proposé ; le mot de passe n'est jamais pré-rempli
+    await L.page.reload(); await L.page.waitForSelector("#login-form");   // écran de connexion neuf : les saisies précédentes sont oubliées
     ok((await L.page.inputValue("#l-mail")) === "kessie" && (await L.page.inputValue("#l-pass")) === "", "identifiant du CRM (kessie) proposé par défaut, mot de passe jamais pré-rempli");
     const tryLogin = async (id) => { await L.page.fill("#l-mail", id); await L.page.fill("#l-pass", "x"); await L.page.click("#login-form button[type=submit]"); await L.page.waitForTimeout(300); return L.page.locator("#l-err").innerText(); };
     await L.page.evaluate(() => { window.__SIGNIN_ERR = { name: "AuthApiError", status: 400, code: "invalid_credentials", message: "Invalid login credentials" }; window.__SIGNINS = []; });
