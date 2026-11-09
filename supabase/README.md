@@ -43,6 +43,8 @@ supabase functions deploy whatsapp-webhook --no-verify-jwt   # authentifié par 
 
 ### Planificateur (pg_cron + pg_net)
 
+Sans CLI : `schedule_cron.sql` (voir `DEPLOIEMENT.md` §3) planifie les trois tâches en une exécution, le secret étant généré et gardé dans le Vault (rien à saisir). Variante manuelle, fonctions déployées avec *Verify JWT* actif :
+
 ```sql
 select cron.schedule('ai-company-tick', '* * * * *', $$
   select net.http_post('https://<ref>.supabase.co/functions/v1/ai-company',
