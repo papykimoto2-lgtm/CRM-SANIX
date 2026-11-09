@@ -80,9 +80,13 @@ var BudgetError = class extends Error {
 };
 var TransientLlmError = class extends Error {
 };
+var LlmKeyMissingError = class extends TransientLlmError {
+};
 var _client = null;
 function client() {
-  _client ??= new Anthropic({ apiKey: env("ANTHROPIC_API_KEY"), timeout: 14e4, maxRetries: 1 });
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) throw new LlmKeyMissingError("ANTHROPIC_API_KEY absente des secrets Edge Functions");
+  _client ??= new Anthropic({ apiKey, timeout: 14e4, maxRetries: 1 });
   return _client;
 }
 var _model = null;
@@ -959,7 +963,7 @@ Deno.serve(async (req) => {
     throw new HttpError(400, "Action inconnue");
   } catch (e) {
     if (e instanceof BudgetError) return json(req, { error: e.message }, 429);
-    if (e instanceof TransientLlmError) return json(req, { error: "Service IA momentan\xE9ment indisponible, r\xE9essayez" }, 503);
+    if (e instanceof TransientLlmError) return json(req, { error: e instanceof LlmKeyMissingError ? "Cl\xE9 ANTHROPIC_API_KEY absente : l'ajouter dans Supabase \u2192 Edge Functions \u2192 Secrets" : "Service IA momentan\xE9ment indisponible, r\xE9essayez" }, 503);
     const status = e instanceof HttpError ? e.status : 500;
     if (status === 500) console.error(e);
     return json(req, { error: status === 500 ? "Erreur interne" : e.message }, status);

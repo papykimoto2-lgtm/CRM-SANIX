@@ -4,7 +4,7 @@
 //  {action:"tick"}  + en-tête x-cron-secret                                    → relances dues (pg_cron / scheduler)
 import { audit, cors, db, env, HttpError, json, requireOperator, safeEqual } from "../_shared/core.ts";
 import { runAgent } from "../_shared/agent.ts";
-import { BudgetError, TransientLlmError } from "../_shared/llm.ts";
+import { BudgetError, LlmKeyMissingError, TransientLlmError } from "../_shared/llm.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
     throw new HttpError(400, "Action inconnue");
   } catch (e) {
     if (e instanceof BudgetError) return json(req, { error: e.message }, 429);
-    if (e instanceof TransientLlmError) return json(req, { error: "Service IA momentanément indisponible, réessayez" }, 503);
+    if (e instanceof TransientLlmError) return json(req, { error: e instanceof LlmKeyMissingError ? "Clé ANTHROPIC_API_KEY absente : l'ajouter dans Supabase → Edge Functions → Secrets" : "Service IA momentanément indisponible, réessayez" }, 503);
     const status = e instanceof HttpError ? e.status : 500;
     if (status === 500) console.error(e);
     return json(req, { error: status === 500 ? "Erreur interne" : (e as Error).message }, status);

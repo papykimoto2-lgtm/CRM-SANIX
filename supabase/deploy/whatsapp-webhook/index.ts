@@ -45,9 +45,13 @@ var BudgetError = class extends Error {
 };
 var TransientLlmError = class extends Error {
 };
+var LlmKeyMissingError = class extends TransientLlmError {
+};
 var _client = null;
 function client() {
-  _client ??= new Anthropic({ apiKey: env("ANTHROPIC_API_KEY"), timeout: 14e4, maxRetries: 1 });
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) throw new LlmKeyMissingError("ANTHROPIC_API_KEY absente des secrets Edge Functions");
+  _client ??= new Anthropic({ apiKey, timeout: 14e4, maxRetries: 1 });
   return _client;
 }
 var _model = null;

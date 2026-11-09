@@ -2,7 +2,7 @@
 //  Président (JWT opérateur « direction ») : instruction · assign_mission · request_report · report_now · report_resend
 //  Planificateur (x-cron-secret)           : tick (chaque minute) · report_tick (toutes les 5 minutes)
 import { audit, clip, cors, db, env, errMsg, HttpError, json, requireOperator, safeEqual } from "../_shared/core.ts";
-import { BudgetError, TransientLlmError } from "../_shared/llm.ts";
+import { BudgetError, LlmKeyMissingError, TransientLlmError } from "../_shared/llm.ts";
 import { createInstructionTask, runTask } from "../_shared/company/engine.ts";
 import { assignMission, requestReport } from "../_shared/company/president.ts";
 import { runBudgetMs, tickCompany } from "../_shared/company/tick.ts";
@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
     throw new HttpError(400, "Action inconnue");
   } catch (e) {
     if (e instanceof BudgetError) return json(req, { error: e.message }, 429);
-    if (e instanceof TransientLlmError) return json(req, { error: "Service IA momentanément indisponible, réessayez" }, 503);
+    if (e instanceof TransientLlmError) return json(req, { error: e instanceof LlmKeyMissingError ? "Clé ANTHROPIC_API_KEY absente : l'ajouter dans Supabase → Edge Functions → Secrets" : "Service IA momentanément indisponible, réessayez" }, 503);
     const status = e instanceof HttpError ? e.status : 500;
     if (status === 500) console.error(e);
     return json(req, { error: status === 500 ? "Erreur interne" : (e as Error).message }, status);

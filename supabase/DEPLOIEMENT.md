@@ -37,38 +37,49 @@ Supabase → **Edge Functions** → **Deploy a new function** → **Via Editor**
 
 *Verify JWT désactivé* : chaque fonction authentifie elle-même son appelant (JWT opérateur vérifié par Supabase Auth + ligne `ai_operators` ; secret du planificateur `x-cron-secret` ; signature HMAC de Meta). Le contrôle de la plateforme refuserait les clés « publishable » (qui ne sont pas des JWT).
 
+**Depuis un téléphone** : ouvrir le lien brut dans le navigateur (pas dans l'application GitHub), appui long → *Tout sélectionner* → *Copier*, puis coller dans l'éditeur Supabase. Liens : `https://raw.githubusercontent.com/papykimoto2-lgtm/CRM-SANIX/main/supabase/deploy/<nom>/index.ts` (`<nom>` = `ai-company`, `ai-sales-director`, `whatsapp-webhook`). *Verify JWT* se désactive après le premier déploiement : *Edge Functions → la fonction → Details*, interrupteur « Verify JWT », **Save changes**.
+
 Ces fichiers sont générés (`sh supabase/build_functions.sh`, Node requis) : le code partagé de `functions/_shared` y est inclus. Variante CLI : `supabase login`, `supabase link --project-ref izgpvhwhbrgeagjfhfli`, `supabase functions deploy ai-company ai-sales-director whatsapp-webhook --no-verify-jwt`.
 
 ## 2. Secrets (Edge Functions → Secrets → Add new secret)
 | Nom | Requis | Rôle |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | oui | clé de la console Anthropic. **Seul endroit où la saisir** (jamais dans le navigateur ni dans le dépôt). |
-| `CRON_SECRET` | oui | chaîne aléatoire d'au moins 32 caractères ; la même valeur sert dans le SQL du planificateur (§3) |
+| `CRON_SECRET` | oui | valeur **générée par `schedule_cron.sql` (§3)** et affichée à la fin : la recopier ici. Sans elle, les appels du planificateur sont refusés (401). |
 | `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO` | pour les rapports par e-mail | envoi via Resend |
 | `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_TEMPLATE_FIRST` | pour WhatsApp | API WhatsApp Cloud (webhook : `https://izgpvhwhbrgeagjfhfli.supabase.co/functions/v1/whatsapp-webhook`) |
 | `DEMO_VISIO_URL` | non | lien de visio proposé aux prospects |
 
 `SUPABASE_URL` et `SUPABASE_SERVICE_ROLE_KEY` sont fournis par Supabase.
 
-## 3. Planificateur
-*Database → Extensions* : activer `pg_cron` et `pg_net`. Puis *SQL Editor* (remplacer `<CRON_SECRET>` ; ce SQL contient un secret : ne pas le garder dans le dépôt). Avec *Verify JWT* désactivé, l'en-tête `Authorization` est inutile :
+## 3. Planificateur (SQL, sans secret à saisir)
+*SQL Editor* → coller `supabase/schedule_cron.sql` → **Run**. Le script :
+1. active `pg_cron`, `pg_net` et le Vault ;
+2. **génère le secret du planificateur** (64 caractères aléatoires) et le garde dans le Vault : il n'apparaît ni dans les requêtes planifiées ni dans le dépôt ;
+3. planifie trois tâches : `ai-company` *tick* chaque minute, *report_tick* toutes les 5 minutes, `ai-sales-director` *tick* toutes les 15 minutes (en-tête `x-cron-secret` lu dans le Vault à chaque appel ; *Verify JWT* désactivé, l'en-tête `Authorization` est inutile) ;
+4. **affiche le secret** (dernière requête) : le **recopier tel quel** dans *Edge Functions → Secrets → `CRON_SECRET`* (§2).
 
-```sql
-select cron.schedule('ai-company-tick', '* * * * *', $$
-  select net.http_post('https://izgpvhwhbrgeagjfhfli.supabase.co/functions/v1/ai-company',
-    '{"action":"tick"}'::jsonb, '{}'::jsonb,
-    jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'))$$);
-select cron.schedule('ai-company-reports', '*/5 * * * *', $$
-  select net.http_post('https://izgpvhwhbrgeagjfhfli.supabase.co/functions/v1/ai-company',
-    '{"action":"report_tick"}'::jsonb, '{}'::jsonb,
-    jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'))$$);
-select cron.schedule('ai-sales-followups', '*/15 * * * *', $$
-  select net.http_post('https://izgpvhwhbrgeagjfhfli.supabase.co/functions/v1/ai-sales-director',
-    '{"action":"tick"}'::jsonb, '{}'::jsonb,
-    jsonb_build_object('Content-Type','application/json','x-cron-secret','<CRON_SECRET>'))$$);
-```
+Relançable sans effet de bord (même secret, mêmes tâches). Arrêter : `select cron.unschedule('ai-company-tick');` (idem `ai-company-reports`, `ai-sales-followups`). Changer le secret : `delete from vault.secrets where name = 'ai_cron_secret';`, relancer le script, recopier la nouvelle valeur. Test : `supabase/functions/tests/schedule_cron_test.sh`.
 
 ## 4. Vérifier
-- *Edge Functions → ai-company → Logs* : un appel par minute. Une réponse `401 Non autorisé` = `CRON_SECRET` différent entre les secrets et le SQL.
+- *Edge Functions → ai-company → Logs* : un appel par minute. Une réponse `401 Non autorisé` = `CRON_SECRET` absent des secrets Edge ou différent de la valeur du Vault (la réafficher : `select decrypted_secret from vault.decrypted_secrets where name = 'ai_cron_secret';`).
 - Dans SANIX AI : cliquer sur le directeur général IA, lui donner une instruction ; la mission et la réponse apparaissent sans recharger la page.
-- Sans `ANTHROPIC_API_KEY`, les fonctions répondent mais les agents ne peuvent pas raisonner (incident « llm_indisponible » dans la gouvernance).
+- Sans `ANTHROPIC_API_KEY`, les fonctions répondent mais **tout reste en pause** : le planificateur ne réclame aucune mission, aucun agent n'est sanctionné ni suspendu, et un incident critique « cle_ia_absente » apparaît dans la gouvernance (une seule fois). Les missions reprennent d'elles-mêmes dès que le secret est posé. Pour ne rien perdre de temps, poser `ANTHROPIC_API_KEY` **avant** `CRON_SECRET` (sans `CRON_SECRET`, les appels du planificateur sont refusés).
+
+## 5. Déploiement automatique (GitHub Actions) : sans CLI, sans formulaire, depuis un téléphone
+Alternative aux §1 et §2 quand le déploiement à la main bloque (nom de fonction à retaper, trois collages de 44 à 158 Ko…). Le jeton Supabase reste dans les **secrets chiffrés de GitHub** ; il n'est ni dans le dépôt, ni dans une conversation.
+
+1. Supabase → avatar → *Access Tokens* → *Generate new token* (nom `sanix-deploy`) → copier `sbp_…`.
+2. GitHub → dépôt → *Settings → Secrets and variables → Actions → New repository secret* : nom `SUPABASE_ACCESS_TOKEN`, valeur = le jeton (seulement `sbp_…`, sans « Bearer », sans espace).
+3. *Actions → Déployer SANIX AI (Supabase) → Run workflow*. Champ facultatif : noms de fonctions parasites à supprimer (ex. `clever-endpoint`).
+4. Lire le journal : ✓ / ⚠ / ✗ par étape.
+5. **Révoquer le jeton** (Supabase → *Access Tokens*) et supprimer le secret GitHub.
+
+Ce que fait `supabase/tools/deploy_functions.sh` (utilisable aussi en local : `SUPABASE_ACCESS_TOKEN=sbp_… bash supabase/tools/deploy_functions.sh`) :
+- vérifie l'accès au projet, déploie `ai-company`, `ai-sales-director`, `whatsapp-webhook` **sous leur nom exact**, *Verify JWT* désactivé et contrôlé ;
+- copie le secret du planificateur du Vault vers le secret `CRON_SECRET` des fonctions (valeur masquée, jamais affichée) : `schedule_cron.sql` (§3) doit avoir été exécuté ;
+- signale si `ANTHROPIC_API_KEY` manque (**à saisir toi-même dans *Edge Functions → Secrets***, c'est le seul secret qui ne passe pas par ici) ;
+- sonde les fonctions avec un faux secret (401 attendu), puis attend les appels du planificateur et affiche leurs codes de réponse, les agents suspendus, les missions par statut et les incidents récents ;
+- ne supprime que les fonctions nommées dans le champ du workflow, jamais les trois fonctions de SANIX AI.
+
+Test : `supabase/functions/tests/deploy_functions_test.sh` (faux serveur de l'API de gestion : multipart exact, repli sur l'API historique, jeton mal formé, suppression encadrée, secrets jamais affichés).

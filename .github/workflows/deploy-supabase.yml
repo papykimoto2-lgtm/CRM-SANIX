@@ -1,0 +1,34 @@
+name: Déployer SANIX AI (Supabase)
+
+# Déclenchement manuel uniquement (onglet Actions → « Déployer SANIX AI (Supabase) » → Run workflow).
+# Déploie les trois fonctions Edge, copie le secret du planificateur (Vault → CRON_SECRET) et contrôle le résultat :
+# voir supabase/DEPLOIEMENT.md §5 et supabase/tools/deploy_functions.sh.
+# Secret requis : SUPABASE_ACCESS_TOKEN (jeton personnel Supabase « sbp_… »), à révoquer une fois le déploiement terminé.
+on:
+  workflow_dispatch:
+    inputs:
+      delete_functions:
+        description: "Fonctions à supprimer (noms séparés par des virgules, ex. clever-endpoint). Jamais les trois fonctions de SANIX AI."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-deploy
+  cancel-in-progress: false
+
+jobs:
+  deployer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Déployer, régler les secrets, contrôler
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          DELETE_FUNCTIONS: ${{ inputs.delete_functions }}
+        run: bash supabase/tools/deploy_functions.sh
