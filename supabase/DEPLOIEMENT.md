@@ -1,6 +1,19 @@
 # Déployer les fonctions Edge (sans CLI, sans jeton)
 
-Projet `izgpvhwhbrgeagjfhfli`. Prérequis : schéma appliqué (`setup_all.sql`) et opérateur créé (`ACCES.md`). Sans les fonctions, le bureau affiche déjà le directeur général IA et le directeur commercial (créés par le schéma) ; les fonctions donnent vie aux missions, réunions, rapports et au dialogue avec le directeur.
+Projet `izgpvhwhbrgeagjfhfli`. Prérequis : schéma appliqué (`setup_all.sql`) et opérateur créé (`ACCES.md`). Sans les fonctions, le bureau affiche déjà les agents (§0) ; les fonctions leur donnent vie : missions, réunions, rapports et dialogue avec le directeur.
+
+## 0. Créer tous les agents (SQL, immédiat)
+*SQL Editor* → coller `supabase/seed_agents.sql` → **Run**. Crée les **23 collaborateurs** de l'organisation avec leur cahier des charges (25 avec le directeur général et le directeur commercial) :
+
+| Département | Collaborateurs |
+|---|---|
+| Direction commerciale | responsable de la prospection ; 3 superviseurs (immobilier et BTP, santé, distribution et livraison) ; 3 chercheurs, analyste de données, qualificateur, WhatsApp, e-mail, rendez-vous, négociateur |
+| Marketing | directeur ; rédacteur de contenus ; community manager |
+| Intelligence économique | directeur ; étude de marché ; veille concurrentielle |
+| Relation client | directeur ; customer success |
+| Administration | directeur ; gestionnaire de documents |
+
+Le script passe par les mêmes règles que la création par le directeur IA (hiérarchie, plafond, charte obligatoire), peut être relancé sans doublon et trace l'opération au journal d'audit. Le plafond de gouvernance (25 agents actifs) est atteint : l'augmenter dans *Gouvernance* avant d'autoriser d'autres créations. Aucun message externe ne part sans votre validation. Les agents apparaissent en direct dans le bureau 3D, sans recharger la page.
 
 ## 1. Les trois fonctions (tableau de bord)
 Supabase → **Edge Functions** → **Deploy a new function** → **Via Editor**. Pour chacune : saisir le nom exact, effacer l'exemple, coller **tout** le fichier (GitHub → fichier → *Copy raw file*), **Deploy**.
