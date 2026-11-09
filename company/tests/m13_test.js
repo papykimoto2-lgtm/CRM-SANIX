@@ -217,10 +217,16 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
     ok((await ev(page, () => window.__CALLS.some((c) => c.rpc === "ai_set_agent_etat" && c.args.p_etat === "suspendu"))) && (await insp(page, A.ia_hunter_2)).anim === "pause", "suspension depuis la fiche : l'avatar se fige (pause)");
     // dialogue avec le directeur IA
     await page.locator("#sheet [data-act=sheet-back]").click();
-    const pdg = await ev(page, (id) => window.__vc.office.screenPositionOf(id), A.sanix_ai_general_director);
-    await ev(page, (id) => window.__vc.office.setView("follow", id, { theta: 0.3, phi: 1.0, r: 12 }), A.sanix_ai_general_director); await page.waitForTimeout(1400);
+    await ev(page, (id) => window.__vc.office.setView("follow", id, { theta: 0.3, phi: 1.0, r: 12 }), A.sanix_ai_general_director);
+    await ev(page, () => window.__vc.office.settleCamera()); await page.waitForTimeout(400);
+    await page.locator("#stage").scrollIntoViewIfNeeded();                                   // la page a pu défiler depuis la mesure initiale
     const pdg2 = await ev(page, (id) => window.__vc.office.screenPositionOf(id), A.sanix_ai_general_director);
-    await page.mouse.click(box.x + pdg2.x, box.y + pdg2.y - 6); await page.waitForSelector("#dlg-form", { timeout: 3000 });
+    const bx = await page.locator("#stage").boundingBox();
+    await page.mouse.click(bx.x + pdg2.x, bx.y + pdg2.y - 6);
+    await page.waitForSelector("#dlg-form", { timeout: 4000 }).catch(async () => {
+      const d = await ev(page, () => { const s = window.__vc.selected, o = window.__vc.office; return { sel: window.__vc.agents.find((a) => a.id === s)?.code ?? null, view: o.view, sheet: !document.querySelector("#sheet")?.hidden, dlg: !!document.querySelector("#dlg-form") }; });
+      throw new Error(`dialogue du directeur non ouvert : ${JSON.stringify(d)} · écran ${JSON.stringify(pdg2)} · scène ${JSON.stringify(bx)} · box initiale ${JSON.stringify(box)}`);
+    });
     ok(true, "clic sur le directeur IA : fenêtre de dialogue ouverte");
     ok((await page.locator("#dlg-msgs .msg").count()) === 2, "historique de la conversation affiché");
     await page.fill("#dlg-t", "Fais le point sur les cliniques."); await page.click("#dlg-send"); await page.waitForTimeout(1500);
