@@ -64,4 +64,22 @@ Relançable sans effet de bord (même secret, mêmes tâches). Arrêter : `selec
 ## 4. Vérifier
 - *Edge Functions → ai-company → Logs* : un appel par minute. Une réponse `401 Non autorisé` = `CRON_SECRET` absent des secrets Edge ou différent de la valeur du Vault (la réafficher : `select decrypted_secret from vault.decrypted_secrets where name = 'ai_cron_secret';`).
 - Dans SANIX AI : cliquer sur le directeur général IA, lui donner une instruction ; la mission et la réponse apparaissent sans recharger la page.
-- Sans `ANTHROPIC_API_KEY`, les fonctions répondent mais les agents ne peuvent pas raisonner (incident « llm_indisponible » dans la gouvernance).
+- Sans `ANTHROPIC_API_KEY`, les fonctions répondent mais **tout reste en pause** : le planificateur ne réclame aucune mission, aucun agent n'est sanctionné ni suspendu, et un incident critique « cle_ia_absente » apparaît dans la gouvernance (une seule fois). Les missions reprennent d'elles-mêmes dès que le secret est posé. Pour ne rien perdre de temps, poser `ANTHROPIC_API_KEY` **avant** `CRON_SECRET` (sans `CRON_SECRET`, les appels du planificateur sont refusés).
+
+## 5. Déploiement automatique (GitHub Actions) : sans CLI, sans formulaire, depuis un téléphone
+Alternative aux §1 et §2 quand le déploiement à la main bloque (nom de fonction à retaper, trois collages de 44 à 158 Ko…). Le jeton Supabase reste dans les **secrets chiffrés de GitHub** ; il n'est ni dans le dépôt, ni dans une conversation.
+
+1. Supabase → avatar → *Access Tokens* → *Generate new token* (nom `sanix-deploy`) → copier `sbp_…`.
+2. GitHub → dépôt → *Settings → Secrets and variables → Actions → New repository secret* : nom `SUPABASE_ACCESS_TOKEN`, valeur = le jeton (seulement `sbp_…`, sans « Bearer », sans espace).
+3. *Actions → Déployer SANIX AI (Supabase) → Run workflow*. Champ facultatif : noms de fonctions parasites à supprimer (ex. `clever-endpoint`).
+4. Lire le journal : ✓ / ⚠ / ✗ par étape.
+5. **Révoquer le jeton** (Supabase → *Access Tokens*) et supprimer le secret GitHub.
+
+Ce que fait `supabase/tools/deploy_functions.sh` (utilisable aussi en local : `SUPABASE_ACCESS_TOKEN=sbp_… bash supabase/tools/deploy_functions.sh`) :
+- vérifie l'accès au projet, déploie `ai-company`, `ai-sales-director`, `whatsapp-webhook` **sous leur nom exact**, *Verify JWT* désactivé et contrôlé ;
+- copie le secret du planificateur du Vault vers le secret `CRON_SECRET` des fonctions (valeur masquée, jamais affichée) : `schedule_cron.sql` (§3) doit avoir été exécuté ;
+- signale si `ANTHROPIC_API_KEY` manque (**à saisir toi-même dans *Edge Functions → Secrets***, c'est le seul secret qui ne passe pas par ici) ;
+- sonde les fonctions avec un faux secret (401 attendu), puis attend les appels du planificateur et affiche leurs codes de réponse, les agents suspendus, les missions par statut et les incidents récents ;
+- ne supprime que les fonctions nommées dans le champ du workflow, jamais les trois fonctions de SANIX AI.
+
+Test : `supabase/functions/tests/deploy_functions_test.sh` (faux serveur de l'API de gestion : multipart exact, repli sur l'API historique, jeton mal formé, suppression encadrée, secrets jamais affichés).
