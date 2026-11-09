@@ -6,6 +6,7 @@ import { flushOutbox } from "../_shared/outbox.ts";
 import { runAgent } from "../_shared/agent.ts";
 import { runTask, createInstructionTask } from "../_shared/company/engine.ts";
 import { tickCompany } from "../_shared/company/tick.ts";
+import { cronSecret, resetCronSecretCache } from "../_shared/core.ts";
 
 const CHARTE = {
   mission_principale: "Mission principale mesurable", missions_secondaires: ["Secondaire"], competences: ["Compétence"], donnees: ["Prospects CRM"],
@@ -404,6 +405,32 @@ T("T7 · clé ANTHROPIC_API_KEY absente : pause générale, aucune faute imputé
   const r2 = await tickCompany(); await r2.work;
   eq(r2.missions, 1, "reprise dès que la clé est posée");
   eq(await val("select statut from ai_agent_tasks where id = $1", [t.task_id]), "terminee", "mission terminée");
+});
+
+// ─── T8 · secret du planificateur lu dans le Vault ─────────────────
+T("T8 · secret du planificateur : lu dans le Vault (ai_cron_secret), repli sur le secret Edge, mémorisé 30 s", async () => {
+  await freshDb(); resetCronSecretCache();
+  eq(await cronSecret(), "secret", "sans fonction SQL (installation sans Vault) : repli sur le secret Edge");
+  await sql("create schema if not exists vault");
+  await sql("create table vault.decrypted_secrets(name text, decrypted_secret text)");
+  await sql("insert into vault.decrypted_secrets values ('ai_cron_secret', 'valeur-du-vault')");
+  await sql("create function public.ai_cron_secret() returns text language sql as $$ select decrypted_secret from vault.decrypted_secrets where name = 'ai_cron_secret' $$");
+  eq(await cronSecret(), "secret", "valeur mémorisée 30 s : pas de nouvelle lecture");
+  resetCronSecretCache();
+  eq(await cronSecret(), "valeur-du-vault", "le Vault l'emporte sur le secret Edge");
+  await sql("update vault.decrypted_secrets set decrypted_secret = 'nouvelle-valeur'");
+  eq(await cronSecret(), "valeur-du-vault", "rotation : l'ancienne valeur reste en mémoire jusqu'à expiration");
+  resetCronSecretCache();
+  eq(await cronSecret(), "nouvelle-valeur", "rotation prise en compte après expiration");
+  await sql("delete from vault.decrypted_secrets");
+  resetCronSecretCache();
+  eq(await cronSecret(), "secret", "secret absent du Vault : repli sur le secret Edge");
+  Deno.env.delete("CRON_SECRET"); resetCronSecretCache();
+  try {
+    let msg = "";
+    try { await cronSecret(); } catch (e) { msg = (e as Error).message; }
+    assert(msg.includes("CRON_SECRET"), "ni Vault ni secret Edge : erreur explicite");
+  } finally { Deno.env.set("CRON_SECRET", "secret"); resetCronSecretCache(); }
 });
 
 T("cleanup", async () => { await dropAll(); });

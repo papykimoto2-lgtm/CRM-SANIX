@@ -45,7 +45,7 @@ Ces fichiers sont générés (`sh supabase/build_functions.sh`, Node requis) : l
 | Nom | Requis | Rôle |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | oui | clé de la console Anthropic. **Seul endroit où la saisir** (jamais dans le navigateur ni dans le dépôt). |
-| `CRON_SECRET` | oui | valeur **générée par `schedule_cron.sql` (§3)** et affichée à la fin : la recopier ici. Sans elle, les appels du planificateur sont refusés (401). |
+| `CRON_SECRET` | **non** | rien à saisir : `schedule_cron.sql` (§3) garde le secret du planificateur dans le Vault et les fonctions le lisent par `ai_cron_secret()`. Secret Edge facultatif, utilisé seulement en repli (installation sans Vault). |
 | `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO` | pour les rapports par e-mail | envoi via Resend |
 | `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_TEMPLATE_FIRST` | pour WhatsApp | API WhatsApp Cloud (webhook : `https://izgpvhwhbrgeagjfhfli.supabase.co/functions/v1/whatsapp-webhook`) |
 | `DEMO_VISIO_URL` | non | lien de visio proposé aux prospects |
@@ -57,14 +57,14 @@ Ces fichiers sont générés (`sh supabase/build_functions.sh`, Node requis) : l
 1. active `pg_cron`, `pg_net` et le Vault ;
 2. **génère le secret du planificateur** (64 caractères aléatoires) et le garde dans le Vault : il n'apparaît ni dans les requêtes planifiées ni dans le dépôt ;
 3. planifie trois tâches : `ai-company` *tick* chaque minute, *report_tick* toutes les 5 minutes, `ai-sales-director` *tick* toutes les 15 minutes (en-tête `x-cron-secret` lu dans le Vault à chaque appel ; *Verify JWT* désactivé, l'en-tête `Authorization` est inutile) ;
-4. **affiche le secret** (dernière requête) : le **recopier tel quel** dans *Edge Functions → Secrets → `CRON_SECRET`* (§2).
+4. crée la fonction SQL `ai_cron_secret()` (lecture du secret **réservée au service** : refusée à `anon` et `authenticated`) et **liste les tâches** planifiées. **Aucun secret à recopier** nulle part.
 
-Relançable sans effet de bord (même secret, mêmes tâches). Arrêter : `select cron.unschedule('ai-company-tick');` (idem `ai-company-reports`, `ai-sales-followups`). Changer le secret : `delete from vault.secrets where name = 'ai_cron_secret';`, relancer le script, recopier la nouvelle valeur. Test : `supabase/functions/tests/schedule_cron_test.sh`.
+Relançable sans effet de bord (même secret, mêmes tâches). Arrêter : `select cron.unschedule('ai-company-tick');` (idem `ai-company-reports`, `ai-sales-followups`). Changer le secret : `delete from vault.secrets where name = 'ai_cron_secret';`, relancer le script (les fonctions s'alignent en 30 s). Test : `supabase/functions/tests/schedule_cron_test.sh`.
 
 ## 4. Vérifier
-- *Edge Functions → ai-company → Logs* : un appel par minute. Une réponse `401 Non autorisé` = `CRON_SECRET` absent des secrets Edge ou différent de la valeur du Vault (la réafficher : `select decrypted_secret from vault.decrypted_secrets where name = 'ai_cron_secret';`).
+- *Edge Functions → ai-company → Logs* : un appel par minute. Une réponse `401 Non autorisé` = secret du Vault différent de l'en-tête (relancer `schedule_cron.sql`) ; `500` = ni `ai_cron_secret()` ni `CRON_SECRET` disponibles.
 - Dans SANIX AI : cliquer sur le directeur général IA, lui donner une instruction ; la mission et la réponse apparaissent sans recharger la page.
-- Sans `ANTHROPIC_API_KEY`, les fonctions répondent mais **tout reste en pause** : le planificateur ne réclame aucune mission, aucun agent n'est sanctionné ni suspendu, et un incident critique « cle_ia_absente » apparaît dans la gouvernance (une seule fois). Les missions reprennent d'elles-mêmes dès que le secret est posé. Pour ne rien perdre de temps, poser `ANTHROPIC_API_KEY` **avant** `CRON_SECRET` (sans `CRON_SECRET`, les appels du planificateur sont refusés).
+- Sans `ANTHROPIC_API_KEY`, les fonctions répondent mais **tout reste en pause** : le planificateur ne réclame aucune mission, aucun agent n'est sanctionné ni suspendu, et un incident critique « cle_ia_absente » apparaît dans la gouvernance (une seule fois). Les missions reprennent d'elles-mêmes dès que le secret est posé.
 
 ## 5. Déploiement automatique (GitHub Actions) : sans CLI, sans formulaire, depuis un téléphone
 Alternative aux §1 et §2 quand le déploiement à la main bloque (nom de fonction à retaper, trois collages de 44 à 158 Ko…). Le jeton Supabase reste dans les **secrets chiffrés de GitHub** ; il n'est ni dans le dépôt, ni dans une conversation.
@@ -77,9 +77,16 @@ Alternative aux §1 et §2 quand le déploiement à la main bloque (nom de fonct
 
 Ce que fait `supabase/tools/deploy_functions.sh` (utilisable aussi en local : `SUPABASE_ACCESS_TOKEN=sbp_… bash supabase/tools/deploy_functions.sh`) :
 - vérifie l'accès au projet, déploie `ai-company`, `ai-sales-director`, `whatsapp-webhook` **sous leur nom exact**, *Verify JWT* désactivé et contrôlé ;
-- copie le secret du planificateur du Vault vers le secret `CRON_SECRET` des fonctions (valeur masquée, jamais affichée) : `schedule_cron.sql` (§3) doit avoir été exécuté ;
+- vérifie que le secret du planificateur existe dans le Vault et le copie vers le secret Edge `CRON_SECRET` (repli facultatif, valeur masquée, jamais affichée) : `schedule_cron.sql` (§3) doit avoir été exécuté ;
 - signale si `ANTHROPIC_API_KEY` manque (**à saisir toi-même dans *Edge Functions → Secrets***, c'est le seul secret qui ne passe pas par ici) ;
 - sonde les fonctions avec un faux secret (401 attendu), puis attend les appels du planificateur et affiche leurs codes de réponse, les agents suspendus, les missions par statut et les incidents récents ;
 - ne supprime que les fonctions nommées dans le champ du workflow, jamais les trois fonctions de SANIX AI.
 
 Test : `supabase/functions/tests/deploy_functions_test.sh` (faux serveur de l'API de gestion : multipart exact, repli sur l'API historique, jeton mal formé, suppression encadrée, secrets jamais affichés).
+
+## 6. Déploiement par le connecteur Supabase (Claude)
+Quand le connecteur Supabase de Claude est branché sur **le bon compte** (vérifier : `list_projects` doit montrer `izgpvhwhbrgeagjfhfli`), Claude déploie sans jeton à créer :
+- chaque fonction est publiée avec un point d'entrée d'une ligne, `import "https://raw.githubusercontent.com/papykimoto2-lgtm/CRM-SANIX/<commit>/supabase/deploy/<nom>/index.ts";`, **épinglé sur un commit** : le code est embarqué à la compilation (aucun appel réseau à l'exécution) et correspond exactement au dépôt ;
+- *Verify JWT* désactivé ; les contrôles se font par SQL (`net._http_response` : codes de réponse du planificateur) et par les journaux ;
+- seule `ANTHROPIC_API_KEY` reste à saisir par l'exploitant (formulaire du tableau de bord) ;
+- les fonctions parasites du tableau de bord (noms aléatoires comme `clever-endpoint`) ne peuvent pas être supprimées par le connecteur : *Edge Functions → la fonction → Delete function*.
