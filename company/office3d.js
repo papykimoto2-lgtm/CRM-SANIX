@@ -857,7 +857,7 @@ export async function createOffice(container, hooks = {}) {
   function dispose() { stop(); ro.disconnect(); io?.disconnect(); disposeStatic(); for (const id of [...avatars.keys()]) removeAvatar(id); renderer.dispose(); dom.remove(); labels.remove(); }
   const screenPositionOf = (id) => { const av = avatars.get(id); if (!av) return null; V.set(av.root.position.x, 1.3 * av.S, av.root.position.z).project(camera); return { x: (V.x * 0.5 + 0.5) * w, y: (-V.y * 0.5 + 0.5) * h, visible: V.z < 1 }; };
   /** Simulation accélérée sans rendu (tests, rattrapage). */
-  function advance(seconds) { for (let t = 0; t < seconds; t += 0.05) { wallOffset += 50; step(0.05); } renderOnce(); }
+  function advance(seconds, render = seconds >= 0.5) { for (let t = 0; t < seconds; t += 0.05) { wallOffset += 50; step(0.05); } if (render) renderOnce(); }   // pas de rendu GL pour les échantillonnages courts (tests)
   const inspect = (id) => { const av = avatars.get(id); if (!av) return null; const i = av.inspect(); return { ...i, place: av.place?.key ?? null, anim: av.walking ? "walk" : av.place?.anim ?? i.anim, bubble: av.bubble?.text ?? null, speaking: av.place?.anim === "speak", icon: av.icon.visible ? "oui" : null, marker: av.detail !== "full" }; };
   /** Vrai si le point (x, z) est dans l'emprise d'un bureau ou de la table de réunion (contrôle des trajets). */
   const collides = (x, z) => {
