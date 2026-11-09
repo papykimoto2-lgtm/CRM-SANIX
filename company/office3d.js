@@ -819,7 +819,7 @@ export async function createOffice(container, hooks = {}) {
   function pushEvent(ev) {
     const line = lineOf(ev); if (line) { feed.push(line); if (feed.length > 30) feed.shift(); feedDirty = true; }
     const av = avatars.get(ev.agent_id);
-    if (ev.kind === "parole" && av) { const text = ev.payload?.extrait ?? ""; if (text) av.bubble = { text, until: wallNow() + clampN(6000 + text.length * 45, 6000, 14000) }; }
+    if (ev.kind === "parole" && av) { const text = ev.payload?.extrait ?? ""; if (text) { av.bubble = { text, until: wallNow() + clampN(6000 + text.length * 45, 6000, 14000) }; updateLabels(); } }
     // application immédiate (avant l'arrivée de la ligne d'état) : même résultat que l'état persistant
     const cur = data.agents.find((a) => a.id === ev.agent_id); if (!cur) return;
     const until = ev.duration_ms ? new Date(Date.parse(ev.created_at ?? new Date()) + ev.duration_ms).toISOString() : null;
@@ -874,5 +874,5 @@ export async function createOffice(container, hooks = {}) {
 
   start();
   return { update, patchAgent, pushEvent, setMeetings, select: (id, f) => select(id, f), setView, resetView, zoom, setQuality, setActive, dispose, element: dom, screenPositionOf, advance, inspect, desk, collides, stats, board, feedLines, now, has,
-    get quality() { return qName; }, get _scene() { return scene; }, get view() { return { mode: viewMode, arg: viewArg, follow: followId }; } };
+    settleCamera: () => { Object.assign(orbit, goal); renderOnce(); }, get quality() { return qName; }, get _scene() { return scene; }, get view() { return { mode: viewMode, arg: viewArg, follow: followId }; } };
 }
