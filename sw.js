@@ -2,7 +2,7 @@
    Garde en cache l'application (index.html) et les bibliothèques CDN (Chart.js, Leaflet, polices) pour
    qu'elle s'ouvre sans connexion. Les données restent dans le navigateur (localStorage) et la synchro
    Supabase ne passe pas par ici (requêtes non interceptées). */
-const VERSION = 'sanixcrm-v7';
+const VERSION = 'sanixcrm-v9';
 const CACHE_CDN = 'sanixcrm-cdn';
 const COQUILLE = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-192.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png', './icons/favicon-32.png'];
 const BIBLIOTHEQUES = [
@@ -32,6 +32,7 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   // Application : réseau d'abord (dernière version), cache si hors ligne
   if (url.origin === self.location.origin) {
+    if (url.pathname.includes('/company/')) return;   // plateforme SANIX AI VIRTUAL COMPANY : toujours en ligne, hors cache du CRM
     e.respondWith(
       fetch(req).then((res) => {
         if (res.ok) { const copie = res.clone(); caches.open(VERSION).then((c) => c.put(req, copie)); }
