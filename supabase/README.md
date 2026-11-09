@@ -66,6 +66,7 @@ Les agents travaillent **sur le serveur**, interface fermée : `tick` (chaque mi
 
 ## Mise en service
 
+0. Appliquer le schéma : `supabase db push`, ou coller `supabase/setup_all.sql` dans *SQL Editor* (généré par `build_setup_sql.sh`). Accès commun CRM ↔ SANIX AI et clé publique : voir `ACCES.md`.
 1. Créer les comptes (Supabase Auth), puis :
    `insert into ai_operators(user_id, nom, role, remise_max_pct) values ('<uuid>', 'Nom', 'direction', 10);`
    Rôles : `direction` (tout), `admin` (+ gestion des opérateurs), `commercial` (lecture, ses prospects).

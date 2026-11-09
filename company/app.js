@@ -3,21 +3,25 @@
 import { $, ago, askText, clipT, closeModal, esc, fmtD, fmtDT, html, num, openModal, pill, raw, toast, usd } from "./ui.js";
 import { agentBy, callFn, chatBody, deptColor, dgName, isDir, LEVELS, live, loadExec, loadOfficeMeetings, OPEN, q, S, stPill, TASK_ST } from "./state.js";
 import * as P from "./office_panel.js";
+import { LOGIN_ALIASES, SUPABASE_DEFAULT } from "./config.js";
 
 // ───────────────────────── Configuration & session ─────────────────────────
 const LS = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
+const CRM_CFG = "sanix_crm_supabase_config";   // configuration du CRM (même origine) : une seule saisie pour les deux applications
+const OWN_CFG = "sanix_company_cfg";            // ancienne configuration propre à cette plateforme (reprise tant qu'elle est valide)
+const LAST_LOGIN = "sanix_company_login";
+/** Même accès que le CRM : sa configuration d'abord, puis l'ancienne configuration propre, puis les valeurs publiques par défaut. */
 function readConfig() {
-  const own = LS("sanix_company_cfg"); if (own?.url && own?.key) return own;
-  const crm = LS("sanix_crm_supabase_config"); if (crm?.url && crm?.key) return { url: crm.url, key: crm.key };
+  for (const c of [LS(CRM_CFG), LS(OWN_CFG), SUPABASE_DEFAULT]) if (c?.url && c?.key && !keyProblem(c.key)) return { url: c.url, key: c.key };
   return null;
 }
 function jwtRole(key) { try { return JSON.parse(atob(key.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).role; } catch { return null; } }
 function keyProblem(key) {
   if (/^sb_secret_/.test(key) || jwtRole(key) === "service_role") return "Clé secrète détectée : n'utilisez jamais la clé service_role dans un navigateur. Saisissez la clé publique (anon / publishable).";
+  // seule une clé publique est acceptée : un secret (« JWT Secret » compris) donnerait un accès total à la base à quiconque lit ce navigateur
+  if (keyKind(key) === "inconnue") return "Ce n'est pas une clé publique. Saisissez la clé « publishable » (sb_publishable_…) ou « anon » (eyJ…) : Supabase → Project Settings → API Keys. Le « JWT Secret » est un secret : ne le collez jamais ici.";
   return null;
 }
-/** Une configuration propre à cette plateforme masque celle du CRM : la proposer quand elles diffèrent (ex. clé saisie à tort ici). */
-function crmAlt() { const own = LS("sanix_company_cfg"), crm = LS("sanix_crm_supabase_config"); return !!(own?.key && crm?.url && crm?.key && (own.url !== crm.url || own.key !== crm.key)); }
 const keyKind = (key) => (/^sb_publishable_/.test(key) ? "publishable" : jwtRole(key) === "anon" ? "anon (JWT)" : "inconnue");
 function cfgSummary(cfg) { try { return `${new URL(cfg.url).hostname} · clé ${keyKind(cfg.key)} …${String(cfg.key).slice(-4)}`; } catch { return "configuration illisible"; } }
 /** Message de connexion fidèle à la cause : identifiants (400) ≠ clé du projet refusée (401) ≠ réseau. Rendu en texte brut. */
@@ -34,8 +38,9 @@ function gate(content) { $("#gate-box").innerHTML = content.s; $("#gate").hidden
 function hideGate() { $("#gate").hidden = true; $("#app").hidden = false; }
 
 function showConfig(msg = "") {
+  const url = LS(CRM_CFG)?.url || LS(OWN_CFG)?.url || SUPABASE_DEFAULT.url;
   gate(html`<h1 id="gate-title">SANIX AI VIRTUAL COMPANY</h1><div class="muted small">Connexion à votre projet Supabase</div>
-    <form id="cfg-form"><label class="f">URL du projet<input id="cfg-url" type="url" required placeholder="https://xxxx.supabase.co" autocomplete="off"></label>
+    <form id="cfg-form"><label class="f">URL du projet<input id="cfg-url" type="url" required value="${url}" placeholder="https://xxxx.supabase.co" autocomplete="off"></label>
     <label class="f">Clé publique (anon / publishable)<input id="cfg-key" type="text" required autocomplete="off" spellcheck="false"></label>
     <div class="err" id="cfg-err">${msg}</div><button class="btn pri" type="submit">Continuer</button></form>`);
   $("#cfg-form").onsubmit = (e) => {
@@ -43,27 +48,37 @@ function showConfig(msg = "") {
     const url = $("#cfg-url").value.trim().replace(/\/$/, ""), key = $("#cfg-key").value.trim();
     if (!/^https:\/\//.test(url)) { $("#cfg-err").textContent = "L'URL doit commencer par https://"; return; }
     const p = keyProblem(key); if (p) { $("#cfg-err").textContent = p; return; }
-    localStorage.setItem("sanix_company_cfg", JSON.stringify({ url, key })); location.reload();
+    localStorage.setItem(CRM_CFG, JSON.stringify({ url, key })); localStorage.removeItem(OWN_CFG); location.reload();   // une seule configuration, partagée avec le CRM
   };
 }
 
 let fails = 0, lockUntil = 0;
+/** Identifiant du CRM (ex. kessie) → e-mail du compte opérateur : annuaire publié par le CRM, sinon table de config.js. Un e-mail est repris tel quel. */
+function resolveLogin(id) {
+  const v = id.trim(), k = v.toLowerCase(); if (v.includes("@")) return v;
+  const u = (LS("sanix_crm_directory") ?? []).find((x) => [x.login, x.nom].some((n) => String(n ?? "").toLowerCase() === k));
+  return u?.email ?? LOGIN_ALIASES[k] ?? v;
+}
+/** Identifiant proposé : le dernier utilisé ici, sinon l'utilisateur connecté au CRM, sinon le compte principal du CRM (jamais le mot de passe). */
+const loginHint = () => { try { return localStorage.getItem(LAST_LOGIN) || LS("sanix_crm_whoami")?.login || Object.keys(LOGIN_ALIASES)[0] || ""; } catch { return ""; } };
 function showLogin(msg = "") {
   gate(html`<h1 id="gate-title">SANIX AI VIRTUAL COMPANY</h1><div class="muted small">Accès réservé aux opérateurs de SANIX AFRICA</div>
-    <form id="login-form"><label class="f">E-mail<input id="l-mail" type="email" required autocomplete="username"></label>
+    <form id="login-form"><label class="f">Identifiant ou e-mail<input id="l-mail" type="text" required value="${loginHint()}" autocomplete="username" autocapitalize="off" spellcheck="false"></label>
     <label class="f">Mot de passe<input id="l-pass" type="password" required autocomplete="current-password"></label>
     <div class="err" id="l-err" role="alert">${msg}</div><button class="btn pri" type="submit">Se connecter</button></form>
-    <p class="small muted" id="cfg-info" style="margin:12px 0 0">Projet : ${cfgSummary(S.cfg)} · <a href="#" id="cfg-reset">Changer de projet Supabase</a>${crmAlt() ? raw(` · <a href="#" id="cfg-crm">Utiliser la configuration du CRM</a>`) : ""}</p>`);
-  $("#cfg-reset").onclick = (e) => { e.preventDefault(); localStorage.removeItem("sanix_company_cfg"); showConfig(); };
-  const useCrm = $("#cfg-crm"); if (useCrm) useCrm.onclick = (e) => { e.preventDefault(); localStorage.removeItem("sanix_company_cfg"); location.reload(); };
+    <p class="small muted" id="cfg-info" style="margin:12px 0 0">Projet : ${cfgSummary(S.cfg)} · <a href="#" id="cfg-reset">Changer de projet Supabase</a></p>`);
+  $("#cfg-reset").onclick = (e) => { e.preventDefault(); showConfig(); };
   $("#login-form").onsubmit = async (e) => {
     e.preventDefault();
     const err = $("#l-err");
     if (Date.now() < lockUntil) { err.textContent = "Trop de tentatives : patientez une minute."; return; }
-    const { error } = await S.sb.auth.signInWithPassword({ email: $("#l-mail").value.trim(), password: $("#l-pass").value });
+    const id = $("#l-mail").value.trim(), email = resolveLogin(id);
+    if (!email.includes("@")) { err.textContent = "Identifiant inconnu : saisissez l'e-mail de votre compte opérateur."; return; }
+    const { error } = await S.sb.auth.signInWithPassword({ email, password: $("#l-pass").value });
     $("#l-pass").value = "";
     if (error) { if (++fails >= 5) { lockUntil = Date.now() + 60000; fails = 0; } err.textContent = loginMessage(error, (() => { try { return new URL(S.cfg.url).hostname; } catch { return ""; } })()); return; }
-    fails = 0; await start();
+    fails = 0; try { localStorage.setItem(LAST_LOGIN, id); } catch { /* stockage indisponible : sans conséquence */ }
+    await start();
   };
 }
 
@@ -516,8 +531,11 @@ async function start() {
 if (new URLSearchParams(location.search).has("debug")) window.__vc = S;
 (function boot() {
   S.cfg = readConfig();
-  if (!S.cfg) { showConfig(); return; }
-  const p = keyProblem(S.cfg.key); if (p) { localStorage.removeItem("sanix_company_cfg"); showConfig(p); return; }
+  if (!S.cfg) {   // aucune configuration publique valide : si une clé non publique était enregistrée, on l'efface du navigateur et on dit pourquoi
+    const bad = [CRM_CFG, OWN_CFG].map((k) => [k, LS(k)]).find(([, c]) => c?.key && keyProblem(c.key));
+    if (bad) { localStorage.setItem(bad[0], JSON.stringify({ url: bad[1].url, key: "" })); localStorage.removeItem(OWN_CFG); }
+    showConfig(bad ? keyProblem(bad[1].key) : ""); return;
+  }
   if (!window.supabase) { gate(html`<h1>Bibliothèque indisponible</h1><p class="muted">Impossible de charger supabase-js (réseau ou bloqueur). Rechargez la page.</p>`); return; }
   S.sb = window.supabase.createClient(S.cfg.url, S.cfg.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storage: window.sessionStorage } });
   start();

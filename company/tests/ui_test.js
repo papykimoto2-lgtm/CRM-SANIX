@@ -132,18 +132,46 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     msg = await submit({ name: "AuthApiError", status: 401, message: "<img src=x onerror=alert(1)>" });
     ok((await L.page.locator("#l-err img").count()) === 0 && msg.includes("<img"), "message serveur hostile affiché en texte brut (aucun HTML interprété)");
     ok(!L.errors.some((e) => /DIALOG|pageerror/.test(e)), "aucune boîte de dialogue ni erreur de page");
-    ok((await L.page.locator("#cfg-crm").count()) === 0, "configuration du CRM utilisée : pas de lien de repli");
-    // configuration propre erronée : elle masque celle du CRM → lien « Utiliser la configuration du CRM »
-    await L.page.evaluate(() => localStorage.setItem("sanix_company_cfg", JSON.stringify({ url: "https://autre.supabase.co", key: "sb_publishable_erronee1234" })));
-    await L.page.reload(); await L.page.waitForSelector("#login-form");
-    ok(/autre\.supabase\.co/.test(await L.page.locator("#cfg-info").innerText()) && /publishable/.test(await L.page.locator("#cfg-info").innerText()), "la configuration propre (erronée) est affichée");
-    await L.page.click("#cfg-crm"); await L.page.waitForSelector("#login-form");
-    ok(/demo\.supabase\.co/.test(await L.page.locator("#cfg-info").innerText()) && (await L.page.evaluate(() => localStorage.getItem("sanix_company_cfg"))) === null, "« Utiliser la configuration du CRM » : retour au projet du CRM");
+    // accès commun avec le CRM : l'identifiant du CRM est accepté et proposé ; le mot de passe n'est jamais pré-rempli
+    ok((await L.page.inputValue("#l-mail")) === "kessie" && (await L.page.inputValue("#l-pass")) === "", "identifiant du CRM (kessie) proposé par défaut, mot de passe jamais pré-rempli");
+    const tryLogin = async (id) => { await L.page.fill("#l-mail", id); await L.page.fill("#l-pass", "x"); await L.page.click("#login-form button[type=submit]"); await L.page.waitForTimeout(300); return L.page.locator("#l-err").innerText(); };
+    await L.page.evaluate(() => { window.__SIGNIN_ERR = { name: "AuthApiError", status: 400, code: "invalid_credentials", message: "Invalid login credentials" }; window.__SIGNINS = []; });
+    await tryLogin("kessie");
+    ok((await L.page.evaluate(() => window.__SIGNINS)).join() === "cyrille@sanix-africa.ci", "« kessie » est résolu en e-mail du compte opérateur");
+    await L.page.evaluate(() => { localStorage.setItem("sanix_crm_directory", JSON.stringify([{ login: "kessie", email: "papy@exemple.ci", nom: "Cyrille KESSIE" }])); window.__SIGNINS = []; });
+    await tryLogin("KESSIE");
+    ok((await L.page.evaluate(() => window.__SIGNINS)).join() === "papy@exemple.ci", "annuaire publié par le CRM : prime sur la table par défaut (insensible à la casse)");
+    await L.page.evaluate(() => { window.__SIGNINS = []; });
+    msg = await tryLogin("inconnu");
+    ok(/Identifiant inconnu/.test(msg) && (await L.page.evaluate(() => window.__SIGNINS.length)) === 0, "identifiant inconnu : message clair, aucun appel à Supabase");
+    msg = await tryLogin("autre@exemple.ci");
+    ok((await L.page.evaluate(() => window.__SIGNINS)).join() === "autre@exemple.ci", "un e-mail est repris tel quel");
     await L.page.evaluate(() => { window.__SIGNIN_ERR = null; });
     await L.page.fill("#l-mail", "operateur@sanix.africa"); await L.page.fill("#l-pass", "x"); await L.page.click("#login-form button[type=submit]");
     await L.page.waitForSelector("#app:not([hidden])");
     ok(true, "identifiants valides : accès au bureau");
     await L.ctx.close();
+
+    console.log("▶ Configuration Supabase partagée avec le CRM");
+    const JWT_SECRET = "bm90IGEgcHVibGljIGtleSwganVzdCBhIHNlY3JldC1saWtlIGJhc2U2NCBzdHJpbmcgZm9yIHRoZSB0ZXN0IHB1cnBvc2VzIG9ubHk=";   // ni sb_publishable_ ni JWT « anon » : ressemble au « JWT Secret »
+    const C1 = await newPage(browser, { init: "window.__NOSESSION = true;", crmCfg: { url: "https://izgp.supabase.co", key: JWT_SECRET } });
+    await C1.page.goto("http://localhost:4173/company/"); await C1.page.waitForSelector("#cfg-form");
+    const cerr = await C1.page.locator("#cfg-err").innerText();
+    ok(/Ce n'est pas une clé publique/.test(cerr) && /JWT Secret/.test(cerr), "clé non publique (type « JWT Secret ») refusée, avec explication");
+    ok((await C1.page.inputValue("#cfg-url")) === "https://izgp.supabase.co", "l'URL enregistrée est conservée dans le formulaire");
+    ok(JSON.parse(await C1.page.evaluate(() => localStorage.getItem("sanix_crm_supabase_config"))).key === "", "la clé non publique est effacée du navigateur");
+    await C1.page.fill("#cfg-key", "sb_secret_abcdefghijklmnopqrstuvwxyz"); await C1.page.click("#cfg-form button[type=submit]");
+    ok(/Clé secrète détectée/.test(await C1.page.locator("#cfg-err").innerText()), "clé secrète (sb_secret_) refusée à la saisie");
+    await C1.page.fill("#cfg-key", "sb_publishable_abcdefghijklmnopqrstuvwxyz123456"); await C1.page.click("#cfg-form button[type=submit]"); await C1.page.waitForSelector("#login-form");
+    const saved = JSON.parse(await C1.page.evaluate(() => localStorage.getItem("sanix_crm_supabase_config")));
+    ok(saved.url === "https://izgp.supabase.co" && saved.key.startsWith("sb_publishable_") && (await C1.page.evaluate(() => localStorage.getItem("sanix_company_cfg"))) === null, "clé publique enregistrée dans la configuration du CRM (une seule configuration pour les deux applications)");
+    ok(/publishable/.test(await C1.page.locator("#cfg-info").innerText()), "écran de connexion : projet et clé publishable");
+    ok(C1.errors.length === 0, `aucune erreur (${C1.errors.join(" | ")})`);
+    await C1.ctx.close();
+    const C2 = await newPage(browser, { init: "window.__NOSESSION = true;", crmCfg: null });
+    await C2.page.goto("http://localhost:4173/company/"); await C2.page.waitForSelector("#cfg-form");
+    ok((await C2.page.inputValue("#cfg-url")) === "https://izgpvhwhbrgeagjfhfli.supabase.co", "aucune configuration : l'URL du projet SANIX est proposée par défaut (seule la clé publique reste à saisir)");
+    await C2.ctx.close();
 
     console.log("▶ Pagination des listes longues");
     const fx = loadFixture(), tpl = fx.ai_agent_tasks.find((t) => !t.parent_id);
