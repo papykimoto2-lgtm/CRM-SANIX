@@ -2,7 +2,7 @@
 // Tous les agents (commerciaux v1, collaborateurs de l'entreprise virtuelle, rapports) passent ici :
 // un seul endroit applique le budget IA quotidien / mensuel / par agent.
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
-import { audit, db, env, errMsg } from "./core.ts";
+import { audit, db, errMsg } from "./core.ts";
 
 export type ModelId = "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-5-5";
 export type Effort = "low" | "medium" | "high" | "max";
@@ -33,10 +33,15 @@ export function costUsd(model: string, u: UsageLike): number {
 export class BudgetError extends Error {}
 /** Panne passagère du fournisseur (réseau, 429, 5xx) : la mission est reprise plus tard, sans faute de l'agent. */
 export class TransientLlmError extends Error {}
+/** Secret ANTHROPIC_API_KEY absent des fonctions Edge : configuration à compléter, jamais une faute de l'agent (mission reportée, essai rendu). */
+export class LlmKeyMissingError extends TransientLlmError {}
 
 let _client: Anthropic | null = null;
+export const llmKeyPresent = (): boolean => !!Deno.env.get("ANTHROPIC_API_KEY");
 function client(): Anthropic {
-  _client ??= new Anthropic({ apiKey: env("ANTHROPIC_API_KEY"), timeout: 140_000, maxRetries: 1 });
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) throw new LlmKeyMissingError("ANTHROPIC_API_KEY absente des secrets Edge Functions");
+  _client ??= new Anthropic({ apiKey, timeout: 140_000, maxRetries: 1 });
   return _client;
 }
 

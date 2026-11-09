@@ -2,7 +2,8 @@
 import { audit, db, errMsg } from "../core.ts";
 import { flushOutbox } from "../outbox.ts";
 import { loadGovernance } from "./org.ts";
-import { runTask } from "./engine.ts";
+import { incidentOnce, runTask } from "./engine.ts";
+import { llmKeyPresent } from "../llm.ts";
 import { runMeeting } from "./meetings.ts";
 
 export type TickResult = {
@@ -24,6 +25,12 @@ export async function tickCompany(): Promise<TickResult> {
   const { data: n } = await db().rpc("ai_expire_agents");
   res.expires = Number(n ?? 0);
   try { res.outbox = await flushOutbox(); } catch (e) { await audit({ agent: "tick", action: "outbox_erreur", ok: false, payload: { e: errMsg(e) } }); }
+
+  // Clé IA absente des secrets Edge : rien n'est lancé (aucune mission réclamée, aucune faute imputée aux agents) ; incident critique, une seule fois
+  if (!llmKeyPresent()) {
+    await incidentOnce("cle_ia_absente", "critique", "Secret ANTHROPIC_API_KEY absent : les agents sont en pause. Supabase → Edge Functions → Secrets → ajouter ANTHROPIC_API_KEY.", 6 * 3600e3);
+    return { ...res, ignore: "Clé IA absente : pause" };
+  }
 
   // Panne du fournisseur IA récente : on attend (les missions ne sont pas pénalisées)
   const { data: panne } = await db().from("ai_incidents").select("id").eq("type", "llm_indisponible")

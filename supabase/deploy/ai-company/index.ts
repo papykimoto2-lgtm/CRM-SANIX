@@ -87,9 +87,14 @@ var BudgetError = class extends Error {
 };
 var TransientLlmError = class extends Error {
 };
+var LlmKeyMissingError = class extends TransientLlmError {
+};
 var _client = null;
+var llmKeyPresent = () => !!Deno.env.get("ANTHROPIC_API_KEY");
 function client() {
-  _client ??= new Anthropic({ apiKey: env("ANTHROPIC_API_KEY"), timeout: 14e4, maxRetries: 1 });
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) throw new LlmKeyMissingError("ANTHROPIC_API_KEY absente des secrets Edge Functions");
+  _client ??= new Anthropic({ apiKey, timeout: 14e4, maxRetries: 1 });
   return _client;
 }
 var _model = null;
@@ -2262,6 +2267,10 @@ async function tickCompany() {
   } catch (e) {
     await audit({ agent: "tick", action: "outbox_erreur", ok: false, payload: { e: errMsg(e) } });
   }
+  if (!llmKeyPresent()) {
+    await incidentOnce("cle_ia_absente", "critique", "Secret ANTHROPIC_API_KEY absent : les agents sont en pause. Supabase \u2192 Edge Functions \u2192 Secrets \u2192 ajouter ANTHROPIC_API_KEY.", 6 * 36e5);
+    return { ...res, ignore: "Cl\xE9 IA absente : pause" };
+  }
   const { data: panne } = await db().from("ai_incidents").select("id").eq("type", "llm_indisponible").gte("created_at", new Date(Date.now() - 3 * 6e4).toISOString()).limit(1);
   if (panne?.length) return { ...res, ignore: "Service IA indisponible : pause de 3 minutes" };
   const deadline = Date.now() + runBudgetMs();
@@ -2975,7 +2984,7 @@ Deno.serve(async (req) => {
     throw new HttpError(400, "Action inconnue");
   } catch (e) {
     if (e instanceof BudgetError) return json(req, { error: e.message }, 429);
-    if (e instanceof TransientLlmError) return json(req, { error: "Service IA momentan\xE9ment indisponible, r\xE9essayez" }, 503);
+    if (e instanceof TransientLlmError) return json(req, { error: e instanceof LlmKeyMissingError ? "Cl\xE9 ANTHROPIC_API_KEY absente : l'ajouter dans Supabase \u2192 Edge Functions \u2192 Secrets" : "Service IA momentan\xE9ment indisponible, r\xE9essayez" }, 503);
     const status = e instanceof HttpError ? e.status : 500;
     if (status === 500) console.error(e);
     return json(req, { error: status === 500 ? "Erreur interne" : e.message }, status);

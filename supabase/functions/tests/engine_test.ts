@@ -376,4 +376,34 @@ T("T6 · réunion entre agents : contributions, procès-verbal, plan d'action, r
   eq(await val("select statut from ai_agent_tasks where id = $1", [t.task_id]), "terminee", "mission du DG terminée");
   eq(Number(await val("select count(*) from ai_agent_tasks where reunion_id is not null and statut = 'terminee'")), 2, "actions du plan exécutées et tracées");
 });
+// ─── T7 · clé IA absente des secrets Edge ──────────────────────────
+T("T7 · clé ANTHROPIC_API_KEY absente : pause générale, aucune faute imputée aux agents, reprise dès que la clé est posée", async () => {
+  await freshDb(); await president();
+  const t = await dgTask("Analyse les indicateurs");
+  await sql("update ai_agent_tasks set statut = 'a_faire', executions = 0 where id = $1", [t.task_id]);   // la mission d'instruction naît « en cours » : on la rend réclamable par le planificateur
+  Deno.env.delete("ANTHROPIC_API_KEY");
+  try {
+    const r = await tickCompany(); await r.work;
+    eq(r.ignore, "Clé IA absente : pause", "le planificateur n'agit pas sans clé IA");
+    eq(r.missions, 0, "aucune mission réclamée");
+    const row = await one("select statut, executions from ai_agent_tasks where id = $1", [t.task_id]);
+    eq([row.statut, row.executions], ["a_faire", 0], "mission intacte, essai non compté");
+    eq(Number(await val("select count(*) from ai_incidents where type = 'cle_ia_absente' and gravite = 'critique'")), 1, "incident critique enregistré");
+    for (let i = 0; i < 3; i++) await (await tickCompany()).work;
+    eq(Number(await val("select count(*) from ai_incidents where type = 'cle_ia_absente'")), 1, "un seul incident, sans répétition");
+    eq(Number(await val("select count(*) from ai_agents where etat = 'suspendu'")), 0, "aucun agent suspendu après plusieurs passages");
+    // exécution directe (chat du président, rapports…) : reportée sans pénalité
+    await sql("update ai_agent_tasks set statut = 'en_cours', executions = 1 where id = $1", [t.task_id]);
+    eq(await runTask(t.task_id, { deadline: Date.now() + 60000 }), "reportee", "mission reportée");
+    eq(await val("select executions from ai_agent_tasks where id = $1", [t.task_id]), 0, "essai rendu");
+    eq(Number(await val("select incidents_consecutifs from ai_agents where niveau = 1")), 0, "l'agent n'est pas sanctionné");
+  } finally { Deno.env.set("ANTHROPIC_API_KEY", "test"); }
+  // clé posée : le planificateur reprend (la pause de 3 minutes liée à la panne simulée ci-dessus est levée)
+  await sql("delete from ai_incidents where type = 'llm_indisponible'");
+  script({ "SANIX AI GENERAL DIRECTOR": [() => done("Indicateurs analysés.", ["ok"])] });
+  const r2 = await tickCompany(); await r2.work;
+  eq(r2.missions, 1, "reprise dès que la clé est posée");
+  eq(await val("select statut from ai_agent_tasks where id = $1", [t.task_id]), "terminee", "mission terminée");
+});
+
 T("cleanup", async () => { await dropAll(); });

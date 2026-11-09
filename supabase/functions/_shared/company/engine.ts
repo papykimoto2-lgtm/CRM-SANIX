@@ -16,7 +16,7 @@ async function setActivite(agentId: string, activite: string): Promise<void> {
   await db().from("ai_agents").update({ activite }).eq("id", agentId).not("activite", "eq", "en_reunion");
 }
 
-async function incidentOnce(type: string, gravite: string, message: string, fenetreMs: number): Promise<void> {
+export async function incidentOnce(type: string, gravite: string, message: string, fenetreMs: number): Promise<void> {
   const { data } = await db().from("ai_incidents").select("id").eq("type", type)
     .gte("created_at", new Date(Date.now() - fenetreMs).toISOString()).limit(1);
   if (data?.length) return;
