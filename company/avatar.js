@@ -109,7 +109,8 @@ export function makeIndicators(env, a, root, markerMat) {
   const spin = new THREE.Mesh(env.geos("spin", () => new THREE.TorusGeometry(0.42, 0.03, 6, 24)), new THREE.MeshBasicMaterial({ color: 0x06b6d4 }));
   spin.rotation.x = Math.PI / 2; spin.visible = false; root.add(spin);
   const icon = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, sizeAttenuation: false })); icon.scale.set(0.036, 0.036, 1); icon.visible = false; icon.renderOrder = 10; root.add(icon);
-  const hit = new THREE.Mesh(env.geos("hit", () => new THREE.CylinderGeometry(0.8, 0.8, 2.3, 8)), new THREE.MeshBasicMaterial({ visible: false }));   // non dessinée, mais sélectionnable au rayon hit.position.y = 1.15; root.add(hit);
+  const hit = new THREE.Mesh(env.geos("hit", () => new THREE.CylinderGeometry(0.8, 0.8, 2.3, 8)), new THREE.MeshBasicMaterial({ visible: false }));
+  hit.position.y = 1.15; root.add(hit);   // zone de clic non dessinée, mais sélectionnable au rayon
   const marker = new THREE.Mesh(env.geos(`marker${env.seg}`, () => new THREE.CapsuleGeometry(0.28, 0.9, 3, env.seg)), markerMat); marker.position.y = 0.8; marker.visible = false; root.add(marker);
   // ombre portée simplifiée (qualités sans carte d'ombre) : disque dégradé sous l'avatar
   const blob = new THREE.Mesh(env.geos("blob", () => new THREE.CircleGeometry(0.85, 24)), env.blobMat ?? new THREE.MeshBasicMaterial({ visible: false }));
