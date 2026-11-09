@@ -59,3 +59,16 @@ export function describeActivity(agent, taskTitle) {
   const showTask = taskTitle && !["disponible", "mission_terminee"].includes(d ?? "");
   return showTask ? `${base} · ${taskTitle}` : base;
 }
+
+/** États grossiers du moteur (couleur = couleur du halo 3D, des pastilles et de la légende). */
+export const STATUS = {
+  disponible: { label: "Disponible", color: "#22C55E" },
+  en_mission: { label: "En mission", color: "#3B82F6" },
+  en_reunion: { label: "En réunion", color: "#A855F7" },
+  en_analyse: { label: "En analyse", color: "#06B6D4" },
+  attente_validation: { label: "En attente de validation", color: "#F59E0B" },
+  en_difficulte: { label: "En difficulté", color: "#EF4444" },
+  mission_terminee: { label: "Mission terminée", color: "#EAB308" },
+  suspendu: { label: "Suspendu", color: "#64748B" },
+};
+export const DEPT_COLORS = { direction: "#1E3A8A", commercial: "#2563EB", marketing: "#DB2777", intelligence: "#7C3AED", relation_client: "#059669", administratif: "#D97706" };

@@ -1,51 +1,8 @@
 // SANIX AI VIRTUAL COMPANY — application de pilotage (plateforme indépendante, connectée à SANIX CRM par Supabase).
 // Sécurité : session Supabase Auth + RLS ; aucune clé secrète acceptée ; tout texte dynamique est échappé (html``).
-import { createOffice, DEPT_COLORS, STATUS } from "./office3d.js";
-
-// ───────────────────────── Utilitaires ─────────────────────────
-const $ = (s, r = document) => r.querySelector(s);
-class Raw { constructor(s) { this.s = s; } toString() { return this.s; } }
-const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
-const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
-const part = (v) => (v instanceof Raw ? v.s : Array.isArray(v) ? v.map(part).join("") : esc(v));
-const html = (s, ...v) => new Raw(s.reduce((a, t, i) => a + t + (i < v.length ? part(v[i]) : ""), ""));
-const raw = (s) => new Raw(s);
-const TZ = "Africa/Abidjan";
-const fmtDT = (iso) => (iso ? new Date(iso).toLocaleString("fr-FR", { timeZone: TZ, dateStyle: "short", timeStyle: "short" }) : "—");
-const fmtD = (iso) => (iso ? new Date(iso).toLocaleDateString("fr-FR", { timeZone: TZ, day: "2-digit", month: "long", year: "numeric" }) : "—");
-const num = (n, d = 0) => (n === null || n === undefined ? "—" : Number(n).toLocaleString("fr-FR", { maximumFractionDigits: d }));
-const usd = (n) => `${Number(n ?? 0).toFixed(2)} $`;
-const ago = (iso) => {
-  if (!iso) return "—";
-  const s = Math.max(0, (Date.now() - new Date(iso)) / 1000);
-  return s < 60 ? "à l'instant" : s < 3600 ? `il y a ${Math.floor(s / 60)} min` : s < 86400 ? `il y a ${Math.floor(s / 3600)} h` : `il y a ${Math.floor(s / 86400)} j`;
-};
-const clipT = (t, n) => { const s = String(t ?? ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
-const OPEN = ["a_faire", "en_cours", "attente_sous_taches", "attente_validation"];
-const TASK_ST = {
-  a_faire: ["À faire", "#64748B"], en_cours: ["En cours", "#3B82F6"], attente_sous_taches: ["En attente des équipes", "#A855F7"],
-  attente_validation: ["En attente de validation", "#F59E0B"], bloquee: ["Bloquée", "#EF4444"], terminee: ["Terminée", "#22C55E"],
-  echouee: ["Échouée", "#EF4444"], annulee: ["Annulée", "#64748B"],
-};
-const ETAT_LABEL = { actif: "Actif", attente_validation: "En attente de validation", suspendu: "Suspendu", archive: "Archivé" };
-const LEVELS = { 1: "Directeur général", 2: "Directeur", 3: "Responsable", 4: "Superviseur", 5: "Agent" };
-const toast = (msg, kind = "") => {
-  const d = document.createElement("div"); d.textContent = msg; if (kind) d.className = kind; $("#toast").appendChild(d); setTimeout(() => d.remove(), 4200);
-};
-const pill = (label, color) => html`<span class="pill" style="--c:${color}"><i></i>${label}</span>`;
-const stPill = (a) => { const k = a.etat === "suspendu" ? "suspendu" : a.activite in STATUS ? a.activite : "disponible"; return pill(STATUS[k].label, STATUS[k].color); };
-const deptColor = (id) => DEPT_COLORS[id] ?? "#64748B";
-
-// ───────────────────────── État ─────────────────────────
-const S = {
-  cfg: null, sb: null, op: null, tab: "office", agents: [], depts: [], tasks: [], approvals: [], gov: null, budget: null,
-  meetings: [], reports: [], settings: [], recipients: [], exec: [], stats: [], statDays: 7, selected: null, office: null, officeEl: null,
-  officeOk: null, kpis: null, filters: { statut: "", agent: "", q: "" }, busy: false, pendingInstruction: false,
-};
-const isDir = () => S.op && ["direction", "admin"].includes(S.op.role);
-const live = () => S.agents.filter((a) => a.etat !== "archive");
-const agentBy = (id) => S.agents.find((a) => a.id === id);
-const dgName = () => live().find((a) => a.niveau === 1)?.nom ?? "Directeur général IA";
+import { $, ago, askText, clipT, closeModal, esc, fmtD, fmtDT, html, num, openModal, pill, raw, toast, usd } from "./ui.js";
+import { agentBy, callFn, chatBody, deptColor, dgName, isDir, LEVELS, live, loadExec, loadOfficeMeetings, OPEN, q, S, stPill, TASK_ST } from "./state.js";
+import * as P from "./office_panel.js";
 
 // ───────────────────────── Configuration & session ─────────────────────────
 const LS = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
@@ -96,16 +53,6 @@ function showLogin(msg = "") {
 }
 
 // ───────────────────────── Données ─────────────────────────
-async function q(p) { const { data, error } = await p; if (error) throw new Error(error.message); return data; }
-async function callFn(action, body = {}) {
-  const { data, error } = await S.sb.functions.invoke("ai-company", { body: { action, ...body } });
-  if (error) {
-    let msg = error.message;
-    try { const j = await error.context?.json?.(); if (j?.error) msg = j.error; } catch { /* corps non JSON */ }
-    throw new Error(msg);
-  }
-  return data;
-}
 const TASK_COLS = "id,parent_id,racine_id,agent_id,donneur_agent_id,donneur_user_id,type,titre,statut,priorite,echeance,progression,rapport,resultats,evaluation,evaluation_commentaire,cout_usd,created_at,finished_at,reunion_id,objectifs,executions,profondeur";
 
 async function loadCore() {
@@ -116,13 +63,14 @@ async function loadCore() {
     q(S.sb.from("ai_approvals").select("*, ai_prospects(entreprise)").eq("statut", "en_attente").order("created_at")),
   ]);
   Object.assign(S, { agents, depts, tasks, approvals });
+  const first = !S.taskStatus.size; for (const t of tasks) noteTask(t, first);
+  try { await loadOfficeMeetings(); } catch (e) { console.warn("réunions", e.message); }
   if (isDir()) {
     const [gov, budget] = await Promise.all([q(S.sb.from("ai_governance").select("*").eq("id", 1).single()), q(S.sb.rpc("ai_budget_status"))]);
     Object.assign(S, { gov, budget });
   }
   try { S.kpis = (await q(S.sb.from("ai_kpis").select("*")))[0] ?? null; } catch { S.kpis = null; }
 }
-async function loadExec() { S.exec = await q(S.sb.from("ai_executive_messages").select("*").order("created_at", { ascending: true }).limit(150)); }
 async function loadMeetings() { S.meetings = await q(S.sb.from("ai_agent_meetings").select("*").order("created_at", { ascending: false }).limit(40)); }
 async function loadReports() {
   const [reports, settings, recipients] = await Promise.all([
@@ -137,40 +85,49 @@ async function loadStats() {
 }
 const LOADERS = { exec: loadExec, meet: loadMeetings, reports: loadReports, perf: loadStats };
 
-let refreshT = null;
-function scheduleRefresh() {
-  clearTimeout(refreshT);
-  refreshT = setTimeout(async () => {
-    try { await loadCore(); if (LOADERS[S.tab]) await LOADERS[S.tab](); render(true); } catch (e) { console.warn("refresh", e.message); }
-  }, 500);
-}
-function subscribe() {
-  try {
-    const ch = S.sb.channel("vc-live");
-    for (const t of ["ai_agents", "ai_agent_tasks", "ai_agent_meetings", "ai_executive_messages", "ai_approvals"]) ch.on("postgres_changes", { event: "*", schema: "public", table: t }, scheduleRefresh);
-    ch.subscribe();
-  } catch (e) { console.warn("realtime", e.message); }
-  setInterval(() => { if (!document.hidden) scheduleRefresh(); }, 20000);   // filet de sécurité si le temps réel est coupé
+/** Notifie le président quand une mission qu'il a demandée change d'issue (terminée, bloquée, échouée). */
+function noteTask(t, firstLoad = false) {
+  const prev = S.taskStatus.get(t.id); S.taskStatus.set(t.id, t.statut);
+  if (firstLoad || !prev || prev === t.statut || !S.op || t.donneur_user_id !== S.op.user_id) return;
+  const who = agentBy(t.agent_id)?.nom ?? "Un collaborateur";
+  if (t.statut === "terminee") toast(`✅ ${who} a terminé : ${clipT(t.titre, 70)} — voir le résultat`, "ok", () => showTask(t.id));
+  else if (["echouee", "bloquee"].includes(t.statut)) toast(`⚠️ ${who} : mission ${TASK_ST[t.statut][0].toLowerCase()} — ${clipT(t.titre, 60)}`, "bad", () => showTask(t.id));
 }
 
-// ───────────────────────── Fenêtres ─────────────────────────
-let lastFocus = null;
-function openModal(content) {
-  lastFocus = document.activeElement;
-  $("#modal-box").innerHTML = html`<button class="btn sm close" type="button" data-act="close-modal" aria-label="Fermer">✕</button>${content}`.s;
-  $("#modal").hidden = false; $("#modal-box").querySelector("button,input,select,textarea")?.focus();
+let refreshT = null;
+async function refreshNow() {
+  try {
+    await loadCore(); if (LOADERS[S.tab]) await LOADERS[S.tab]();
+    if (S.dlg) { await loadExec(); P.renderDialog(); }
+    render(true);
+  } catch (e) { console.warn("refresh", e.message); }
 }
-function closeModal() { $("#modal").hidden = true; $("#modal-box").innerHTML = ""; lastFocus?.focus?.(); }
-function askText(titre, label, { placeholder = "", requis = true } = {}) {
-  return new Promise((resolve) => {
-    openModal(html`<h3>${titre}</h3><form id="ask"><label class="f">${label}<textarea id="ask-t" rows="3" maxlength="500" placeholder="${placeholder}" ${requis ? "required" : ""}></textarea></label>
-      <div class="actions"><button class="btn pri" type="submit">Confirmer</button><button class="btn" type="button" id="ask-no">Annuler</button></div></form>`);
-    const done = (v) => { $("#modal").removeEventListener("close-ask", no); closeModal(); resolve(v); };
-    const no = () => done(null);
-    $("#ask").onsubmit = (e) => { e.preventDefault(); done($("#ask-t").value.trim()); };
-    $("#ask-no").onclick = no;
-    $("#modal").addEventListener("close-ask", no, { once: true });
+function scheduleRefresh(ms = 500) { clearTimeout(refreshT); refreshT = setTimeout(refreshNow, ms); }
+
+let wasDown = false, hiddenAt = 0;
+function subscribe() {
+  try {
+    const ch = S.sb.channel("vc-live"), on = (table, event, cb) => ch.on("postgres_changes", { event, schema: "public", table }, cb);
+    // état et activité des agents : mise à jour incrémentale (aucun rechargement, les avatars se réconcilient)
+    on("ai_agents", "UPDATE", (p) => { if (!P.agentChanged(p.new)) scheduleRefresh(); });
+    on("ai_agents", "INSERT", () => scheduleRefresh());
+    on("ai_agent_events", "INSERT", (p) => P.eventReceived(p.new));
+    on("ai_agent_meetings", "*", async () => { try { await loadOfficeMeetings(); S.office?.setMeetings(S.officeMeetings); } catch (e) { console.warn("réunions", e.message); } if (S.tab === "meet") scheduleRefresh(); });
+    on("ai_meeting_participants", "INSERT", async () => { try { await loadOfficeMeetings(); S.office?.setMeetings(S.officeMeetings); } catch { /* repris au prochain rafraîchissement */ } });
+    on("ai_agent_tasks", "*", (p) => { if (p.new?.id) noteTask(p.new); scheduleRefresh(); });
+    for (const t of ["ai_executive_messages", "ai_approvals"]) on(t, "*", () => scheduleRefresh());
+    ch.subscribe((status) => {
+      if (status === "SUBSCRIBED") { P.setSync("live"); if (wasDown) { wasDown = false; scheduleRefresh(50); } }   // rattrapage de ce qui a été manqué
+      else if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) { wasDown = true; P.setSync("reconnecting"); }
+    });
+  } catch (e) { console.warn("realtime", e.message); P.setSync("offline"); }
+  setInterval(() => { if (!document.hidden) scheduleRefresh(); }, 20000);   // filet de sécurité si le temps réel est coupé
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) hiddenAt = Date.now();
+    else if (Date.now() - hiddenAt > 15000) scheduleRefresh(50);   // retour sur l'onglet : état réel immédiat
   });
+  addEventListener("online", () => scheduleRefresh(50));
+  addEventListener("offline", () => P.setSync("offline"));
 }
 
 // ───────────────────────── Navigation ─────────────────────────
@@ -206,87 +163,12 @@ function renderChips() {
 function render(soft = false) {
   renderTabs(); renderChips();
   const main = $("#main");
-  S.office?.setActive(S.tab === "office");
-  if (S.tab === "office") { renderOffice(main); return; }
+  if (S.tab !== "office") S.office?.setActive(false);
+  if (S.tab === "office") { P.renderOffice(main); return; }
   if (soft && ["exec"].includes(S.tab)) { renderExec(main, true); return; }
   const R = { exec: renderExec, org: renderOrg, tasks: renderTasks, meet: renderMeetings, perf: renderPerf, reports: renderReports, gov: renderGov, valid: renderValid }[S.tab];
   const keepScroll = main.scrollTop;
   R(main); if (soft) main.scrollTop = keepScroll;
-}
-
-// ───────────────────────── Bureau 3D ─────────────────────────
-function officeStats() {
-  const today = new Date(); today.setUTCHours(0, 0, 0, 0);
-  return { agentsActifs: live().filter((a) => a.etat === "actif").length, agentsMax: S.gov?.max_agents_actifs, missionsEnCours: S.tasks.filter((t) => OPEN.includes(t.statut)).length,
-    missionsTerminees: S.tasks.filter((t) => t.statut === "terminee" && t.finished_at && new Date(t.finished_at) >= today).length,
-    coutJour: S.budget?.jour_usd ?? 0, budgetJour: S.budget?.budget_jour_usd ?? 0, prospects: S.kpis?.prospects_total ?? 0, offres: S.kpis?.offres_transmises ?? 0, validations: S.approvals.length };
-}
-const pushOffice = () => S.office?.update({ agents: live(), departments: S.depts, stats: officeStats() });
-
-function legendHtml() {
-  return Object.entries(STATUS).map(([k, v]) => `<span><i style="background:${v.color}"></i>${esc(v.label)}</span>`).join("");
-}
-function renderOffice(main) {
-  if (!S.officeEl) {
-    S.officeEl = document.createElement("section");
-    S.officeEl.className = "panel full office";
-    S.officeEl.innerHTML = `<div class="stage" id="stage"><div class="stage-tools"><button class="btn sm" type="button" data-act="reset-view">⟲ Vue d'ensemble</button><button class="btn sm" type="button" data-act="toggle-2d" id="b2d">Vue 2D</button></div>
-      <div class="legend" aria-label="Légende des états">${legendHtml()}</div></div><aside class="side" id="side" aria-live="polite"></aside>`;
-  }
-  if (main.firstElementChild !== S.officeEl) main.replaceChildren(S.officeEl);
-  if (S.officeOk === null) initOffice();
-  else if (S.officeOk) pushOffice(); else render2D();
-  renderSide();
-}
-async function initOffice() {
-  S.officeOk = "pending";
-  try {
-    S.office = await createOffice($("#stage"), { onSelect: (id) => { S.selected = id; renderSide(); } });
-    S.officeOk = true; pushOffice();
-    if (S.tab === "office") S.office.setActive(true);
-  } catch (e) {
-    console.warn("3D indisponible :", e.message);
-    S.officeOk = false; render2D();
-  }
-}
-function render2D() {
-  const stage = $("#stage"); if (!stage) return;
-  let fb = $("#fb2d");
-  if (!fb) { fb = document.createElement("div"); fb.id = "fb2d"; fb.className = "fallback"; stage.appendChild(fb); }
-  const by = {}; for (const a of live()) (by[a.departement_id] ??= []).push(a);
-  fb.innerHTML = html`${S.officeOk === false ? html`<p class="muted small">La vue 3D n'est pas disponible sur cet appareil : affichage 2D.</p>` : ""}${S.depts.filter((d) => by[d.id]).map((d) => html`
-    <h3 style="margin:14px 0 6px;color:${deptColor(d.id)}">${d.nom}</h3><div class="grid g4">${by[d.id].map((a) => html`
-    <button type="button" class="node" style="--c:${deptColor(a.departement_id)};text-align:left" data-act="select-agent" data-id="${a.id}"><div><b>${a.nom}</b><small>${a.fonction}</small><br>${stPill(a)}</div></button>`)}</div>`)}`.s;
-  fb.style.display = S.officeOk === false || S.force2d ? "" : "none";
-  if (S.office) S.office.element.style.visibility = S.force2d ? "hidden" : "";
-}
-function renderSide() {
-  const side = $("#side"); if (!side) return;
-  const a = S.selected && agentBy(S.selected);
-  if (!a) {
-    const sts = {}; for (const x of live()) { const k = x.etat === "suspendu" ? "suspendu" : x.activite; sts[k] = (sts[k] ?? 0) + 1; }
-    side.innerHTML = html`<h2>Bureau virtuel</h2><p class="sub">Cliquez sur un collaborateur pour consulter son activité.</p>
-      <div class="grid" style="grid-template-columns:1fr 1fr">${[["Collaborateurs", live().length], ["Missions actives", S.tasks.filter((t) => OPEN.includes(t.statut)).length], ["Validations", S.approvals.length], ["Réunions en cours", live().filter((x) => x.activite === "en_reunion").length > 0 ? "oui" : "non"]].map(([k, v]) => html`<div class="card kpi"><b>${v}</b><span>${k}</span></div>`)}</div>
-      <h3 style="margin:16px 0 6px;font-size:14px">États des collaborateurs</h3>${Object.entries(sts).map(([k, n]) => html`<div style="display:flex;justify-content:space-between;margin:4px 0">${pill(STATUS[k]?.label ?? k, STATUS[k]?.color)}<b>${n}</b></div>`)}
-      <p class="small muted" style="margin-top:16px"><b>Navigation :</b> glisser pour pivoter · molette ou pincement pour zoomer · clic droit (ou Maj + glisser) pour déplacer · double-clic sur un collaborateur pour le centrer.</p><p class="small muted">La représentation 3D est l'interface visuelle de l'entreprise : les traitements IA s'exécutent sur les serveurs, indépendamment de l'animation.</p>`.s;
-    return;
-  }
-  const mgr = agentBy(a.manager_id), subs = live().filter((x) => x.manager_id === a.id);
-  const mine = S.tasks.filter((t) => t.agent_id === a.id);
-  const open = mine.filter((t) => OPEN.includes(t.statut)), done = mine.filter((t) => t.statut === "terminee").slice(0, 3);
-  side.innerHTML = html`<div style="display:flex;gap:10px;align-items:center"><span class="dot" style="--c:${deptColor(a.departement_id)};width:14px;height:14px"></span><div><h2 style="margin:0">${a.nom}</h2><div class="muted">${a.fonction}</div></div></div>
-    <div style="margin:10px 0" class="tags">${stPill(a)}<span class="tag">${LEVELS[a.niveau]}</span><span class="tag">${S.depts.find((d) => d.id === a.departement_id)?.nom ?? a.departement_id}</span>${a.temporaire ? html`<span class="tag">Temporaire · jusqu'au ${fmtD(a.expire_at)}</span>` : ""}</div>
-    <dl class="kv"><dt>Responsable</dt><dd>${mgr ? html`<a href="#" data-act="select-agent" data-id="${mgr.id}">${mgr.nom}</a>` : "Président"}</dd>
-      <dt>Équipe</dt><dd>${subs.length ? subs.map((s, i) => html`${i ? ", " : ""}<a href="#" data-act="select-agent" data-id="${s.id}">${s.nom}</a>`) : "—"}</dd>
-      <dt>Dans cet état</dt><dd>${ago(a.activite_depuis)}</dd><dt>Réflexion</dt><dd>${{ low: "rapide", medium: "standard", high: "approfondie" }[a.effort]}</dd>
-      <dt>Incidents consécutifs</dt><dd>${a.incidents_consecutifs}</dd><dt>Cahier des charges</dt><dd>v${a.charte_version}</dd></dl>
-    ${a.personnalite ? html`<p class="small"><b>Personnalité :</b> ${a.personnalite}</p>` : ""}${a.specialite ? html`<p class="small"><b>Spécialité :</b> ${a.specialite}</p>` : ""}
-    <div class="tags">${(a.outils ?? []).map((o) => html`<span class="tag">${o}</span>`)}</div>
-    <h3 style="margin:14px 0 6px;font-size:14px">Missions en cours (${open.length})</h3>${open.length ? open.map((t) => html`<div class="small" style="margin:5px 0"><a href="#" data-act="task" data-id="${t.id}">${clipT(t.titre, 70)}</a><br>${pill(...TASK_ST[t.statut])}</div>`) : html`<p class="small muted">Aucune</p>`}
-    <h3 style="margin:14px 0 6px;font-size:14px">Dernières missions terminées</h3>${done.length ? done.map((t) => html`<div class="small" style="margin:5px 0"><a href="#" data-act="task" data-id="${t.id}">${clipT(t.titre, 70)}</a><br><span class="muted">${clipT(t.rapport, 140)}</span></div>`) : html`<p class="small muted">Aucune</p>`}
-    <div class="actions"><button class="btn sm" type="button" data-act="charter" data-id="${a.id}">📄 Cahier des charges</button>
-    ${isDir() && a.niveau > 1 ? (a.etat === "suspendu" ? html`<button class="btn sm ok" type="button" data-act="agent-etat" data-id="${a.id}" data-etat="actif">▶ Réactiver</button>` : a.etat === "actif" ? html`<button class="btn sm" type="button" data-act="agent-etat" data-id="${a.id}" data-etat="suspendu">⏸ Suspendre</button>` : "") : ""}
-    ${isDir() && a.niveau > 1 && a.etat !== "attente_validation" ? html`<button class="btn sm bad" type="button" data-act="agent-etat" data-id="${a.id}" data-etat="archive">🗄 Archiver</button>` : ""}</div>`.s;
 }
 
 // ───────────────────────── Bureau du Président ─────────────────────────
@@ -299,12 +181,8 @@ const QUICK = [
   "Je veux développer Angel's au Sénégal. Prépare une stratégie et constitue une équipe.",
 ];
 function renderExec(main, soft = false) {
-  const instr = S.tasks.filter((t) => t.type === "instruction" && OPEN.includes(t.statut));
-  const working = S.pendingInstruction || instr.some((t) => ["en_cours", "a_faire"].includes(t.statut));
-  const thinking = working || instr.length > 0;
-  const waiting = thinking && !working ? S.tasks.filter((t) => OPEN.includes(t.statut) && t.type !== "instruction").length : 0;
-  const msgs = S.exec.map((m) => html`<div class="msg ${m.auteur === "president" ? "p" : "d"}">${m.contenu}<small>${m.auteur === "president" ? "Vous" : dgName()} · ${fmtDT(m.created_at)}</small></div>`);
-  const body = html`${msgs.length ? msgs : html`<div class="muted" style="margin:auto;text-align:center;max-width:460px"><h2>SANIX AI EXECUTIVE OFFICE</h2><p>Donnez vos instructions directement à ${dgName()}. Il élabore le plan, crée les collaborateurs nécessaires, supervise l'exécution et vous demande validation au-delà de ses délégations.</p></div>`}${thinking ? html`<div class="think"><i></i>${working ? `${dgName()} travaille sur votre demande…` : `${dgName()} coordonne les équipes (${waiting} mission${waiting > 1 ? "s" : ""} en cours)`}</div>` : ""}`.s;
+  const intro = html`<div class="muted" style="margin:auto;text-align:center;max-width:460px"><h2>SANIX AI EXECUTIVE OFFICE</h2><p>Donnez vos instructions directement à ${dgName()}. Il élabore le plan, crée les collaborateurs nécessaires, supervise l'exécution et vous demande validation au-delà de ses délégations.</p></div>`;
+  const body = chatBody(intro).s;
   if (soft && $("#msgs")) {
     const el = $("#msgs"), nearEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     el.innerHTML = body; if (nearEnd) el.scrollTop = el.scrollHeight;
@@ -523,12 +401,9 @@ async function viewReport(id) {
 }
 
 const ACT = {
+  ...P.acts,
   "tab": (el) => go(el.dataset.id),
   "close-modal": () => { closeModal(); $("#modal").dispatchEvent(new Event("close-ask")); },
-  "reset-view": () => S.office?.resetView(),
-  "toggle-2d": (el) => { S.force2d = !S.force2d; el.textContent = S.force2d ? "Vue 3D" : "Vue 2D"; render2D(); },
-  "select-agent": (el, ev) => { ev.preventDefault(); S.selected = el.dataset.id; S.office?.select(S.selected, true); if (S.tab !== "office") go("office"); else renderSide(); },
-  "open-agent": (el) => { S.selected = el.dataset.id; go("office"); setTimeout(() => S.office?.select(S.selected, true), 100); },
   "task": (el, ev) => { ev.preventDefault(); return showTask(el.dataset.id); },
   "meeting": (el) => showMeeting(el.dataset.id),
   "charter": (el) => showCharter(el.dataset.id),
@@ -589,10 +464,14 @@ document.addEventListener("click", (e) => {
   const f = ACT[el.dataset.act]; if (!f) return;
   Promise.resolve(f(el, e)).catch((err) => toast(err.message, "bad"));
 });
-document.addEventListener("change", (e) => { const el = e.target.closest("[data-act=rcp-type]"); if (el) ACT["rcp-type"](el); });
+document.addEventListener("change", (e) => {
+  const el = e.target.closest("[data-act=rcp-type]"); if (el) { ACT["rcp-type"](el); return; }
+  const c = e.target.closest("[data-change]"); if (c) P.changes[c.dataset.change]?.(c);
+});
+document.addEventListener("input", (e) => { const c = e.target.closest("[data-input]"); if (c) P.inputs[c.dataset.input]?.(c); });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("#modal").hidden) { ACT["close-modal"](); return; }
-  if ((e.key === "Enter" || e.key === " ") && e.target.matches?.(".node[data-act]")) { e.preventDefault(); e.target.click(); }
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches?.(".node[data-act], tr[data-act]")) { e.preventDefault(); e.target.click(); }
 });
 $("#modal").addEventListener("click", (e) => { if (e.target.id === "modal") ACT["close-modal"](); });
 $("#logout").addEventListener("click", async () => { await S.sb.auth.signOut(); location.reload(); });
@@ -609,6 +488,7 @@ async function start() {
       $("#deny-out").onclick = async () => { await S.sb.auth.signOut(); location.reload(); }; return;
     }
     S.op = op;
+    P.initPanel({ go, showTask, showCharter, refreshCore: refreshNow });
     await loadCore();
     S.tab = visibleTabs().some((t) => t.id === location.hash.slice(1)) ? location.hash.slice(1) : "office";
     if (LOADERS[S.tab]) await LOADERS[S.tab]();

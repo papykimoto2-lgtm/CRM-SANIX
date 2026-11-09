@@ -15,7 +15,11 @@ Deux ensembles livrés ensemble :
 | `functions/ai-sales-director` | Missions de recherche, qualification, relances (CRM) |
 | `functions/whatsapp-webhook` | Messages WhatsApp entrants (signature HMAC Meta) |
 | `functions/_shared/` | `llm.ts` (appel IA budgété), `company/*` (moteur), `reports/*` (rapports HTML + PDF), `outbox.ts` (envois sous gouvernance) |
-| `../company/` | Interface : bureau 3D, bureau du président, organisation, missions, réunions, performance, rapports, gouvernance, validations |
+| `migrations/20261109030000_ai_virtual_office_3d.sql` | Présence temps réel : activité détaillée, lieu, phase de réunion, flux `ai_agent_events`, `ai_agent_presence()` |
+| `migrations/20261109031000_ai_realtime_participants.sql` | Participants de réunion diffusés en temps réel |
+| `functions/_shared/company/presence.ts` | Publication de la présence par le moteur (activités, déplacements, prises de parole) |
+| `../company/` | Interface : bureau 3D animé, supervision, bureau du président, organisation, missions, réunions, performance, rapports, gouvernance, validations |
+| `../company/tests/` | Tests d'interface (Playwright) : recette du Module 13 et parcours complet |
 | `../vercel.json` | En-têtes de sécurité (CSP) de `/company/` |
 
 ## Déploiement
@@ -93,6 +97,30 @@ Un agent peut demander plus de ressources (`demander_ressources`) : la demande a
 - `ai_actions` append-only : chaque appel IA et chaque outil sont journalisés (tokens et coût inclus).
 - Rapports HTML : tout contenu est échappé ; affichage en iframe sans script.
 
+## Bureau 3D temps réel (Module 13)
+
+Le moteur IA **écrit l'état réel** ; le bureau 3D le **représente** (il ne simule rien). Les animations traduisent le statut déclaré, pas chaque opération technique.
+
+| Couche | Rôle |
+|---|---|
+| `ai_agents` (+ `activite_detail`, `lieu`, `lieu_cible_agent/dept`, `lieu_jusqua`) | État persistant : survit à la fermeture de l'interface |
+| `ai_agent_events` (14 jours) | Flux : `activite`, `deplacement`, `briefing`, `reunion`, `parole` — historique + synchronisation |
+| `ai_agent_meetings.phase / orateur_id` | Réunion en direct : convocation → installation → échanges → synthèse → clôture |
+| `ai_agent_presence()` | Écriture atomique (état + événement), réservée à `service_role` |
+| Realtime (`postgres_changes`) | `ai_agents` (UPDATE), `ai_agent_events` (INSERT), réunions, participants, missions |
+
+Événement publié (exemple) : `{ agent_id, status, activity, animation, department, location, target_agent_id, task_id, created_at }`.
+
+**Activités → animations** (vocabulaire unique `company/activity.js` ↔ `presence.ts`, vérifié par le test P0) : recherche de prospects/web = écran · analyse de données = écrans multiples · rédaction d'e-mail = frappe · WhatsApp = terminal · appel = casque · négociation = échange animé · préparation de rapport / documents / rendez-vous = documents · organisation des équipes = présentation · réunion = assis à la table · mission terminée = confirmation · difficulté = signal d'alerte · attente / suspendu = pause.
+
+**Déplacements** (déduits des missions réelles) : salle de réunion · visite d'un subordonné · supervision · espace de collaboration · département voisin · espace détente (disponible depuis 3 min sans mission). Les trajets suivent les allées (aucune traversée de bureau, testé). Le retour au poste est automatique à l'échéance `lieu_jusqua`, même sans nouvel événement.
+
+**Interface** : supervision *Agent · Activité · Statut* (🟢 🟡 🔴 ⚪, recherche, filtre, pagination) → fiche (identité, cahier des charges, missions, résultats, échanges internes, conversations prospects) → *Assigner une mission*, *Demander un rapport*, *Suspendre*. Un clic sur le directeur IA ouvre le dialogue. Notification cliquable quand une mission demandée par le président se termine. Caméras : d'ensemble, département, bureau du directeur, réunion, supervision, activités en cours, suivi d'un collaborateur, vue libre (rotation, déplacement, zoom, clavier, tactile).
+
+**Performance** : création progressive des avatars, avatars simplifiés au-delà du seuil (30 mobile · 90 poste · 18 éco), qualité automatique (mobile / appareil modeste → réduite), sélecteur Auto · Élevée · Réduite · Éco, mise en veille hors écran / onglet masqué, `prefers-reduced-motion` respecté (placement direct, sans marche), synchronisation incrémentale sans rechargement, rattrapage complet à la reconnexion et au retour sur l'onglet.
+
+**Limites connues** : avatars procéduraux (Three.js, sans fichier externe) — `company/avatar.js` n'expose qu'une interface (`makeAvatar`) : un modèle GLB (Blender) peut la remplacer sans toucher au moteur ; pas de React Three Fiber (Three.js direct, plus léger) ; « appel téléphonique » = planification d'appel (aucun appel vocal réel) ; la restitution est celle de l'état en base, jamais une relecture des opérations.
+
 ## Tests
 
 ```bash
@@ -104,4 +132,14 @@ deno check ai-company/index.ts ai-sales-director/index.ts whatsapp-webhook/index
 ```
 
 Les tests exécutent le moteur sur un vrai PostgreSQL (triggers, contraintes, fonctions SQL) avec un faux Claude scripté : chaîne d'instruction → organisation → missions → synthèse, gouvernance, autorité, anti-boucle, communication externe, budget, pannes, suspension automatique, réunions, rapports (fuseaux, PDF, envois, alertes).
-**Non couverts :** appels réels à Claude, WhatsApp et Resend ; API REST Supabase (PostgREST) et Realtime.
+**Interface (Playwright + Chromium, WebGL logiciel)** : `company/tests/` — jeu de données exporté du vrai schéma PostgreSQL, faux client Supabase (requêtes journalisées, Realtime pilotable), CSP réelle de `vercel.json`.
+
+```bash
+npm i --no-save playwright three@0.170.0
+supabase/functions/tests/setup_db.sh && company/tests/build_fixture.sh   # base modèle puis jeu de données (PG* requis)
+node company/tests/ui_test.js        # parcours complet : onglets, validations, rapports, mobile, repli 2D
+node company/tests/m13_test.js       # recette Module 13 (9 critères : avatars, animations, temps réel, déplacements, réunions, interactions, missions, réouverture, mobile/performance)
+company/tests/schema_check.py        # chaque colonne utilisée par l'interface existe dans le schéma réel
+```
+
+**Non couverts :** appels réels à Claude, WhatsApp et Resend ; API REST Supabase (PostgREST) et Realtime réels (simulés côté test) ; rendu sur GPU réel (testé en rendu logiciel : les fréquences d'images mesurées n'ont pas de valeur absolue).

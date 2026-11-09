@@ -56,11 +56,29 @@ h2{font-size:18px;margin:0 0 4px}
 .np{position:absolute;left:0;top:0;padding:2px 7px;border-radius:6px;background:rgba(11,18,32,.82);color:#E6ECF8;font-size:11px;font-weight:600;white-space:nowrap;border:1px solid rgba(255,255,255,.14);will-change:transform}
 .np.sel{background:var(--pri2);border-color:#fff}
 .np[data-status=en_difficulte]{border-color:var(--bad)}.np[data-status=attente_validation]{border-color:var(--warn)}.np[data-status=suspendu]{opacity:.7}
-.stage-tools{position:absolute;left:12px;top:12px;display:flex;gap:8px;flex-wrap:wrap;z-index:2}
+.stage-tools{position:absolute;left:12px;top:12px;display:flex;gap:6px;flex-wrap:wrap;z-index:2;max-width:calc(100% - 200px)}
+.stage-right{position:absolute;right:12px;top:12px;display:flex;gap:6px;align-items:center;z-index:2}
+.stage-tools select,.stage-right select{background:rgba(11,18,32,.86);color:#E6ECF8;border:1px solid rgba(255,255,255,.2);border-radius:9px;padding:4px 8px;font-size:12px;font-weight:600;max-width:210px}
+.stage-tools .btn,.stage-tools select{min-height:32px}
+.stage-right .chip{background:rgba(11,18,32,.86);color:#E6ECF8}
+.sync[data-s=live] i{background:var(--ok)}.sync[data-s=reconnecting] i{background:var(--warn);animation:pulse 1s infinite}.sync[data-s=offline] i{background:var(--bad)}
+.stage-load{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;background:rgba(11,18,32,.9);color:#E6ECF8}
+.stage-load .bar{width:min(320px,70%)}
+.bubble{position:absolute;left:0;top:0;max-width:230px;padding:5px 9px;border-radius:10px;background:#fff;color:#0f172a;font-size:11px;line-height:1.3;box-shadow:0 4px 14px rgba(0,0,0,.4);pointer-events:none;will-change:transform;overflow-wrap:anywhere;z-index:1}
+.bubble.dots{letter-spacing:3px;font-weight:800;padding:2px 10px}
+@media (prefers-reduced-motion:no-preference){.bubble.dots{animation:pulse 1.1s infinite}}
 .legend{position:absolute;left:12px;bottom:12px;display:flex;gap:6px 12px;flex-wrap:wrap;max-width:calc(100% - 24px);padding:8px 10px;border-radius:10px;background:rgba(11,18,32,.78);color:#E6ECF8;font-size:11px;z-index:2}
 .legend span{display:inline-flex;align-items:center;gap:5px}.legend i{width:10px;height:10px;border-radius:50%;display:inline-block}
 .hint{position:absolute;right:12px;bottom:12px;color:#9db3de;font-size:11px;background:rgba(11,18,32,.7);padding:4px 8px;border-radius:8px;z-index:2}
 .side{border-left:1px solid var(--line);background:var(--s1);overflow:auto;padding:14px}
+.sup-tools{display:flex;gap:8px;margin:0 0 8px}.sup-tools input{flex:1;min-width:0}
+.sup-scroll{max-height:none}.tbl.sup{table-layout:fixed;font-size:12px}.tbl.sup th{padding:6px 8px}.tbl.sup th:nth-child(1){width:36%}.tbl.sup th:nth-child(3){width:25%}
+.tbl.sup td{padding:6px 8px;vertical-align:middle;overflow-wrap:anywhere}.tbl.sup td b{display:block;line-height:1.2}
+.tbl.sup tr.sel td{background:color-mix(in srgb,var(--pri) 18%,transparent)}
+.sh{margin:14px 0 6px;font-size:14px}
+.card.live{background:var(--s2);box-shadow:none}
+.dlg .msgs{height:min(52dvh,460px)}
+.form1{display:grid;gap:12px}
 .fallback{padding:18px;overflow:auto;height:100%}
 .pill{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;background:color-mix(in srgb,var(--c,#64748b) 18%,transparent);color:var(--c,#64748b);border:1px solid color-mix(in srgb,var(--c,#64748b) 45%,transparent)}
 .pill i{width:7px;height:7px;border-radius:50%;background:var(--c,#64748b);display:inline-block}
@@ -138,7 +156,8 @@ iframe.rpt{width:100%;height:66dvh;border:1px solid var(--line);border-radius:10
   .panel.full{height:auto}
   .hint{display:none}
 }
-@media (max-width:560px){
+@media (max-width:760px){.stage-tools{max-width:100%}.stage-right{top:auto;bottom:12px;right:12px}.legend{bottom:56px}}
+@media (max-width:560px){.stlab{display:none}.stage-tools select{max-width:150px}
   .panel{padding:12px 12px 40px}.topbar{padding:8px 12px;gap:8px}.brand span{display:none}
   .topbar .chips{order:5;flex:1 1 100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
   .topbar .chips::-webkit-scrollbar{display:none}
