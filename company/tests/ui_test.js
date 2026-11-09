@@ -113,6 +113,38 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     ok(real.length === 0, `aucune autre erreur JS / console / dialogue (${real.length}) ${real.slice(0, 3).join(" | ")}`);
     await page.context().close();
 
+    console.log("▶ Connexion : message fidèle à la cause");
+    const L = await newPage(browser, { init: "window.__NOSESSION = true; window.__SIGNIN_ERR = { name: 'AuthApiError', status: 401, message: 'Invalid API key' };" });
+    await L.page.goto("http://localhost:4173/company/"); await L.page.waitForSelector("#login-form");
+    const info = await L.page.locator("#cfg-info").innerText();
+    ok(/demo\.supabase\.co/.test(info) && /anon \(JWT\)/.test(info) && !/eyJ/.test(info), "écran de connexion : projet et type de clé affichés (clé masquée)");
+    const submit = async (err) => {
+      await L.page.evaluate((e) => { window.__SIGNIN_ERR = e; }, err);
+      await L.page.fill("#l-mail", "operateur@sanix.africa"); await L.page.fill("#l-pass", "x"); await L.page.click("#login-form button[type=submit]"); await L.page.waitForTimeout(350);
+      return L.page.locator("#l-err").innerText();
+    };
+    let msg = await submit({ name: "AuthApiError", status: 401, message: "Invalid API key" });
+    ok(/Clé du projet refusée/.test(msg) && /401/.test(msg) && /Invalid API key/.test(msg) && /demo\.supabase\.co/.test(msg) && !/Identifiants invalides/.test(msg), "401 : clé du projet refusée (et non « identifiants invalides »)");
+    msg = await submit({ name: "AuthApiError", status: 400, code: "invalid_credentials", message: "Invalid login credentials" });
+    ok(msg === "Identifiants invalides.", "400 invalid_credentials : « Identifiants invalides. »");
+    msg = await submit({ name: "AuthRetryableFetchError", status: 0, message: "Failed to fetch" });
+    ok(/injoignable/.test(msg), "réseau coupé : Supabase injoignable");
+    msg = await submit({ name: "AuthApiError", status: 401, message: "<img src=x onerror=alert(1)>" });
+    ok((await L.page.locator("#l-err img").count()) === 0 && msg.includes("<img"), "message serveur hostile affiché en texte brut (aucun HTML interprété)");
+    ok(!L.errors.some((e) => /DIALOG|pageerror/.test(e)), "aucune boîte de dialogue ni erreur de page");
+    ok((await L.page.locator("#cfg-crm").count()) === 0, "configuration du CRM utilisée : pas de lien de repli");
+    // configuration propre erronée : elle masque celle du CRM → lien « Utiliser la configuration du CRM »
+    await L.page.evaluate(() => localStorage.setItem("sanix_company_cfg", JSON.stringify({ url: "https://autre.supabase.co", key: "sb_publishable_erronee1234" })));
+    await L.page.reload(); await L.page.waitForSelector("#login-form");
+    ok(/autre\.supabase\.co/.test(await L.page.locator("#cfg-info").innerText()) && /publishable/.test(await L.page.locator("#cfg-info").innerText()), "la configuration propre (erronée) est affichée");
+    await L.page.click("#cfg-crm"); await L.page.waitForSelector("#login-form");
+    ok(/demo\.supabase\.co/.test(await L.page.locator("#cfg-info").innerText()) && (await L.page.evaluate(() => localStorage.getItem("sanix_company_cfg"))) === null, "« Utiliser la configuration du CRM » : retour au projet du CRM");
+    await L.page.evaluate(() => { window.__SIGNIN_ERR = null; });
+    await L.page.fill("#l-mail", "operateur@sanix.africa"); await L.page.fill("#l-pass", "x"); await L.page.click("#login-form button[type=submit]");
+    await L.page.waitForSelector("#app:not([hidden])");
+    ok(true, "identifiants valides : accès au bureau");
+    await L.ctx.close();
+
     console.log("▶ Mobile (390×844)");
     const m = await newPage(browser, { w: 390, h: 844, mobile: true });
     await m.page.goto("http://localhost:4173/company/"); await m.page.waitForSelector("#app:not([hidden])");

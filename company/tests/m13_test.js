@@ -1,8 +1,8 @@
 // Module 13 — critères de réception (animation 3D temps réel des agents IA). node m13_test.js
 const fs = require("fs"), path = require("path");
-const { launch, newPage, openOffice, ok, OUT, HERE } = require("./harness.js");
+const { launch, newPage, openOffice, ok, OUT, HERE, loadFixture } = require("./harness.js");
 const PORT = 4177;   // port local du serveur de test
-const FIX0 = JSON.parse(fs.readFileSync(path.join(HERE, "fixture.json"), "utf8"));
+const FIX0 = loadFixture();
 const idle = (ms) => new Promise((r) => setTimeout(r, ms));
 const ev = (page, fn, ...a) => page.evaluate(fn, ...a);
 const ids = (page) => ev(page, () => Object.fromEntries(window.__vc.agents.map((a) => [a.code, a.id])));

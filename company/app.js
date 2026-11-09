@@ -16,6 +16,20 @@ function keyProblem(key) {
   if (/^sb_secret_/.test(key) || jwtRole(key) === "service_role") return "Clé secrète détectée : n'utilisez jamais la clé service_role dans un navigateur. Saisissez la clé publique (anon / publishable).";
   return null;
 }
+/** Une configuration propre à cette plateforme masque celle du CRM : la proposer quand elles diffèrent (ex. clé saisie à tort ici). */
+function crmAlt() { const own = LS("sanix_company_cfg"), crm = LS("sanix_crm_supabase_config"); return !!(own?.key && crm?.url && crm?.key && (own.url !== crm.url || own.key !== crm.key)); }
+const keyKind = (key) => (/^sb_publishable_/.test(key) ? "publishable" : jwtRole(key) === "anon" ? "anon (JWT)" : "inconnue");
+function cfgSummary(cfg) { try { return `${new URL(cfg.url).hostname} · clé ${keyKind(cfg.key)} …${String(cfg.key).slice(-4)}`; } catch { return "configuration illisible"; } }
+/** Message de connexion fidèle à la cause : identifiants (400) ≠ clé du projet refusée (401) ≠ réseau. Rendu en texte brut. */
+function loginMessage(e, host = "") {
+  const s = e?.status ?? 0, c = String(e?.code ?? ""), m = String(e?.message ?? "").slice(0, 160);
+  if (c === "invalid_credentials" || /invalid login credentials/i.test(m)) return "Identifiants invalides.";
+  if (c === "email_not_confirmed") return "E-mail non confirmé : validez d'abord le lien reçu par e-mail.";
+  if (s === 429 || /rate.?limit/i.test(c + m)) return "Trop de tentatives auprès de Supabase : patientez avant de réessayer.";
+  if (s === 401 || (s === 403 && /api key/i.test(m))) return `Clé du projet refusée par Supabase (${s} · ${m}). Cliquez sur « Changer de projet Supabase » et saisissez la clé publique active (publishable ou anon) du projet ${host}.`;
+  if (!s) return "Supabase injoignable : réseau, URL du projet ou projet en pause.";
+  return `Connexion refusée (${s}) : ${m}`;
+}
 function gate(content) { $("#gate-box").innerHTML = content.s; $("#gate").hidden = false; $("#app").hidden = true; }
 function hideGate() { $("#gate").hidden = true; $("#app").hidden = false; }
 
@@ -39,15 +53,16 @@ function showLogin(msg = "") {
     <form id="login-form"><label class="f">E-mail<input id="l-mail" type="email" required autocomplete="username"></label>
     <label class="f">Mot de passe<input id="l-pass" type="password" required autocomplete="current-password"></label>
     <div class="err" id="l-err" role="alert">${msg}</div><button class="btn pri" type="submit">Se connecter</button></form>
-    <p class="small muted" style="margin:12px 0 0"><a href="#" id="cfg-reset">Changer de projet Supabase</a></p>`);
+    <p class="small muted" id="cfg-info" style="margin:12px 0 0">Projet : ${cfgSummary(S.cfg)} · <a href="#" id="cfg-reset">Changer de projet Supabase</a>${crmAlt() ? raw(` · <a href="#" id="cfg-crm">Utiliser la configuration du CRM</a>`) : ""}</p>`);
   $("#cfg-reset").onclick = (e) => { e.preventDefault(); localStorage.removeItem("sanix_company_cfg"); showConfig(); };
+  const useCrm = $("#cfg-crm"); if (useCrm) useCrm.onclick = (e) => { e.preventDefault(); localStorage.removeItem("sanix_company_cfg"); location.reload(); };
   $("#login-form").onsubmit = async (e) => {
     e.preventDefault();
     const err = $("#l-err");
     if (Date.now() < lockUntil) { err.textContent = "Trop de tentatives : patientez une minute."; return; }
     const { error } = await S.sb.auth.signInWithPassword({ email: $("#l-mail").value.trim(), password: $("#l-pass").value });
     $("#l-pass").value = "";
-    if (error) { if (++fails >= 5) { lockUntil = Date.now() + 60000; fails = 0; } err.textContent = "Identifiants invalides."; return; }
+    if (error) { if (++fails >= 5) { lockUntil = Date.now() + 60000; fails = 0; } err.textContent = loginMessage(error, (() => { try { return new URL(S.cfg.url).hostname; } catch { return ""; } })()); return; }
     fails = 0; await start();
   };
 }

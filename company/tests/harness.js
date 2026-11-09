@@ -8,10 +8,17 @@ const FAKE = fs.readFileSync(path.join(HERE, "fakesb.js"), "utf8");
 const CORS = { "Access-Control-Allow-Origin": "*" };
 const GL = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--enable-webgl"];
 exports.OUT = OUT; exports.HERE = HERE;
+/** Fixture exportée de PostgreSQL. Ses dates relatives (« dans 2 h ») sont décalées de l'âge du fichier : les tests restent valides quel que soit le moment où ils tournent. */
+const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+exports.loadFixture = () => {
+  const file = path.join(HERE, "fixture.json"), delta = Date.now() - fs.statSync(file).mtimeMs;
+  const shift = (v) => typeof v === "string" && ISO.test(v) ? new Date(Date.parse(v) + delta).toISOString() : Array.isArray(v) ? v.map(shift) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shift(x)])) : v;
+  return shift(JSON.parse(fs.readFileSync(file, "utf8")));
+};
 exports.launch = async (port) => ({ server: await start(port), browser: await chromium.launch({ args: GL }), port });
 exports.ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  ✓ " + m); };
 exports.newPage = async (browser, { w = 1440, h = 900, mobile = false, reduced = false, fixture = null, init = null, block = [] } = {}) => {
-  const FIX = fixture ?? fs.readFileSync(path.join(HERE, "fixture.json"), "utf8");
+  const FIX = fixture ?? JSON.stringify(exports.loadFixture());
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1, hasTouch: mobile, isMobile: mobile, reducedMotion: reduced ? "reduce" : "no-preference" });
   const page = await ctx.newPage(); const errors = [];
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));

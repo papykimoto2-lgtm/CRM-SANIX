@@ -91,7 +91,9 @@
   window.__rtStatus = (st) => STATUSCB.forEach((cb) => cb(st));
   window.supabase = { createClient: () => ({
     from: builder, rpc, functions: { invoke }, channel: () => chan,
-    auth: { getSession: async () => ({ data: { session: { user: { id: OP } } } }), signInWithPassword: async () => ({ error: null }), signOut: async () => ({}) },
+    // __NOSESSION : l'écran de connexion s'affiche ; __SIGNIN_ERR : erreur renvoyée par Supabase Auth (null = succès)
+    auth: { getSession: async () => ({ data: { session: window.__NOSESSION && !window.__SIGNED ? null : { user: { id: OP } } } }),
+      signInWithPassword: async (c) => { (window.__SIGNINS = window.__SIGNINS || []).push(c.email); if (window.__SIGNIN_ERR) return { error: window.__SIGNIN_ERR }; window.__SIGNED = true; return { error: null }; }, signOut: async () => ({}) },
     storage: { from: () => ({ createSignedUrl: async () => ({ data: { signedUrl: "about:blank" }, error: null }) }) },
   }) };
 })();
