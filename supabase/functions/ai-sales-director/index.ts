@@ -4,6 +4,7 @@
 //  {action:"tick"}  + en-tête x-cron-secret                                    → relances dues (pg_cron / scheduler)
 import { audit, cors, db, env, HttpError, json, requireOperator, safeEqual } from "../_shared/core.ts";
 import { runAgent } from "../_shared/agent.ts";
+import { BudgetError, TransientLlmError } from "../_shared/llm.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -54,6 +55,8 @@ Deno.serve(async (req) => {
     }
     throw new HttpError(400, "Action inconnue");
   } catch (e) {
+    if (e instanceof BudgetError) return json(req, { error: e.message }, 429);
+    if (e instanceof TransientLlmError) return json(req, { error: "Service IA momentanément indisponible, réessayez" }, 503);
     const status = e instanceof HttpError ? e.status : 500;
     if (status === 500) console.error(e);
     return json(req, { error: status === 500 ? "Erreur interne" : (e as Error).message }, status);
@@ -77,13 +80,13 @@ Termine par un rapport : nombre trouvé, qualité des sources, 5 cibles priorita
 
 async function tick() {
   const { data: due } = await db().from("ai_followups")
-    .select("id, prospect_id, scenario, canal, ai_prospects!inner(opt_out, relances_sans_reponse, stage)")
+    .select("id, prospect_id, scenario, canal")
     .eq("statut", "planifiee").lte("due_at", new Date().toISOString()).order("due_at").limit(10);
   let traites = 0, veille = 0;
   for (const f of due ?? []) {
-    const p = (f as any).ai_prospects;
+    const { data: p } = await db().from("ai_prospects").select("opt_out, relances_sans_reponse, stage").eq("id", f.prospect_id).maybeSingle();
     await db().from("ai_followups").update({ statut: "faite" }).eq("id", f.id);
-    if (p.opt_out || ["perdu", "en_veille", "marche_gagne"].includes(p.stage)) continue;
+    if (!p || p.opt_out || ["perdu", "en_veille", "marche_gagne"].includes(p.stage)) continue;
     if (p.relances_sans_reponse >= MAX_RELANCES) {
       await db().from("ai_prospects").update({ stage: "en_veille" }).eq("id", f.prospect_id);
       veille++;
@@ -93,10 +96,18 @@ async function tick() {
       await db().from("ai_approvals").insert({ type: "transfert_humain", prospect_id: f.prospect_id, motif: `Appel à passer : ${f.scenario}` });
       continue;
     }
-    await runAgent({ mode: "relance", prospect_id: f.prospect_id, scenario: f.scenario },
-      `Relance planifiée (${f.scenario}) pour le prospect ${f.prospect_id}, canal ${f.canal}. Relances déjà sans réponse : ${p.relances_sans_reponse}/${MAX_RELANCES}. get_prospect, puis une relance personnalisée qui apporte une valeur nouvelle (jamais « je reviens vers vous » seul). Dernière relance autorisée = message de clôture courtois.`)
-      .catch((e) => audit({ agent: "followup_manager", action: "tick_erreur", prospect_id: f.prospect_id, ok: false, payload: { e: String(e) } }));
-    traites++;
+    try {
+      await runAgent({ mode: "relance", prospect_id: f.prospect_id, scenario: f.scenario },
+        `Relance planifiée (${f.scenario}) pour le prospect ${f.prospect_id}, canal ${f.canal}. Relances déjà sans réponse : ${p.relances_sans_reponse}/${MAX_RELANCES}. get_prospect, puis une relance personnalisée qui apporte une valeur nouvelle (jamais « je reviens vers vous » seul). Dernière relance autorisée = message de clôture courtois.`);
+      traites++;
+    } catch (e) {
+      if (e instanceof BudgetError || e instanceof TransientLlmError) {
+        // Reporte la relance : rien n'est perdu.
+        await db().from("ai_followups").update({ statut: "planifiee", due_at: new Date(Date.now() + 3600e3).toISOString() }).eq("id", f.id);
+        break;
+      }
+      await audit({ agent: "followup_manager", action: "tick_erreur", prospect_id: f.prospect_id, ok: false, payload: { e: String(e) } });
+    }
   }
   return { traites, mis_en_veille: veille };
 }

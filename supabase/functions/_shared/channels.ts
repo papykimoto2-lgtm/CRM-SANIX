@@ -15,7 +15,7 @@ export const AI_DISCLOSURE =
 const WA_WINDOW_MS = 24 * 3600 * 1000;
 const GRAPH = "https://graph.facebook.com/v21.0";
 
-export type SendResult = { ok: boolean; statut: string; detail: string; external_id?: string };
+export type SendResult = { ok: boolean; statut: string; detail: string; external_id?: string; template?: boolean };
 
 export async function sendWhatsApp(p: Prospect, text: string): Promise<SendResult> {
   if (p.opt_out) return { ok: false, statut: "echec", detail: "Prospect désinscrit : envoi interdit" };
@@ -23,8 +23,8 @@ export async function sendWhatsApp(p: Prospect, text: string): Promise<SendResul
   const token = env("WHATSAPP_TOKEN", false), phoneId = env("WHATSAPP_PHONE_NUMBER_ID", false);
   const inWindow = !!p.last_inbound_at && Date.now() - Date.parse(p.last_inbound_at) < WA_WINDOW_MS;
 
-  // Hors fenêtre 24 h : Meta impose un modèle pré-approuvé. Le texte libre est conservé « a_envoyer »
-  // et partira dès la réponse du prospect.
+  // Hors fenêtre 24 h : Meta impose un modèle pré-approuvé. Seul le modèle part ; le texte libre
+  // n'est jamais envoyé (l'agent poursuivra dès la réponse du prospect).
   const body = inWindow
     ? { messaging_product: "whatsapp", to: p.phone_norm, type: "text", text: { preview_url: true, body: text.slice(0, 4096) } }
     : {
@@ -47,9 +47,10 @@ export async function sendWhatsApp(p: Prospect, text: string): Promise<SendResul
   if (!r.ok) return { ok: false, statut: "echec", detail: `WhatsApp ${r.status}: ${j?.error?.message ?? "erreur"}` };
   return {
     ok: true,
-    statut: inWindow ? "envoye" : "a_envoyer",
-    detail: inWindow ? "Envoyé" : "Hors fenêtre 24 h : modèle d'ouverture envoyé, texte en attente de réponse",
+    statut: "envoye",
+    detail: inWindow ? "Envoyé" : "Hors fenêtre 24 h : seul le modèle d'ouverture a été envoyé",
     external_id: j?.messages?.[0]?.id,
+    template: !inWindow,
   };
 }
 
@@ -74,6 +75,6 @@ export async function sendEmail(p: Prospect, subject: string, text: string): Pro
 /** Premier message sortant du fil ? (pour la mention IA obligatoire) */
 export async function isFirstOutbound(prospectId: string): Promise<boolean> {
   const { count } = await db().from("ai_messages").select("id", { count: "exact", head: true })
-    .eq("prospect_id", prospectId).eq("sens", "sortant");
+    .eq("prospect_id", prospectId).eq("sens", "sortant").in("statut", ["envoye", "delivre", "lu", "a_envoyer"]);
   return (count ?? 0) === 0;
 }

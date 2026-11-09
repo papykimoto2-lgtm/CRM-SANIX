@@ -68,10 +68,28 @@ export class HttpError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
-export async function audit(row: {
+export type AuditRow = {
   agent: string; action: string; prospect_id?: string | null; mission_id?: string | null;
-  payload?: unknown; ok?: boolean; tokens_in?: number; tokens_out?: number;
-}): Promise<void> {
+  agent_id?: string | null; task_id?: string | null;
+  payload?: unknown; ok?: boolean; tokens_in?: number; tokens_out?: number; cout_usd?: number;
+};
+
+/** Journal d'audit append-only : ne doit jamais faire échouer l'appelant. */
+export async function audit(row: AuditRow): Promise<void> {
   const { error } = await db().from("ai_actions").insert({ ...row, payload: row.payload ?? {} });
   if (error) console.error("audit", error.message);
+}
+
+/** Heure de Côte d'Ivoire (UTC+0, sans changement d'heure) : jour courant au format AAAA-MM-JJ. */
+export function jourAbidjan(d = new Date()): string {
+  return d.toISOString().slice(0, 10);
+}
+
+export function clip(v: unknown, max: number): string {
+  const s = typeof v === "string" ? v : JSON.stringify(v ?? "");
+  return s.length > max ? s.slice(0, max - 1) + "…" : s;
+}
+
+export function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : (e && typeof e === "object" && "message" in e) ? String((e as { message: unknown }).message) : String(e);
 }

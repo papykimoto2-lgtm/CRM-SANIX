@@ -2,6 +2,7 @@
 // l'authenticité est garantie par la signature HMAC X-Hub-Signature-256.
 import { audit, db, env, safeEqual } from "../_shared/core.ts";
 import { runAgent } from "../_shared/agent.ts";
+import { BudgetError } from "../_shared/llm.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
@@ -86,6 +87,7 @@ async function handleInbound(m: WaMsg, profileName?: string) {
 Consulte get_prospect (historique tous canaux), puis réponds via send_message (canal whatsapp) en poursuivant la conversation là où elle en est. Mets à jour la qualification et l'étape si l'échange apporte des faits, puis planifie la suite.`);
   } catch (e) {
     await audit({ agent: "whatsapp_manager", action: "erreur_agent", prospect_id: p.id, ok: false, payload: { e: String(e) } });
-    await db().from("ai_approvals").insert({ type: "transfert_humain", prospect_id: p.id, motif: "Agent indisponible : répondre manuellement" });
+    await db().from("ai_approvals").insert({ type: "transfert_humain", prospect_id: p.id,
+      motif: e instanceof BudgetError ? `Agent en pause (${e.message}) : répondre manuellement` : "Agent indisponible : répondre manuellement" });
   }
 }
