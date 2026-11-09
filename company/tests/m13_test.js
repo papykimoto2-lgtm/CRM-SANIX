@@ -208,7 +208,7 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
     // notification de fin de mission demandée par le président
     const tid = await ev(page, () => window.__FIX.ai_agent_tasks.filter((t) => t.titre.startsWith("Cartographier 30"))[0].id);
     await emit(page, "ai_agent_tasks", "UPDATE", { id: tid, statut: "en_cours" }); await emit(page, "ai_agent_tasks", "UPDATE", { id: tid, statut: "terminee", rapport: "32 cliniques cartographiées.", finished_at: new Date().toISOString() });
-    await page.waitForSelector("#toast div:has-text('a terminé')", { timeout: 3000 });
+    await page.waitForSelector("#toast div:has-text('a terminé')", { timeout: 15000 });   // rendu logiciel : l'interrogation par image peut dépasser 3 s
     ok(true, "notification : « IA Prospect Hunter 2 a terminé : Cartographier 30 cliniques privées »");
     await page.locator("#toast div", { hasText: "a terminé" }).first().click(); await page.waitForSelector("#modal:not([hidden])");
     ok((await page.locator("#modal").innerText()).includes("32 cliniques cartographiées."), "un clic sur la notification ouvre le résultat de la mission"); await page.keyboard.press("Escape");

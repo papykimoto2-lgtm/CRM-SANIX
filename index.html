@@ -2433,7 +2433,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
             <input type="text" class="form-input" id="sb-url" placeholder="https://xxxx.supabase.co" oninput="sbConfigDirty()">
           </div>
           <div class="form-group">
-            <label class="form-label">Anon Key (public)</label>
+            <label class="form-label">Clé publique (publishable <code>sb_publishable_…</code> ou anon <code>eyJ…</code>) — jamais le « JWT Secret » ni une clé secrète</label>
             <input type="password" class="form-input" id="sb-key" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." oninput="sbConfigDirty()">
           </div>
           <div class="flex gap-2">
@@ -8317,6 +8317,8 @@ function clearSession() {
 }
 
 function enterApp(user) {
+  // Accès commun avec SANIX AI VIRTUAL COMPANY (même origine) : identité publique (identifiant, e-mail, nom) — jamais le mot de passe ni son empreinte
+  try{ lsSave('whoami',{login:user.login,email:user.email,nom:user.nom}); lsSave('directory',USERS.map(u=>({login:u.login,email:u.email,nom:u.nom}))); }catch(e){}
   // Débloquer modules admin pour super_admin avant applyRoleUI
   if (user.role === 'super_admin') {
     ['sb-admin-section','sb-users-item','sb-parametrage-item','sb-parametres-item'].forEach(function(id){
@@ -8745,6 +8747,7 @@ function resetToSeed() {
 //  SUPABASE SYNC ENGINE
 // ═══════════════════════════════════════
 let SB_CONFIG = null;
+const SB_DEFAULT_URL = 'https://izgpvhwhbrgeagjfhfli.supabase.co';   // projet SANIX (URL publique) : proposée par défaut, seule la clé publique reste à saisir
 let autoSyncInterval = null;
 const SB_TABLES = {
   deals:         'crm_deals',
@@ -8770,9 +8773,29 @@ async function withTimeout(promise, ms=6000) {
   ]);
 }
 
+/* Clé Supabase côté navigateur : UNIQUEMENT une clé publique — « publishable » (sb_publishable_…) ou « anon » (JWT eyJ…, rôle anon).
+   Une clé secrète (sb_secret_…, service_role) ou le « JWT Secret » donnerait un accès total à la base à quiconque lit ce navigateur. */
+function sbKeyProblem(key){
+  key=(key||'').trim();
+  if(/^sb_publishable_/.test(key)) return '';
+  if(/^sb_secret_/.test(key)) return 'Clé SECRÈTE détectée (sb_secret_…) : ne la collez jamais dans un navigateur. Utilisez la clé « publishable » (sb_publishable_…).';
+  let role=null;
+  try{ const p=key.split('.'); if(p.length===3) role=JSON.parse(atob(p[1].replace(/-/g,'+').replace(/_/g,'/'))).role; }catch(e){}
+  if(role==='anon') return '';
+  if(role==='service_role') return 'Clé SECRÈTE détectée (service_role) : ne la collez jamais dans un navigateur. Utilisez la clé « publishable » ou « anon ».';
+  return 'Ce n\'est pas une clé publique. Collez la clé « publishable » (sb_publishable_…) ou « anon » (eyJ…) : Supabase → Project Settings → API Keys. Le « JWT Secret » est un secret : ne le collez jamais ici.';
+}
 function loadSbConfig() {
   const c = lsLoad('supabase_config');
-  if(c && c.url && c.key) { SB_CONFIG = c; return true; }
+  if(c && c.url && c.key) {
+    const kp = sbKeyProblem(c.key);
+    if(kp){   // valeur déjà enregistrée mais non publique : on ne l'utilise pas et on l'efface du navigateur (l'URL est conservée)
+      lsSave('supabase_config',{url:c.url,key:''});
+      setTimeout(()=>{ try{ syncLog('warn','🔒 Clé Supabase enregistrée refusée et effacée — '+kp); showToast('🔒 Clé Supabase non publique effacée : saisissez la clé publique'); }catch(e){} },0);
+      return false;
+    }
+    SB_CONFIG = c; return true;
+  }
   return false;
 }
 function saveSbConfig() {
@@ -8780,6 +8803,8 @@ function saveSbConfig() {
   const key = document.getElementById('sb-key').value.trim();
   if(!url||!key){ showConnMsg('❌ URL et clé requis','var(--danger)'); return; }
   if(!url.startsWith('https://')){ showConnMsg('❌ URL doit commencer par https://','var(--danger)'); return; }
+  const kp = sbKeyProblem(key);
+  if(kp){ showConnMsg('❌ '+kp,'var(--danger)',14000); return; }
   SB_CONFIG = {url, key};
   lsSave('supabase_config', SB_CONFIG);
   syncLog('ok','💾 Config Supabase enregistrée');
@@ -8793,11 +8818,11 @@ function clearSbConfig() {
   updateConnDot('unknown'); syncLog('warn','🗑 Config Supabase effacée');
 }
 function sbConfigDirty() { updateConnDot('unknown'); }
-function showConnMsg(msg, color) {
+function showConnMsg(msg, color, ms) {
   const el = document.getElementById('conn-msg');
   if(!el) return;
   el.textContent = msg; el.style.color = color;
-  setTimeout(()=>{ el.textContent=''; },4000);
+  setTimeout(()=>{ el.textContent=''; }, ms||4000);
 }
 function updateConnDot(state) {
   const dot = document.getElementById('conn-dot');
@@ -9450,6 +9475,9 @@ function initParametres() {
     document.getElementById('sb-key').value = SB_CONFIG.key;
     updateConnDot('unknown');
     updatePill('pending','Config OK');
+  } else {
+    const c = lsLoad('supabase_config'), u = document.getElementById('sb-url');
+    if(u && !u.value) u.value = (c && c.url) || SB_DEFAULT_URL;
   }
   // Auto-sync toggle state
   const autosync = lsLoad('autosync');

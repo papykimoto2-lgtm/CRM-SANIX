@@ -17,7 +17,7 @@ exports.loadFixture = () => {
 };
 exports.launch = async (port) => ({ server: await start(port), browser: await chromium.launch({ args: GL }), port });
 exports.ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  ✓ " + m); };
-exports.newPage = async (browser, { w = 1440, h = 900, mobile = false, reduced = false, fixture = null, init = null, block = [] } = {}) => {
+exports.newPage = async (browser, { w = 1440, h = 900, mobile = false, reduced = false, fixture = null, init = null, block = [], crmCfg } = {}) => {
   const FIX = fixture ?? JSON.stringify(exports.loadFixture());
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1, hasTouch: mobile, isMobile: mobile, reducedMotion: reduced ? "reduce" : "no-preference" });
   const page = await ctx.newPage(); const errors = [];
@@ -25,8 +25,10 @@ exports.newPage = async (browser, { w = 1440, h = 900, mobile = false, reduced =
   page.on("console", (m) => { if (m.type() === "error") errors.push("console: " + m.text()); });
   page.on("dialog", (d) => { errors.push("DIALOG: " + d.message()); d.dismiss(); });
   await ctx.addInitScript({ content: `window.__FIX = ${FIX};` + (init ?? "") + FAKE });
-  await ctx.addInitScript(() => localStorage.setItem("sanix_crm_supabase_config", JSON.stringify({ url: "https://demo.supabase.co", key: "eyJhbGciOiJIUzI1NiJ9." + btoa(JSON.stringify({ role: "anon" })) + ".sig" })));
-  for (const pattern of block) await ctx.route(pattern, (r) => r.abort());   // ressources indisponibles (repli)
+  // configuration Supabase du CRM (même origine) : clé « anon » valide par défaut ; crmCfg = objet {url, key} pour la remplacer, null pour l'absence de configuration
+  const CRM = crmCfg === undefined ? { url: "https://demo.supabase.co", key: "eyJhbGciOiJIUzI1NiJ9." + Buffer.from(JSON.stringify({ role: "anon" })).toString("base64") + ".sig" } : crmCfg;
+  if (CRM) await ctx.addInitScript((c) => { if (!sessionStorage.getItem("__cfg")) { localStorage.setItem("sanix_crm_supabase_config", JSON.stringify(c)); sessionStorage.setItem("__cfg", "1"); } }, CRM);
+  for (const pattern of [...block, ...(process.env.BLOCK ? process.env.BLOCK.split(",") : [])]) await ctx.route(pattern, (r) => r.abort());   // ressources indisponibles (repli) ; BLOCK="motif,motif" : diagnostic
   await ctx.route("https://cdn.jsdelivr.net/**", (r) => {
     const u = r.request().url();
     if (u.includes("supabase-js")) return r.fulfill({ status: 200, contentType: "text/javascript", headers: CORS, body: "/* fake: défini par addInitScript */" });
