@@ -28,7 +28,8 @@ const jwt = (role) => `${b64u({ alg: "HS256", typ: "JWT" })}.${b64u({ iss: "supa
     ok(/pas une clé publique/.test(await probe("nimportequoi")), "valeur quelconque refusée");
 
     console.log("▶ Enregistrement et chargement");
-    await page.evaluate(() => paramTab("sync", null)); await page.waitForTimeout(400);
+    await page.evaluate(() => navigate("parametrage", null)); await page.waitForTimeout(500);
+    await page.evaluate(() => paramTab("sync", null)); await page.waitForTimeout(500);
     ok((await page.inputValue("#sb-url")) === "https://izgpvhwhbrgeagjfhfli.supabase.co", "aucune configuration : l'URL du projet SANIX est proposée par défaut");
     await page.fill("#sb-key", SECRET_LIKE); await page.evaluate(() => saveSbConfig());
     ok(/pas une clé publique/.test(await page.locator("#conn-msg").innerText()) && (await page.evaluate(() => lsLoad("supabase_config"))) === null, "enregistrement refusé : rien n'est stocké");
