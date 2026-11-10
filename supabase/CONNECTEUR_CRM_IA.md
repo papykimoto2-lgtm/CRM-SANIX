@@ -134,6 +134,8 @@ L'import initial n'émet **aucun** événement (pas de mission pour l'historique
    `update ai_agents set outils = array_append(outils, 'record_appointment_report') where code in ('ia_rdv_1', 'ia_nego_1') and not ('record_appointment_report' = any(outils));`
    Sans cet outil, un agent peut réserver un rendez-vous (visible dans l'agenda du CRM) mais pas en rédiger le compte rendu.
 
+7. **Pilotage (budget, plan d'actions, coûts IA)** : appliquer `20261112000000_pilotage_budget.sql` (après la migration du connecteur), redéployer les trois fonctions, puis ouvrir l'écran *Pilotage → Budget & actions*. Le budget et le plan d'actions se synchronisent par le même chemin que les fiches du CRM (entités `pil_depenses`, `pil_actions`, `pil_config`, fusion champ par champ). Les agents proposent des actions avec l'outil `propose_commercial_action` ; rien n'entre dans le plan sans acceptation d'un opérateur. Serveur sans la migration : ces trois entités sont mises en veille 10 minutes puis réessayées, sans erreur de synchronisation. Tests : `supabase/functions/tests/pilotage_sql_test.sh`, `pilotage_tools_test.ts`, `tests/pilotage_e2e_test.js`.
+
 Retour arrière : désactiver la planification (`select cron.unschedule('crm-ai-events')`) ; les données du CRM restent dans les navigateurs ; aucune table existante n'a été modifiée (colonnes ajoutées, nullables).
 
 ## 7. Tests

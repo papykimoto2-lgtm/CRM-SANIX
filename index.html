@@ -20,6 +20,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="shared/pager.js" defer></script>
 <script src="shared/crm-connector.js" defer></script>
+<script src="shared/pilotage.js" defer></script>
 <style>
 :root{
   --bg:#F0F5FF;--surface:#FFFFFF;--surface2:#F8FAFF;
@@ -1089,6 +1090,8 @@ select.form-input{cursor:pointer}
 
     <!-- ══ VIEW: CRM INTELLIGENCE ══ -->
     <!-- ══ VIEW: DIRECTEUR COMMERCIAL IA ══ -->
+    <div id="view-budget" class="hidden fade-in"></div>
+
     <div id="view-aisales" class="hidden fade-in">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px">
         <div>
@@ -5202,7 +5205,7 @@ const NAV_GROUPS = {
   livraison: {views:[['licences','🔑 Licences'],['planning','📅 Planning déploiement']], badges:['sb-lic-badge']},
   finance:   {views:[['comptabilite','📒 Comptabilité'],['commissions','💰 Commissions']], badges:['sb-compta-badge','sb-comm-badge']},
   apres:     {views:[['apresvente','🔁 Renouvellements & fidélisation']], badges:[]},
-  pilot:     {views:[['direction','👔 Direction'],['aisales','🤖 Directeur IA'],['cockpit','🧠 Cockpit IA'],['intel','🧬 Intelligence']], badges:['sb-ais-badge']},
+  pilot:     {views:[['direction','👔 Direction'],['budget','💶 Budget & actions'],['aisales','🤖 Directeur IA'],['cockpit','🧠 Cockpit IA'],['intel','🧬 Intelligence']], badges:['sb-ais-badge']},
   reglages:  {views:[['equipe','🏆 Équipe & Apporteurs'],['documents','📄 Documents & Modèles'],['parametrage','🛠️ Paramétrage']], badges:['sb-app-badge','sb-doc-badge']}
 };
 // Écrans fusionnés : la vue d'origine est déplacée dans l'écran d'accueil de son module
@@ -5529,7 +5532,7 @@ function navigate(view, el) {
   }
   if(el && el.classList && el.classList.contains('sb-item')) el.classList.add('active');
   document.getElementById('topbar-title').textContent = {
-    dashboard:'Tableau de bord',pipeline:'Pipeline Commercial',clients:'Clients & Prospects',
+    dashboard:'Tableau de bord',budget:'Budget & plan d\'actions',pipeline:'Pipeline Commercial',clients:'Clients & Prospects',
     intel:'CRM Intelligence',agenda:'Agenda intelligent',marketing:'Moteur Marketing',journal:'Journal & PV de contact',direction:'Direction & Cockpit',cockpit:'Cockpit IA',aisales:'Directeur commercial IA',conversion:'Moteur de Conversion',logiciels:'Catalogue Logiciels',equipe:'Équipe & Apporteurs',apporteurs:'Apporteurs d\'affaires',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
     planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
     parametrage:'Paramétrage',apresvente:'Après-vente & fidélisation',
@@ -5546,6 +5549,7 @@ function navigate(view, el) {
   if(view === 'apresvente') setTimeout(initApresVente, 50);
   if(view === 'cockpit') setTimeout(initCockpit, 50);
   if(view === 'aisales') setTimeout(initAiSales, 50);
+  if(view === 'budget') setTimeout(()=>{ try{ initPilotage(); }catch(e){ console.error(e); } }, 30);
   if(view === 'direction'){ setTimeout(initIntel, 70); setTimeout(initDirection, 50); setTimeout(initCockpit, 60); const _ck=document.getElementById('view-cockpit'); if(_ck) _ck.classList.remove('hidden'); }
   if(view === 'equipe') eqSyncTab(_orig);
   if(view === 'marketing') setTimeout(initMarketing, 50);
@@ -8224,8 +8228,8 @@ const ROLE_BG = {
   apporteur:'#FFFBEB'
 };
 const PERMISSIONS = {
-  super_admin:['aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports','users','parametrage','parametres'],
-  manager:    ['aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports'],
+  super_admin:['budget','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports','users','parametrage','parametres'],
+  manager:    ['budget','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports'],
   commercial: ['journal','dashboard','pipeline','clients','logiciels','messagerie','carte','rapports'],
   apporteur:  ['pipeline','clients','messagerie','rapports'],
 };

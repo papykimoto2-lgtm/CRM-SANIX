@@ -516,6 +516,14 @@ var DEFS = {
     compte_rendu: S({ description: "Au moins 20 caract\xE8res : d\xE9roul\xE9, besoins, d\xE9cisions" }),
     prochaine_etape: nul("string")
   } },
+  propose_commercial_action: { description: "Propose une action au plan d'actions commercial (relance d'un segment, campagne, d\xE9monstration, \xE9tude\u2026). Elle n'entre dans le plan qu'apr\xE8s acceptation d'un op\xE9rateur humain ; au plus 20 propositions en attente. Appuie-la sur des chiffres du CRM (justification).", props: {
+    titre: S({ description: "Action concr\xE8te, 5 \xE0 200 caract\xE8res" }),
+    justification: nul("string"),
+    responsable: nul("string"),
+    echeance: nul("string", { description: "AAAA-MM-JJ" }),
+    objectif_ca: nul("integer", { description: "CA vis\xE9 en FCFA" }),
+    segment: nul("string")
+  } },
   create_offer: { description: "Calcule une offre depuis la grille officielle. Remise hors d\xE9l\xE9gation \u2192 validation direction.", props: {
     ...P,
     product_id: S(),
@@ -718,6 +726,21 @@ Prochaine \xE9tape : ${String(input.prochaine_etape).trim()}` : "")).slice(0, 4e
         if (["rdv_propose", "rdv_confirme"].includes(String(p.stage))) await db().from("ai_prospects").update({ stage: "demo_realisee" }).eq("id", pid);
       }
       return { ok: true, rdv: ap.id, statut: input.statut };
+    }
+    case "propose_commercial_action": {
+      const ech = input.echeance ? String(input.echeance).trim() : null;
+      if (ech !== null && !/^\d{4}-\d{2}-\d{2}$/.test(ech)) throw new Error("echeance : format AAAA-MM-JJ attendu");
+      const { data, error } = await db().rpc("ai_propose_commercial_action", {
+        p_agent: ctx.agentId,
+        p_titre: input.titre,
+        p_justification: input.justification,
+        p_responsable: input.responsable,
+        p_echeance: ech,
+        p_objectif_ca: Math.max(0, Math.round(Number(input.objectif_ca) || 0)),
+        p_segment: input.segment
+      });
+      if (error) throw new Error(error.message);
+      return data;
     }
     case "create_offer": {
       const { data: grille } = await db().from("ai_pricing").select("*").eq("product_id", input.product_id).eq("actif", true);
@@ -1047,6 +1070,7 @@ function activityFor(tool, input) {
       return "management";
     case "terminer_mission":
     case "record_appointment_report":
+    case "propose_commercial_action":
       return "preparation_rapport";
     case "signaler_difficulte":
       return "en_difficulte";
@@ -1230,6 +1254,7 @@ var ACTION_TOOLS = /* @__PURE__ */ new Set([
   "set_stage",
   "book_appointment",
   "record_appointment_report",
+  "propose_commercial_action",
   "create_offer",
   "schedule_followup",
   "escalate_to_human",
