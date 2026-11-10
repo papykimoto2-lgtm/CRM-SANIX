@@ -90,3 +90,10 @@ Quand le connecteur Supabase de Claude est branché sur **le bon compte** (véri
 - *Verify JWT* désactivé ; les contrôles se font par SQL (`net._http_response` : codes de réponse du planificateur) et par les journaux ;
 - seule `ANTHROPIC_API_KEY` reste à saisir par l'exploitant (formulaire du tableau de bord) ;
 - les fonctions parasites du tableau de bord (noms aléatoires comme `clever-endpoint`) ne peuvent pas être supprimées par le connecteur : *Edge Functions → la fonction → Delete function*.
+
+## 7. Mettre à jour une installation existante
+`setup_all.sql` ne sert qu'aux nouvelles installations. Sur une base déjà en service, appliquer **avant** de redéployer les fonctions (*SQL Editor* ou connecteur Supabase), dans l'ordre :
+1. `migrations/20261110000000_ai_sales_followup_queue.sql` : file de relances atomique (`ai_claim_due_followups`, colonnes `attempts`, `locked_at`, `last_error`) ;
+2. `migrations/20261110010000_ai_consent_setting.sql` : réglage de gouvernance `consentement_requis` (désactivé par défaut).
+
+Puis redéployer `ai-company`, `ai-sales-director` et `whatsapp-webhook` (§1, §5 ou §6). **Consentement** : désactivé, la validation du président reste le garde-fou ; activé (*Gouvernance → Exiger une preuve de consentement*), un prospect ne reçoit rien sans `ai_prospects.consentement` daté et justifié pour le canal (`{"email":{"at":"2026-11-10T09:00:00Z","preuve":"formulaire de contact"}}`) ou, pour WhatsApp, sans message entrant de moins de 24 h (le webhook enregistre ce consentement à la première réponse du prospect).

@@ -4,11 +4,13 @@ import { AI_DISCLOSURE, isFirstOutbound, type Prospect, sendEmail, sendWhatsApp 
 
 export type CommMode = "interdite" | "validation" | "autonome";
 
-export async function commMode(): Promise<CommMode> {
-  const { data } = await db().from("ai_governance").select("communication_externe, actif").eq("id", 1).maybeSingle();
-  if (!data || data.actif === false) return "interdite";
-  return (data.communication_externe as CommMode) ?? "validation";
+/** Politique de communication (réglages de gouvernance) : mode d'envoi et exigence d'une preuve de consentement. */
+export async function commPolicy(): Promise<{ mode: CommMode; consentRequired: boolean }> {
+  const { data } = await db().from("ai_governance").select("*").eq("id", 1).maybeSingle();   // « * » : tolère un schéma sans la colonne consentement_requis
+  if (!data || data.actif === false) return { mode: "interdite", consentRequired: false };
+  return { mode: (data.communication_externe as CommMode) ?? "validation", consentRequired: data.consentement_requis === true };
 }
+export async function commMode(): Promise<CommMode> { return (await commPolicy()).mode; }
 
 export type DeliverInput = {
   prospect: Prospect & { relances_sans_reponse?: number };
@@ -18,13 +20,13 @@ export type DeliverInput = {
 export type DeliverResult = { statut: string; detail: string; message_id?: number; approval_id?: string; consigne?: string };
 
 export async function deliverMessage(i: DeliverInput): Promise<DeliverResult> {
-  const mode = await commMode();
+  const { mode, consentRequired } = await commPolicy();
   if (mode === "interdite") {
     throw new Error("Communication externe interdite par la gouvernance (ou entreprise en pause) : aucun message ne peut partir.");
   }
   if (i.prospect.opt_out) throw new Error("Prospect désinscrit : envoi interdit");
-  if (!hasChannelPermission(i.prospect, i.canal)) {
-    throw new Error(`Envoi ${i.canal} bloqué : consentement ou preuve d'autorisation absent(e).`);
+  if (consentRequired && !hasChannelPermission(i.prospect, i.canal)) {
+    throw new Error(`Envoi ${i.canal} bloqué : la gouvernance exige une preuve de consentement (ai_prospects.consentement)${i.canal === "whatsapp" ? " ou un message entrant de moins de 24 h" : ""}.`);
   }
   let contenu = i.contenu.trim().slice(0, 4000);
   if (!contenu) throw new Error("Message vide");
@@ -99,7 +101,8 @@ export async function flushOutbox(limit = 20): Promise<{ envoyes: number; en_fil
 }
 
 
-function hasChannelPermission(
+/** Preuve d'autorisation d'écrire à un prospect : consentement daté et justifié, ou (WhatsApp) message entrant de moins de 24 h. */
+export function hasChannelPermission(
   p: DeliverInput["prospect"],
   canal: "whatsapp" | "email",
 ): boolean {

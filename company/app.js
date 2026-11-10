@@ -400,6 +400,7 @@ function renderGov(main) {
     <div class="card"><h3 style="margin-top:0">Autorisations</h3><label class="chk"><input type="checkbox" id="g-actif" ${g.actif ? "checked" : ""}> Entreprise virtuelle active (décocher = pause générale)</label>
       <label class="chk" style="margin-top:8px"><input type="checkbox" id="g-auto" ${g.creation_autonome ? "checked" : ""}> Le directeur peut créer des agents sans validation</label>
       <label class="chk" style="margin-top:8px"><input type="checkbox" id="g-ext" ${g.validation_outils_externes ? "checked" : ""}> Valider les agents dotés d'outils de communication externe</label>
+      ${"consentement_requis" in g ? html`<label class="chk" style="margin-top:8px"><input type="checkbox" id="g-consent" ${g.consentement_requis ? "checked" : ""}> Exiger une preuve de consentement avant tout envoi (WhatsApp, e-mail) : un prospect sans preuve ne reçoit rien</label>` : ""}
       <label class="f" style="margin-top:10px">Communication externe (WhatsApp, e-mail aux prospects)<select id="g-comm"><option value="interdite" ${g.communication_externe === "interdite" ? "selected" : ""}>Interdite</option><option value="validation" ${g.communication_externe === "validation" ? "selected" : ""}>Chaque message validé par le président</option><option value="autonome" ${g.communication_externe === "autonome" ? "selected" : ""}>Autonome (messages envoyés directement)</option></select></label>
       <label class="f" style="margin-top:10px">Modèle d'IA<select id="g-model">${["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"].map((m) => html`<option ${g.modele === m ? "selected" : ""}>${m}</option>`)}</select></label></div></div>
     <form id="gov-form" class="card" style="margin-top:12px"><h3 style="margin-top:0">Limites</h3><div class="form">${GOV_NUM.map(([k, l, mn, mx, st]) => html`<label class="f">${l}<input type="number" name="${k}" min="${mn}" max="${mx}" step="${st}" value="${g[k]}" required></label>`)}</div>
@@ -407,6 +408,7 @@ function renderGov(main) {
   $("#gov-form").onsubmit = async (e) => {
     e.preventDefault();
     const patch = { actif: $("#g-actif").checked, creation_autonome: $("#g-auto").checked, validation_outils_externes: $("#g-ext").checked, communication_externe: $("#g-comm").value, modele: $("#g-model").value };
+    if ($("#g-consent")) patch.consentement_requis = $("#g-consent").checked;
     for (const [k, , mn, mx] of GOV_NUM) {
       const v = Number(e.target.elements[k].value);
       if (!Number.isFinite(v) || v < mn || v > mx) { toast(`Valeur invalide : ${k}`, "bad"); return; }

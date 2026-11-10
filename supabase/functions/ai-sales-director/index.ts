@@ -5,11 +5,11 @@
 import { audit, cors, cronSecret, db, env, HttpError, json, requireOperator, safeEqual } from "../_shared/core.ts";
 import { runAgent } from "../_shared/agent.ts";
 import { BudgetError, LlmKeyMissingError, TransientLlmError } from "../_shared/llm.ts";
+import { MAX_RELANCES, tickFollowups } from "../_shared/followups.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
-const MAX_RELANCES = 4;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors(req) });
@@ -19,7 +19,8 @@ Deno.serve(async (req) => {
 
     if (body.action === "tick") {
       if (!safeEqual(req.headers.get("x-cron-secret") ?? "", await cronSecret())) throw new HttpError(401, "Non autorisé");
-      return json(req, await tick());
+      return json(req, await tickFollowups((f, p) => runAgent({ mode: "relance", prospect_id: f.prospect_id, scenario: f.scenario },
+        `Relance planifiée (${f.scenario}) pour le prospect ${f.prospect_id}, canal ${f.canal}. Relances déjà sans réponse : ${p.relances_sans_reponse}/${MAX_RELANCES}. get_prospect, puis une relance personnalisée qui apporte une valeur nouvelle (jamais « je reviens vers vous » seul). Dernière relance autorisée = message de clôture courtois.`)));
     }
 
     const op = await requireOperator(req);
@@ -78,83 +79,3 @@ Termine par un rapport : nombre trouvé, qualité des sources, 5 cibles priorita
   }
 }
 
-async function tick() {
-  const { data: due, error } = await db().rpc("ai_claim_due_followups", { p_limit: 10 });
-  if (error) throw new Error(`Impossible de réserver les relances : ${error.message}`);
-
-  let traites = 0, veille = 0, ignores = 0, reprogrammes = 0;
-  for (const f of due ?? []) {
-    const { data: p, error: prospectError } = await db().from("ai_prospects")
-      .select("opt_out, relances_sans_reponse, stage")
-      .eq("id", f.prospect_id).maybeSingle();
-
-    if (prospectError) {
-      await retryFollowup(f, prospectError.message);
-      reprogrammes++;
-      continue;
-    }
-    if (!p || p.opt_out || ["perdu", "en_veille", "marche_gagne"].includes(p.stage)) {
-      await finishFollowup(f.id, "annulee");
-      ignores++;
-      continue;
-    }
-    if ((p.relances_sans_reponse ?? 0) >= MAX_RELANCES) {
-      await db().from("ai_prospects").update({ stage: "en_veille" }).eq("id", f.prospect_id);
-      await finishFollowup(f.id, "annulee");
-      veille++;
-      continue;
-    }
-    if (f.canal === "telephone") {
-      const { error: approvalError } = await db().from("ai_approvals").insert({
-        type: "transfert_humain", prospect_id: f.prospect_id,
-        motif: `Appel à passer : ${f.scenario}`,
-      });
-      if (approvalError) {
-        await retryFollowup(f, approvalError.message);
-        reprogrammes++;
-      } else {
-        await finishFollowup(f.id, "faite");
-        traites++;
-      }
-      continue;
-    }
-    try {
-      await runAgent({ mode: "relance", prospect_id: f.prospect_id, scenario: f.scenario },
-        `Relance planifiée (${f.scenario}) pour le prospect ${f.prospect_id}, canal ${f.canal}. Relances déjà sans réponse : ${p.relances_sans_reponse}/${MAX_RELANCES}. get_prospect, puis une relance personnalisée qui apporte une valeur nouvelle (jamais « je reviens vers vous » seul). Dernière relance autorisée = message de clôture courtois.`);
-      await finishFollowup(f.id, "faite");
-      traites++;
-    } catch (e) {
-      if (e instanceof BudgetError || e instanceof TransientLlmError) {
-        await retryFollowup(f, (e as Error).message, 60);
-        reprogrammes++;
-        break;
-      }
-      await retryFollowup(f, (e as Error).message);
-      reprogrammes++;
-      await audit({
-        agent: "followup_manager", action: "tick_erreur", prospect_id: f.prospect_id,
-        ok: false, payload: { followup_id: f.id, tentative: f.attempts, erreur: String(e) },
-      });
-    }
-  }
-  return { traites, mis_en_veille: veille, ignores, reprogrammes };
-}
-
-async function finishFollowup(id: string, statut: "faite" | "annulee") {
-  const { error } = await db().from("ai_followups")
-    .update({ statut, locked_at: null }).eq("id", id);
-  if (error) throw new Error(error.message);
-}
-
-async function retryFollowup(f: { id: string; attempts?: number }, reason: string, minimumMinutes = 0) {
-  const attempts = Number(f.attempts) || 1;
-  const delayMinutes = Math.max(minimumMinutes, Math.min(24 * 60, 5 * 2 ** Math.min(attempts, 8)));
-  const terminal = attempts >= 5;
-  const { error } = await db().from("ai_followups").update({
-    statut: terminal ? "annulee" : "planifiee",
-    due_at: new Date(Date.now() + delayMinutes * 60_000).toISOString(),
-    locked_at: null,
-    last_error: String(reason).slice(0, 1000),
-  }).eq("id", f.id);
-  if (error) throw new Error(error.message);
-}

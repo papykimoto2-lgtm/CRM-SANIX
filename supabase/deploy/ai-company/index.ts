@@ -312,17 +312,23 @@ async function isFirstOutbound(prospectId) {
 }
 
 // functions/_shared/outbox.ts
+async function commPolicy() {
+  const { data } = await db().from("ai_governance").select("*").eq("id", 1).maybeSingle();
+  if (!data || data.actif === false) return { mode: "interdite", consentRequired: false };
+  return { mode: data.communication_externe ?? "validation", consentRequired: data.consentement_requis === true };
+}
 async function commMode() {
-  const { data } = await db().from("ai_governance").select("communication_externe, actif").eq("id", 1).maybeSingle();
-  if (!data || data.actif === false) return "interdite";
-  return data.communication_externe ?? "validation";
+  return (await commPolicy()).mode;
 }
 async function deliverMessage(i) {
-  const mode = await commMode();
+  const { mode, consentRequired } = await commPolicy();
   if (mode === "interdite") {
     throw new Error("Communication externe interdite par la gouvernance (ou entreprise en pause) : aucun message ne peut partir.");
   }
   if (i.prospect.opt_out) throw new Error("Prospect d\xE9sinscrit : envoi interdit");
+  if (consentRequired && !hasChannelPermission(i.prospect, i.canal)) {
+    throw new Error(`Envoi ${i.canal} bloqu\xE9 : la gouvernance exige une preuve de consentement (ai_prospects.consentement)${i.canal === "whatsapp" ? " ou un message entrant de moins de 24 h" : ""}.`);
+  }
   let contenu = i.contenu.trim().slice(0, 4e3);
   if (!contenu) throw new Error("Message vide");
   if (await isFirstOutbound(i.prospect.id)) contenu = `${contenu}
@@ -404,6 +410,18 @@ async function flushOutbox(limit = 20) {
     }
   }
   return { envoyes, en_file };
+}
+function hasChannelPermission(p, canal) {
+  if (canal === "whatsapp" && p.last_inbound_at) {
+    const age = Date.now() - Date.parse(p.last_inbound_at);
+    if (Number.isFinite(age) && age >= 0 && age < 24 * 60 * 60 * 1e3) return true;
+  }
+  const raw = p.consentement?.[canal];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const consent = raw;
+  const preuve = typeof consent.preuve === "string" ? consent.preuve.trim() : "";
+  const at = typeof consent.at === "string" ? Date.parse(consent.at) : NaN;
+  return preuve.length > 0 && Number.isFinite(at) && at <= Date.now();
 }
 
 // functions/_shared/crm_tools.ts
