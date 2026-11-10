@@ -94,6 +94,9 @@ Quand le connecteur Supabase de Claude est branché sur **le bon compte** (véri
 ## 7. Mettre à jour une installation existante
 `setup_all.sql` ne sert qu'aux nouvelles installations. Sur une base déjà en service, appliquer **avant** de redéployer les fonctions (*SQL Editor* ou connecteur Supabase), dans l'ordre :
 1. `migrations/20261110000000_ai_sales_followup_queue.sql` : file de relances atomique (`ai_claim_due_followups`, colonnes `attempts`, `locked_at`, `last_error`) ;
-2. `migrations/20261110010000_ai_consent_setting.sql` : réglage de gouvernance `consentement_requis` (désactivé par défaut).
+2. `migrations/20261110010000_ai_consent_setting.sql` : réglage de gouvernance `consentement_requis` (désactivé par défaut) ;
+3. `migrations/20261111000000_crm_ai_connector.sql` : connecteur CRM ↔ IA (base centrale du CRM, événements durables ; voir `CONNECTEUR_CRM_IA.md`). Sans elle, le CRM reste en mode local (« connecteur serveur absent ») et rien n'est perdu.
+
+**Les fichiers `deploy/*/index.ts` sont générés** : après toute modification de `functions/`, régénérer (`sh supabase/build_functions.sh`) et committer le résultat, sinon les §1, §5 et §6 déploient l'ancien code.
 
 Puis redéployer `ai-company`, `ai-sales-director` et `whatsapp-webhook` (§1, §5 ou §6). **Consentement** : désactivé, la validation du président reste le garde-fou ; activé (*Gouvernance → Exiger une preuve de consentement*), un prospect ne reçoit rien sans `ai_prospects.consentement` daté et justifié pour le canal (`{"email":{"at":"2026-11-10T09:00:00Z","preuve":"formulaire de contact"}}`) ou, pour WhatsApp, sans message entrant de moins de 24 h (le webhook enregistre ce consentement à la première réponse du prospect).
