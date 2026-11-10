@@ -128,7 +128,7 @@ T("C4 · scénario 2 : qualification par un agent → le CRM reçoit le nouveau 
   const rid = await crmProspect();
   const p = await prospectOf(rid);
   const v0 = Number((await record("clients", rid)).version), cur0 = Number(await val("select max(seq) from crm_records"));
-  await sql("update ai_prospects set crit_produit=22, crit_besoin=15, crit_finance=10, crit_decideur=12, crit_court_terme=10, crit_disponibilite=6, produits_recommandes='{immosuite}', resume_ia='Promoteur sérieux' where id = $1", [p.id]);
+  await sql("update ai_prospects set crit_produit=22, crit_besoin=15, crit_finance=10, crit_decideur=12, crit_court_terme=10, crit_disponibilite=6, score_justification='Promoteur identifié sur son site, programme en cours de commercialisation', produits_recommandes='{immosuite}', resume_ia='Promoteur sérieux' where id = $1", [p.id]);
   await sql("update ai_prospects set stage = 'qualifie' where id = $1", [p.id]);                // l'agent qualifie
   const e = (await ev("ia.prospect.qualified"))[0];
   assert(e && e.direction === "ia_to_crm" && e.prospect_id === p.id, "événement IA → CRM créé par le travail de l'agent");
@@ -169,7 +169,7 @@ T("C5 · scénario 3 : mission créée dans le bureau pour un dossier → visibl
   assert(ov.some((m: any) => m.id === tid && m.crm_rid === rid && m.agent_code === "ia_mail_1"), "vue « Missions IA » du CRM");
   const panel = await rpc(COMMERCIAL, "crm_client_panel($1)", [rid]);
   assert(panel.missions.some((m: any) => m.id === tid) && panel.agent.code === "ia_qualif_1" && panel.linked, "fiche CRM : agent responsable et missions liées");
-  await sql("update ai_agent_tasks set statut = 'terminee', rapport = 'Promoteur joint, brochure envoyée.' where id = $1", [tid]);
+  await sql("update ai_agent_tasks set statut = 'terminee', rapport = 'Promoteur joint par téléphone, brochure envoyée et rendez-vous à fixer.', resultats = '[\"Brochure envoyée au promoteur\"]' where id = $1", [tid]);
   await run();
   assert(interactions(await record("clients", rid)).some((i) => i.type === "Mission terminée par l'IA" && i.note.includes("brochure envoyée")), "mission terminée : compte rendu dans le dossier");
   const board = await rpc(PRESIDENT, "crm_agent_portfolio($1)", [agent]);

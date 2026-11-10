@@ -313,17 +313,19 @@ var DEFS = {
     budget_estime: nul("integer"),
     potentiel_fcfa: nul("integer"),
     criteres: nul("object", {
+      description: "Score /100 : produit /25 (correspondance avec le logiciel), besoin /25, taille /15 (taille et potentiel), decideur /15 (accessibilit\xE9), maturite /10 (maturit\xE9 num\xE9rique), fiabilite /10 (fiabilit\xE9 des informations)",
       properties: {
         produit: { type: "integer" },
         besoin: { type: "integer" },
-        finance: { type: "integer" },
+        taille: { type: "integer" },
         decideur: { type: "integer" },
-        court_terme: { type: "integer" },
-        disponibilite: { type: "integer" }
+        maturite: { type: "integer" },
+        fiabilite: { type: "integer" }
       },
-      required: ["produit", "besoin", "finance", "decideur", "court_terme", "disponibilite"],
+      required: ["produit", "besoin", "taille", "decideur", "maturite", "fiabilite"],
       additionalProperties: false
     }),
+    justification_score: nul("string", { description: "Obligatoire avec criteres : \xE9l\xE9ments observables (sources, faits v\xE9rifi\xE9s), 30 caract\xE8res au moins" }),
     resume: nul("string")
   } },
   set_stage: {
@@ -468,14 +470,20 @@ async function runCrmTool(ctx, name, raw) {
       if (typeof patch.email === "string" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(patch.email)) delete patch.email;
       if (input.resume !== null) patch.resume_ia = String(input.resume).slice(0, 2e3);
       const c = input.criteres;
-      if (c) Object.assign(patch, {
-        crit_produit: clamp(c.produit, 25),
-        crit_besoin: clamp(c.besoin, 20),
-        crit_finance: clamp(c.finance, 15),
-        crit_decideur: clamp(c.decideur, 15),
-        crit_court_terme: clamp(c.court_terme, 15),
-        crit_disponibilite: clamp(c.disponibilite, 10)
-      });
+      if (c) {
+        const j = String(input.justification_score ?? "").trim();
+        if (j.length < 30) throw new Error("Score non justifi\xE9 : renseigne justification_score avec les \xE9l\xE9ments observables (sources, faits v\xE9rifi\xE9s) sur 30 caract\xE8res au moins");
+        Object.assign(patch, {
+          // colonnes historiques : crit_finance = taille, crit_court_terme = maturité numérique, crit_disponibilite = fiabilité des informations
+          crit_produit: clamp(c.produit, 25),
+          crit_besoin: clamp(c.besoin, 25),
+          crit_finance: clamp(c.taille, 15),
+          crit_decideur: clamp(c.decideur, 15),
+          crit_court_terme: clamp(c.maturite, 10),
+          crit_disponibilite: clamp(c.fiabilite, 10),
+          score_justification: j.slice(0, 2e3)
+        });
+      }
       if (!Object.keys(patch).length) return { info: "Aucun changement" };
       const { data, error } = await db().from("ai_prospects").update(patch).eq("id", pid).select("score,priorite").single();
       if (error) throw new Error(error.message);
@@ -690,7 +698,7 @@ R\xC8GLES COMMERCIALES ABSOLUES
 
 STYLE : fran\xE7ais professionnel et chaleureux, adapt\xE9 \xE0 la C\xF4te d'Ivoire. WhatsApp : 2 \xE0 5 phrases, 1 question \xE0 la fois, \xE9mojis rares. E-mail : structur\xE9, objet clair. Toujours finir par une prochaine \xE9tape concr\xE8te (question, cr\xE9neau de d\xE9mo, envoi d'offre).`;
 var SALES_METHOD = `M\xC9THODE
-- Qualification : note les 6 crit\xE8res (produit /25, besoin /20, finance /15, d\xE9cideur /15, court terme /15, disponibilit\xE9 /10) via update_prospect, justifi\xE9s par des faits.
+- Qualification : note les 6 crit\xE8res (produit /25, besoin /25, taille /15, d\xE9cideur /15, maturit\xE9 num\xE9rique /10, fiabilit\xE9 des informations /10) via update_prospect, avec justification_score (faits observables, sources) obligatoire. Ne jamais inventer une information manquante : la noter comme non v\xE9rifi\xE9e.
 - Score \u2265 80 : proposer d\xE9mo / RDV (list_free_slots puis book_appointment). 60-79 : d\xE9couverte + d\xE9mo. 40-59 : nurturing. < 40 : veille.
 - Objection : get_objection, reformuler, r\xE9pondre par la valeur, proposer une \xE9tape.
 - Chaque \xE9change se termine par schedule_followup adapt\xE9 au comportement (pas de d\xE9lai fixe), sauf d\xE9sinscription.

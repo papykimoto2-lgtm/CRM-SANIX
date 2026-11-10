@@ -117,7 +117,7 @@ function startBridge() {
     await page.evaluate(() => document.getElementById("modal-client-detail").classList.add("hidden"));
 
     console.log("▶ Scénario 2 — qualification par un agent → le CRM reçoit le nouveau statut");
-    await sql("update ai_prospects set crit_produit=22, crit_besoin=15, crit_finance=10, crit_decideur=12, crit_court_terme=10, crit_disponibilite=6, produits_recommandes='{medicor}', stage='qualifie' where id = $1", [zp.id]);
+    await sql("update ai_prospects set crit_produit=22, crit_besoin=15, crit_finance=10, crit_decideur=12, crit_court_terme=10, crit_disponibilite=6, score_justification='Clinique identifiée, besoin de dossier patient, décideur joignable', produits_recommandes='{medicor}', stage='qualifie' where id = $1", [zp.id]);
     await wait(async () => { await sync(page); return page.evaluate(() => { const z = CLIENTS.find((x) => x.nom === "Zénith Cliniques"); return z && z.ia && z.ia.stage === "qualifie"; }); }, 20000, "statut IA dans le CRM");
     ok(await page.evaluate(() => { const z = CLIENTS.find((x) => x.nom === "Zénith Cliniques"); return z.ia.score === 75 && z.interactions.some((i) => i.type === "Prospect qualifié par l'IA" && i.etape === 1 && aiGetEtape(z) >= 1); }), "qualification reçue : score 75/100, historique et étape du CRM (« Contact établi »)");
 

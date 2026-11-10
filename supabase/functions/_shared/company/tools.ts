@@ -98,6 +98,8 @@ export function companySchemas(departmentIds: string[]): Record<string, Anthropi
       agent_code: str(), titre: str(), description: str("Contexte, périmètre, livrable attendu"),
       objectifs: arr("Objectifs chiffrés"), priorite: int("1 (urgent) à 5"), echeance_heures: int("Délai en heures (optionnel)"),
       entrees: str("Données d'entrée (optionnel)"), depend_de: arr("Ids de missions préalables (optionnel)"),
+      produit: str("Logiciel concerné : immosuite, aluexpert ou avicosuite (optionnel ; hérité de ta mission si absent)"),
+      resultat_attendu: str("Résultat vérifiable attendu à la clôture (optionnel mais recommandé)"),
     }, ["agent_code", "titre", "description", "objectifs", "priorite"]),
     attendre_sous_taches: T("attendre_sous_taches", "Suspend ta mission jusqu'à la fin de tes sous-missions ou de ta réunion ; tu seras relancé avec leurs rapports.", {}),
     evaluer_tache: T("evaluer_tache", "Note (0-100) le travail terminé d'un subordonné.", {
@@ -185,11 +187,14 @@ export async function runCompanyTool(ctx: CoCtx, name: string, input: Record<str
 
 const IMPL: Record<string, (ctx: CoCtx, i: Record<string, any>) => Promise<unknown>> = {
   async terminer_mission(ctx, i) {
-    ctx.finish = {
-      statut: i.statut === "bloquee" ? "bloquee" : "terminee",
-      rapport: txt(i.rapport, 18000, "rapport", 3),
-      resultats: list(i.resultats, 20, 300),
-    };
+    // Une mission n'est jamais « terminée » sur une simple déclaration : un rapport substantiel et au moins un résultat vérifiable sont exigés.
+    const statut = i.statut === "bloquee" ? "bloquee" : "terminee";
+    const rapport = txt(i.rapport, 18000, "rapport", statut === "terminee" ? 40 : 15);
+    const resultats = list(i.resultats, 20, 300);
+    if (statut === "terminee" && !resultats.some((r) => r.length >= 10)) {
+      throw new Error("Mission terminée sans résultat exploitable : liste au moins un livrable ou un chiffre vérifiable (ex. « 12 prospects qualifiés, scores enregistrés »). Si tu n'as rien produit, termine avec le statut « bloquee » et explique précisément pourquoi.");
+    }
+    ctx.finish = { statut, rapport, resultats };
     return { ok: true };
   },
 
@@ -435,7 +440,17 @@ const IMPL: Record<string, (ctx: CoCtx, i: Record<string, any>) => Promise<unkno
       if ((ok ?? []).length !== deps.length) throw new Error("depend_de : uniquement des missions que tu as créées dans cette mission");
     }
     const heures = i.echeance_heures ? num(i.echeance_heures, 1, 2160, 24) : null;
+    let produit: string | null = (ctx.task as { produit?: string | null }).produit ?? null;     // le logiciel de la mission mère se transmet aux sous-missions
+    if (typeof i.produit === "string" && i.produit.trim()) {
+      const { data: pr } = await db().from("ai_products").select("id").eq("id", i.produit.trim().toLowerCase()).eq("actif", true).maybeSingle();
+      if (!pr) {
+        const { data: ok } = await db().from("ai_products").select("id").eq("actif", true);
+        throw new Error(`Logiciel hors périmètre commercial actuel : seuls les logiciels actifs du catalogue sont autorisés (${(ok ?? []).map((x: { id: string }) => x.id).join(", ")})`);
+      }
+      produit = pr.id;
+    }
     const { data: t, error } = await db().from("ai_agent_tasks").insert({
+      produit, resultat_attendu: typeof i.resultat_attendu === "string" && i.resultat_attendu.trim() ? clip(i.resultat_attendu.trim(), 1000) : null,
       parent_id: ctx.task.id, agent_id: target.id, donneur_agent_id: ctx.agent.id,
       type: ctx.agent.niveau <= 3 ? "mission" : "tache",
       titre: txt(i.titre, 200, "titre", 3), description: txt(i.description, 8000, "description", 3),

@@ -76,7 +76,7 @@ T("T1 · instruction → organisation → exécution en chaîne → synthèse au
       (p) => {
         const liste = results(p)[0].data as { id: string; entreprise: string }[];
         return reply(liste.flatMap((x) => [
-          use("update_prospect", { prospect_id: x.id, criteres: { produit: 25, besoin: 12, finance: 8, decideur: x.entreprise.endsWith("Gamma") ? 2 : 10, court_terme: 10, disponibilite: 6 }, resume: "Promoteur actif" }),
+          use("update_prospect", { prospect_id: x.id, criteres: { produit: 25, besoin: 12, taille: 8, decideur: x.entreprise.endsWith("Gamma") ? 2 : 10, maturite: 10, fiabilite: 6 }, justification_score: "Promoteur actif, fiche vérifiée sur le registre et le site de l'entreprise", resume: "Promoteur actif" }),
           use("set_stage", { prospect_id: x.id, stage: "qualifie", motif: "Score suffisant" }),
         ]));
       },

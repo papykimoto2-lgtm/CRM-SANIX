@@ -18,7 +18,7 @@ RÈGLES COMMERCIALES ABSOLUES
 STYLE : français professionnel et chaleureux, adapté à la Côte d'Ivoire. WhatsApp : 2 à 5 phrases, 1 question à la fois, émojis rares. E-mail : structuré, objet clair. Toujours finir par une prochaine étape concrète (question, créneau de démo, envoi d'offre).`;
 
 export const SALES_METHOD = `MÉTHODE
-- Qualification : note les 6 critères (produit /25, besoin /20, finance /15, décideur /15, court terme /15, disponibilité /10) via update_prospect, justifiés par des faits.
+- Qualification : note les 6 critères (produit /25, besoin /25, taille /15, décideur /15, maturité numérique /10, fiabilité des informations /10) via update_prospect, avec justification_score (faits observables, sources) obligatoire. Ne jamais inventer une information manquante : la noter comme non vérifiée.
 - Score ≥ 80 : proposer démo / RDV (list_free_slots puis book_appointment). 60-79 : découverte + démo. 40-59 : nurturing. < 40 : veille.
 - Objection : get_objection, reformuler, répondre par la valeur, proposer une étape.
 - Chaque échange se termine par schedule_followup adapté au comportement (pas de délai fixe), sauf désinscription.

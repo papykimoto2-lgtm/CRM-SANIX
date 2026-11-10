@@ -159,7 +159,7 @@ export async function runTask(taskId: string, opts: { deadline: number }): Promi
     const tools = toolsFor(agent, ctx.departments.map((d) => d.id));
     await ctx.presence!.activity("consultation_documents");   // lecture de la mission
     const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: brief.text }];
-    let activiteMission = false;
+    let activiteMission = false, relances = 0;
     const result = await (async (): Promise<Loop> => {
       for (let turn = 0; turn < gov.max_tours_execution; turn++) {
         if (Date.now() > opts.deadline) return { kind: "deadline" };
@@ -176,7 +176,14 @@ export async function runTask(taskId: string, opts: { deadline: number }): Promi
         if (res.stop_reason === "pause_turn") continue;
         if (res.stop_reason === "max_tokens") { messages.push({ role: "user", content: "Ta réponse a été tronquée. Reprends en étant plus concis." }); continue; }
         const uses = res.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
-        if (res.stop_reason !== "tool_use" || !uses.length) return { kind: "texte", text: textOf(res) };
+        if (res.stop_reason !== "tool_use" || !uses.length) {
+          if (task.type !== "instruction" && relances < 2) {   // une mission ne se clôt jamais par une simple réponse écrite
+            relances++;
+            messages.push({ role: "user", content: "Tu n'as pas clôturé ta mission. Appelle terminer_mission : statut « terminee » avec un rapport factuel et au moins un résultat vérifiable (livrable, chiffre, identifiant), ou statut « bloquee » avec la raison précise." });
+            continue;
+          }
+          return { kind: "texte", text: textOf(res) };
+        }
 
         const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
         for (const u of uses) {   // séquentiel : l'ordre des écritures compte (créer l'agent avant de lui confier une mission)
@@ -215,7 +222,12 @@ async function finalize(ctx: CoCtx, r: Loop): Promise<RunOutcome> {
   const { agent, task } = ctx;
 
   if (r.kind === "fini" || r.kind === "texte") {
-    const f = r.kind === "fini" ? ctx.finish! : { statut: "terminee" as const, rapport: r.text || "Mission traitée (aucun rapport structuré fourni).", resultats: [] as string[] };
+    // Fin par simple texte : acceptée seulement pour un échange avec le président (instruction), avec la mention honnête qu'aucune action n'a été exécutée ;
+    // pour une mission, c'est un blocage (jamais « terminée » sans résultat structuré).
+    const f = r.kind === "fini" ? ctx.finish!
+      : task.type === "instruction"
+        ? { statut: "terminee" as const, rapport: r.text || "Réponse transmise.", resultats: ctx.acted ? [] as string[] : ["Réponse conversationnelle : aucune action n'a été exécutée"] }
+        : { statut: "bloquee" as const, rapport: `Clôture sans résultat structuré : l'agent a répondu par texte sans appeler terminer_mission.\nDernière réponse : ${clip(r.text || "(vide)", 3000)}`, resultats: [] as string[] };
     await db().from("ai_agent_tasks").update({
       statut: f.statut, rapport: f.rapport, resultats: f.resultats, progression: await saveJournal(ctx),
     }).eq("id", task.id);

@@ -25,7 +25,7 @@ check "superviseur aligné sur Industrie et Logistique (charte v2)" "select a.ch
 check "faits du CRM dans les missions (entrées renseignées pour les missions à faire)" "select count(*) from ai_agent_tasks where statut='a_faire' and entrees is null" 0
 # le moteur ne prend que les missions sans dépendance en attente : 11 sur 15 (e-mail, WhatsApp, rendez-vous et offre attendent)
 check "le moteur réclame les 11 missions prêtes (les 4 dépendantes attendent)" "select count(*) from ai_claim_tasks(20)" 11
-$P -d "$DB" -c "update ai_agent_tasks set statut='terminee', finished_at=now() where agent_id in (select id from ai_agents where code in ('ia_hunter_3','ia_wa_1'))" >/dev/null
+$P -d "$DB" -c "update ai_agent_tasks set statut='terminee', finished_at=now(), rapport='Mission réalisée : prospects traités et fiches mises à jour dans le CRM.', resultats='[\"Résultat enregistré\"]' where agent_id in (select id from ai_agents where code in ('ia_hunter_3','ia_wa_1'))" >/dev/null
 check "reprise automatique : le superviseur reprend la main quand ses subordonnés ont terminé" "select statut from ai_agent_tasks where agent_id=(select id from ai_agents where code='ia_sup_distribution')" a_faire
 $P -d "$DB" -f "$SEED" >/dev/null 2>&1
 check "relance idempotente : ni prospect ni mission en double" "select ((select count(*) from ai_agent_tasks) = 25 and (select count(*) from ai_prospects where source='crm') >= 500)::text" true
