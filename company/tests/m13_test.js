@@ -247,6 +247,7 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
     // ══════════════════════════ 8. Fermeture / réouverture ══════════════════════════
     console.log("▶ Critère 8 — activités synchronisées après fermeture et réouverture");
     const fx = JSON.parse(JSON.stringify(FIX0)), by = (c) => fx.ai_agents.find((a) => a.code === c);
+    for (const a of fx.ai_agents) if (a.lieu_jusqua) a.lieu_jusqua = plusH(2);   // jeu de données figé à sa génération : les déplacements « en cours » ne doivent pas expirer avec le temps
     Object.assign(by("ia_hunter_1"), { activite: "en_mission", activite_detail: "redaction_email" });
     Object.assign(by("ia_hunter_2"), { lieu: "supervision", lieu_jusqua: plusH(1) });
     Object.assign(by("ia_content"), { lieu: "poste_agent", lieu_cible_agent: by("ia_dir_marketing").id, lieu_jusqua: plusH(1) });
