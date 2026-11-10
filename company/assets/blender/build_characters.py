@@ -7,6 +7,7 @@ Prérequis : pip install bpy  (Blender 4.2+ / 5.x en module Python : aucun logic
 import os, sys
 sys.path.insert(0, os.path.dirname(__file__))
 import bpy
+import numpy  # requis par l'exporteur glTF de Blender
 import humanoid as H, animations as A
 
 # Quatre silhouettes ; les teintes (peau, cheveux, couleur de département) sont rappliquées à l'exécution (assets.js).
@@ -20,6 +21,8 @@ VARIANTS = [
 def export(path, animations):
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", export_animations=animations, export_animation_mode="NLA_TRACKS",
                               export_optimize_animation_size=True, export_image_format="NONE", export_apply=False, export_yup=True, export_skins=True, export_vertex_color="ACTIVE")
+    if not os.path.isfile(path) or os.path.getsize(path) < 1024:
+        raise RuntimeError("Export GLB échoué ou fichier incomplet : " + path)
 
 def build_character(v, out):
     bpy.ops.wm.read_factory_settings(use_empty=True)
