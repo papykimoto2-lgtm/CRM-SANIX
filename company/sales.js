@@ -1,5 +1,5 @@
 // SANIX AI SALES — interface commerciale reliée aux tables commerciales du même projet Supabase que CRM.
-import { $, ago, closeModal, fmtDT, html, num, openModal, pill, toast, usd } from "./ui.js";
+import { $, ago, closeModal, fmtDT, html, num, openModal, pill, raw, toast, usd } from "./ui.js";
 import { q, S } from "./state.js";
 
 const STAGES = [
@@ -48,7 +48,7 @@ export function renderSales(main) {
       <select id="sales-stage" aria-label="Filtrer par étape"><option value="">Toutes les étapes</option>${stageOptions(filter.stage)}</select>
     </div>
     <div class="scroll"><table class="tbl"><thead><tr><th>Entreprise / Contact</th><th>Produit</th><th>Étape</th><th>Score</th><th>Potentiel</th><th>Prochaine action</th><th></th></tr></thead><tbody>
-    ${rows.map(p=>html`<tr>
+    ${raw(rows.map(p=>html`<tr>
       <td><b>${p.entreprise}</b><div class="small muted">${[p.secteur,p.ville].filter(Boolean).join(" · ")||"—"} · ${p.decideur||"Contact non renseigné"}</div><div class="small muted">${p.email||p.whatsapp||p.telephone||""}${p.crm_client_id?html` · CRM #${p.crm_client_id}`:""}</div></td>
       <td class="small">${(p.produits_recommandes??[]).map(productName).join(", ")||"À déterminer"}</td>
       <td><select data-sales-stage data-id="${p.id}" aria-label="Étape de ${p.entreprise}">${stageOptions(p.stage)}</select></td>
@@ -56,7 +56,7 @@ export function renderSales(main) {
       <td class="num">${money(p.potentiel_fcfa)}</td>
       <td class="small">${p.next_action_at?fmtDT(p.next_action_at):"À planifier"}</td>
       <td><button class="btn sm" type="button" data-act="sales-open" data-id="${p.id}">Ouvrir</button></td>
-    </tr>`).join("")||html`<tr><td colspan="7" class="muted">Aucun prospect correspondant.</td></tr>`}
+    </tr>`).join("")||html`<tr><td colspan="7" class="muted">Aucun prospect correspondant.</td></tr>`.s)}
     </tbody></table></div>
     <p class="small muted" style="margin-top:10px">Le rattachement CRM utilise l'identifiant numérique du client (`crm_client_id`). Les données commerciales restent dans les tables SANIX AI SALES ; aucune table client du CRM principal n'est modifiée automatiquement.</p>
   </section>`.s;
