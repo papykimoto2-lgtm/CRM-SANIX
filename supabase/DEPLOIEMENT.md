@@ -62,6 +62,8 @@ Ces fichiers sont générés (`sh supabase/build_functions.sh`, Node requis) : l
 Relançable sans effet de bord (même secret, mêmes tâches). Arrêter : `select cron.unschedule('ai-company-tick');` (idem `ai-company-reports`, `ai-sales-followups`). Changer le secret : `delete from vault.secrets where name = 'ai_cron_secret';`, relancer le script (les fonctions s'alignent en 30 s). Test : `supabase/functions/tests/schedule_cron_test.sh`.
 
 ## 4. Vérifier
+**Contrôle d'ensemble, lecture seule** : *SQL Editor* → coller `supabase/verifier_installation.sql` → **Run**. Une ligne par étape (schéma, opérateur, agents, mises à jour, planificateur, réponses des fonctions, temps réel, connecteur CRM, gouvernance) : OK, À FAIRE avec l'action, ou INFO. À relancer après chaque étape. Il ne voit pas la clé `ANTHROPIC_API_KEY` (secret des fonctions Edge) : sa présence se lit à l'incident « cle_ia_absente » et à l'activité des agents.
+
 - *Edge Functions → ai-company → Logs* : un appel par minute. Une réponse `401 Non autorisé` = secret du Vault différent de l'en-tête (relancer `schedule_cron.sql`) ; `500` = ni `ai_cron_secret()` ni `CRON_SECRET` disponibles.
 - Dans SANIX AI : cliquer sur le directeur général IA, lui donner une instruction ; la mission et la réponse apparaissent sans recharger la page.
 - Sans `ANTHROPIC_API_KEY`, les fonctions répondent mais **tout reste en pause** : le planificateur ne réclame aucune mission, aucun agent n'est sanctionné ni suspendu, et un incident critique « cle_ia_absente » apparaît dans la gouvernance (une seule fois). Les missions reprennent d'elles-mêmes dès que le secret est posé.
