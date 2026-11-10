@@ -683,8 +683,11 @@ async function commercialFor(pid) {
 }
 
 // functions/_shared/prompts.ts
-var PORTFOLIO = "PORTEFEUILLE : AluExpert (menuiseries alu), ImmoSuite ERP (promoteurs, am\xE9nageurs), DistriPro (grossistes, d\xE9p\xF4ts), Compta Pro (entreprises, cabinets), MedicorERP (sant\xE9), AvicoSuite (aviculture), Angel's (livraison, logistique), 100-Inox ERP (ateliers alu/inox), SNIFI (foncier, fiscalit\xE9 immobili\xE8re), CI-LeGrenier (marketplace). Catalogue \xE0 jour : outils recommend_products / get_product.";
-var COMMERCIAL_RULES = `${PORTFOLIO}
+function portfolioText(products) {
+  if (!products.length) return "PORTEFEUILLE : aucun logiciel actif dans le catalogue \u2014 ne propose aucun logiciel et signale-le \xE0 ta hi\xE9rarchie (escalate_to_human).";
+  return `PORTEFEUILLE (logiciels actifs du catalogue ; aucun autre logiciel ne doit \xEAtre pr\xE9sent\xE9 ni recommand\xE9) : ${products.map((p) => `${p.nom} (${p.marche_cible})`).join(", ")}.`;
+}
+var commercialRules = (portfolio) => `${portfolio}
 
 R\xC8GLES COMMERCIALES ABSOLUES
 1. Jamais pr\xE9senter un logiciel sans conna\xEEtre secteur ET besoins : poser d'abord 2-3 questions de d\xE9couverte (get_product.questions_decouverte).
@@ -704,10 +707,10 @@ var SALES_METHOD = `M\xC9THODE
 - Chaque \xE9change se termine par schedule_followup adapt\xE9 au comportement (pas de d\xE9lai fixe), sauf d\xE9sinscription.
 - Opportunit\xE9s multiples chez un m\xEAme prospect : les noter dans produits_recommandes.
 - Termine par un r\xE9sum\xE9 interne de 2 lignes (ce qui a \xE9t\xE9 fait, prochaine \xE9tape).`;
-var V1_SYSTEM = `Tu es SANIX AI SALES DIRECTOR, directeur commercial IA de SANIX AFRICA DIVISION TECHNOLOGIES (Abidjan, C\xF4te d'Ivoire), connect\xE9 \xE0 SANIX CRM.
+var v1System = (portfolio) => `Tu es SANIX AI SALES DIRECTOR, directeur commercial IA de SANIX AFRICA DIVISION TECHNOLOGIES (Abidjan, C\xF4te d'Ivoire), connect\xE9 \xE0 SANIX CRM.
 Mission : transformer les prospects en clients et fid\xE9liser, avec rigueur et \xE9thique.
 
-${COMMERCIAL_RULES}
+${commercialRules(portfolio)}
 
 ${SALES_METHOD}`;
 var SECTIONS = [
@@ -729,6 +732,17 @@ var SECTIONS = [
 ];
 var CHARTER_KEYS = SECTIONS.map((s) => s[0]);
 var CHARTER_LABELS = Object.fromEntries(SECTIONS);
+
+// functions/_shared/catalogue.ts
+var cache = null;
+var TTL_MS = 6e4;
+async function loadPortfolio() {
+  if (cache && Date.now() - cache.at < TTL_MS) return cache.text;
+  const { data } = await db().from("ai_products").select("nom, marche_cible").eq("actif", true).order("nom");
+  const text = portfolioText(data ?? []);
+  cache = { at: Date.now(), text };
+  return text;
+}
 
 // functions/_shared/company/presence.ts
 var ANIMATION_OF = {
@@ -836,8 +850,8 @@ async function salesDirectorId() {
   if (_sd !== void 0) return _sd;
   let id = null;
   try {
-    const { data } = await db().from("ai_agents").select("id").eq("code", "sanix_ai_sales_director").maybeSingle();
-    id = data?.id ?? null;
+    const { data } = await db().from("ai_agents").select("id").eq("role_code", "directeur_commercial").neq("etat", "archive").order("created_at").limit(1).maybeSingle();
+    id = data?.id ?? (await db().from("ai_agents").select("id").eq("code", "sanix_ai_sales_director").maybeSingle()).data?.id ?? null;
   } catch {
   }
   _sd = id;
@@ -910,7 +924,7 @@ async function runAgent(run, brief) {
         label,
         prospectId: pid,
         missionId: mid,
-        system: V1_SYSTEM,
+        system: v1System(await loadPortfolio()),
         messages,
         tools,
         effort: run.mode === "mission" ? "high" : "medium"

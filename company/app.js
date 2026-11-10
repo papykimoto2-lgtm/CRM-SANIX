@@ -5,6 +5,7 @@ import { agentBy, callFn, chatBody, deptColor, dgName, isDir, LEVELS, live, load
 import * as P from "./office_panel.js";
 import { LOGIN_ALIASES, SUPABASE_DEFAULT } from "./config.js";
 import * as SALES from "./sales.js";
+import * as CFG from "./config_panel.js";
 
 // ───────────────────────── Configuration & session ─────────────────────────
 const LS = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
@@ -101,6 +102,7 @@ async function loadCore() {
     Object.assign(S, { gov, budget });
   }
   try { S.kpis = (await q(S.sb.from("ai_kpis").select("*")))[0] ?? null; } catch { S.kpis = null; }
+  try { S.products = await q(S.sb.from("ai_products").select("id,nom").eq("actif", true).order("nom")); } catch { S.products = []; }
 }
 async function loadMeetings() { S.meetings = await q(S.sb.from("ai_agent_meetings").select("*").order("created_at", { ascending: false }).limit(40)); }
 async function loadReports() {
@@ -114,7 +116,8 @@ async function loadStats() {
   const fin = new Date(), debut = new Date(fin.getTime() - S.statDays * 86400e3);
   S.stats = await q(S.sb.rpc("ai_agent_stats", { p_debut: debut.toISOString(), p_fin: fin.toISOString() }));
 }
-const LOADERS = { exec: async () => { await loadExec(); await loadCrm(); }, meet: loadMeetings, reports: loadReports, perf: loadStats, sales: SALES.loadSales };
+CFG.setHooks({ reloadCore: () => loadCore() });
+const LOADERS = { exec: async () => { await loadExec(); await loadCrm(); }, meet: loadMeetings, reports: loadReports, perf: loadStats, sales: SALES.loadSales, cfg: CFG.loadConfig };
 
 /** Notifie le président quand une mission qu'il a demandée change d'issue (terminée, bloquée, échouée). */
 function noteTask(t, firstLoad = false) {
@@ -165,7 +168,7 @@ function subscribe() {
 const TABS = [
   { id: "office", label: "🏢 Bureau 3D" }, { id: "exec", label: "👔 Bureau du Président", dir: true }, { id: "org", label: "🧩 Organisation" },
   { id: "tasks", label: "📋 Missions" }, { id: "sales", label: "💼 Commercial" }, { id: "meet", label: "🤝 Réunions" }, { id: "perf", label: "📈 Performance" },
-  { id: "reports", label: "📨 Rapports", dir: true }, { id: "gov", label: "⚖️ Gouvernance", dir: true }, { id: "valid", label: "✅ Validations" },
+  { id: "reports", label: "📨 Rapports", dir: true }, { id: "gov", label: "⚖️ Gouvernance", dir: true }, { id: "cfg", label: "🛠️ Paramétrage", dir: true }, { id: "valid", label: "✅ Validations" },
 ];
 const visibleTabs = () => TABS.filter((t) => !t.dir || isDir());
 
@@ -197,7 +200,7 @@ function render(soft = false) {
   if (S.tab !== "office") S.office?.setActive(false);
   if (S.tab === "office") { P.renderOffice(main); return; }
   if (soft && ["exec"].includes(S.tab)) { renderExec(main, true); return; }
-  const R = { exec: renderExec, org: renderOrg, tasks: renderTasks, sales: SALES.renderSales, meet: renderMeetings, perf: renderPerf, reports: renderReports, gov: renderGov, valid: renderValid }[S.tab];
+  const R = { exec: renderExec, org: renderOrg, tasks: renderTasks, sales: SALES.renderSales, meet: renderMeetings, perf: renderPerf, reports: renderReports, gov: renderGov, cfg: CFG.renderConfig, valid: renderValid }[S.tab];
   const keepScroll = main.scrollTop;
   R(main); if (soft) main.scrollTop = keepScroll;
 }
@@ -221,14 +224,17 @@ function crmCard() {
     ${anos.length ? html`<h4 style="margin:8px 0 2px">Anomalies remontées</h4>${anos.slice(0, 5).map((x) => html`<div class="small" style="margin:3px 0">⚠️ ${clipT(x.message ?? x.type, 90)} <span class="muted">${ago(x.created_at)}</span></div>`)}` : ""}
     <hr style="border:0;border-top:1px solid rgba(148,163,184,.3);margin:10px 0">`;
 }
-const QUICK = [
-  "Notre priorité ce mois-ci est de vendre 20 licences ImmoSuite ERP et 15 licences Angel's. Organise les équipes nécessaires et présente-moi ton plan.",
-  "Crée une équipe de cinq agents pour prospecter les cliniques privées en Côte d'Ivoire.",
-  "Analyse les performances de tous les agents cette semaine.",
-  "Pourquoi l'équipe commerciale n'a-t-elle obtenu aucun contrat cette semaine ?",
-  "Identifie les agents les moins performants et propose une réorganisation.",
-  "Je veux développer Angel's au Sénégal. Prépare une stratégie et constitue une équipe.",
-];
+/** Exemples d'instructions : bâtis sur les logiciels actifs du catalogue (aucun nom de logiciel figé dans le code). */
+function quickInstructions() {
+  const noms = (S.products ?? []).map((p) => p.nom), a = noms[0], b = noms[1];
+  return [
+    a ? `Notre priorité ce mois-ci est de développer les ventes de ${a}${b ? ` et de ${b}` : ""}. Organise les équipes nécessaires et présente-moi ton plan.` : "Présente-moi l'organisation actuelle et propose un plan d'action commercial.",
+    "Analyse les performances de tous les agents cette semaine.",
+    "Pourquoi l'équipe commerciale n'a-t-elle obtenu aucun contrat cette semaine ?",
+    "Identifie les agents les moins performants et propose une réorganisation.",
+    a ? `Prépare une stratégie de développement de ${a} sur un nouveau marché et constitue l'équipe nécessaire.` : "Prépare une stratégie de développement commercial.",
+  ];
+}
 function renderExec(main, soft = false) {
   const intro = html`<div class="muted" style="margin:auto;text-align:center;max-width:460px"><h2>SANIX AI EXECUTIVE OFFICE</h2><p>Donnez vos instructions directement à ${dgName()}. Il élabore le plan, crée les collaborateurs nécessaires, supervise l'exécution et vous demande validation au-delà de ses délégations.</p></div>`;
   const body = chatBody(intro).s;
@@ -239,7 +245,7 @@ function renderExec(main, soft = false) {
     return;
   }
   main.innerHTML = html`<section class="panel"><div class="exec"><div class="card chat" style="padding:0"><div class="msgs" id="msgs" tabindex="0" aria-label="Conversation avec le directeur général IA">${raw(body)}</div>
-    <div class="quick">${QUICK.map((t, i) => html`<button type="button" data-act="quick" data-i="${i}">${clipT(t, 54)}</button>`)}</div>
+    <div class="quick">${quickInstructions().map((t, i) => html`<button type="button" data-act="quick" data-i="${i}">${clipT(t, 54)}</button>`)}</div>
     <form class="compose" id="exec-form"><textarea id="exec-t" rows="2" maxlength="4000" placeholder="Votre instruction au directeur général IA…" aria-label="Instruction"></textarea><button class="btn pri" type="submit" id="exec-send">Envoyer</button></form></div>
     <aside class="card" id="exec-side" style="overflow:auto">${crmCard()}${approvalsInline()}</aside></div></section>`.s;
   const el = $("#msgs"); el.scrollTop = el.scrollHeight;
@@ -468,7 +474,7 @@ const ACT = {
   "task": (el, ev) => { ev.preventDefault(); return showTask(el.dataset.id); },
   "meeting": (el) => showMeeting(el.dataset.id),
   "charter": (el) => showCharter(el.dataset.id),
-  "quick": (el) => { const t = $("#exec-t"); t.value = QUICK[Number(el.dataset.i)]; t.focus(); },
+  "quick": (el) => { const t = $("#exec-t"); t.value = quickInstructions()[Number(el.dataset.i)]; t.focus(); },
   "ask-reorg": () => { S.prefill = "Identifie les agents les moins performants et propose une réorganisation."; go("exec"); },
   "decide": async (el) => {
     const ok = el.dataset.ok === "1";
@@ -522,10 +528,12 @@ const ACT = {
 };
 document.addEventListener("click", (e) => {
   const el = e.target.closest("[data-act]"); if (!el || el.tagName === "INPUT") return;
+  if (el.dataset.act.startsWith("cfg-")) { CFG.configAction(el, e); return; }     // écran Paramétrage : actions gérées par config_panel.js
   const f = ACT[el.dataset.act]; if (!f) return;
   Promise.resolve(f(el, e)).catch((err) => toast(err.message, "bad"));
 });
 document.addEventListener("change", (e) => {
+  const cfgEl = e.target.closest("[data-act-change^=cfg-]"); if (cfgEl) { CFG.configAction(cfgEl, e); return; }
   const salesStage = e.target.closest("[data-sales-stage]"); if (salesStage) { SALES.changeSalesStage(salesStage); return; }
   const el = e.target.closest("[data-act=rcp-type]"); if (el) { ACT["rcp-type"](el); return; }
   const c = e.target.closest("[data-change]"); if (c) P.changes[c.dataset.change]?.(c);

@@ -62,3 +62,6 @@ begin
   raise notice 'Organisation : % collaborateur(s) créé(s), % agent(s) actif(s) au total', n_new, (select count(*) from public.ai_agents where etat = 'actif');
 end
 $seed$;
+
+-- Rôles des agents, cellules par logiciel et membres : configuration par défaut (modifiable par la direction ; relançable sans effet de bord).
+select public.ai_defaut_organisation();

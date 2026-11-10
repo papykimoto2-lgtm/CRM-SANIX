@@ -4,7 +4,8 @@
 import type Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { audit, clip, db, errMsg } from "../core.ts";
 import { BudgetError, callClaude, textOf, TransientLlmError } from "../llm.ts";
-import { COMMERCIAL_RULES, charterToText, COMPANY_RULES, DG_RULES, MANAGER_METHOD } from "../prompts.ts";
+import { loadPortfolio } from "../catalogue.ts";
+import { commercialRules, charterToText, COMPANY_RULES, DG_RULES, MANAGER_METHOD } from "../prompts.ts";
 import { CRM_TOOL_NAMES, type CrmCtx, uuidsIn } from "../crm_tools.ts";
 import { type AgentRow, loadGovernance, OPEN_STATES, Org, type TaskRow } from "./org.ts";
 import { type CoCtx, runCompanyTool, toolsFor } from "./tools.ts";
@@ -36,7 +37,7 @@ export async function systemPrompt(agent: AgentRow): Promise<string> {
     COMPANY_RULES,
     manager ? MANAGER_METHOD : "",
     agent.niveau === 1 ? DG_RULES : "",
-    hasCrm ? COMMERCIAL_RULES : "",
+    hasCrm ? commercialRules(await loadPortfolio()) : "",
     `CAHIER DES CHARGES (version ${ch?.version ?? 0})\n${charterToText(ch?.contenu)}`,
   ].filter(Boolean).join("\n\n");
 }

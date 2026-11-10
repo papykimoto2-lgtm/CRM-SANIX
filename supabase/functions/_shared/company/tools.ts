@@ -98,7 +98,7 @@ export function companySchemas(departmentIds: string[]): Record<string, Anthropi
       agent_code: str(), titre: str(), description: str("Contexte, périmètre, livrable attendu"),
       objectifs: arr("Objectifs chiffrés"), priorite: int("1 (urgent) à 5"), echeance_heures: int("Délai en heures (optionnel)"),
       entrees: str("Données d'entrée (optionnel)"), depend_de: arr("Ids de missions préalables (optionnel)"),
-      produit: str("Logiciel concerné : immosuite, aluexpert ou avicosuite (optionnel ; hérité de ta mission si absent)"),
+      produit: str("Logiciel concerné : identifiant d'un logiciel actif du catalogue (optionnel ; hérité de ta mission si absent)"),
       resultat_attendu: str("Résultat vérifiable attendu à la clôture (optionnel mais recommandé)"),
     }, ["agent_code", "titre", "description", "objectifs", "priorite"]),
     attendre_sous_taches: T("attendre_sous_taches", "Suspend ta mission jusqu'à la fin de tes sous-missions ou de ta réunion ; tu seras relancé avec leurs rapports.", {}),
