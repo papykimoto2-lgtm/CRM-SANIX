@@ -62,6 +62,8 @@ Ces fichiers sont générés (`sh supabase/build_functions.sh`, Node requis) : l
 Relançable sans effet de bord (même secret, mêmes tâches). Arrêter : `select cron.unschedule('ai-company-tick');` (idem `ai-company-reports`, `ai-sales-followups`). Changer le secret : `delete from vault.secrets where name = 'ai_cron_secret';`, relancer le script (les fonctions s'alignent en 30 s). Test : `supabase/functions/tests/schedule_cron_test.sh`.
 
 ## 4. Vérifier
+**Contrôle d'ensemble, lecture seule** : *SQL Editor* → coller `supabase/verifier_installation.sql` → **Run**. Une ligne par étape (schéma, opérateur, agents, mises à jour, planificateur, réponses des fonctions, temps réel, connecteur CRM, gouvernance) : OK, À FAIRE avec l'action, ou INFO. À relancer après chaque étape. Il ne voit pas la clé `ANTHROPIC_API_KEY` (secret des fonctions Edge) : sa présence se lit à l'incident « cle_ia_absente » et à l'activité des agents.
+
 - *Edge Functions → ai-company → Logs* : un appel par minute. Une réponse `401 Non autorisé` = secret du Vault différent de l'en-tête (relancer `schedule_cron.sql`) ; `500` = ni `ai_cron_secret()` ni `CRON_SECRET` disponibles.
 - Dans SANIX AI : cliquer sur le directeur général IA, lui donner une instruction ; la mission et la réponse apparaissent sans recharger la page.
 - Sans `ANTHROPIC_API_KEY`, les fonctions répondent mais **tout reste en pause** : le planificateur ne réclame aucune mission, aucun agent n'est sanctionné ni suspendu, et un incident critique « cle_ia_absente » apparaît dans la gouvernance (une seule fois). Les missions reprennent d'elles-mêmes dès que le secret est posé.
@@ -94,6 +96,9 @@ Quand le connecteur Supabase de Claude est branché sur **le bon compte** (véri
 ## 7. Mettre à jour une installation existante
 `setup_all.sql` ne sert qu'aux nouvelles installations. Sur une base déjà en service, appliquer **avant** de redéployer les fonctions (*SQL Editor* ou connecteur Supabase), dans l'ordre :
 1. `migrations/20261110000000_ai_sales_followup_queue.sql` : file de relances atomique (`ai_claim_due_followups`, colonnes `attempts`, `locked_at`, `last_error`) ;
-2. `migrations/20261110010000_ai_consent_setting.sql` : réglage de gouvernance `consentement_requis` (désactivé par défaut).
+2. `migrations/20261110010000_ai_consent_setting.sql` : réglage de gouvernance `consentement_requis` (désactivé par défaut) ;
+3. `migrations/20261111000000_crm_ai_connector.sql` : connecteur CRM ↔ IA (base centrale du CRM, événements durables ; voir `CONNECTEUR_CRM_IA.md`). Sans elle, le CRM reste en mode local (« connecteur serveur absent ») et rien n'est perdu.
+
+**Les fichiers `deploy/*/index.ts` sont générés** : après toute modification de `functions/`, régénérer (`sh supabase/build_functions.sh`) et committer le résultat, sinon les §1, §5 et §6 déploient l'ancien code.
 
 Puis redéployer `ai-company`, `ai-sales-director` et `whatsapp-webhook` (§1, §5 ou §6). **Consentement** : désactivé, la validation du président reste le garde-fou ; activé (*Gouvernance → Exiger une preuve de consentement*), un prospect ne reçoit rien sans `ai_prospects.consentement` daté et justifié pour le canal (`{"email":{"at":"2026-11-10T09:00:00Z","preuve":"formulaire de contact"}}`) ou, pour WhatsApp, sans message entrant de moins de 24 h (le webhook enregistre ce consentement à la première réponse du prospect).

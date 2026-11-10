@@ -343,6 +343,13 @@ var DEFS = {
     lieu: nul("string"),
     product_id: nul("string")
   } },
+  record_appointment_report: { description: "Enregistre le compte rendu d'un rendez-vous d\xE9j\xE0 commenc\xE9 (d\xE9roul\xE9, besoins exprim\xE9s, d\xE9cisions, prochaine \xE9tape) et son issue. Il devient consultable dans la fiche du CRM. L'identifiant du rendez-vous est dans le champ rdv de get_prospect.", props: {
+    ...P,
+    appointment_id: S({ description: "UUID du rendez-vous (get_prospect \u2192 rdv)" }),
+    statut: S({ enum: ["realise", "absent", "annule"] }),
+    compte_rendu: S({ description: "Au moins 20 caract\xE8res : d\xE9roul\xE9, besoins, d\xE9cisions" }),
+    prochaine_etape: nul("string")
+  } },
   create_offer: { description: "Calcule une offre depuis la grille officielle. Remise hors d\xE9l\xE9gation \u2192 validation direction.", props: {
     ...P,
     product_id: S(),
@@ -418,11 +425,12 @@ async function runCrmTool(ctx, name, raw) {
         loadProspect(pid),
         db().from("ai_messages").select("canal,sens,auteur,contenu,statut,created_at").eq("prospect_id", pid).order("created_at", { ascending: false }).limit(30),
         db().from("ai_offers").select("reference,product_id,total_ht,remise_pct,statut,created_at").eq("prospect_id", pid),
-        db().from("ai_appointments").select("debut,mode,statut,product_id").eq("prospect_id", pid),
+        db().from("ai_appointments").select("id,debut,mode,statut,product_id,compte_rendu").eq("prospect_id", pid),
         db().from("ai_followups").select("due_at,scenario,statut").eq("prospect_id", pid).eq("statut", "planifiee")
       ]);
       const fil = (msgs.data ?? []).reverse().map((m) => m.auteur === "prospect" ? { ...m, contenu: `<message_prospect>${m.contenu}</message_prospect>` } : m);
-      return { prospect: p, fil, offres: offers.data, rdv: rdv.data, relances: fu.data };
+      const rdvs = (rdv.data ?? []).map(({ compte_rendu, ...r }) => ({ ...r, compte_rendu_enregistre: !!compte_rendu }));
+      return { prospect: p, fil, offres: offers.data, rdv: rdvs, relances: fu.data };
     }
     case "recommend_products": {
       const { data } = await db().rpc("ai_recommend_products", { p_secteur: input.secteur, p_texte: input.besoins_texte });
@@ -527,6 +535,23 @@ ${p.resume_ia ?? ""}`
         payload: data
       });
       return data;
+    }
+    case "record_appointment_report": {
+      const { data: ap } = await db().from("ai_appointments").select("id,debut,compte_rendu").eq("id", String(input.appointment_id)).eq("prospect_id", pid).maybeSingle();
+      if (!ap) throw new Error("Rendez-vous introuvable pour ce prospect : utilise get_prospect (champ rdv)");
+      if (+new Date(ap.debut) > Date.now()) throw new Error("Ce rendez-vous n'a pas encore commenc\xE9 : compte rendu impossible");
+      const corps = String(input.compte_rendu ?? "").trim();
+      if (corps.length < 20) throw new Error("Compte rendu trop court : d\xE9cris le d\xE9roul\xE9, les besoins exprim\xE9s, les d\xE9cisions et la prochaine \xE9tape");
+      if (ap.compte_rendu) throw new Error("Un compte rendu existe d\xE9j\xE0 pour ce rendez-vous : ne pas l'\xE9craser");
+      const texte = (corps + (input.prochaine_etape ? `
+Prochaine \xE9tape : ${String(input.prochaine_etape).trim()}` : "")).slice(0, 4e3);
+      const { error } = await db().from("ai_appointments").update({ statut: input.statut, compte_rendu: texte }).eq("id", ap.id);
+      if (error) throw new Error(error.message);
+      if (input.statut === "realise") {
+        const p = await loadProspect(pid);
+        if (["rdv_propose", "rdv_confirme"].includes(String(p.stage))) await db().from("ai_prospects").update({ stage: "demo_realisee" }).eq("id", pid);
+      }
+      return { ok: true, rdv: ap.id, statut: input.statut };
     }
     case "create_offer": {
       const { data: grille } = await db().from("ai_pricing").select("*").eq("product_id", input.product_id).eq("actif", true);
@@ -763,6 +788,7 @@ function activityFor(tool, input) {
     case "repondre_president":
       return "management";
     case "terminer_mission":
+    case "record_appointment_report":
       return "preparation_rapport";
     case "signaler_difficulte":
       return "en_difficulte";
