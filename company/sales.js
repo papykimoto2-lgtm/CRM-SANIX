@@ -61,7 +61,7 @@ export function renderSales(main) {
     </tbody></table></div>
     ${rows.length>shown?html`<p style="text-align:center;margin:10px 0"><button class="btn" type="button" data-act="sales-more">Afficher plus (${rows.length-shown} restants)</button></p>`:""}
     ${capped?html`<p class="small muted">Affichage limité aux ${MAX_ROWS} prospects les plus récents : les indicateurs ne portent que sur ceux-ci.</p>`:""}
-    <p class="small muted" style="margin-top:10px">Le rattachement CRM utilise l'identifiant numérique du client (<code>crm_client_id</code>). Les données commerciales restent dans les tables SANIX AI SALES ; aucune table client du CRM principal n'est modifiée automatiquement.</p>
+    <p class="small muted" style="margin-top:10px">Le dossier CRM est rattaché par une clé stable (<code>crm_rid</code>) : statuts, rendez-vous, comptes rendus, offres et missions sont écrits dans les données du CRM par le connecteur CRM ↔ IA (événements durables traités côté serveur). L'identifiant numérique local (<code>crm_client_id</code>) est conservé pour compatibilité.</p>
   </section>`.s;
   $("#sales-q").oninput=e=>{filter.q=e.target.value;shown=PAGE;renderSales(main);const el=$("#sales-q");el.focus();el.setSelectionRange(filter.q.length,filter.q.length);};
   $("#sales-stage").onchange=e=>{filter.stage=e.target.value;shown=PAGE;renderSales(main);};

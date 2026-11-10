@@ -1,7 +1,7 @@
 // SANIX AI VIRTUAL COMPANY — application de pilotage (plateforme indépendante, connectée à SANIX CRM par Supabase).
 // Sécurité : session Supabase Auth + RLS ; aucune clé secrète acceptée ; tout texte dynamique est échappé (html``).
 import { $, ago, askText, clipT, closeModal, esc, fmtD, fmtDT, html, num, openModal, pill, raw, toast, usd } from "./ui.js";
-import { agentBy, callFn, chatBody, deptColor, dgName, isDir, LEVELS, live, loadExec, loadOfficeMeetings, OPEN, q, S, stPill, TASK_ST } from "./state.js";
+import { agentBy, callFn, chatBody, deptColor, dgName, isDir, LEVELS, live, loadExec, loadOfficeMeetings, OPEN, q, S, stPill, TASK_ST, loadCrm } from "./state.js";
 import * as P from "./office_panel.js";
 import { LOGIN_ALIASES, SUPABASE_DEFAULT } from "./config.js";
 import * as SALES from "./sales.js";
@@ -114,7 +114,7 @@ async function loadStats() {
   const fin = new Date(), debut = new Date(fin.getTime() - S.statDays * 86400e3);
   S.stats = await q(S.sb.rpc("ai_agent_stats", { p_debut: debut.toISOString(), p_fin: fin.toISOString() }));
 }
-const LOADERS = { exec: loadExec, meet: loadMeetings, reports: loadReports, perf: loadStats, sales: SALES.loadSales };
+const LOADERS = { exec: async () => { await loadExec(); await loadCrm(); }, meet: loadMeetings, reports: loadReports, perf: loadStats, sales: SALES.loadSales };
 
 /** Notifie le président quand une mission qu'il a demandée change d'issue (terminée, bloquée, échouée). */
 function noteTask(t, firstLoad = false) {
@@ -203,6 +203,24 @@ function render(soft = false) {
 }
 
 // ───────────────────────── Bureau du Président ─────────────────────────
+/** Résultats commerciaux du CRM (données centrales partagées avec le CRM) : ventes, objectif, rendez-vous, missions en retard, anomalies ; arbitrage direct des missions. */
+const FCFA = (n) => `${num(n ?? 0)} FCFA`;
+function crmCard() {
+  const c = S.crm; if (!c) return html``;
+  const pct = c.objectif_mensuel_fcfa ? Math.min(100, Math.round((c.ca_commandes_mois / c.objectif_mensuel_fcfa) * 100)) : 0;
+  const retard = c.missions_en_retard ?? [], anos = c.anomalies ?? [], offres = Object.entries(c.offres ?? {}).map(([k, v]) => `${v} ${k}`).join(", ");
+  return html`<h3 style="margin:0 0 6px" id="crm-card-h">Activité commerciale (CRM)</h3>
+    <div class="small">Prospects <b>${c.prospects}</b> · Clients <b>${c.clients}</b> · Rendez-vous à venir <b>${c.rdv_a_venir}</b></div>
+    <div class="small">Ventes du mois <b>${FCFA(c.ca_commandes_mois)}</b> · encaissé ${FCFA(c.encaisse_mois)}</div>
+    <div class="small muted">Objectif mensuel ${FCFA(c.objectif_mensuel_fcfa)} : ${pct} %</div>
+    <div style="height:8px;background:rgba(148,163,184,.3);border-radius:4px;margin:3px 0 6px"><i style="display:block;height:8px;width:${pct}%;background:#22c55e;border-radius:4px"></i></div>
+    <div class="small">Ventes obtenues par l'IA : <b>${FCFA(c.ca_ia_total)}</b> · Offres : ${offres || "aucune"}</div>
+    <div class="small muted">Missions ouvertes ${c.missions_ouvertes} · validations ${c.validations_en_attente} · synchronisation : ${c.sync?.en_attente ?? 0} en attente, ${c.sync?.en_echec ?? 0} en reprise, ${c.sync?.morts ?? 0} bloqué(s)</div>
+    ${retard.length ? html`<h4 style="margin:8px 0 2px">Missions en retard</h4>${retard.slice(0, 5).map((m) => html`<div class="small" style="margin:3px 0"><a href="#" data-act="task" data-id="${m.id}">${clipT(m.titre, 46)}</a> · ${m.agent}
+      <button class="btn sm" type="button" data-act="crm-arb" data-task="${m.id}" data-a="prioritize">⬆ Prioriser</button> <button class="btn sm bad" type="button" data-act="crm-arb" data-task="${m.id}" data-a="cancel">✖ Annuler</button></div>`)}` : ""}
+    ${anos.length ? html`<h4 style="margin:8px 0 2px">Anomalies remontées</h4>${anos.slice(0, 5).map((x) => html`<div class="small" style="margin:3px 0">⚠️ ${clipT(x.message ?? x.type, 90)} <span class="muted">${ago(x.created_at)}</span></div>`)}` : ""}
+    <hr style="border:0;border-top:1px solid rgba(148,163,184,.3);margin:10px 0">`;
+}
 const QUICK = [
   "Notre priorité ce mois-ci est de vendre 20 licences ImmoSuite ERP et 15 licences Angel's. Organise les équipes nécessaires et présente-moi ton plan.",
   "Crée une équipe de cinq agents pour prospecter les cliniques privées en Côte d'Ivoire.",
@@ -217,13 +235,13 @@ function renderExec(main, soft = false) {
   if (soft && $("#msgs")) {
     const el = $("#msgs"), nearEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     el.innerHTML = body; if (nearEnd) el.scrollTop = el.scrollHeight;
-    const side = $("#exec-side"); if (side) side.innerHTML = approvalsInline().s;
+    const side = $("#exec-side"); if (side) side.innerHTML = crmCard().s + approvalsInline().s;
     return;
   }
   main.innerHTML = html`<section class="panel"><div class="exec"><div class="card chat" style="padding:0"><div class="msgs" id="msgs" tabindex="0" aria-label="Conversation avec le directeur général IA">${raw(body)}</div>
     <div class="quick">${QUICK.map((t, i) => html`<button type="button" data-act="quick" data-i="${i}">${clipT(t, 54)}</button>`)}</div>
     <form class="compose" id="exec-form"><textarea id="exec-t" rows="2" maxlength="4000" placeholder="Votre instruction au directeur général IA…" aria-label="Instruction"></textarea><button class="btn pri" type="submit" id="exec-send">Envoyer</button></form></div>
-    <aside class="card" id="exec-side" style="overflow:auto">${approvalsInline()}</aside></div></section>`.s;
+    <aside class="card" id="exec-side" style="overflow:auto">${crmCard()}${approvalsInline()}</aside></div></section>`.s;
   const el = $("#msgs"); el.scrollTop = el.scrollHeight;
   $("#exec-form").onsubmit = sendInstruction;
   $("#exec-t").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("#exec-form").requestSubmit(); } });
@@ -442,6 +460,10 @@ const ACT = {
   "sales-qualify": (el) => SALES.salesAction(el),
   "sales-contact": (el) => SALES.salesAction(el),
   "tab": (el) => go(el.dataset.id),
+  "crm-arb": async (el) => {
+    try { await q(S.sb.rpc("crm_arbitrate_task", { p_task: el.dataset.task, p_action: el.dataset.a, p_priorite: 1 })); toast(el.dataset.a === "cancel" ? "Mission annulée" : "Mission passée en priorité 1", "ok"); await loadCore(); await loadCrm(); render(true); }
+    catch (e) { toast(e.message, "bad"); }
+  },
   "close-modal": () => { closeModal(); $("#modal").dispatchEvent(new Event("close-ask")); },
   "task": (el, ev) => { ev.preventDefault(); return showTask(el.dataset.id); },
   "meeting": (el) => showMeeting(el.dataset.id),
