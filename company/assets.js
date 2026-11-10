@@ -1,5 +1,4 @@
-// Ressources 3D : personnages GLB (générés avec Blender, voir assets/blender/) et clips d'animation partagés.
-// Les clips (animations.glb) s'appliquent à tous les personnages : mêmes noms d'os, mêmes orientations de repos.
+// Personnages humains texturés dérivés de MakeHuman CC0 via Ara 3D Gen ; clips SANIX partagés sur le rig game/Mixamo.
 export const CHARACTERS = ["homme_a", "femme_a", "homme_b", "femme_b"];
 export const BODY_SCALE = { homme_a: 1.03, femme_a: 0.955, homme_b: 0.985, femme_b: 0.99 };   // tailles relatives (les GLB sont exportés à 1,76 m)
 export const AV_SCALE = 1.17;                           // 1 unité de scène ≈ 0,85 m : personnages ~2,05 unités

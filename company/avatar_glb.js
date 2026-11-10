@@ -1,24 +1,12 @@
 // SANIX AI VIRTUAL COMPANY — avatar humain GLB : squelette animé par des clips (AnimationMixer), teintes par collaborateur.
 // Même interface que avatar.js (setAnim, setPosture, update, setDetail, inspect…) : le moteur de bureau ne voit pas la différence.
 import { makeIndicators } from "./avatar.js";
-import { AV_SCALE, BASE_WALK, BODY_SCALE, CHARACTERS, PALETTE } from "./assets.js";
+import { AV_SCALE, BASE_WALK, BODY_SCALE, CHARACTERS } from "./assets.js";
 
 const hash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
 const CLIP = { idle: "idle", screen: "screen", multiscreen: "multiscreen", documents: "documents", typing: "typing", terminal: "terminal", headset: "headset", talk: "talk", present: "present",
   meeting: "meeting", speak: "speak", celebrate: "celebrate", alert: "alert", pause: "pause", relax: "relax", watch: "watch", handover: "handover" };
 const PROPS = { headset: ["Prop_Phone"], terminal: ["Prop_Phone"], documents: ["Prop_Doc"], relax: ["Prop_Cup"], handover: ["Prop_Folder"] };
-const SLOTS = ["skin", "top", "bottom", "shoes", "hair", "eye", "dark", "shirt", "accent"];   // ordre inscrit dans la couleur de sommet (rouge = indice / 8)
-const FIXED = { shoes: "#161b24", eye: "#f4f6f8", dark: "#161616", shirt: "#f1f5f9" };
-
-/** Corps : un seul matériau et un seul appel de dessin par personnage. Le fragment lit l'emplacement (couleur de sommet) et applique la teinte du collaborateur. */
-function patchBody(shader) {
-  shader.uniforms.uPal = { value: this.userData.pal };
-  shader.fragmentShader = shader.fragmentShader.replace("#include <common>", "#include <common>\nuniform vec3 uPal[9];")
-    .replace("#include <color_fragment>", "diffuseColor.rgb = uPal[int(clamp(floor(vColor.r * 8.0 + 0.5), 0.0, 8.0))];");
-}
-const BODY_KEY = () => "sanix-body-v1";
-const pick = (arr, h, k = 0) => arr[(h >>> k) % arr.length];
-
 /** Morphologie : cadres et directeurs en costume, le reste réparti par identifiant (mixité). */
 function variantFor(a, h) {
   if (a.niveau === 1) return "homme_a";
@@ -35,25 +23,17 @@ export function makeGlbAvatar(env, a, deptColor) {
   const body = new T.Group(); body.add(model); body.scale.setScalar(AV_SCALE * S);
   const root = new T.Group(); root.add(body);
 
-  // teintes propres au collaborateur (matériaux clonés ; yeux, chaussures et détails restent partagés)
-  const color = {
-    skin: pick(PALETTE.skin, h, 3), hair: pick(PALETTE.hair, h, 7), top: lvl === 1 ? "#0f172a" : pick(PALETTE.top[variant], h, 5), bottom: lvl === 1 ? "#111827" : pick(PALETTE.bottom, h, 11),
-    accent: lvl === 1 ? "#EAB308" : "#" + new T.Color(deptColor).getHexString(),
-  };
-  const pal = SLOTS.map((k) => { const c = new T.Color(color[k] ?? FIXED[k]); return new T.Vector3(c.r, c.g, c.b); });
-  const clones = new Map(); let bodyMat = null;
+  // Préserver les matériaux PBR et les textures peau/vêtements du modèle humain.
+  // Le modèle Ara utilise ses propres matériaux nommés : aucun recoloriage par shader de vertex.
   model.traverse((o) => {
-    if (!o.material) return;
-    const m = o.material, slot = m.name.slice(variant.length + 1);
-    if (slot === "body") {
-      if (!bodyMat) { bodyMat = m.clone(); bodyMat.vertexColors = true; bodyMat.userData.pal = pal; bodyMat.onBeforeCompile = patchBody; bodyMat.customProgramCacheKey = BODY_KEY; }
-      o.material = bodyMat;
-    } else if (slot === "accent") {                              // chemise cartonnée : couleur du département
-      if (!clones.has(m)) { const c = m.clone(); c.color.set(color.accent); clones.set(m, c); }
-      o.material = clones.get(m);
+    if (o.isMesh) {
+      o.castShadow = true;
+      o.receiveShadow = true;
+      o.frustumCulled = false;
+      if (Array.isArray(o.material)) o.material = o.material.map((m) => m.clone());
+      else if (o.material) o.material = o.material.clone();
     }
   });
-  const topVec = pal[1].clone(), mutedVec = new T.Vector3(...new T.Color("#475569").toArray());
 
   const mixer = new T.AnimationMixer(model), actions = new Map();
   const action = (n) => { if (!assets.clips.has(n)) return null; if (!actions.has(n)) actions.set(n, mixer.clipAction(assets.clips.get(n))); return actions.get(n); };
@@ -70,7 +50,7 @@ export function makeGlbAvatar(env, a, deptColor) {
     variant, clip: null, pose: {},
     setAnim(anim, now) { if (anim !== this.anim) { this.anim = anim; this.animSince = now; } },
     setPosture(p) { this.posture = p; },
-    setMuted(on) { pal[1].copy(on ? mutedVec : topVec); if (bodyMat) bodyMat.uniformsNeedUpdate = true; },
+    setMuted(on) { this.muted = !!on; },
     setDetail(d) { if (d === this.detail) return; this.detail = d; const full = d === "full"; body.visible = full; marker.visible = !full; },
     clipName() {
       const prefix = this.posture === "seat" ? "Sit" : "Stand", motion = CLIP[this.anim] ?? "idle", n = `${prefix}_${motion}`;
@@ -113,7 +93,7 @@ export function makeGlbAvatar(env, a, deptColor) {
         props: { phone: !!props.Prop_Phone?.visible, docs: !!props.Prop_Doc?.visible, cup: !!props.Prop_Cup?.visible, folder: !!props.Prop_Folder?.visible, headset: !!props.Prop_Headset?.visible },
         pose: this.metrics(), x: root.position.x, z: root.position.z, yaw: root.rotation.y };
     },
-    dispose() { mixer.stopAllAction(); mixer.uncacheRoot(model); bodyMat?.dispose(); for (const c of clones.values()) c.dispose(); halo.material.dispose(); spin.material.dispose(); hit.material.dispose(); },
+    dispose() { mixer.stopAllAction(); mixer.uncacheRoot(model); model.traverse((o) => { if (o.isMesh) { const ms = Array.isArray(o.material) ? o.material : [o.material]; for (const m of ms) m?.dispose?.(); } }); halo.material.dispose(); spin.material.dispose(); hit.material.dispose(); },
   };
   av.setDetail("full");
   return av;
