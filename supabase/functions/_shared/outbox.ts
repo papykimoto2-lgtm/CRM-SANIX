@@ -23,6 +23,9 @@ export async function deliverMessage(i: DeliverInput): Promise<DeliverResult> {
     throw new Error("Communication externe interdite par la gouvernance (ou entreprise en pause) : aucun message ne peut partir.");
   }
   if (i.prospect.opt_out) throw new Error("Prospect désinscrit : envoi interdit");
+  if (!hasChannelPermission(i.prospect, i.canal)) {
+    throw new Error(`Envoi ${i.canal} bloqué : consentement ou preuve d'autorisation absent(e).`);
+  }
   let contenu = i.contenu.trim().slice(0, 4000);
   if (!contenu) throw new Error("Message vide");
   if (await isFirstOutbound(i.prospect.id)) contenu = `${contenu}\n\n${AI_DISCLOSURE}`;
@@ -93,4 +96,21 @@ export async function flushOutbox(limit = 20): Promise<{ envoyes: number; en_fil
     }
   }
   return { envoyes, en_file };
+}
+
+
+function hasChannelPermission(
+  p: DeliverInput["prospect"],
+  canal: "whatsapp" | "email",
+): boolean {
+  if (canal === "whatsapp" && p.last_inbound_at) {
+    const age = Date.now() - Date.parse(p.last_inbound_at);
+    if (Number.isFinite(age) && age >= 0 && age < 24 * 60 * 60 * 1000) return true;
+  }
+  const raw = p.consentement?.[canal];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const consent = raw as Record<string, unknown>;
+  const preuve = typeof consent.preuve === "string" ? consent.preuve.trim() : "";
+  const at = typeof consent.at === "string" ? Date.parse(consent.at) : NaN;
+  return preuve.length > 0 && Number.isFinite(at) && at <= Date.now();
 }
