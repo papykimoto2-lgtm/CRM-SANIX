@@ -31,7 +31,7 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     await page.keyboard.press("Escape"); ok(await page.locator("#modal").isHidden(), "Échap ferme la fenêtre");
 
     console.log("▶ Onglets");
-    for (const id of ["exec", "org", "tasks", "meet", "perf", "reports", "gov", "valid"]) {
+    for (const id of ["exec", "org", "tasks", "sales", "meet", "perf", "reports", "gov", "valid"]) {
       await tab(page, id); await page.waitForTimeout(150);
       ok((await page.locator("#main").innerText()).length > 40, `onglet « ${id} » rendu`);
       await page.screenshot({ path: path.join(OUT, `tab_${id}.png`) });
@@ -93,6 +93,44 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     await page.fill("input[name=max_agents_actifs]", "30"); await page.selectOption("#g-comm", "autonome"); await page.click("#gov-form button[type=submit]"); await page.waitForTimeout(250);
     ok((await page.evaluate(() => window.__Q.some((q) => q.table === "ai_governance" && q.op === "update" && q.payload.includes("communication_externe")))), "gouvernance enregistrée");
     ok((await page.locator("#status-chips").innerText()).includes("autonome"), "l'état de la communication externe s'affiche dans l'en-tête");
+    ok((await page.locator("#g-consent").count()) === 1 && !(await page.locator("#g-consent").isChecked()), "preuve de consentement : case présente, décochée par défaut");
+    await page.check("#g-consent"); await page.click("#gov-form button[type=submit]"); await page.waitForTimeout(250);
+    ok((await page.evaluate(() => window.__Q.some((q) => q.table === "ai_governance" && q.op === "update" && q.payload.includes("consentement_requis")))), "la case de consentement est envoyée à la gouvernance");
+    await tab(page, "exec"); await tab(page, "gov"); await page.waitForTimeout(200);
+    ok(await page.locator("#g-consent").isChecked(), "le consentement exigé est conservé après rechargement de l'onglet");
+
+    console.log("▶ Commercial");
+    await tab(page, "sales"); await page.waitForTimeout(250);
+    ok((await page.locator("#toast .bad").count()) === 0, "onglet Commercial : aucune erreur de chargement");
+    ok((await page.locator("#main tbody tr").count()) === 2 && (await page.locator("#main tbody").innerText()).includes("Promoteur Alpha"), "prospects listés depuis la base");
+    ok((await page.locator("#main .kpi b").first().innerText()) === "2", "indicateur : prospects suivis");
+    await page.fill("#sales-q", "alpha"); await page.waitForTimeout(150);
+    ok((await page.locator("#main tbody tr").count()) === 1, "recherche multicritère : un seul prospect");
+    await page.fill("#sales-q", ""); await page.waitForTimeout(150);
+    await page.selectOption("#sales-stage", "qualifie"); await page.waitForTimeout(150);
+    ok((await page.locator("#main tbody tr").count()) === 1, "filtre par étape du pipeline");
+    await page.selectOption("#sales-stage", ""); await page.waitForTimeout(150);
+    await page.locator("tr", { hasText: "Express Colis" }).locator("select[data-sales-stage]").selectOption("rdv_propose"); await page.waitForTimeout(300);
+    ok((await page.evaluate(() => window.__Q.some((q) => q.table === "ai_prospects" && q.op === "update" && q.payload.includes("stage")))), "changement d'étape enregistré");
+    await page.locator("tr", { hasText: "Promoteur Alpha" }).locator("[data-act=sales-open]").click(); await page.waitForSelector("#modal:not([hidden]) #sales-link-form");
+    ok((await page.locator("#modal").innerText()).includes("pouvez-vous"), "fiche prospect : historique des échanges WhatsApp");
+    await page.fill("#sales-link-form input[name=crm_client_id]", "4521"); await page.click("#sales-link-form button[type=submit]"); await page.waitForTimeout(400);
+    ok((await page.locator("#sales-link-form input[name=crm_client_id]").inputValue()) === "4521", "rattachement au client SANIX CRM conservé");
+    await page.click("[data-act=sales-qualify]"); await page.waitForTimeout(300);
+    await page.click("[data-act=sales-contact]"); await page.waitForTimeout(300);
+    ok((await page.evaluate(() => ["qualifier", "contacter"].every((a) => window.__CALLS.some((c) => c.fn === "ai-sales-director" && c.body.action === a && c.body.prospect_id)))), "qualification et premier contact confiés à l'agent commercial");
+    await page.keyboard.press("Escape");
+    await page.click("[data-act=sales-new]"); await page.waitForSelector("#sales-new-form");
+    await page.fill("#sales-new-form input[name=entreprise]", "Nouveau Test SARL"); await page.click("#sales-new-form button[type=submit]"); await page.waitForTimeout(400);
+    ok((await page.evaluate(() => window.__Q.some((q) => q.table === "ai_prospects" && q.op === "insert" && q.payload.includes("entreprise") && q.payload.includes("owner_id")))), "création d'un prospect rattaché à son opérateur");
+    ok((await page.locator("#main tbody tr").count()) === 3, "nouveau prospect visible dans la liste");
+    ok((await page.locator("#toast .bad").count()) === 0, "onglet Commercial : aucune erreur pendant les actions");
+    await page.evaluate(() => { for (let i = 0; i < 70; i++) window.__emit("ai_prospects", "INSERT", { id: crypto.randomUUID(), entreprise: `Prospect lot ${i}`, stage: "identifie", score: 10, potentiel_fcfa: 1000, updated_at: new Date().toISOString() }); });
+    await page.click("[data-act=sales-refresh]"); await page.waitForTimeout(500);
+    ok((await page.locator("#main tbody tr").count()) === 50, "liste paginée : 50 prospects affichés à la fois");
+    ok((await page.locator("[data-act=sales-more]").innerText()).includes("23"), "nombre de prospects restants indiqué");
+    await page.click("[data-act=sales-more]"); await page.waitForTimeout(250);
+    ok((await page.locator("#main tbody tr").count()) === 73 && (await page.locator("[data-act=sales-more]").count()) === 0, "« Afficher plus » complète la liste");
 
     console.log("▶ Organisation → agent");
     await tab(page, "org");

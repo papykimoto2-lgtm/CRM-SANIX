@@ -222,17 +222,20 @@ async function isFirstOutbound(prospectId) {
 }
 
 // functions/_shared/outbox.ts
-async function commMode() {
-  const { data } = await db().from("ai_governance").select("communication_externe, actif").eq("id", 1).maybeSingle();
-  if (!data || data.actif === false) return "interdite";
-  return data.communication_externe ?? "validation";
+async function commPolicy() {
+  const { data } = await db().from("ai_governance").select("*").eq("id", 1).maybeSingle();
+  if (!data || data.actif === false) return { mode: "interdite", consentRequired: false };
+  return { mode: data.communication_externe ?? "validation", consentRequired: data.consentement_requis === true };
 }
 async function deliverMessage(i) {
-  const mode = await commMode();
+  const { mode, consentRequired } = await commPolicy();
   if (mode === "interdite") {
     throw new Error("Communication externe interdite par la gouvernance (ou entreprise en pause) : aucun message ne peut partir.");
   }
   if (i.prospect.opt_out) throw new Error("Prospect d\xE9sinscrit : envoi interdit");
+  if (consentRequired && !hasChannelPermission(i.prospect, i.canal)) {
+    throw new Error(`Envoi ${i.canal} bloqu\xE9 : la gouvernance exige une preuve de consentement (ai_prospects.consentement)${i.canal === "whatsapp" ? " ou un message entrant de moins de 24 h" : ""}.`);
+  }
   let contenu = i.contenu.trim().slice(0, 4e3);
   if (!contenu) throw new Error("Message vide");
   if (await isFirstOutbound(i.prospect.id)) contenu = `${contenu}
@@ -293,6 +296,18 @@ async function sendNow(p, canal, objet, contenu, meta, agentLabel, existingId) {
   }
   await audit({ agent: agentLabel, action: "message_sortant", prospect_id: p.id, ok: res.ok, payload: { canal, statut: res.statut, detail: res.detail } });
   return { statut: res.statut, detail: res.detail, message_id: id };
+}
+function hasChannelPermission(p, canal) {
+  if (canal === "whatsapp" && p.last_inbound_at) {
+    const age = Date.now() - Date.parse(p.last_inbound_at);
+    if (Number.isFinite(age) && age >= 0 && age < 24 * 60 * 60 * 1e3) return true;
+  }
+  const raw = p.consentement?.[canal];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const consent = raw;
+  const preuve = typeof consent.preuve === "string" ? consent.preuve.trim() : "";
+  const at = typeof consent.at === "string" ? Date.parse(consent.at) : NaN;
+  return preuve.length > 0 && Number.isFinite(at) && at <= Date.now();
 }
 
 // functions/_shared/crm_tools.ts
@@ -922,10 +937,103 @@ async function runAgent(run, brief) {
   return { resume, created: ctx.created, tours };
 }
 
+// functions/_shared/followups.ts
+var MAX_RELANCES = 4;
+var MAX_TENTATIVES = 5;
+var FENETRE_DOUBLON_H = 6;
+async function tickFollowups(runRelance, limit = 10) {
+  const { data: due, error } = await db().rpc("ai_claim_due_followups", { p_limit: limit });
+  if (error) throw new Error(`Impossible de r\xE9server les relances : ${error.message}`);
+  let traites = 0, veille = 0, ignores = 0, reprogrammes = 0;
+  const lot = due ?? [];
+  for (let i = 0; i < lot.length; i++) {
+    const f = lot[i];
+    const { data: p, error: prospectError } = await db().from("ai_prospects").select("opt_out, relances_sans_reponse, stage").eq("id", f.prospect_id).maybeSingle();
+    if (prospectError) {
+      await retryFollowup(f, prospectError.message);
+      reprogrammes++;
+      continue;
+    }
+    if (!p || p.opt_out || ["perdu", "en_veille", "marche_gagne"].includes(p.stage)) {
+      await finishFollowup(f.id, "annulee");
+      ignores++;
+      continue;
+    }
+    if ((p.relances_sans_reponse ?? 0) >= MAX_RELANCES) {
+      await db().from("ai_prospects").update({ stage: "en_veille" }).eq("id", f.prospect_id);
+      await finishFollowup(f.id, "annulee");
+      veille++;
+      continue;
+    }
+    if (f.canal === "telephone") {
+      const { error: approvalError } = await db().from("ai_approvals").insert({
+        type: "transfert_humain",
+        prospect_id: f.prospect_id,
+        motif: `Appel \xE0 passer : ${f.scenario}`
+      });
+      if (approvalError) {
+        await retryFollowup(f, approvalError.message);
+        reprogrammes++;
+      } else {
+        await finishFollowup(f.id, "faite");
+        traites++;
+      }
+      continue;
+    }
+    if ((f.attempts ?? 1) > 1 && await messageDejaParti(f.prospect_id)) {
+      await finishFollowup(f.id, "faite");
+      await audit({ agent: "followup_manager", action: "relance_deja_envoyee", prospect_id: f.prospect_id, payload: { followup_id: f.id, tentative: f.attempts } });
+      traites++;
+      continue;
+    }
+    try {
+      await runRelance(f, { relances_sans_reponse: p.relances_sans_reponse ?? 0 });
+      await finishFollowup(f.id, "faite");
+      traites++;
+    } catch (e) {
+      if (e instanceof BudgetError || e instanceof TransientLlmError) {
+        await retryFollowup(f, e.message, { minimumMinutes: 60, refund: true });
+        reprogrammes++;
+        await releaseFollowups(lot.slice(i + 1));
+        break;
+      }
+      await retryFollowup(f, e.message);
+      reprogrammes++;
+      await audit({ agent: "followup_manager", action: "tick_erreur", prospect_id: f.prospect_id, ok: false, payload: { followup_id: f.id, tentative: f.attempts, erreur: String(e) } });
+    }
+  }
+  return { traites, mis_en_veille: veille, ignores, reprogrammes };
+}
+async function releaseFollowups(list) {
+  for (const f of list) {
+    await db().from("ai_followups").update({ locked_at: null, attempts: Math.max(0, (Number(f.attempts) || 1) - 1) }).eq("id", f.id);
+  }
+}
+async function messageDejaParti(prospectId) {
+  const { data } = await db().from("ai_messages").select("id").eq("prospect_id", prospectId).eq("sens", "sortant").in("statut", ["a_valider", "a_envoyer", "envoye", "delivre", "lu"]).gte("created_at", new Date(Date.now() - FENETRE_DOUBLON_H * 36e5).toISOString()).limit(1);
+  return !!data?.length;
+}
+async function finishFollowup(id, statut) {
+  const { error } = await db().from("ai_followups").update({ statut, locked_at: null }).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+async function retryFollowup(f, reason, o = {}) {
+  const attempts = Number(f.attempts) || 1;
+  const delayMinutes = Math.max(o.minimumMinutes ?? 0, Math.min(24 * 60, 5 * 2 ** Math.min(attempts, 8)));
+  const terminal = !o.refund && attempts >= MAX_TENTATIVES;
+  const { error } = await db().from("ai_followups").update({
+    statut: terminal ? "annulee" : "planifiee",
+    due_at: new Date(Date.now() + delayMinutes * 6e4).toISOString(),
+    attempts: o.refund ? Math.max(0, attempts - 1) : attempts,
+    locked_at: null,
+    last_error: String(reason).slice(0, 1e3)
+  }).eq("id", f.id);
+  if (error) throw new Error(error.message);
+}
+
 // functions/ai-sales-director/index.ts
 var UUID2 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 var str = (v, max) => typeof v === "string" ? v.trim().slice(0, max) : "";
-var MAX_RELANCES = 4;
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors(req) });
   if (req.method !== "POST") return json(req, { error: "M\xE9thode non autoris\xE9e" }, 405);
@@ -933,7 +1041,10 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     if (body.action === "tick") {
       if (!safeEqual(req.headers.get("x-cron-secret") ?? "", await cronSecret())) throw new HttpError(401, "Non autoris\xE9");
-      return json(req, await tick());
+      return json(req, await tickFollowups((f, p) => runAgent(
+        { mode: "relance", prospect_id: f.prospect_id, scenario: f.scenario },
+        `Relance planifi\xE9e (${f.scenario}) pour le prospect ${f.prospect_id}, canal ${f.canal}. Relances d\xE9j\xE0 sans r\xE9ponse : ${p.relances_sans_reponse}/${MAX_RELANCES}. get_prospect, puis une relance personnalis\xE9e qui apporte une valeur nouvelle (jamais \xAB je reviens vers vous \xBB seul). Derni\xE8re relance autoris\xE9e = message de cl\xF4ture courtois.`
+      )));
     }
     const op = await requireOperator(req);
     if (body.action === "mission") {
@@ -997,36 +1108,4 @@ Termine par un rapport : nombre trouv\xE9, qualit\xE9 des sources, 5 cibles prio
   } catch (e) {
     await db().from("ai_missions").update({ statut: "echec", rapport: e.message, finished_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", id);
   }
-}
-async function tick() {
-  const { data: due } = await db().from("ai_followups").select("id, prospect_id, scenario, canal").eq("statut", "planifiee").lte("due_at", (/* @__PURE__ */ new Date()).toISOString()).order("due_at").limit(10);
-  let traites = 0, veille = 0;
-  for (const f of due ?? []) {
-    const { data: p } = await db().from("ai_prospects").select("opt_out, relances_sans_reponse, stage").eq("id", f.prospect_id).maybeSingle();
-    await db().from("ai_followups").update({ statut: "faite" }).eq("id", f.id);
-    if (!p || p.opt_out || ["perdu", "en_veille", "marche_gagne"].includes(p.stage)) continue;
-    if (p.relances_sans_reponse >= MAX_RELANCES) {
-      await db().from("ai_prospects").update({ stage: "en_veille" }).eq("id", f.prospect_id);
-      veille++;
-      continue;
-    }
-    if (f.canal === "telephone") {
-      await db().from("ai_approvals").insert({ type: "transfert_humain", prospect_id: f.prospect_id, motif: `Appel \xE0 passer : ${f.scenario}` });
-      continue;
-    }
-    try {
-      await runAgent(
-        { mode: "relance", prospect_id: f.prospect_id, scenario: f.scenario },
-        `Relance planifi\xE9e (${f.scenario}) pour le prospect ${f.prospect_id}, canal ${f.canal}. Relances d\xE9j\xE0 sans r\xE9ponse : ${p.relances_sans_reponse}/${MAX_RELANCES}. get_prospect, puis une relance personnalis\xE9e qui apporte une valeur nouvelle (jamais \xAB je reviens vers vous \xBB seul). Derni\xE8re relance autoris\xE9e = message de cl\xF4ture courtois.`
-      );
-      traites++;
-    } catch (e) {
-      if (e instanceof BudgetError || e instanceof TransientLlmError) {
-        await db().from("ai_followups").update({ statut: "planifiee", due_at: new Date(Date.now() + 36e5).toISOString() }).eq("id", f.id);
-        break;
-      }
-      await audit({ agent: "followup_manager", action: "tick_erreur", prospect_id: f.prospect_id, ok: false, payload: { e: String(e) } });
-    }
-  }
-  return { traites, mis_en_veille: veille };
 }

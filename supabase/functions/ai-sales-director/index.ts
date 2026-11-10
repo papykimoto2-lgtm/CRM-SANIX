@@ -5,11 +5,11 @@
 import { audit, cors, cronSecret, db, env, HttpError, json, requireOperator, safeEqual } from "../_shared/core.ts";
 import { runAgent } from "../_shared/agent.ts";
 import { BudgetError, LlmKeyMissingError, TransientLlmError } from "../_shared/llm.ts";
+import { MAX_RELANCES, tickFollowups } from "../_shared/followups.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
-const MAX_RELANCES = 4;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors(req) });
@@ -19,7 +19,8 @@ Deno.serve(async (req) => {
 
     if (body.action === "tick") {
       if (!safeEqual(req.headers.get("x-cron-secret") ?? "", await cronSecret())) throw new HttpError(401, "Non autorisé");
-      return json(req, await tick());
+      return json(req, await tickFollowups((f, p) => runAgent({ mode: "relance", prospect_id: f.prospect_id, scenario: f.scenario },
+        `Relance planifiée (${f.scenario}) pour le prospect ${f.prospect_id}, canal ${f.canal}. Relances déjà sans réponse : ${p.relances_sans_reponse}/${MAX_RELANCES}. get_prospect, puis une relance personnalisée qui apporte une valeur nouvelle (jamais « je reviens vers vous » seul). Dernière relance autorisée = message de clôture courtois.`)));
     }
 
     const op = await requireOperator(req);
@@ -78,36 +79,3 @@ Termine par un rapport : nombre trouvé, qualité des sources, 5 cibles priorita
   }
 }
 
-async function tick() {
-  const { data: due } = await db().from("ai_followups")
-    .select("id, prospect_id, scenario, canal")
-    .eq("statut", "planifiee").lte("due_at", new Date().toISOString()).order("due_at").limit(10);
-  let traites = 0, veille = 0;
-  for (const f of due ?? []) {
-    const { data: p } = await db().from("ai_prospects").select("opt_out, relances_sans_reponse, stage").eq("id", f.prospect_id).maybeSingle();
-    await db().from("ai_followups").update({ statut: "faite" }).eq("id", f.id);
-    if (!p || p.opt_out || ["perdu", "en_veille", "marche_gagne"].includes(p.stage)) continue;
-    if (p.relances_sans_reponse >= MAX_RELANCES) {
-      await db().from("ai_prospects").update({ stage: "en_veille" }).eq("id", f.prospect_id);
-      veille++;
-      continue;
-    }
-    if (f.canal === "telephone") {
-      await db().from("ai_approvals").insert({ type: "transfert_humain", prospect_id: f.prospect_id, motif: `Appel à passer : ${f.scenario}` });
-      continue;
-    }
-    try {
-      await runAgent({ mode: "relance", prospect_id: f.prospect_id, scenario: f.scenario },
-        `Relance planifiée (${f.scenario}) pour le prospect ${f.prospect_id}, canal ${f.canal}. Relances déjà sans réponse : ${p.relances_sans_reponse}/${MAX_RELANCES}. get_prospect, puis une relance personnalisée qui apporte une valeur nouvelle (jamais « je reviens vers vous » seul). Dernière relance autorisée = message de clôture courtois.`);
-      traites++;
-    } catch (e) {
-      if (e instanceof BudgetError || e instanceof TransientLlmError) {
-        // Reporte la relance : rien n'est perdu.
-        await db().from("ai_followups").update({ statut: "planifiee", due_at: new Date(Date.now() + 3600e3).toISOString() }).eq("id", f.id);
-        break;
-      }
-      await audit({ agent: "followup_manager", action: "tick_erreur", prospect_id: f.prospect_id, ok: false, payload: { e: String(e) } });
-    }
-  }
-  return { traites, mis_en_veille: veille };
-}
