@@ -1,24 +1,12 @@
 // SANIX AI VIRTUAL COMPANY — avatar humain GLB : squelette animé par des clips (AnimationMixer), teintes par collaborateur.
 // Même interface que avatar.js (setAnim, setPosture, update, setDetail, inspect…) : le moteur de bureau ne voit pas la différence.
 import { makeIndicators } from "./avatar.js";
-import { AV_SCALE, BASE_WALK, BODY_SCALE, CHARACTERS, PALETTE } from "./assets.js";
+import { AV_SCALE, BASE_WALK, BODY_SCALE, CHARACTERS } from "./assets.js";
 
 const hash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
 const CLIP = { idle: "idle", screen: "screen", multiscreen: "multiscreen", documents: "documents", typing: "typing", terminal: "terminal", headset: "headset", talk: "talk", present: "present",
   meeting: "meeting", speak: "speak", celebrate: "celebrate", alert: "alert", pause: "pause", relax: "relax", watch: "watch", handover: "handover" };
 const PROPS = { headset: ["Prop_Phone"], terminal: ["Prop_Phone"], documents: ["Prop_Doc"], relax: ["Prop_Cup"], handover: ["Prop_Folder"] };
-const SLOTS = ["skin", "top", "bottom", "shoes", "hair", "eye", "dark", "shirt", "accent"];   // ordre inscrit dans la couleur de sommet (rouge = indice / 8)
-const FIXED = { shoes: "#161b24", eye: "#f4f6f8", dark: "#161616", shirt: "#f1f5f9" };
-
-/** Corps : un seul matériau et un seul appel de dessin par personnage. Le fragment lit l'emplacement (couleur de sommet) et applique la teinte du collaborateur. */
-function patchBody(shader) {
-  shader.uniforms.uPal = { value: this.userData.pal };
-  shader.fragmentShader = shader.fragmentShader.replace("#include <common>", "#include <common>\nuniform vec3 uPal[9];")
-    .replace("#include <color_fragment>", "diffuseColor.rgb = uPal[int(clamp(floor(vColor.r * 8.0 + 0.5), 0.0, 8.0))];");
-}
-const BODY_KEY = () => "sanix-body-v1";
-const pick = (arr, h, k = 0) => arr[(h >>> k) % arr.length];
-
 /** Morphologie : cadres et directeurs en costume, le reste réparti par identifiant (mixité). */
 function variantFor(a, h) {
   if (a.niveau === 1) return "homme_a";
