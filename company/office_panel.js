@@ -207,9 +207,23 @@ async function loadExtras(a) {
       q(S.sb.from("ai_messages").select("id,prospect_id,canal,sens,auteur,contenu,statut,created_at").in("prospect_id", pids).order("created_at", { ascending: false }).limit(20))]);
     convs = pids.map((id) => ({ prospect: pr.find((p) => p.id === id), messages: ms.filter((m) => m.prospect_id === id).slice(0, 3) })).filter((c) => c.prospect);
   }
-  const ex = { comms, convs, at: Date.now() }; P.extras.set(a.id, ex); return ex;
+  let crm = null;   // dossiers CRM suivis par l'agent (fonction SQL du connecteur CRM ↔ IA) ; indisponible = section absente
+  try { const r = await S.sb.rpc("crm_agent_portfolio", { p_agent: a.id }); crm = r.error ? null : r.data; } catch { crm = null; }
+  const ex = { comms, convs, crm, at: Date.now() }; P.extras.set(a.id, ex); return ex;
 }
 
+const CRM_URL = new URL("../index.html", location.href).pathname;
+/** Dossiers CRM suivis par ce collaborateur : ouverture dans le CRM, mission pour un dossier (direction), validations en attente. */
+function crmSection(c, a) {
+  if (!c) return html``;
+  const dirOk = isDir() && a.niveau > 1 && a.etat === "actif", ps = c.prospects ?? [], ms = c.missions ?? [], vs = c.validations ?? [];
+  return html`<h3 class="sh">Dossiers CRM suivis (${ps.length})</h3>
+    ${ps.length ? ps.slice(0, 8).map((p) => html`<div class="small" style="margin:5px 0"><b>${p.entreprise}</b> · ${p.stage}${p.score != null ? html` · ${p.score}/100` : ""}${p.statut_crm ? html` · CRM : ${p.statut_crm}` : ""}
+      ${p.crm_rid ? html` <a href="${CRM_URL}?crm_client=${encodeURIComponent(p.crm_rid)}" target="_blank" rel="noopener">Ouvrir dans le CRM</a>` : ""}
+      ${dirOk ? html` <button class="btn sm" type="button" data-act="crm-mission" data-agent="${a.id}" data-prospect="${p.id}" data-name="${p.entreprise}">➕ Mission</button>` : ""}</div>`) : html`<p class="small muted">Aucun dossier suivi.</p>`}
+    ${ms.length ? html`<div class="small muted" style="margin-top:6px">Missions liées à un dossier</div>${ms.slice(0, 6).map((m) => html`<div class="small" style="margin:3px 0"><a href="#" data-act="task" data-id="${m.id}">${clipT(m.titre, 56)}</a>${m.entreprise ? html` · ${m.entreprise}` : ""} ${pill(...(TASK_ST[m.statut] ?? [m.statut, "#64748B"]))}</div>`)}` : ""}
+    ${vs.length ? html`<div class="small" style="margin-top:6px">⏳ ${vs.length} validation(s) en attente · <a href="#" data-act="tab" data-id="valid">ouvrir les validations</a></div>` : ""}`;
+}
 function renderSheet() {
   const el = $("#sheet"), a = S.selected && agentBy(S.selected); if (!el || !a) return;
   const mgr = agentBy(a.manager_id), subs = live().filter((x) => x.manager_id === a.id), mine = S.tasks.filter((t) => t.agent_id === a.id);
@@ -228,6 +242,7 @@ function renderSheet() {
     <div class="tags">${(a.outils ?? []).map((o) => html`<span class="tag">${o}</span>`)}</div>
     <h3 class="sh">Missions en cours (${open.length})</h3>${open.length ? open.map((t) => html`<div class="small" style="margin:5px 0"><a href="#" data-act="task" data-id="${t.id}">${clipT(t.titre, 70)}</a><br>${pill(...(TASK_ST[t.statut] ?? [t.statut, "#64748B"]))}</div>`) : html`<p class="small muted">Aucune</p>`}
     <h3 class="sh">Derniers résultats</h3>${done.length ? done.map((t) => html`<div class="small" style="margin:5px 0"><a href="#" data-act="task" data-id="${t.id}">${clipT(t.titre, 70)}</a>${t.evaluation != null ? html` · <b>${t.evaluation}/100</b>` : ""}<br><span class="muted">${clipT(t.rapport, 140)}</span></div>`) : html`<p class="small muted">Aucun</p>`}
+    ${crmSection(ex?.crm, a)}
     <h3 class="sh">Échanges internes</h3>${!ex ? html`<p class="small muted">Chargement…</p>` : ex.comms.length ? ex.comms.map((c) => html`<div class="small" style="margin:5px 0"><b>${agentBy(c.de_agent_id)?.nom ?? "Direction"}</b> → <b>${agentBy(c.vers_agent_id)?.nom ?? "—"}</b> · ${c.objet}<br><span class="muted">${clipT(c.contenu, 110)} · ${ago(c.created_at)}</span></div>`) : html`<p class="small muted">Aucun échange récent</p>`}
     ${ex?.convs.length ? html`<h3 class="sh">Conversations avec des prospects</h3>${ex.convs.map((c) => html`<div class="small" style="margin:6px 0"><b>${c.prospect.entreprise}</b>${c.messages.map((m) => html`<div class="muted">${m.sens === "sortant" ? "Agent" : "Prospect"} · ${m.canal} : ${clipT(m.contenu, 90)}</div>`)}</div>`)}` : ""}
     <div class="actions"><button class="btn sm" type="button" data-act="charter" data-id="${a.id}">📄 Cahier des charges</button>
@@ -254,6 +269,23 @@ function assignModal(id) {
         echeance_heures: $("#am-ech").value ? Number($("#am-ech").value) : null, objectifs: $("#am-obj").value.split("\n").map((x) => x.trim()).filter(Boolean) });
       closeModal(); toast(`Mission attribuée à ${r?.agent ?? a.nom}`, "ok"); await H.refreshCore();
     } catch (err) { $("#am-err").textContent = err.message; btn.disabled = false; }
+  };
+}
+function crmMissionModal(el) {
+  const a = agentBy(el.dataset.agent); if (!a) return;
+  openModal(html`<h3>Mission pour ${el.dataset.name}</h3><p class="muted small">Assignée à ${a.nom}. Elle suit la gouvernance (budget, anti-doublon) et apparaît dans la fiche du dossier, dans le CRM.</p>
+    <form id="crm-mission-form" class="form1"><label class="f">Titre<input id="cm-titre" required minlength="3" maxlength="200" value="Relancer ${el.dataset.name}"></label>
+    <label class="f">Consigne<textarea id="cm-desc" required minlength="3" maxlength="8000" rows="4" placeholder="Contexte, résultat attendu"></textarea></label>
+    <div class="form"><label class="f">Priorité<select id="cm-prio">${[[1, "1 · Urgente"], [2, "2 · Haute"], [3, "3 · Normale"], [4, "4 · Basse"]].map(([v, l]) => html`<option value="${v}" ${v === 2 ? "selected" : ""}>${l}</option>`)}</select></label>
+    <label class="f">Échéance<select id="cm-ech"><option value="">Aucune</option><option value="24">24 heures</option><option value="72" selected>3 jours</option><option value="168">7 jours</option></select></label></div>
+    <div class="err" id="cm-err" role="alert"></div><div class="actions"><button class="btn pri" type="submit" id="cm-ok">Assigner la mission</button><button class="btn" type="button" data-act="close-modal">Annuler</button></div></form>`);
+  $("#crm-mission-form").onsubmit = async (e) => {
+    e.preventDefault(); const btn = $("#cm-ok"); btn.disabled = true; $("#cm-err").textContent = "";
+    try {
+      await q(S.sb.rpc("crm_assign_mission", { p_agent: a.id, p_prospect: el.dataset.prospect, p_titre: $("#cm-titre").value.trim(), p_description: $("#cm-desc").value.trim(),
+        p_priorite: Number($("#cm-prio").value), p_echeance_h: $("#cm-ech").value ? Number($("#cm-ech").value) : null }));
+      closeModal(); toast("Mission assignée pour ce dossier", "ok"); P.extras.delete(a.id); await H.refreshCore(); if (S.selected === a.id) selectAgent(a.id);
+    } catch (err) { $("#cm-err").textContent = err.message; btn.disabled = false; }
   };
 }
 function reportModal(id) {
@@ -307,6 +339,7 @@ export const acts = {
   "sheet-back": () => selectAgent(null),
   "sup-more": () => { P.supLimit += 60; renderSupervision(); },
   "assign-mission": (el) => assignModal(el.dataset.id),
+  "crm-mission": (el) => crmMissionModal(el),
   "request-report": (el) => reportModal(el.dataset.id),
   "open-dg": () => openDialog(),
   "to-stage": () => $("#stage")?.scrollIntoView({ block: "start", behavior: "smooth" }),

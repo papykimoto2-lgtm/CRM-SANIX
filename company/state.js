@@ -13,7 +13,7 @@ export const LEVELS = { 1: "Directeur général", 2: "Directeur", 3: "Responsabl
 export const S = {
   cfg: null, sb: null, op: null, tab: "office", agents: [], depts: [], tasks: [], approvals: [], gov: null, budget: null,
   meetings: [], officeMeetings: [], reports: [], settings: [], recipients: [], exec: [], stats: [], statDays: 7, selected: null, office: null, officeEl: null,
-  officeOk: null, kpis: null, filters: { statut: "", agent: "", q: "" }, busy: false, pendingInstruction: false, taskStatus: new Map(),
+  officeOk: null, kpis: null, crm: null, filters: { statut: "", agent: "", q: "" }, busy: false, pendingInstruction: false, taskStatus: new Map(),
 };
 export const isDir = () => !!S.op && ["direction", "admin"].includes(S.op.role);
 export const live = () => S.agents.filter((a) => a.etat !== "archive");
@@ -31,6 +31,12 @@ export async function callFn(action, body = {}) {
     throw new Error(msg);
   }
   return data;
+}
+/** Tableau de bord CRM du Président (ventes, objectifs, missions en retard, anomalies) : fonction SQL réservée à la direction ; indisponible = carte absente, jamais bloquante. */
+export async function loadCrm() {
+  S.crm = null;
+  if (!isDir()) return;
+  try { const { data, error } = await S.sb.rpc("crm_dashboard"); S.crm = error ? null : data; } catch { S.crm = null; }
 }
 export async function loadExec() { S.exec = await q(S.sb.from("ai_executive_messages").select("*").order("created_at", { ascending: true }).limit(150)); }
 

@@ -19,6 +19,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="shared/pager.js" defer></script>
+<script src="shared/crm-connector.js" defer></script>
 <style>
 :root{
   --bg:#F0F5FF;--surface:#FFFFFF;--surface2:#F8FAFF;
@@ -7319,6 +7320,7 @@ function saveDeploiement() {
     showToast('✅ Déploiement créé — '+client);
   }
   closeDeploiementModal();
+  saveStore('deployments');
   initPlanning();
 }
 
@@ -7326,6 +7328,7 @@ function deleteDeploiement(id) {
   var d = DEPLOYMENTS.find(function(x){return x.id===id;});
   if(!d||!confirm('Supprimer le déploiement "'+d.client+'" ?\n\nCette action est irréversible.')) return;
   DEPLOYMENTS = DEPLOYMENTS.filter(function(x){return x.id!==id;});
+  saveStore('deployments');
   initPlanning();
   showToast('🗑 Déploiement "'+d.client+'" supprimé');
 }

@@ -60,6 +60,19 @@
     if (name === "ai_decide_approval") { T("ai_approvals").splice(0, T("ai_approvals").length, ...T("ai_approvals").filter((a) => a.id !== args.p_id)); return Promise.resolve({ data: null, error: null }); }
     if (name === "ai_decide_approvals_batch") { T("ai_approvals").splice(0, T("ai_approvals").length, ...T("ai_approvals").filter((a) => !args.p_ids.includes(a.id))); return Promise.resolve({ data: args.p_ids.length, error: null }); }
     if (name === "ai_set_agent_etat") { const a = T("ai_agents").find((x) => x.id === args.p_agent); if (a) a.etat = args.p_etat; return Promise.resolve({ data: null, error: null }); }
+    // connecteur CRM ↔ IA (fonctions SQL réservées aux opérateurs) : actives seulement si le jeu de données porte un bloc « crm » (test crm_office_test.js)
+    if (FX.crm && name === "crm_dashboard") return Promise.resolve({ data: FX.crm.dashboard, error: null });
+    if (FX.crm && name === "crm_agent_portfolio") return Promise.resolve({ data: FX.crm.portfolio[args.p_agent] ?? { prospects: [], missions: [], validations: [] }, error: null });
+    if (FX.crm && name === "crm_assign_mission") {
+      const id = "00000000-0000-4000-8000-" + String(Date.now()).padStart(12, "0").slice(-12);
+      T("ai_agent_tasks").push({ id, agent_id: args.p_agent, prospect_id: args.p_prospect, type: "mission", titre: args.p_titre, description: args.p_description, statut: "a_faire", priorite: args.p_priorite, objectifs: [], resultats: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+      return Promise.resolve({ data: id, error: null });
+    }
+    if (FX.crm && name === "crm_arbitrate_task") {
+      const t = T("ai_agent_tasks").find((x) => x.id === args.p_task); if (t && args.p_action === "cancel") t.statut = "annulee";
+      FX.crm.dashboard.missions_en_retard = FX.crm.dashboard.missions_en_retard.filter((m) => m.id !== args.p_task);
+      return Promise.resolve({ data: null, error: null });
+    }
     return Promise.resolve({ data: null, error: { message: `rpc inconnue ${name}` } });
   };
   const invoke = async (fn, { body }) => {
