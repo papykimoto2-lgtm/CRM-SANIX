@@ -58,7 +58,7 @@ export function renderSales(main) {
       <td><button class="btn sm" type="button" data-act="sales-open" data-id="${p.id}">Ouvrir</button></td>
     </tr>`).join("")||html`<tr><td colspan="7" class="muted">Aucun prospect correspondant.</td></tr>`.s)}
     </tbody></table></div>
-    <p class="small muted" style="margin-top:10px">Le rattachement CRM utilise l'identifiant numérique du client (`crm_client_id`). Les données commerciales restent dans les tables SANIX AI SALES ; aucune table client du CRM principal n'est modifiée automatiquement.</p>
+    <p class="small muted" style="margin-top:10px">Le rattachement CRM utilise l'identifiant numérique du client (<code>crm_client_id</code>). Les données commerciales restent dans les tables SANIX AI SALES ; aucune table client du CRM principal n'est modifiée automatiquement.</p>
   </section>`.s;
   $("#sales-q").oninput=e=>{filter.q=e.target.value;renderSales(main);const el=$("#sales-q");el.focus();el.setSelectionRange(filter.q.length,filter.q.length);};
   $("#sales-stage").onchange=e=>{filter.stage=e.target.value;renderSales(main);};

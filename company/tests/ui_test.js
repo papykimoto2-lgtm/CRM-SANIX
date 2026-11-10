@@ -31,7 +31,7 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     await page.keyboard.press("Escape"); ok(await page.locator("#modal").isHidden(), "Échap ferme la fenêtre");
 
     console.log("▶ Onglets");
-    for (const id of ["exec", "org", "tasks", "meet", "perf", "reports", "gov", "valid"]) {
+    for (const id of ["exec", "org", "tasks", "sales", "meet", "perf", "reports", "gov", "valid"]) {
       await tab(page, id); await page.waitForTimeout(150);
       ok((await page.locator("#main").innerText()).length > 40, `onglet « ${id} » rendu`);
       await page.screenshot({ path: path.join(OUT, `tab_${id}.png`) });
@@ -93,6 +93,11 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     await page.fill("input[name=max_agents_actifs]", "30"); await page.selectOption("#g-comm", "autonome"); await page.click("#gov-form button[type=submit]"); await page.waitForTimeout(250);
     ok((await page.evaluate(() => window.__Q.some((q) => q.table === "ai_governance" && q.op === "update" && q.payload.includes("communication_externe")))), "gouvernance enregistrée");
     ok((await page.locator("#status-chips").innerText()).includes("autonome"), "l'état de la communication externe s'affiche dans l'en-tête");
+    ok((await page.locator("#g-consent").count()) === 1 && !(await page.locator("#g-consent").isChecked()), "preuve de consentement : case présente, décochée par défaut");
+    await page.check("#g-consent"); await page.click("#gov-form button[type=submit]"); await page.waitForTimeout(250);
+    ok((await page.evaluate(() => window.__Q.some((q) => q.table === "ai_governance" && q.op === "update" && q.payload.includes("consentement_requis")))), "la case de consentement est envoyée à la gouvernance");
+    await tab(page, "exec"); await tab(page, "gov"); await page.waitForTimeout(200);
+    ok(await page.locator("#g-consent").isChecked(), "le consentement exigé est conservé après rechargement de l'onglet");
 
     console.log("▶ Organisation → agent");
     await tab(page, "org");
