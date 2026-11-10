@@ -2,7 +2,7 @@ name: Build SANIX human avatars
 on:
   workflow_dispatch:
   push:
-    branches: [feat/human-office-avatars]
+    branches: [main, feat/human-office-avatars]
     paths:
       - "company/assets/blender/**"
       - ".github/workflows/build-human-avatars.yml"
