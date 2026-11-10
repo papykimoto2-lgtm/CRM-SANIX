@@ -1,0 +1,52 @@
+{
+  "name": "homme_b",
+  "seed": 202,
+  "gender": 1,
+  "age": 0.52,
+  "muscle": 0.62,
+  "weight": 0.58,
+  "height": 0.56,
+  "proportions": 0.68,
+  "african": 1,
+  "asian": 0,
+  "caucasian": 0,
+  "skin": "auto",
+  "skinTint": "#ffffff",
+  "eyes": "blackbrown",
+  "eyebrows": "eyebrow003",
+  "eyelashes": "eyelashes01",
+  "hair": "buzz",
+  "hairTint": "#ffffff",
+  "hairColor": "#100c0a",
+  "facialHair": "stubble",
+  "beardColor": "#17100d",
+  "outfit": "set_suit_tie",
+  "shoes": "oxfords",
+  "outfitTint": "#ffffff",
+  "garmentStyles": {
+    "set_suit_tie": {
+      "pattern": "suiting",
+      "color": "#34373e",
+      "color2": "#4a4e57"
+    },
+    "suit_shirt_tie": {
+      "pattern": "striped",
+      "color": "#e6edf3",
+      "color2": "#6e1724"
+    },
+    "oxfords": {
+      "pattern": "nappa",
+      "color": "#25180f",
+      "color2": "#120d09"
+    }
+  },
+  "rig": "game",
+  "faceBones": true,
+  "restPose": "A",
+  "animations": false,
+  "faceShapes": true,
+  "speechShapes": true,
+  "expression": "neutral",
+  "teeth": "teeth_base",
+  "tongue": true
+}
