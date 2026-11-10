@@ -4,6 +4,7 @@ import { $, ago, askText, clipT, closeModal, esc, fmtD, fmtDT, html, num, openMo
 import { agentBy, callFn, chatBody, deptColor, dgName, isDir, LEVELS, live, loadExec, loadOfficeMeetings, OPEN, q, S, stPill, TASK_ST } from "./state.js";
 import * as P from "./office_panel.js";
 import { LOGIN_ALIASES, SUPABASE_DEFAULT } from "./config.js";
+import * as SALES from "./sales.js";
 
 // ───────────────────────── Configuration & session ─────────────────────────
 const LS = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
@@ -113,7 +114,7 @@ async function loadStats() {
   const fin = new Date(), debut = new Date(fin.getTime() - S.statDays * 86400e3);
   S.stats = await q(S.sb.rpc("ai_agent_stats", { p_debut: debut.toISOString(), p_fin: fin.toISOString() }));
 }
-const LOADERS = { exec: loadExec, meet: loadMeetings, reports: loadReports, perf: loadStats };
+const LOADERS = { exec: loadExec, meet: loadMeetings, reports: loadReports, perf: loadStats, sales: SALES.loadSales };
 
 /** Notifie le président quand une mission qu'il a demandée change d'issue (terminée, bloquée, échouée). */
 function noteTask(t, firstLoad = false) {
@@ -163,7 +164,7 @@ function subscribe() {
 // ───────────────────────── Navigation ─────────────────────────
 const TABS = [
   { id: "office", label: "🏢 Bureau 3D" }, { id: "exec", label: "👔 Bureau du Président", dir: true }, { id: "org", label: "🧩 Organisation" },
-  { id: "tasks", label: "📋 Missions" }, { id: "meet", label: "🤝 Réunions" }, { id: "perf", label: "📈 Performance" },
+  { id: "tasks", label: "📋 Missions" }, { id: "sales", label: "💼 Commercial" }, { id: "meet", label: "🤝 Réunions" }, { id: "perf", label: "📈 Performance" },
   { id: "reports", label: "📨 Rapports", dir: true }, { id: "gov", label: "⚖️ Gouvernance", dir: true }, { id: "valid", label: "✅ Validations" },
 ];
 const visibleTabs = () => TABS.filter((t) => !t.dir || isDir());
@@ -196,7 +197,7 @@ function render(soft = false) {
   if (S.tab !== "office") S.office?.setActive(false);
   if (S.tab === "office") { P.renderOffice(main); return; }
   if (soft && ["exec"].includes(S.tab)) { renderExec(main, true); return; }
-  const R = { exec: renderExec, org: renderOrg, tasks: renderTasks, meet: renderMeetings, perf: renderPerf, reports: renderReports, gov: renderGov, valid: renderValid }[S.tab];
+  const R = { exec: renderExec, org: renderOrg, tasks: renderTasks, sales: SALES.renderSales, meet: renderMeetings, perf: renderPerf, reports: renderReports, gov: renderGov, valid: renderValid }[S.tab];
   const keepScroll = main.scrollTop;
   R(main); if (soft) main.scrollTop = keepScroll;
 }
@@ -432,6 +433,11 @@ async function viewReport(id) {
 
 const ACT = {
   ...P.acts,
+  "sales-new": (el) => SALES.salesAction(el),
+  "sales-open": (el) => SALES.salesAction(el),
+  "sales-refresh": (el) => SALES.salesAction(el),
+  "sales-qualify": (el) => SALES.salesAction(el),
+  "sales-contact": (el) => SALES.salesAction(el),
   "tab": (el) => go(el.dataset.id),
   "close-modal": () => { closeModal(); $("#modal").dispatchEvent(new Event("close-ask")); },
   "task": (el, ev) => { ev.preventDefault(); return showTask(el.dataset.id); },
@@ -495,6 +501,7 @@ document.addEventListener("click", (e) => {
   Promise.resolve(f(el, e)).catch((err) => toast(err.message, "bad"));
 });
 document.addEventListener("change", (e) => {
+  const salesStage = e.target.closest("[data-sales-stage]"); if (salesStage) { SALES.changeSalesStage(salesStage); return; }
   const el = e.target.closest("[data-act=rcp-type]"); if (el) { ACT["rcp-type"](el); return; }
   const c = e.target.closest("[data-change]"); if (c) P.changes[c.dataset.change]?.(c);
 });
