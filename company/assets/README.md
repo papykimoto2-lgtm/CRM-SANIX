@@ -1,17 +1,22 @@
 # Ressources 3D de SANIX AI VIRTUAL COMPANY
 
-Chaîne : **Blender (scripts Python) → GLB → Three.js**. Rien n'est téléchargé à l'exécution : les modèles et le moteur 3D sont servis par le site.
+Personnages de production : **humains réalistes texturés** (MakeHuman CC0 via Ara 3D Gen, allégés par `realistic/tools/optimize.mjs`) : voir [`realistic/README.md`](realistic/README.md).
+Les scripts Blender ci-dessous construisent la **silhouette procédurale** d'origine ; elle reste la référence des clips (`animations.glb`) et le repli hors ligne (`avatar.js`).
+Chaîne : **GLB → Three.js**. Rien n'est téléchargé à l'exécution : les modèles et le moteur 3D sont servis par le site.
 
 | Fichier | Contenu |
 |---|---|
-| `characters/homme_a.glb`, `femme_a.glb`, `homme_b.glb`, `femme_b.glb` | 4 silhouettes humaines (maillage lisse ~10 k triangles, squelette, accessoires) |
-| `characters/animations.glb` | 27 clips partagés par tous les personnages (30 i/s, boucles) |
+| `characters/homme_a.glb`, `femme_a.glb`, `homme_b.glb`, `femme_b.glb` | 4 humains réalistes (1 à 2 Mo, deux niveaux de détail 27–38 k / 10–13 k triangles, 69 os, textures WebP, 1,76 m) |
+| `characters/animations.glb` | 27 clips SANIX (30 i/s, boucles), recalés au chargement sur chaque squelette (`../retarget.js`) |
+| `realistic/` | profils des quatre humains, outils de fabrication et de contrôle, documentation |
 | `blender/humanoid.py` | Génération d'un personnage : corps (modificateur Skin + Subdivision), vêtements par zones, visage, cheveux, squelette, poids de peau, accessoires |
 | `blender/animations.py` | Clips écrits en rotations « monde », convertis en rotations d'os (indépendant du roulis des os) |
 | `blender/build_characters.py` | Construit et exporte tout (`python build_characters.py`) |
 | `../vendor/three.bundle.js` | Three.js 0.170 + GLTFLoader, SkeletonUtils, RoomEnvironment, RoundedBoxGeometry (`../tools/build-vendor.sh`) |
 
 ## Régénérer les modèles
+
+Humains réalistes : workflow manuel « Construire les avatars humains SANIX » (voir `realistic/README.md`). Silhouettes procédurales (Blender) :
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
@@ -27,7 +32,7 @@ Le résultat s'ouvre aussi dans Blender (import glTF) pour retouche manuelle.
 
 * **Squelette** : noms Mixamo sans préfixe (`Hips`, `Spine`…`Spine2`, `Neck`, `Head`, `LeftShoulder`, `LeftArm`, `LeftForeArm`, `LeftHand`, `LeftUpLeg`, `LeftLeg`, `LeftFoot`, `LeftToeBase`, et `Right…`). Repos en A-pose, personnage tourné vers +Z après export.
 * **Matériaux** `<personnage>_<emplacement>` : `skin`, `top`, `bottom`, `shoes`, `hair`, `eye`, `dark`, `shirt`, `accent`. À l'exécution (`avatar_glb.js`) : peau, cheveux, haut, bas déduits de l'identifiant de l'agent ; `accent` (cravate, badge, chemise cartonnée) = couleur du département.
-* **Accessoires** : nœuds `Prop_Phone`, `Prop_Doc`, `Prop_Cup`, `Prop_Folder`, `Prop_Headset`, enfants des os de la main / de la tête, masqués par défaut et affichés selon l'activité.
+* **Accessoires** : nœuds `Prop_Phone`, `Prop_Doc`, `Prop_Cup`, `Prop_Folder`, `Prop_Headset`, enfants des os de la main / de la tête, masqués par défaut et affichés selon l'activité. Les humains réalistes n'en embarquent pas : `avatar_props.js` les crée au chargement (et un badge de département).
 * **Clips** : `Walk`, `Sit_<mouvement>`, `Stand_<mouvement>`. Mouvements : `idle`, `screen`, `multiscreen`, `documents`, `typing`, `terminal`, `headset`, `talk`, `present`, `meeting`, `speak`, `celebrate`, `alert`, `pause`, `relax` (+ `watch`, `handover` debout).
 
 | Activité publiée par le moteur | Animation | Clip (assis / debout) | Accessoire |
@@ -60,12 +65,3 @@ Sans ressources GLB (hors ligne, fichier absent), le bureau bascule automatiquem
 ## Licences
 
 Modèles et animations : générés par les scripts de ce dépôt (propriété du projet). Three.js : licence MIT (`../vendor/three.bundle.js.LEGAL.txt`).
-
-
-## Régénération des avatars humains SANIX
-
-Les modèles GLB sont générés depuis `company/assets/blender/` avec Blender. Toute évolution du générateur déclenche le workflow `.github/workflows/build-human-avatars.yml`, qui reconstruit les quatre personnages et les clips dans `company/assets/characters/`.
-
-Le générateur conserve un maillage plus dense (réduction de décimation limitée), des détails faciaux renforcés, des matériaux PBR avec diffusion cutanée légère et des détails de confection pour les tenues de direction. Les fichiers GLB générés doivent être contrôlés dans le visualiseur 3D avant fusion.
-
-Note de qualité : ces modèles procéduraux améliorés ne sont pas des scans photoréalistes. Ils constituent une étape de fidélité anatomique et de finition, pas une prétention de photoréalisme intégral.

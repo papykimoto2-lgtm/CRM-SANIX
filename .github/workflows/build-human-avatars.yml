@@ -1,47 +1,109 @@
-name: Build SANIX human avatars
+name: Construire les avatars humains SANIX
+
+# Déclenchement MANUEL uniquement (Actions → « Construire les avatars humains SANIX » → Run workflow).
+# Les personnages du bureau 3D sont déjà dans company/assets/characters/ : ce workflow ne sert qu'à les régénérer (nouveau profil, nouvelle version).
+#
+# Sécurité (voir company/assets/realistic/README.md) :
+#  - « generer » exécute du code TIERS (générateur Ara 3D Gen, dépendances npm, téléchargement des données MakeHuman) : droits en LECTURE seule,
+#    aucun jeton conservé après l'extraction du dépôt, aucun secret. Il ne produit qu'un artefact de fichiers GLB.
+#  - « optimiser » n'exécute que le code du dépôt et des outils épinglés (company/assets/realistic/tools, « npm ci »). Il allège, contrôle les budgets
+#    et valide les GLB, puis les pousse sur une NOUVELLE branche « avatars/build-N » : jamais sur main. Une personne relit la pull request avant fusion.
 on:
   workflow_dispatch:
-  push:
-    branches: [main, feat/human-office-avatars]
-    paths:
-      - "company/assets/blender/**"
-      - ".github/workflows/build-human-avatars.yml"
-permissions:
-  contents: write
+    inputs:
+      generator_commit:
+        description: "Commit du générateur Ara 3D Gen (épinglé : ne le changer qu'après relecture de ses modifications)"
+        required: true
+        default: "c0abe46261171ad3ec570b39beabe386669cae4d"
+
+permissions: {}
+
 concurrency:
-  group: sanix-human-avatars-${{ github.ref }}
+  group: sanix-human-avatars
   cancel-in-progress: false
+
 jobs:
-  build:
+  generer:
+    name: Générer les quatre humains (code tiers, lecture seule)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install Blender
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Récupérer le générateur au commit épinglé
+        env:
+          COMMIT: ${{ inputs.generator_commit }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y blender python3-numpy
-      - name: Generate rigged human GLB assets
+          [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "Commit invalide : 40 caractères hexadécimaux attendus"; exit 1; }
+          git clone --no-checkout https://github.com/olatunde85/3d-gen.git /tmp/ara
+          git -C /tmp/ara checkout --detach "$COMMIT"
+      - name: Installer les dépendances verrouillées et télécharger les données MakeHuman (CC0)
+        working-directory: /tmp/ara
         run: |
-          export PYTHONPATH="/usr/lib/python3/dist-packages:${PYTHONPATH:-}"
-          blender --background --python company/assets/blender/build_characters.py -- company/assets/characters
-          for asset in homme_a homme_b femme_a femme_b animations; do
-            test -s "company/assets/characters/${asset}.glb" || { echo "Missing or empty GLB: ${asset}.glb"; exit 1; }
-            test "$(stat -c%s "company/assets/characters/${asset}.glb")" -gt 1024 || { echo "Invalid GLB size: ${asset}.glb"; exit 1; }
+          npm ci
+          npm run setup-assets
+      - name: Générer les quatre profils africains en tenue professionnelle
+        working-directory: /tmp/ara
+        run: |
+          mkdir -p /tmp/sanix-avatars-bruts
+          for name in homme_a homme_b femme_a femme_b; do
+            npm run export -- --params "$GITHUB_WORKSPACE/company/assets/realistic/$name.json" --detail high --formats glb --out /tmp/sanix-avatars-bruts
+            test "$(stat -c%s "/tmp/sanix-avatars-bruts/$name.glb")" -gt 100000
           done
-          ls -lh company/assets/characters/*.glb
-      - name: Commit generated GLB files
+          ls -l /tmp/sanix-avatars-bruts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: avatars-bruts
+          path: /tmp/sanix-avatars-bruts/*.glb
+          retention-days: 3
+          if-no-files-found: error
+
+  optimiser:
+    name: Alléger, valider, proposer (code du dépôt uniquement)
+    needs: generer
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write      # uniquement pour pousser la nouvelle branche « avatars/build-N »
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: avatars-bruts
+          path: /tmp/avatars-bruts
+      - name: Installer les outils épinglés
+        working-directory: company/assets/realistic/tools
+        run: npm ci
+      - name: Alléger (deux niveaux de détail, textures WebP, 1,76 m) et vérifier les budgets
+        working-directory: company/assets/realistic/tools
+        run: node optimize.mjs /tmp/avatars-bruts "$GITHUB_WORKSPACE/company/assets/characters"
+      - name: Valider (glTF Khronos, squelette, animations, budgets)
+        working-directory: company/assets/realistic/tools
+        run: node validate.mjs "$GITHUB_WORKSPACE/company/assets/characters" "$GITHUB_WORKSPACE/company/assets/characters/animations.glb"
+      - name: Proposer les fichiers sur une nouvelle branche (jamais sur main)
+        env:
+          BRANCH: avatars/build-${{ github.run_number }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add company/assets/characters/*.glb
+          git checkout -b "$BRANCH"
+          git add company/assets/characters/homme_a.glb company/assets/characters/homme_b.glb company/assets/characters/femme_a.glb company/assets/characters/femme_b.glb
           git diff --cached --stat
-          if git diff --cached --quiet; then
-            echo "No generated asset changes."
-          else
-            git commit -m "Build higher-fidelity SANIX human avatar models"
-            git push origin HEAD:${{ github.ref_name }}
-          fi
+          if git diff --cached --quiet; then echo "Aucun changement : les personnages sont déjà à jour."; exit 0; fi
+          git commit -m "Avatars humains SANIX : régénération allégée (workflow n°${{ github.run_number }})"
+          git push origin "$BRANCH"
+          {
+            echo "### Avatars régénérés"
+            echo "Branche **$BRANCH** poussée. Ouvrir une pull request vers main, puis contrôler le résultat dans le bureau 3D (ordinateur et téléphone) avant fusion."
+            echo
+            ls -l company/assets/characters/*.glb | awk '{printf "- %s : %.2f Mo\n", $9, $5/1048576}'
+          } >> "$GITHUB_STEP_SUMMARY"

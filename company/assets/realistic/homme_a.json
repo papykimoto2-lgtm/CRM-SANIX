@@ -1,0 +1,46 @@
+{
+  "name": "homme_a",
+  "seed": 101,
+  "gender": 1,
+  "age": 0.58,
+  "muscle": 0.52,
+  "weight": 0.48,
+  "height": 0.62,
+  "proportions": 0.72,
+  "african": 1,
+  "asian": 0,
+  "caucasian": 0,
+  "skin": "auto",
+  "skinTint": "#ffffff",
+  "eyes": "blackbrown",
+  "eyebrows": "eyebrow001",
+  "eyelashes": "eyelashes01",
+  "hair": "short04",
+  "hairTint": "#ffffff",
+  "hairColor": "#17100d",
+  "facialHair": "none",
+  "outfit": "set_suit_tie",
+  "shoes": "oxfords",
+  "outfitTint": "#ffffff",
+  "garmentStyles": {
+    "set_suit_tie": {
+      "pattern": "suiting",
+      "color": "#17263c",
+      "color2": "#27384f"
+    },
+    "suit_shirt_tie": {
+      "pattern": "solid",
+      "color": "#f2f3f0",
+      "color2": "#8b1e35"
+    }
+  },
+  "rig": "game",
+  "faceBones": true,
+  "restPose": "A",
+  "animations": false,
+  "faceShapes": true,
+  "speechShapes": true,
+  "expression": "neutral",
+  "teeth": "teeth_base",
+  "tongue": true
+}

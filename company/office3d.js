@@ -21,9 +21,9 @@ const ROOM_W = 17, GAP = 2.4, COLS = 4, SLOT_X = 3.7, SLOT_Z = 4.1, COLX = [-(RO
 const IDLE_MS = 180000;          // disponible sans mission depuis 3 min → espace détente
 const WALK = 2.2;                // vitesse de marche (unités / s) : calée sur le clip « Walk » (assets.js : BASE_WALK)
 const QUALITY = {
-  high: { dpr: 2, seg: 14, props: true, maxFull: 90, fps: 60, perFrame: 6, labelEvery: 1, blink: true, shadows: true, env: true },
-  low: { dpr: 1.25, seg: 8, props: true, maxFull: 30, fps: 45, perFrame: 3, labelEvery: 2, blink: true, shadows: false, env: true },
-  eco: { dpr: 1, seg: 6, props: false, maxFull: 18, fps: 30, perFrame: 2, labelEvery: 3, blink: false, shadows: false, env: false },
+  high: { dpr: 2, seg: 14, props: true, maxFull: 90, maxHigh: 90, fps: 60, perFrame: 6, labelEvery: 1, blink: true, shadows: true, env: true },
+  low: { dpr: 1.25, seg: 8, props: true, maxFull: 30, maxHigh: 6, fps: 45, perFrame: 3, labelEvery: 2, blink: true, shadows: false, env: true },
+  eco: { dpr: 1, seg: 6, props: false, maxFull: 18, maxHigh: 0, fps: 30, perFrame: 2, labelEvery: 3, blink: false, shadows: false, env: false },
 };
 const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
 const hexToNum = (h) => parseInt(h.replace("#", ""), 16);
@@ -521,10 +521,15 @@ export async function createOffice(container, hooks = {}) {
     const list = [...avatars.values()];
     const rank = (v) => (v.id === selectedId || v.id === hovered || v.id === followId ? -1 : v.agent.niveau);
     list.sort((x, y) => rank(x) - rank(y));
+    const shown = [];
     list.forEach((v, i) => {
       const active = !["disponible", "mission_terminee"].includes(v.agent.activite) || v.agent.lieu !== "poste";
-      v.setDetail(i < Q.maxFull && (!activityView || active || v.id === selectedId) ? "full" : "marker");
+      if (i < Q.maxFull && (!activityView || active || v.id === selectedId)) shown.push(v); else v.setDetail("marker");
     });
+    // deux niveaux de maillage : les personnages choisis, puis les plus proches de la caméra, gardent le niveau 0 (≈ 30 000 triangles) ;
+    // les autres passent au niveau 1 (≈ 9 000), indiscernable de loin et beaucoup plus léger sur téléphone
+    const near = (v) => (v.id === selectedId || v.id === hovered || v.id === followId ? -1 : v.root.position.distanceToSquared(camera.position));
+    shown.sort((x, y) => near(x) - near(y)).forEach((v, i) => v.setDetail(i < Q.maxHigh ? "full" : "lite"));
   }
 
   // ─────────────────────────── mouvement et animation ───────────────────────────
@@ -867,7 +872,7 @@ export async function createOffice(container, hooks = {}) {
     return S.rooms.some((r) => r.special === "reunion" && Math.hypot(x - r.x, z - r.z) < 3.05);
   };
   const desk = (id) => { const d = S.desks.get(id); return d ? { multi: d.mon2.visible, docs: d.docs.visible, intensity: d.monMat.emissiveIntensity } : null; };
-  const stats = () => ({ avatars: avatars.size, queued: queue.length, rooms: S.rooms.length, quality: qName, dpr: renderer.getPixelRatio(), markers: [...avatars.values()].filter((v) => v.detail !== "full").length, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, fps: Math.round(fpsAvg), reduced, running, avatarMode: assets ? "glb" : "procedural", shadows: Q.shadows, cam: Object.fromEntries(Object.entries(orbit).map(([k, v]) => [k, Math.round(v * 100) / 100])), aspect: Math.round(camera.aspect * 100) / 100 });
+  const stats = () => ({ avatars: avatars.size, queued: queue.length, rooms: S.rooms.length, quality: qName, dpr: renderer.getPixelRatio(), markers: [...avatars.values()].filter((v) => v.detail === "marker").length, lite: [...avatars.values()].filter((v) => v.detail === "lite").length, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, fps: Math.round(fpsAvg), reduced, running, avatarMode: assets ? "glb" : "procedural", shadows: Q.shadows, cam: Object.fromEntries(Object.entries(orbit).map(([k, v]) => [k, Math.round(v * 100) / 100])), aspect: Math.round(camera.aspect * 100) / 100 });
   const board = () => (S.board ? { meeting: activeMeetings().length } : null);
   const feedLines = () => [...feed];
   const has = (id) => data.agents.some((a) => a.id === id);
