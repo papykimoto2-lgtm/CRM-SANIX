@@ -212,7 +212,9 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
     await emit(page, "ai_agent_tasks", "UPDATE", { id: tid, statut: "en_cours" }); await emit(page, "ai_agent_tasks", "UPDATE", { id: tid, statut: "terminee", rapport: "32 cliniques cartographiées.", finished_at: new Date().toISOString() });
     await page.waitForSelector("#toast div:has-text('a terminé')", { timeout: 15000 });   // rendu logiciel : l'interrogation par image peut dépasser 3 s
     ok(true, "notification : « IA Prospect Hunter 2 a terminé : Cartographier 30 cliniques privées »");
-    await page.locator("#toast div", { hasText: "a terminé" }).first().click(); await page.waitForSelector("#modal:not([hidden])");
+    // La notification cliquable disparaît au bout de 9 s. Sous le rendu logiciel (images de 0,5 à 2,4 s), le clic complet de Playwright (visible, stable, au premier plan,
+    // puis trois évènements souris) ne tient pas toujours dans ce délai : mesuré de 5,6 s à plus de 10 s selon l'essai, avec ou sans la PR n° 22. L'évènement `click` est donc émis directement.
+    await page.locator("#toast div", { hasText: "a terminé" }).first().dispatchEvent("click"); await page.waitForSelector("#modal:not([hidden])");
     ok((await page.locator("#modal").innerText()).includes("32 cliniques cartographiées."), "un clic sur la notification ouvre le résultat de la mission"); await page.keyboard.press("Escape");
     // suspension
     await page.locator("#sheet [data-act=agent-etat][data-etat=suspendu]").click(); await page.waitForSelector("#ask-t"); await page.fill("#ask-t", "Test de suspension"); await page.click("#ask button[type=submit]"); await page.waitForTimeout(500);
