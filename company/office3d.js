@@ -22,7 +22,7 @@ const IDLE_MS = 180000;          // disponible sans mission depuis 3 min → esp
 const WALK = 2.2;                // vitesse de marche (unités / s) : calée sur le clip « Walk » (assets.js : BASE_WALK)
 const QUALITY = {
   high: { dpr: 2, seg: 14, props: true, maxFull: 90, fps: 60, perFrame: 6, labelEvery: 1, blink: true, shadows: true, env: true },
-  low: { dpr: 1.25, seg: 8, props: true, maxFull: 30, fps: 45, perFrame: 3, labelEvery: 2, blink: true, shadows: false, env: true },
+  low: { dpr: 1.25, seg: 10, props: true, maxFull: 30, fps: 45, perFrame: 3, labelEvery: 1, blink: true, shadows: true, env: true },
   eco: { dpr: 1, seg: 6, props: false, maxFull: 18, fps: 30, perFrame: 2, labelEvery: 3, blink: false, shadows: false, env: false },
 };
 const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -62,10 +62,10 @@ export async function createOffice(container, hooks = {}) {
   const scene = new THREE.Scene(); scene.background = new THREE.Color(SKY); scene.fog = new THREE.Fog(SKY, 150, 340);
   const camera = new THREE.PerspectiveCamera(40, 1, 0.5, 520);
   scene.add(new THREE.HemisphereLight(0xd9efff, 0x526176, 1.7));
-  const sun = new THREE.DirectionalLight(0xfff6ea, 2.7); sun.castShadow = Q.shadows; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.06;
+  const sun = new THREE.DirectionalLight(0xfff6ea, 2.35); sun.castShadow = Q.shadows; sun.shadow.mapSize.set(qName === "high" ? 2048 : 1024, qName === "high" ? 2048 : 1024); sun.shadow.bias = -0.00025; sun.shadow.normalBias = 0.035;
   Object.assign(sun.shadow.camera, { near: 10, far: 260 }); scene.add(sun, sun.target);
   const pmrem = new THREE.PMREMGenerator(renderer); scene.environment = pmrem.fromScene(new THREE.RoomEnvironment(), 0.04).texture; scene.environmentIntensity = Q.env ? 0.32 : 0;
-  let K = createKit(THREE, { lambert: qName !== "high" });
+  let K = createKit(THREE, { lambert: qName === "eco" });
   let assets = null;   // personnages GLB + clips ; sans eux (hors ligne, ressource absente) on bascule sur les avatars procéduraux
   try { assets = await loadAssets(THREE); } catch (e) { console.warn("Avatars GLB indisponibles, repli procédural :", e.message); }
 
@@ -73,7 +73,7 @@ export async function createOffice(container, hooks = {}) {
   const mats = new Map(), geos = new Map();
   const M = (k, f) => (mats.has(k) ? mats.get(k) : (mats.set(k, f()), mats.get(k)));
   const G = (k, f) => (geos.has(k) ? geos.get(k) : (geos.set(k, f()), geos.get(k)));
-  const pbr = () => qName === "high";   // qualités réduite / éco : éclairage par sommet (Lambert)
+  const pbr = () => qName !== "eco";   // PBR conservé sur mobile ; seul le mode éco utilise Lambert
   const std = (c, o = {}) => M(`s${c}${JSON.stringify(o)}${pbr()}`, () => { const { roughness, metalness, ...rest } = { roughness: 0.65, ...o }; return pbr() ? new THREE.MeshStandardMaterial({ color: c, roughness, metalness, ...rest }) : new THREE.MeshLambertMaterial({ color: c, ...rest }); });
   const glass = (c) => M(`g${c}`, () => new THREE.MeshStandardMaterial({ color: c, transparent: true, opacity: 0.1, roughness: 0.2, depthWrite: false }));
 
@@ -847,7 +847,7 @@ export async function createOffice(container, hooks = {}) {
     qName = name; Q = QUALITY[name];
     if (persist) try { localStorage.setItem("sanix_company_quality", name); } catch { /* sans stockage */ }
     renderer.setPixelRatio(pixelRatio()); renderer.setSize(w, h, false);
-    renderer.shadowMap.enabled = Q.shadows; sun.castShadow = Q.shadows; scene.environmentIntensity = Q.env ? 0.32 : 0; S.layoutKey = ""; mats.clear(); K = createKit(THREE, { lambert: qName !== "high" });   // mobilier et matières reconstruits (ombres, éclairage)
+    renderer.shadowMap.enabled = Q.shadows; sun.castShadow = Q.shadows; scene.environmentIntensity = Q.env ? 0.32 : 0; S.layoutKey = ""; mats.clear(); K = createKit(THREE, { lambert: qName === "eco" });   // mobilier et matières reconstruits (ombres, éclairage)
     scene.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) m.needsUpdate = true; });
     rebuild();
     const agents = [...avatars.values()].map((v) => v.agent); for (const id of [...avatars.keys()]) removeAvatar(id);
