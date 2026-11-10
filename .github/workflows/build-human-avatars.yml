@@ -1,0 +1,40 @@
+name: Build SANIX human avatars
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, feat/human-office-avatars]
+    paths:
+      - "company/assets/blender/**"
+      - ".github/workflows/build-human-avatars.yml"
+permissions:
+  contents: write
+concurrency:
+  group: sanix-human-avatars-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install Blender
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender
+      - name: Generate rigged human GLB assets
+        run: |
+          blender --background --python company/assets/blender/build_characters.py -- company/assets/characters
+      - name: Commit generated GLB files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add company/assets/characters/*.glb
+          if git diff --cached --quiet; then
+            echo "No generated asset changes."
+          else
+            git commit -m "Build higher-fidelity SANIX human avatar models"
+            git push origin HEAD:${{ github.ref_name }}
+          fi

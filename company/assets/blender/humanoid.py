@@ -29,6 +29,13 @@ def material(name, hexcolor, rough=0.62):
     b.inputs["Base Color"].default_value = (*srgb(hexcolor), 1.0)
     b.inputs["Roughness"].default_value = rough
     b.inputs["Metallic"].default_value = 0.0
+    # Réponse de matière plus crédible : peau légèrement diffusante, textile mat.
+    sub = b.inputs.get("Subsurface Weight")
+    if sub: sub.default_value = 0.075 if name.endswith("_skin") else 0.0
+    sheen = b.inputs.get("Sheen Weight")
+    if sheen and any(k in name for k in ("_top", "_bottom", "_shirt")): sheen.default_value = 0.16
+    coat = b.inputs.get("Coat Weight")
+    if coat and name.endswith("_skin"): coat.default_value = 0.08
     return m
 
 # ───────────────────────── morphologie (taille 1,76 m normalisée puis mise à l'échelle) ─────────────────────────
@@ -41,7 +48,7 @@ BUILDS = {
 A_POSE = math.radians(32)                                   # abduction des bras au repos (A-pose : moins de déformation aux épaules)
 ARM_DIR = Vector((math.sin(A_POSE), 0.0, -math.cos(A_POSE)))
 TORSO = {"pelvis", "waist", "chest", "uchest", "nbase", "neck"}
-DECIMATE = 0.52                                              # ratio de simplification du corps (budget ~5 k triangles par personnage)
+DECIMATE = 0.92                                              # conserve les volumes anatomiques et les transitions de vêtements
 TR, LR = 1.30, 1.20                                         # compensation du rétrécissement du Skin + Subdivision (tronc / membres)
 
 def graph(b):
@@ -152,10 +159,14 @@ def add_head(bm, b, spec):
     for sx in (1, -1):
         x, z = sx * ex, c.z + 0.024 * s; yf = front_y(c, r, x, z)
         ellipsoid(bm, (x, yf + 0.003 * s, z), (0.0158 * s, 0.0095 * s, 0.0142 * s), "eye", (10, 6), HEAD)                               # globe
-        ellipsoid(bm, (x + sx * 0.001 * s, yf - 0.0035 * s, z), (0.0088 * s, 0.0052 * s, 0.0088 * s), "dark", (8, 5), HEAD)             # iris
+        ellipsoid(bm, (x + sx * 0.001 * s, yf - 0.0035 * s, z), (0.0088 * s, 0.0052 * s, 0.0088 * s), "dark", (16, 10), HEAD)             # iris
+        ellipsoid(bm, (x + sx * 0.001 * s, yf - 0.0075 * s, z), (0.0038 * s, 0.0026 * s, 0.0045 * s), "dark", (12, 8), HEAD)          # pupille
+        ellipsoid(bm, (x, yf - 0.009 * s, z + 0.003 * s), (0.0020 * s, 0.0015 * s, 0.0020 * s), "eye", (8, 6), HEAD)                 # reflet
         ellipsoid(bm, (sx * (r[0] + 0.002 * s), c.y + 0.012 * s, c.z - 0.004 * s), (0.010 * s, 0.021 * s, 0.032 * s), "skin", (8, 6), HEAD)  # oreille
         box(bm, (x, front_y(c, r, x, c.z + 0.056 * s) - 0.001 * s, c.z + 0.056 * s), (0.032 * s, 0.008 * s, 0.0065 * s), "hair", HEAD)  # sourcil
-    ellipsoid(bm, (0, front_y(c, r, 0, c.z - 0.012 * s) - 0.006 * s, c.z - 0.012 * s), (0.0125 * s, 0.015 * s, 0.021 * s), "skin", (10, 6), HEAD)   # nez
+    ellipsoid(bm, (0, front_y(c, r, 0, c.z - 0.012 * s) - 0.006 * s, c.z - 0.012 * s), (0.0125 * s, 0.015 * s, 0.021 * s), "skin", (18, 12), HEAD)   # nez
+    for sx in (-1, 1):
+        ellipsoid(bm, (sx * 0.006 * s, front_y(c, r, sx * 0.006 * s, c.z - 0.030 * s) - 0.010 * s, c.z - 0.030 * s), (0.0028 * s, 0.0020 * s, 0.0018 * s), "dark", (8, 6), HEAD) # narines
     ellipsoid(bm, (0, front_y(c, r, 0, c.z - 0.066 * s) + 0.001 * s, c.z - 0.066 * s), (0.024 * s, 0.0055 * s, 0.0065 * s), "dark", (10, 6), HEAD)  # bouche
     hair = spec.get("hair", "short")
     if hair != "bald":
@@ -267,7 +278,13 @@ def build_character(spec):
     if outfit in ("suit", "shirt", "blouse"):
         ellipsoid(bm, (0, 0.012 * s, 1.497 * s), (0.056 * s * (b["neck"] / 0.045), 0.060 * s, 0.020 * s), "shirt", (16, 6), TORS)
     if outfit == "suit":
-        strip_on_body(bm, bvh, 0.0, 1.49 * s, 1.17 * s, 0.150 * s, 0.020 * s, 8, 0.004 * s, "shirt", TORS, cols=4)
+        strip_on_body(bm, bvh, 0.0, 1.49 * s, 1.17 * s, 0.150 * s, 0.020 * s, 12, 0.004 * s, "shirt", TORS, cols=5)
+        # Revers de veste et poche poitrine : détails de confection visibles en plan rapproché.
+        for side in (-1, 1):
+            strip_on_body(bm, bvh, side * 0.043 * s, 1.475 * s, 1.335 * s, 0.046 * s, 0.014 * s, 7, 0.008 * s, "dark", TORS, cols=2)
+            strip_on_body(bm, bvh, side * 0.122 * s, 1.315 * s, 1.285 * s, 0.038 * s, 0.038 * s, 2, 0.006 * s, "shirt", TORS, cols=2)
+        for zbtn in (1.13, 1.19, 1.25):
+            ellipsoid(bm, (0.018 * s, -0.125 * s, zbtn * s), (0.004 * s, 0.0025 * s, 0.004 * s), "dark", (8, 6), TORS)
     if spec.get("tie", outfit == "suit"):
         strip_on_body(bm, bvh, 0.0, 1.485 * s, 1.20 * s, 0.040 * s, 0.062 * s, 8, 0.0085 * s, "accent", TORS, cols=2)
         ellipsoid(bm, (0, bvh.ray_cast(Vector((0, -0.60, 1.480 * s)), Vector((0, 1, 0)), 1.2)[0].y - 0.010 * s, 1.480 * s), (0.026 * s, 0.014 * s, 0.022 * s), "accent", (10, 6), TORS)
