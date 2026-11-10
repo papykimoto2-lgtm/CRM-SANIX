@@ -60,3 +60,12 @@ Sans ressources GLB (hors ligne, fichier absent), le bureau bascule automatiquem
 ## Licences
 
 Modèles et animations : générés par les scripts de ce dépôt (propriété du projet). Three.js : licence MIT (`../vendor/three.bundle.js.LEGAL.txt`).
+
+
+## Régénération des avatars humains SANIX
+
+Les modèles GLB sont générés depuis `company/assets/blender/` avec Blender. Toute évolution du générateur déclenche le workflow `.github/workflows/build-human-avatars.yml`, qui reconstruit les quatre personnages et les clips dans `company/assets/characters/`.
+
+Le générateur conserve un maillage plus dense (réduction de décimation limitée), des détails faciaux renforcés, des matériaux PBR avec diffusion cutanée légère et des détails de confection pour les tenues de direction. Les fichiers GLB générés doivent être contrôlés dans le visualiseur 3D avant fusion.
+
+Note de qualité : ces modèles procéduraux améliorés ne sont pas des scans photoréalistes. Ils constituent une étape de fidélité anatomique et de finition, pas une prétention de photoréalisme intégral.
