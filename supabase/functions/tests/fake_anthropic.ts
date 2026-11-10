@@ -26,7 +26,10 @@ export const reply = (content: unknown[], stop = "tool_use", usage: Record<strin
   id: `msg_${++seq}`, type: "message", role: "assistant", model: "claude-opus-5-5", content, stop_reason: stop, stop_details: null,
   usage: { input_tokens: 1000, output_tokens: 500, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, ...usage },
 });
-export const done = (rapport: string, resultats: string[] = []) => reply([use("terminer_mission", { statut: "terminee", rapport, resultats })]);
+/** Clôture conforme à la règle de preuve : rapport de 40 caractères au moins, résultats de 10 caractères au moins (au moins un). */
+export const done = (rapport: string, resultats: string[] = []) => reply([use("terminer_mission", { statut: "terminee",
+  rapport: rapport.length >= 40 ? rapport : `${rapport} — compte rendu détaillé enregistré dans la mission.`,
+  resultats: (resultats.length ? resultats : ["Mission traitée, résultat enregistré"]).map((r) => r.length >= 10 ? r : `${r} (enregistré)`) })]);
 export const json = (o: unknown) => reply([txt(JSON.stringify(o))], "end_turn");
 
 /** Résultats d'outils du dernier message utilisateur, décodés. */

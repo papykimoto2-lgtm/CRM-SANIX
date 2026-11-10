@@ -194,7 +194,7 @@ export function renderSide() {
 
 async function loadExtras(a) {
   const hit = P.extras.get(a.id); if (hit && Date.now() - hit.at < 30000) return hit;
-  const sd = a.code === "sanix_ai_sales_director";
+  const sd = a.role_code === "directeur_commercial" || a.code === "sanix_ai_sales_director";   // le poste, pas un code figé
   const [comms, acts] = await Promise.all([
     q(S.sb.from("ai_agent_communications").select("id,de_agent_id,vers_agent_id,type,objet,contenu,created_at").or(`de_agent_id.eq.${a.id},vers_agent_id.eq.${a.id}`).order("created_at", { ascending: false }).limit(6)),
     isDir() ? q((sd ? S.sb.from("ai_actions").select("prospect_id,at").in("agent", ["sales_assistant", "followup_manager"]) : S.sb.from("ai_actions").select("prospect_id,at").eq("agent_id", a.id))

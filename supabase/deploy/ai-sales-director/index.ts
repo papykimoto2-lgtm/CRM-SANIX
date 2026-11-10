@@ -361,17 +361,19 @@ var DEFS = {
     budget_estime: nul("integer"),
     potentiel_fcfa: nul("integer"),
     criteres: nul("object", {
+      description: "Score /100 : produit /25 (correspondance avec le logiciel), besoin /25, taille /15 (taille et potentiel), decideur /15 (accessibilit\xE9), maturite /10 (maturit\xE9 num\xE9rique), fiabilite /10 (fiabilit\xE9 des informations)",
       properties: {
         produit: { type: "integer" },
         besoin: { type: "integer" },
-        finance: { type: "integer" },
+        taille: { type: "integer" },
         decideur: { type: "integer" },
-        court_terme: { type: "integer" },
-        disponibilite: { type: "integer" }
+        maturite: { type: "integer" },
+        fiabilite: { type: "integer" }
       },
-      required: ["produit", "besoin", "finance", "decideur", "court_terme", "disponibilite"],
+      required: ["produit", "besoin", "taille", "decideur", "maturite", "fiabilite"],
       additionalProperties: false
     }),
+    justification_score: nul("string", { description: "Obligatoire avec criteres : \xE9l\xE9ments observables (sources, faits v\xE9rifi\xE9s), 30 caract\xE8res au moins" }),
     resume: nul("string")
   } },
   set_stage: {
@@ -516,14 +518,20 @@ async function runCrmTool(ctx, name, raw) {
       if (typeof patch.email === "string" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(patch.email)) delete patch.email;
       if (input.resume !== null) patch.resume_ia = String(input.resume).slice(0, 2e3);
       const c = input.criteres;
-      if (c) Object.assign(patch, {
-        crit_produit: clamp(c.produit, 25),
-        crit_besoin: clamp(c.besoin, 20),
-        crit_finance: clamp(c.finance, 15),
-        crit_decideur: clamp(c.decideur, 15),
-        crit_court_terme: clamp(c.court_terme, 15),
-        crit_disponibilite: clamp(c.disponibilite, 10)
-      });
+      if (c) {
+        const j = String(input.justification_score ?? "").trim();
+        if (j.length < 30) throw new Error("Score non justifi\xE9 : renseigne justification_score avec les \xE9l\xE9ments observables (sources, faits v\xE9rifi\xE9s) sur 30 caract\xE8res au moins");
+        Object.assign(patch, {
+          // colonnes historiques : crit_finance = taille, crit_court_terme = maturité numérique, crit_disponibilite = fiabilité des informations
+          crit_produit: clamp(c.produit, 25),
+          crit_besoin: clamp(c.besoin, 25),
+          crit_finance: clamp(c.taille, 15),
+          crit_decideur: clamp(c.decideur, 15),
+          crit_court_terme: clamp(c.maturite, 10),
+          crit_disponibilite: clamp(c.fiabilite, 10),
+          score_justification: j.slice(0, 2e3)
+        });
+      }
       if (!Object.keys(patch).length) return { info: "Aucun changement" };
       const { data, error } = await db().from("ai_prospects").update(patch).eq("id", pid).select("score,priorite").single();
       if (error) throw new Error(error.message);
@@ -723,8 +731,11 @@ async function commercialFor(pid) {
 }
 
 // functions/_shared/prompts.ts
-var PORTFOLIO = "PORTEFEUILLE : AluExpert (menuiseries alu), ImmoSuite ERP (promoteurs, am\xE9nageurs), DistriPro (grossistes, d\xE9p\xF4ts), Compta Pro (entreprises, cabinets), MedicorERP (sant\xE9), AvicoSuite (aviculture), Angel's (livraison, logistique), 100-Inox ERP (ateliers alu/inox), SNIFI (foncier, fiscalit\xE9 immobili\xE8re), CI-LeGrenier (marketplace). Catalogue \xE0 jour : outils recommend_products / get_product.";
-var COMMERCIAL_RULES = `${PORTFOLIO}
+function portfolioText(products) {
+  if (!products.length) return "PORTEFEUILLE : aucun logiciel actif dans le catalogue \u2014 ne propose aucun logiciel et signale-le \xE0 ta hi\xE9rarchie (escalate_to_human).";
+  return `PORTEFEUILLE (logiciels actifs du catalogue ; aucun autre logiciel ne doit \xEAtre pr\xE9sent\xE9 ni recommand\xE9) : ${products.map((p) => `${p.nom} (${p.marche_cible})`).join(", ")}.`;
+}
+var commercialRules = (portfolio) => `${portfolio}
 
 R\xC8GLES COMMERCIALES ABSOLUES
 1. Jamais pr\xE9senter un logiciel sans conna\xEEtre secteur ET besoins : poser d'abord 2-3 questions de d\xE9couverte (get_product.questions_decouverte).
@@ -738,16 +749,16 @@ R\xC8GLES COMMERCIALES ABSOLUES
 
 STYLE : fran\xE7ais professionnel et chaleureux, adapt\xE9 \xE0 la C\xF4te d'Ivoire. WhatsApp : 2 \xE0 5 phrases, 1 question \xE0 la fois, \xE9mojis rares. E-mail : structur\xE9, objet clair. Toujours finir par une prochaine \xE9tape concr\xE8te (question, cr\xE9neau de d\xE9mo, envoi d'offre).`;
 var SALES_METHOD = `M\xC9THODE
-- Qualification : note les 6 crit\xE8res (produit /25, besoin /20, finance /15, d\xE9cideur /15, court terme /15, disponibilit\xE9 /10) via update_prospect, justifi\xE9s par des faits.
+- Qualification : note les 6 crit\xE8res (produit /25, besoin /25, taille /15, d\xE9cideur /15, maturit\xE9 num\xE9rique /10, fiabilit\xE9 des informations /10) via update_prospect, avec justification_score (faits observables, sources) obligatoire. Ne jamais inventer une information manquante : la noter comme non v\xE9rifi\xE9e.
 - Score \u2265 80 : proposer d\xE9mo / RDV (list_free_slots puis book_appointment). 60-79 : d\xE9couverte + d\xE9mo. 40-59 : nurturing. < 40 : veille.
 - Objection : get_objection, reformuler, r\xE9pondre par la valeur, proposer une \xE9tape.
 - Chaque \xE9change se termine par schedule_followup adapt\xE9 au comportement (pas de d\xE9lai fixe), sauf d\xE9sinscription.
 - Opportunit\xE9s multiples chez un m\xEAme prospect : les noter dans produits_recommandes.
 - Termine par un r\xE9sum\xE9 interne de 2 lignes (ce qui a \xE9t\xE9 fait, prochaine \xE9tape).`;
-var V1_SYSTEM = `Tu es SANIX AI SALES DIRECTOR, directeur commercial IA de SANIX AFRICA DIVISION TECHNOLOGIES (Abidjan, C\xF4te d'Ivoire), connect\xE9 \xE0 SANIX CRM.
+var v1System = (portfolio) => `Tu es SANIX AI SALES DIRECTOR, directeur commercial IA de SANIX AFRICA DIVISION TECHNOLOGIES (Abidjan, C\xF4te d'Ivoire), connect\xE9 \xE0 SANIX CRM.
 Mission : transformer les prospects en clients et fid\xE9liser, avec rigueur et \xE9thique.
 
-${COMMERCIAL_RULES}
+${commercialRules(portfolio)}
 
 ${SALES_METHOD}`;
 var SECTIONS = [
@@ -769,6 +780,17 @@ var SECTIONS = [
 ];
 var CHARTER_KEYS = SECTIONS.map((s) => s[0]);
 var CHARTER_LABELS = Object.fromEntries(SECTIONS);
+
+// functions/_shared/catalogue.ts
+var cache = null;
+var TTL_MS = 6e4;
+async function loadPortfolio() {
+  if (cache && Date.now() - cache.at < TTL_MS) return cache.text;
+  const { data } = await db().from("ai_products").select("nom, marche_cible").eq("actif", true).order("nom");
+  const text = portfolioText(data ?? []);
+  cache = { at: Date.now(), text };
+  return text;
+}
 
 // functions/_shared/company/presence.ts
 var ANIMATION_OF = {
@@ -876,8 +898,8 @@ async function salesDirectorId() {
   if (_sd !== void 0) return _sd;
   let id = null;
   try {
-    const { data } = await db().from("ai_agents").select("id").eq("code", "sanix_ai_sales_director").maybeSingle();
-    id = data?.id ?? null;
+    const { data } = await db().from("ai_agents").select("id").eq("role_code", "directeur_commercial").neq("etat", "archive").order("created_at").limit(1).maybeSingle();
+    id = data?.id ?? (await db().from("ai_agents").select("id").eq("code", "sanix_ai_sales_director").maybeSingle()).data?.id ?? null;
   } catch {
   }
   _sd = id;
@@ -950,7 +972,7 @@ async function runAgent(run, brief) {
         label,
         prospectId: pid,
         missionId: mid,
-        system: V1_SYSTEM,
+        system: v1System(await loadPortfolio()),
         messages,
         tools,
         effort: run.mode === "mission" ? "high" : "medium"

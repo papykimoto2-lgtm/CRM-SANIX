@@ -75,8 +75,8 @@ insert into ai_approvals(type, agent_id, motif, payload) values
  ('creation_agent', (select id from ai_agents where code = 'ia_mail_1'), 'Création de IA Email Sales (Prospection e-mail) par IA Superviseur Santé', '{"outils":["send_message"],"mission":"Prospection e-mail des cliniques privées"}'),
  ('remise', (select id from ai_agents where code = 'ia_nego_1'), 'Remise 12% > délégation agent 5% sur OFF-2611-AB12CD', '{"reference":"OFF-2611-AB12CD","total_ht":660000}'),
  ('engagement', (select id from ai_agents where code = 'ia_dir_admin'), 'Signature d''une convention de partenariat', '{"details":"Convention de revente avec un cabinet comptable d''Abidjan"}');
-insert into ai_prospects(entreprise, secteur, ville, whatsapp, crit_produit, crit_besoin, crit_finance, crit_decideur, crit_court_terme, crit_disponibilite, stage, produits_recommandes, potentiel_fcfa)
-values ('Promoteur Alpha', 'Immobilier', 'Abidjan', '+2250707070707', 25, 18, 10, 12, 10, 8, 'qualifie', '{immosuite}', 4500000), ('Express Colis', 'Livraison', 'Abidjan', '+2250505050505', 20, 15, 8, 10, 8, 6, 'interesse', '{angels}', 1800000);
+insert into ai_prospects(entreprise, secteur, ville, whatsapp, crit_produit, crit_besoin, crit_finance, crit_decideur, crit_court_terme, crit_disponibilite, score_justification, stage, produits_recommandes, potentiel_fcfa)
+values ('Promoteur Alpha', 'Immobilier', 'Abidjan', '+2250707070707', 25, 18, 10, 10, 10, 8, 'Promoteur actif, programme en commercialisation, site officiel vérifié', 'qualifie', '{immosuite}', 4500000), ('Express Colis', 'Livraison', 'Abidjan', '+2250505050505', 20, 15, 8, 10, 8, 6, 'Société de livraison identifiée, flotte et décideur joignable', 'interesse', '{angels}', 1800000);
 insert into ai_approvals(type, agent_id, prospect_id, motif, payload)
 select 'message', (select id from ai_agents where code = 'ia_wa_1'), id, 'Message whatsapp à ' || entreprise, jsonb_build_object('message_id', 1, 'canal', 'whatsapp', 'apercu', 'Bonjour, je suis l''assistant commercial de SANIX AFRICA. Nous avons développé ImmoSuite ERP pour les promoteurs… <script>alert(1)</script>') from ai_prospects;
 

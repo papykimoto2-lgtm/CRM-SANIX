@@ -85,8 +85,8 @@ async function setup(): Promise<{ mails: any[]; restore: () => void }> {
   await freshDb();
   await mkAgent("ia_hunter", "IA Hunter", 4, "sanix_ai_sales_director", []);
   const t = await mkTask("ia_hunter", "Trouver des promoteurs", { donneur: "sanix_ai_sales_director" });
-  await sql("update ai_agent_tasks set statut = 'terminee', evaluation = 80, rapport = 'ok' where id = $1", [t]);
-  await sql("insert into ai_prospects(entreprise, secteur, crit_produit, crit_besoin) values ('Promoteur Alpha', 'Immobilier', 25, 20)");
+  await sql("update ai_agent_tasks set statut = 'terminee', evaluation = 80, rapport = 'Mission réalisée : promoteurs contactés et fiches mises à jour dans le CRM.', resultats = '[\"3 promoteurs contactés\"]' where id = $1", [t]);
+  await sql("insert into ai_prospects(entreprise, secteur, crit_produit, crit_besoin, score_justification) values ('Promoteur Alpha', 'Immobilier', 25, 20, 'Promoteur actif, programme en cours, fiche vérifiée sur le site')");
   await sql("insert into ai_report_recipients(email, nom, principal) values ('president@sanix-africa.ci', 'Président', true), ('dg@sanix-africa.ci', 'Adjoint', false)");
   await sql("insert into ai_report_recipients(email, types) values ('hebdo@sanix-africa.ci', '{hebdomadaire}')");
   Deno.env.set("RESEND_API_KEY", "re_test"); Deno.env.set("EMAIL_FROM", "SANIX AI <ia@sanix-africa.ci>");

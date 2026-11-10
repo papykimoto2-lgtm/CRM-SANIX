@@ -58,10 +58,12 @@ const DEFS: Record<string, { description: string; props: Props }> = {
     produits_recommandes: nul("array", { items: { type: "string" } }),
     budget_estime: nul("integer"), potentiel_fcfa: nul("integer"),
     criteres: nul("object", {
-      properties: { produit: { type: "integer" }, besoin: { type: "integer" }, finance: { type: "integer" },
-        decideur: { type: "integer" }, court_terme: { type: "integer" }, disponibilite: { type: "integer" } },
-      required: ["produit", "besoin", "finance", "decideur", "court_terme", "disponibilite"], additionalProperties: false,
+      description: "Score /100 : produit /25 (correspondance avec le logiciel), besoin /25, taille /15 (taille et potentiel), decideur /15 (accessibilité), maturite /10 (maturité numérique), fiabilite /10 (fiabilité des informations)",
+      properties: { produit: { type: "integer" }, besoin: { type: "integer" }, taille: { type: "integer" },
+        decideur: { type: "integer" }, maturite: { type: "integer" }, fiabilite: { type: "integer" } },
+      required: ["produit", "besoin", "taille", "decideur", "maturite", "fiabilite"], additionalProperties: false,
     }),
+    justification_score: nul("string", { description: "Obligatoire avec criteres : éléments observables (sources, faits vérifiés), 30 caractères au moins" }),
     resume: nul("string") } },
   set_stage: { description: "Fait avancer le prospect dans le pipeline (étapes engageantes réservées à la direction).",
     props: { ...P, stage: S({ enum: [...AGENT_STAGES] }), motif: S() } },
@@ -173,10 +175,15 @@ export async function runCrmTool(ctx: CrmCtx, name: string, raw: Record<string, 
       if (typeof patch.email === "string" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(patch.email)) delete patch.email;
       if (input.resume !== null) patch.resume_ia = String(input.resume).slice(0, 2000);
       const c = input.criteres;
-      if (c) Object.assign(patch, {
-        crit_produit: clamp(c.produit, 25), crit_besoin: clamp(c.besoin, 20), crit_finance: clamp(c.finance, 15),
-        crit_decideur: clamp(c.decideur, 15), crit_court_terme: clamp(c.court_terme, 15), crit_disponibilite: clamp(c.disponibilite, 10),
-      });
+      if (c) {
+        const j = String(input.justification_score ?? "").trim();
+        if (j.length < 30) throw new Error("Score non justifié : renseigne justification_score avec les éléments observables (sources, faits vérifiés) sur 30 caractères au moins");
+        Object.assign(patch, {   // colonnes historiques : crit_finance = taille, crit_court_terme = maturité numérique, crit_disponibilite = fiabilité des informations
+          crit_produit: clamp(c.produit, 25), crit_besoin: clamp(c.besoin, 25), crit_finance: clamp(c.taille, 15),
+          crit_decideur: clamp(c.decideur, 15), crit_court_terme: clamp(c.maturite, 10), crit_disponibilite: clamp(c.fiabilite, 10),
+          score_justification: j.slice(0, 2000),
+        });
+      }
       if (!Object.keys(patch).length) return { info: "Aucun changement" };
       const { data, error } = await db().from("ai_prospects").update(patch).eq("id", pid).select("score,priorite").single();
       if (error) throw new Error(error.message);

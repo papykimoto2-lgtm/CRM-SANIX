@@ -44,7 +44,7 @@ T("L1 · boucle réelle : prospect du CRM → qualification → rendez-vous → 
   script({
     "IA Lead Qualifier": [
       (p) => reply([
-        use("update_prospect", { prospect_id: uid(p), criteres: { produit: 22, besoin: 15, finance: 10, decideur: 12, court_terme: 10, disponibilite: 6 }, produits_recommandes: ["immosuite"], resume: "Promoteur actif, besoin de suivi des ventes" }),
+        use("update_prospect", { prospect_id: uid(p), criteres: { produit: 22, besoin: 15, taille: 10, decideur: 12, maturite: 10, fiabilite: 6 }, justification_score: "Promoteur identifié sur son site, programme en cours de commercialisation", produits_recommandes: ["immosuite"], resume: "Promoteur actif, besoin de suivi des ventes" }),
         use("set_stage", { prospect_id: uid(p), stage: "qualifie", motif: "Score 75/100" })]),
       () => done("Prospect qualifié : 75/100, ImmoSuite ERP recommandé.", ["75/100"]),
     ],

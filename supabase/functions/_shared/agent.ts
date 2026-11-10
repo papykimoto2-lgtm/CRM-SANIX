@@ -5,7 +5,8 @@ import type Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { audit, db, errMsg } from "./core.ts";
 import { callClaude, textOf } from "./llm.ts";
 import { crmTool, type CrmCtx, runCrmTool } from "./crm_tools.ts";
-import { V1_SYSTEM } from "./prompts.ts";
+import { v1System } from "./prompts.ts";
+import { loadPortfolio } from "./catalogue.ts";
 import { activityFor, Presence, publishActivity } from "./company/presence.ts";
 
 export type RunMode =
@@ -22,8 +23,9 @@ async function salesDirectorId(): Promise<string | null> {
   if (_sd !== undefined) return _sd;
   let id: string | null = null;
   try {
-    const { data } = await db().from("ai_agents").select("id").eq("code", "sanix_ai_sales_director").maybeSingle();
-    id = data?.id ?? null;
+    // le directeur commercial est le poste (rôle « directeur_commercial »), pas un code d'agent figé ; repli : code historique
+    const { data } = await db().from("ai_agents").select("id").eq("role_code", "directeur_commercial").neq("etat", "archive").order("created_at").limit(1).maybeSingle();
+    id = data?.id ?? (await db().from("ai_agents").select("id").eq("code", "sanix_ai_sales_director").maybeSingle()).data?.id ?? null;
   } catch { /* présence facultative */ }
   _sd = id;
   return id;
@@ -66,7 +68,7 @@ export async function runAgent(run: RunMode, brief: string): Promise<{ resume: s
   try {
   for (; tours < MAX_TURNS; tours++) {
     const { message: res } = await callClaude({
-      label, prospectId: pid, missionId: mid, system: V1_SYSTEM, messages, tools,
+      label, prospectId: pid, missionId: mid, system: v1System(await loadPortfolio()), messages, tools,
       effort: run.mode === "mission" ? "high" : "medium",
     });
     if (res.stop_reason === "refusal") { resume = "Requête refusée par le modèle : escalade humaine."; break; }
