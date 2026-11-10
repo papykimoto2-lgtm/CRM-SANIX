@@ -201,7 +201,7 @@ export function makeAvatar(env, a, deptColor) {
     setPosture(p) { this.posture = p; },
     /** Agent suspendu : vêtement grisé (matériau partagé, aucun changement pour les collègues). */
     setMuted(on) { const m = on ? std(0x475569) : shirt; for (const x of shirtMeshes) x.material = m; },
-    setDetail(d) { if (d === this.detail) return; this.detail = d; const full = d === "full"; body.visible = full; marker.visible = !full; if (!full) for (const k in props) props[k].visible = false; },
+    setDetail(d) { if (d === this.detail) return; this.detail = d; const full = d === "full" || d === "lite"; body.visible = full; marker.visible = !full; if (!full) for (const k in props) props[k].visible = false; },
     /** Applique l'animation courante : lissage vers la pose cible, accessoires, mouvements globaux. */
     update(dt, now) {
       if (this.detail !== "full") return;

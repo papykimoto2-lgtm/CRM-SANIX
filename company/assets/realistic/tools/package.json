@@ -1,0 +1,19 @@
+{
+  "name": "sanix-avatars-tools",
+  "private": true,
+  "type": "module",
+  "description": "Outils de préparation des avatars humains SANIX AI (hors production : jamais servis au navigateur). Versions épinglées, installation par « npm ci ».",
+  "scripts": {
+    "optimize": "node optimize.mjs",
+    "validate": "node validate.mjs"
+  },
+  "dependencies": {
+    "@gltf-transform/core": "4.5.1",
+    "@gltf-transform/extensions": "4.5.1",
+    "@gltf-transform/functions": "4.5.1",
+    "gltf-validator": "2.0.0-dev.3.10",
+    "meshoptimizer": "1.3.0",
+    "sharp": "0.35.5"
+  },
+  "engines": { "node": ">=20" }
+}
