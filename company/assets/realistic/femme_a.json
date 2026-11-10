@@ -1,0 +1,48 @@
+{
+  "name": "femme_a",
+  "seed": 303,
+  "gender": 0,
+  "age": 0.54,
+  "muscle": 0.46,
+  "weight": 0.43,
+  "height": 0.58,
+  "proportions": 0.82,
+  "african": 1,
+  "asian": 0,
+  "caucasian": 0,
+  "breastSize": 0.55,
+  "breastFirmness": 0.6,
+  "skin": "auto",
+  "skinTint": "#ffffff",
+  "eyes": "blackbrown",
+  "eyebrows": "eyebrow010",
+  "eyelashes": "eyelashes02",
+  "hair": "cornrows",
+  "hairTint": "#ffffff",
+  "hairColor": "#17100d",
+  "facialHair": "none",
+  "outfit": "set_pantsuit",
+  "shoes": "heels",
+  "outfitTint": "#ffffff",
+  "garmentStyles": {
+    "set_pantsuit": {
+      "pattern": "suiting",
+      "color": "#263c35",
+      "color2": "#334b43"
+    },
+    "heels": {
+      "pattern": "nappa",
+      "color": "#2a211d",
+      "color2": "#171311"
+    }
+  },
+  "rig": "game",
+  "faceBones": true,
+  "restPose": "A",
+  "animations": false,
+  "faceShapes": true,
+  "speechShapes": true,
+  "expression": "neutral",
+  "teeth": "teeth_base",
+  "tongue": true
+}
