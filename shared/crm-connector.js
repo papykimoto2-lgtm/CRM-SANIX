@@ -28,9 +28,12 @@
     ecritures:     { ls: 'ecritures',     idMode: 'str', get: function () { return LS_STORES.ecritures.get(); },                  set: function (v) { LS_STORES.ecritures.set(v); } },
     logiciels:     { ls: 'logiciels',     idMode: 'str', get: function () { return LS_STORES.logiciels.get(); },                  set: function (v) { LS_STORES.logiciels.set(v); } },
     rdv:           { ls: RDV_LS,          idMode: 'int', prefix: 'r', get: function () { try { rdvLoad(); } catch (e) {} return RDVS; }, set: function (v) { RDVS = v; } },
+    pil_depenses:  { ls: 'pil_depenses',  idMode: 'str', get: function () { return window.SanixPilotage ? window.SanixPilotage.store.get('depenses') : []; }, set: function (v) { if (window.SanixPilotage) window.SanixPilotage.store.set('depenses', v); } },
+    pil_actions:   { ls: 'pil_actions',   idMode: 'str', get: function () { return window.SanixPilotage ? window.SanixPilotage.store.get('actions') : []; },  set: function (v) { if (window.SanixPilotage) window.SanixPilotage.store.set('actions', v); } },
+    pil_config:    { ls: 'pil_config',    idMode: 'one', get: function () { var c = window.SanixPilotage ? window.SanixPilotage.store.getConfig() : {}; return Object.keys(c).length ? [Object.assign({ id: 'main' }, c)] : []; }, set: function (v) { if (window.SanixPilotage) window.SanixPilotage.store.setConfig(v[0] ? Object.assign({}, v[0]) : {}); } },
     config:        { ls: 'config',        idMode: 'one', get: function () { return [Object.assign({ id: 'main' }, CONFIG)]; },     set: function (v) { if (v[0]) { var o = Object.assign({}, v[0]); delete o.id; Object.assign(CONFIG, o); } } }
   };
-  var ORDER = ['clients', 'deals', 'rdv', 'commandes', 'documents', 'presentations', 'contrats', 'licences', 'deployments', 'apporteurs', 'ecritures', 'logiciels', 'config'];
+  var ORDER = ['clients', 'deals', 'rdv', 'commandes', 'documents', 'presentations', 'contrats', 'licences', 'deployments', 'apporteurs', 'ecritures', 'logiciels', 'config', 'pil_depenses', 'pil_actions', 'pil_config'];
   var KEYMAP = { config: 'config', 'sanix_crm_rdv': 'rdv' };                       // clés lsSave qui ne portent pas le nom de l'entité
   ORDER.forEach(function (e) { if (STORES[e].ls !== RDV_LS && !KEYMAP[STORES[e].ls]) KEYMAP[STORES[e].ls] = e; });
   var HAS_CLIENT = { deals: 1, commandes: 1, presentations: 1, contrats: 1, licences: 1, documents: 1, deployments: 1, rdv: 1 };
@@ -98,6 +101,7 @@
   /** Compare le magasin local à la dernière version synchronisée ; place les créations, modifications et suppressions dans la file. */
   function scan(entity) {
     var c = STORES[entity]; if (!c) return 0;
+    if (/^pil_/.test(entity) && state.noPil && Date.now() - (state.noPilAt || 0) < 600000) return 0;      // migration du pilotage absente côté serveur
     var arr; try { arr = c.get(); } catch (e) { return 0; }
     if (!Array.isArray(arr)) return 0;
     var known = state.hash[entity] || (state.hash[entity] = {}), seen = {}, changed = 0, touched = false, clients = entity === 'clients' ? arr : STORES.clients.get(), nk = {};
@@ -130,13 +134,14 @@
 
   // ── Transport ────────────────────────────────────────────────────────────────
   function authError() { var e = new Error('Session opérateur requise'); e.code = 'AUTH'; return e; }
-  function rpc(name, body, timeout) {
+  function rpc(name, body, timeout, aux) {
     var s = session(), c = cfg(); if (!s || !c) return Promise.reject(authError());
     var ctl = typeof AbortController === 'function' ? new AbortController() : null, t = setTimeout(function () { if (ctl) ctl.abort(); }, timeout || 20000);
     return fetch(c.url.replace(/\/$/, '') + '/rest/v1/rpc/' + name, { method: 'POST', signal: ctl && ctl.signal, headers: { apikey: c.key, Authorization: 'Bearer ' + s.t, 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
       .then(function (r) { return r.text().then(function (txt) { var j = null; try { j = txt ? JSON.parse(txt) : null; } catch (e) {} return { r: r, j: j }; }); })
       .then(function (x) {
         if (x.r.status === 401) { try { sessionStorage.removeItem(AIS_TOK); } catch (e) {} throw authError(); }
+        if (aux && x.r.status === 404 && /PGRST202|find the function/i.test(JSON.stringify(x.j || ''))) { var nf = new Error('Fonction serveur non installée'); nf.code = 'NOFUNC'; throw nf; }
         if (x.r.status === 404 && /PGRST202|find the function/i.test(JSON.stringify(x.j || ''))) { backend = 'absent'; backendAt = Date.now(); var n = new Error('Connecteur serveur non installé'); n.code = 'NOBACKEND'; throw n; }
         if (!x.r.ok) { var e = new Error((x.j && (x.j.message || x.j.error)) || ('HTTP ' + x.r.status)); e.status = x.r.status; e.code = x.j && x.j.code; throw e; }
         backend = 'ok';
@@ -146,7 +151,7 @@
 
   function saveLocal(entity, arr) {
     var c = STORES[entity]; internal++;
-    try { c.set(arr); if (origLsSave) origLsSave(c.ls, entity === 'config' ? c.get()[0] && (function () { var o = Object.assign({}, c.get()[0]); delete o.id; return o; })() : arr); }
+    try { c.set(arr); if (origLsSave) origLsSave(c.ls, c.idMode === 'one' ? c.get()[0] && (function () { var o = Object.assign({}, c.get()[0]); delete o.id; return o; })() : arr); }
     finally { internal--; }
   }
 
@@ -193,7 +198,8 @@
           if (o.action === 'delete') { delete (state.hash[o.entity] || {})[o.rid]; delete state.ver[key]; }
           else if (q && q.op_id === o.op_id) (state.hash[o.entity] || (state.hash[o.entity] = {}))[rid] = q.h;
           if (q && q.op_id === o.op_id) delete outbox[key]; else if (q && rid !== o.rid) delete outbox[key];
-        } else if (r.conflict) { delete outbox[key]; delete (state.hash[o.entity] || {})[o.rid]; counters.rejected++; retry = true; }   // la suppression est refusée : le dossier revient au prochain échange
+        } else if (/^pil_/.test(o.entity) && /entity_check|violates check/i.test(r.error || '')) { state.noPil = true; state.noPilAt = Date.now(); delete outbox[key]; }   // pas une erreur du CRM : réessayé dans 10 min
+        else if (r.conflict) { delete outbox[key]; delete (state.hash[o.entity] || {})[o.rid]; counters.rejected++; retry = true; }   // la suppression est refusée : le dossier revient au prochain échange
         else { counters.rejected++; if (q) { q.attempts = (q.attempts || 0) + 1; q.last_error = r.error || 'refusée'; q.wait = Date.now() + Math.min(Math.pow(2, q.attempts) * 5000, 3600000); } retry = true; }
       });
       state.lastOk = Date.now(); state.lastErr = null; retryDelay = 2000; persistState(); persistOutbox();
@@ -267,6 +273,7 @@
     ['initPipeline', 'initClients', 'initPlanning', 'initCommandes', 'initPresentations', 'initDocuments', 'initContrats', 'initLicences', 'initLogiciels', 'initDashboard360', 'updateSidebarBadges'].forEach(function (fn) {
       try { if (typeof window[fn] === 'function') window[fn](); } catch (e) {}
     });
+    try { if (window.SanixPilotage && window.SanixPilotage.refresh) window.SanixPilotage.refresh(); } catch (e) {}
     try { var v = document.querySelector('[id^="view-"]:not(.hidden)'); if (v && v.id === 'view-agenda' && typeof initAgenda === 'function') initAgenda(); } catch (e) {}
   }
 
@@ -483,7 +490,7 @@
   var boot = setInterval(function () { start(); if (ready) clearInterval(boot); }, 400);
 
   window.SanixCrmSync = {
-    version: 1, status: status, syncNow: function () { backend = 'unknown'; return sync(); }, flush: flush, pull: pull, scan: function (e) { return e ? scan(e) : ORDER.map(scan); },
+    version: 1, available: function () { return !!(cfg() && session() && backend !== 'absent'); }, rpcAux: function (name, body) { return rpc(name, body, 20000, true); }, status: status, syncNow: function () { backend = 'unknown'; return sync(); }, flush: flush, pull: pull, scan: function (e) { return e ? scan(e) : ORDER.map(scan); },
     openPanel: openPanel, exportBackup: exportBackup, backup: backup, delegate: delegate, claim: claim, clientPanel: clientPanel, onChange: function (f) { listeners.push(f); },
     confirmDeletes: function () { suspiciousInfo = null; var save = allowDeletes; ORDER.forEach(function (e) { var known = state.hash[e] || {}, arr = STORES[e].get(), have = {}; arr.forEach(function (o) { have[ridOf(e, o)] = 1; }); Object.keys(known).forEach(function (rid) { if (!have[rid]) queue(e, rid, 'delete', 'x', { client_ts: new Date().toISOString() }); }); }); persistOutbox(); kick(0); emit(); },
     restoreFromServer: function () { suspiciousInfo = null; state.cursor = 0; ORDER.forEach(function (e) { var known = state.hash[e] || {}, have = {}; STORES[e].get().forEach(function (o) { have[ridOf(e, o)] = 1; }); Object.keys(known).forEach(function (rid) { if (!have[rid]) { delete known[rid]; delete state.ver[e + ':' + rid]; } }); }); persistState(); kick(0); emit(); },

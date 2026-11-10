@@ -97,7 +97,8 @@ Quand le connecteur Supabase de Claude est branché sur **le bon compte** (véri
 `setup_all.sql` ne sert qu'aux nouvelles installations. Sur une base déjà en service, appliquer **avant** de redéployer les fonctions (*SQL Editor* ou connecteur Supabase), dans l'ordre :
 1. `migrations/20261110000000_ai_sales_followup_queue.sql` : file de relances atomique (`ai_claim_due_followups`, colonnes `attempts`, `locked_at`, `last_error`) ;
 2. `migrations/20261110010000_ai_consent_setting.sql` : réglage de gouvernance `consentement_requis` (désactivé par défaut) ;
-3. `migrations/20261111000000_crm_ai_connector.sql` : connecteur CRM ↔ IA (base centrale du CRM, événements durables ; voir `CONNECTEUR_CRM_IA.md`). Sans elle, le CRM reste en mode local (« connecteur serveur absent ») et rien n'est perdu.
+3. `migrations/20261111000000_crm_ai_connector.sql` : connecteur CRM ↔ IA (base centrale du CRM, événements durables ; voir `CONNECTEUR_CRM_IA.md`). Sans elle, le CRM reste en mode local (« connecteur serveur absent ») et rien n'est perdu ;
+4. `migrations/20261112000000_pilotage_budget.sql` (après la précédente) : budget et plan d'actions synchronisés entre appareils, coûts IA, propositions d'actions des agents (écran *Pilotage → Budget & actions*). Sans elle, le budget reste enregistré sur l'appareil, sans erreur ; les coûts IA et les propositions n'apparaissent pas. **Redéployer ensuite les trois fonctions** (§1 : nouvel outil `propose_commercial_action`).
 
 **Les fichiers `deploy/*/index.ts` sont générés** : après toute modification de `functions/`, régénérer (`sh supabase/build_functions.sh`) et committer le résultat, sinon les §1, §5 et §6 déploient l'ancien code.
 

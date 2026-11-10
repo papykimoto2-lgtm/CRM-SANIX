@@ -1,12 +1,13 @@
 /* SANIX CRM — Pilotage : suivi budgétaire, plan d'actions commercial, budget prévisionnel.
  *
  * Calculs purs (SanixPilotage.calc, testables sans navigateur) + écran « Budget & plan d'actions » (#view-budget).
- * Données : localStorage « sanix_crm_pilotage » (propre à l'appareil : pas encore synchronisé avec le serveur ni avec SANIX AI).
- * Lit le CRM (DEALS, COMMANDES, CONFIG, COK_STAGE_PROB) sans jamais le modifier.
+ * Données : localStorage « sanix_crm_pil_depenses », « _pil_actions » et « _pil_config » (objectifs, hypothèses, taux), synchronisées avec
+ * le serveur par le connecteur CRM (shared/crm-connector.js, entités pil_*) dès que la migration 20261112 est appliquée.
+ * Serveur (SANIX AI) : coûts IA mensuels et propositions d'actions des agents, soumises à l'acceptation d'un opérateur.
+ * Lit le CRM (DEALS, COMMANDES, CONFIG) sans jamais le modifier.
  */
 (function () {
   'use strict';
-  var KEY = 'sanix_crm_pilotage';
   var CA_STATUTS = ['confirmee', 'en_cours', 'livree'];             // commandes comptées dans le CA réalisé (ni brouillon ni annulée)
   var PROBA = { prospect: 0.05, contact: 0.15, demo: 0.35, proposition: 0.55, negociation: 0.75 };
   var LAG = { prospect: 4, contact: 3, demo: 2, proposition: 1, negociation: 0 };   // mois avant signature, par étape
@@ -70,14 +71,14 @@
       return rows;
     },
 
-    /** Budget prévisionnel sur 12 mois glissants : CA réalisé (mois courant) + pipeline pondéré, dépenses, solde cumulé. */
+    /** Budget prévisionnel sur 12 mois glissants : CA réalisé (mois courant) + pipeline pondéré, dépenses (+ coûts IA mensuels ctx.iaFcfa), solde cumulé. */
     previsionnel: function (st, nowKey, ctx) {
       var re = calc.realise(ctx.commandes), pl = calc.pipeline(ctx.deals, nowKey, (st.hyp && st.hyp.proba) || PROBA, (st.hyp && st.hyp.lag) || LAG), dep = calc.depenses(st.depenses), cum = 0, rows = [];
       for (var i = 0; i < 12; i++) {
         var m = monthKey(addMonths(nowKey, i)), obj = num(st.objectifs && st.objectifs[m]) || num(ctx.objectifDefaut);
         var p = pl[m] || { pondere: 0, brut: 0, n: 0 }, d = dep[m] || { retenu: 0 }, r = i === 0 ? (re[m] || 0) : 0;
-        var ca = r + p.pondere, solde = ca - d.retenu; cum += solde;
-        rows.push({ mois: m, objectif: obj, realise: r, pondere: p.pondere, brut: p.brut, deals: p.n, ca: ca, ecart: ca - obj, depenses: d.retenu, solde: solde, cumul: cum });
+        var ia = num(ctx.iaFcfa), dep2 = d.retenu + ia, ca = r + p.pondere, solde = ca - dep2; cum += solde;
+        rows.push({ mois: m, objectif: obj, realise: r, pondere: p.pondere, brut: p.brut, deals: p.n, ca: ca, ecart: ca - obj, depenses: dep2, dontIA: ia, solde: solde, cumul: cum });
       }
       return rows;
     },
@@ -95,18 +96,47 @@
   };
 
   /* ───────────── Stockage ───────────── */
-  var emptyState = function () { return { v: 1, objectifs: {}, depenses: [], actions: [], hyp: { proba: Object.assign({}, PROBA), lag: Object.assign({}, LAG) } }; };
-  function load() {
-    try { var s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s && s.v === 1) { s.objectifs = s.objectifs || {}; s.depenses = s.depenses || []; s.actions = s.actions || []; s.hyp = s.hyp || { proba: Object.assign({}, PROBA), lag: Object.assign({}, LAG) }; return s; } } catch (e) { /* stockage indisponible : état vide */ }
-    return emptyState();
+  var LS = { depenses: 'pil_depenses', actions: 'pil_actions', config: 'pil_config' };      // clés CRM (préfixe sanix_crm_) = entités du connecteur
+  var emptyState = function () { return { depenses: [], actions: [], objectifs: {}, hyp: { proba: Object.assign({}, PROBA), lag: Object.assign({}, LAG) }, usdFcfa: 0 }; };
+  var ls = function (k) { try { return JSON.parse(localStorage.getItem('sanix_crm_' + k) || 'null'); } catch (e) { return null; } };
+  /** Réglages à plat (« obj_2026-03 », « proba_demo », « lag_demo », « usd_fcfa ») : le serveur fusionne champ par champ, deux appareils ne s'écrasent pas. */
+  function toFlat(s) {
+    var o = {};
+    Object.keys(s.objectifs).forEach(function (m) { o['obj_' + m] = s.objectifs[m]; });
+    Object.keys(s.hyp.proba).forEach(function (k) { o['proba_' + k] = s.hyp.proba[k]; });
+    Object.keys(s.hyp.lag).forEach(function (k) { o['lag_' + k] = s.hyp.lag[k]; });
+    if (s.usdFcfa > 0) o.usd_fcfa = s.usdFcfa;
+    return o;
   }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) { toast('⚠️ Enregistrement local impossible'); } }
-  var st = emptyState(), ui = { tab: 'budget', year: new Date().getFullYear() };
+  function fromFlat(o, s) {
+    s.objectifs = {}; s.hyp = { proba: Object.assign({}, PROBA), lag: Object.assign({}, LAG) }; s.usdFcfa = 0;
+    Object.keys(o || {}).forEach(function (k) {
+      var v = o[k];
+      if (k.indexOf('obj_') === 0) s.objectifs[k.slice(4)] = (v === null || v === '') ? null : num(v);
+      else if (k.indexOf('proba_') === 0) s.hyp.proba[k.slice(6)] = Math.min(1, num(v));
+      else if (k.indexOf('lag_') === 0) s.hyp.lag[k.slice(4)] = Math.min(24, Math.round(num(v)));
+      else if (k === 'usd_fcfa') s.usdFcfa = num(v);
+    });
+  }
+  function load() {
+    var s = emptyState(), d = ls(LS.depenses), a = ls(LS.actions);
+    s.depenses = Array.isArray(d) ? d : []; s.actions = Array.isArray(a) ? a : []; fromFlat(ls(LS.config), s);
+    return s;
+  }
+  /** Écriture par lsSave du CRM : le connecteur observe la clé et envoie la modification au serveur. */
+  function persist(kind) {
+    var data = kind === 'config' ? toFlat(st) : st[kind];
+    try { if (typeof window.lsSave === 'function') window.lsSave(LS[kind], data); else localStorage.setItem('sanix_crm_' + LS[kind], JSON.stringify(data)); }
+    catch (e) { toast('⚠️ Enregistrement local impossible'); }
+  }
+  var st = emptyState(), loaded = false, ui = { tab: 'budget', year: new Date().getFullYear() }, rem = { state: 'idle', costs: null, props: null, err: '' };
+  function ensure() { if (!loaded) { st = load(); loaded = true; } return st; }
 
   /* ───────────── Contexte CRM (lecture seule) ───────────── */
   function ctx() {
     var g = function (f) { try { return f(); } catch (e) { return undefined; } };
-    return { commandes: g(function () { return COMMANDES; }) || [], deals: g(function () { return DEALS; }) || [], objectifDefaut: num(g(function () { return CONFIG.objectifDefaut; })) };
+    var rate = num(st.usdFcfa), usd = rem.costs ? num(rem.costs.prevision_fin_mois_usd) : 0;
+    return { commandes: g(function () { return COMMANDES; }) || [], deals: g(function () { return DEALS; }) || [], objectifDefaut: num(g(function () { return CONFIG.objectifDefaut; })), iaFcfa: rate > 0 ? Math.round(usd * rate) : 0 };
   }
   function toast(m) { try { showToast(m); } catch (e) { /* hors CRM */ } }
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
@@ -115,6 +145,60 @@
   var today = function () { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
   var label = function (m) { return MOIS[+m.slice(5, 7) - 1] + ' ' + m.slice(0, 4); };
   var tone = function (v, bonIfPositif) { return v === 0 ? '' : ((v > 0) === bonIfPositif ? 'color:var(--success)' : 'color:var(--danger)'); };
+
+
+  /* ───────────── Données serveur (SANIX AI) : coûts IA et propositions des agents ───────────── */
+  function loadRemote() {
+    var S = window.SanixCrmSync;
+    if (!S || !S.available || !S.available()) { rem = { state: 'off', costs: null, props: null, err: '' }; render(); return; }
+    if (rem.state === 'loading') return;
+    rem.state = 'loading'; render();
+    var fail = function (e) { return { err: e && e.code === 'NOFUNC' ? 'absent' : ((e && e.message) || 'erreur') }; };
+    Promise.all([S.rpcAux('pilotage_ai_costs', { p_months: 6 }).catch(fail), S.rpcAux('pilotage_proposals_list', {}).catch(fail)]).then(function (r) {
+      rem.costs = r[0] && !r[0].err ? r[0] : null; rem.props = Array.isArray(r[1]) ? r[1] : null;
+      rem.err = (r[0] && r[0].err) || (r[1] && r[1].err) || ''; rem.state = 'ready'; render();
+    });
+  }
+  var remHint = function () {
+    return rem.state === 'off' ? 'Connectez l\'agent IA (menu Directeur IA → Synchronisation) pour voir les coûts IA et les propositions des agents.'
+      : rem.state === 'loading' ? 'Chargement des données SANIX AI…'
+      : rem.err === 'absent' ? 'Le serveur n\'a pas encore la migration du pilotage (20261112) : coûts IA et propositions indisponibles.'
+      : rem.err ? 'Données SANIX AI indisponibles : ' + esc(rem.err) : '';
+  };
+  function iaCard() {
+    var c = rem.costs, rate = num(st.usdFcfa), fc = function (usd) { return rate > 0 ? ' <small style="color:var(--muted)">≈ ' + fmt(usd * rate) + ' FCFA</small>' : ''; };
+    var head = '<div class="card" style="margin-top:16px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><b>🤖 Coûts IA (API Anthropic)</b><span><label style="font-size:12px;color:var(--muted)">1 USD = <input type="number" min="0" step="1" ' + inp + 'width:80px" data-usd value="' + (rate || '') + '" placeholder="FCFA"> FCFA</label> <button class="btn btn-outline btn-sm" data-act="rem-refresh">↻</button></span></div>';
+    if (!c) return head + '<p class="page-sub" style="margin:8px 0 0">' + remHint() + '</p></div>';
+    var over = c.budget_mois_usd > 0 && c.prevision_fin_mois_usd > c.budget_mois_usd;
+    return head + '<div class="stats-grid" style="margin:12px 0">' +
+      stat('Aujourd\'hui', '$' + fmt2(c.jour_usd) + fc(c.jour_usd), 'Plafond du jour : $' + fmt2(c.budget_jour_usd), 'blue') +
+      stat('Ce mois', '$' + fmt2(c.mois_usd) + fc(c.mois_usd), 'Plafond mensuel : $' + fmt2(c.budget_mois_usd), 'green') +
+      stat('Prévision de fin de mois', '<span style="' + (over ? 'color:var(--danger)' : '') + '">$' + fmt2(c.prevision_fin_mois_usd) + '</span>' + fc(c.prevision_fin_mois_usd), over ? '⚠️ Dépasse le plafond mensuel' : 'Rythme actuel prolongé', over ? 'orange' : 'purple') +
+      stat('Agents actifs ce mois', String((c.agents_mois || []).length), (c.agents_mois && c.agents_mois[0]) ? 'Plus coûteux : ' + esc(c.agents_mois[0].nom) : '—', 'teal') + '</div>' +
+      '<div style="display:flex;gap:24px;flex-wrap:wrap;font-size:12px"><div><b>Par mois</b><table style="border-collapse:collapse;margin-top:4px"><tbody>' + (c.mois || []).map(function (m) { return '<tr><td style="padding-right:14px">' + label(m.mois) + '</td><td>$' + fmt2(m.cout_usd) + '</td></tr>'; }).join('') + '</tbody></table></div>' +
+      '<div><b>Agents (mois en cours)</b><table style="border-collapse:collapse;margin-top:4px"><tbody>' + (c.agents_mois || []).slice(0, 6).map(function (a) { return '<tr><td style="padding-right:14px">' + esc(a.nom) + '</td><td>$' + fmt2(a.cout_usd) + '</td></tr>'; }).join('') + '</tbody></table></div></div>' +
+      '<p class="page-sub" style="margin:10px 0 0">' + (rate > 0 ? 'Le prévisionnel inclut ce coût mensuel (' + fmt(rate * c.prevision_fin_mois_usd) + ' FCFA) dans les dépenses de chaque mois.' : 'Saisissez le taux USD → FCFA pour inclure les coûts IA dans le budget prévisionnel.') + '</p></div>';
+  }
+  function proposalsCard() {
+    var list = rem.props || [];
+    if (!rem.props) return rem.state === 'ready' || rem.state === 'off' || rem.state === 'loading' ? '<div class="card" style="margin-bottom:16px"><b>🤖 Propositions des agents IA</b><p class="page-sub" style="margin:8px 0 0">' + remHint() + '</p></div>' : '';
+    return '<div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center"><b>🤖 Propositions des agents IA (' + list.length + ')</b><button class="btn btn-outline btn-sm" data-act="rem-refresh">↻</button></div>' +
+      (list.length ? list.map(function (p) {
+        return '<div style="border-top:1px solid var(--border);padding:10px 0;display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1;min-width:240px"><b>' + esc(p.titre) + '</b><div style="font-size:11px;color:var(--muted)">Proposée par ' + esc(p.agent || 'un agent') + (p.segment ? ' · ' + esc(p.segment) : '') + (p.echeance ? ' · échéance ' + esc(p.echeance) : '') + (p.objectif_ca ? ' · CA visé ' + fmt(p.objectif_ca) + ' FCFA' : '') + (p.responsable ? ' · ' + esc(p.responsable) : '') + '</div>' +
+          (p.justification ? '<div style="font-size:12px;margin-top:4px">' + esc(p.justification) + '</div>' : '') + '</div><div style="display:flex;gap:6px"><button class="btn btn-success btn-sm" data-act="prop-ok" data-id="' + esc(p.id) + '">✓ Ajouter au plan</button><button class="btn btn-outline btn-sm" data-act="prop-no" data-id="' + esc(p.id) + '">Refuser</button></div></div>';
+      }).join('') : '<p class="page-sub" style="margin:8px 0 0">Aucune proposition en attente. Les agents proposent des actions appuyées sur les chiffres du CRM ; rien n\'entre dans le plan sans votre acceptation.</p>') + '</div>';
+  }
+  function decide(id, ok) {
+    var S = window.SanixCrmSync; if (!S) return;
+    S.rpcAux('pilotage_proposal_decide', { p_id: id, p_accept: ok }).then(function (r) {
+      if (ok) {
+        st.actions.push({ id: uid('act_'), titre: r.titre, responsable: r.responsable || '', echeance: r.echeance || '', objectifCA: num(r.objectif_ca), segment: r.segment || '', statut: 'a_faire', source: 'ia', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+        persist('actions'); toast('✅ Action ajoutée au plan');
+      }
+      rem.props = (rem.props || []).filter(function (p) { return p.id !== id; }); render();
+    }).catch(function (e) { toast('❌ ' + ((e && e.message) || 'Décision impossible')); loadRemote(); });
+  }
+  var fmt2 = function (n) { return (Math.round((n || 0) * 100) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
 
   /* ───────────── Écran ───────────── */
   var root = function () { return document.getElementById('view-budget'); };
@@ -145,12 +229,12 @@
       '<input name="libelle" placeholder="Libellé" ' + inp + 'flex:1;min-width:140px"><input name="prevu" type="number" min="0" placeholder="Prévu" ' + inp + 'width:110px"><input name="reel" type="number" min="0" placeholder="Réel" ' + inp + 'width:110px"><button class="btn btn-primary btn-sm">Ajouter</button></form>' +
       (deps.length ? '<table style="width:100%;font-size:12px;border-collapse:collapse"><tbody>' + deps.map(function (d) {
         return '<tr style="border-top:1px solid var(--border)"><td>' + label(d.mois) + '</td><td>' + esc(d.categorie) + '</td><td>' + esc(d.libelle) + '</td><td>' + fmt(d.prevu) + '</td><td><input type="number" min="0" ' + inp + 'width:110px" data-dep-reel="' + esc(d.id) + '" value="' + (d.reel || '') + '" placeholder="Réel"></td><td><button class="btn btn-outline btn-sm" data-act="dep-del" data-id="' + esc(d.id) + '">🗑</button></td></tr>';
-      }).join('') + '</tbody></table>' : '<p class="page-sub">Aucune dépense saisie pour ' + ui.year + '.</p>') + '</div>';
+      }).join('') + '</tbody></table>' : '<p class="page-sub">Aucune dépense saisie pour ' + ui.year + '.</p>') + '</div>' + iaCard();
   }
 
   function tabActions() {
     var s = calc.actions(st.actions, today()), list = st.actions.slice().sort(function (a, b) { return (a.echeance || '9') < (b.echeance || '9') ? -1 : 1; });
-    return '<div class="stats-grid">' + stat('Actions', String(s.total), s.fait + ' faites · ' + s.en_cours + ' en cours · ' + s.a_faire + ' à faire', 'blue') +
+    return proposalsCard() + '<div class="stats-grid">' + stat('Actions', String(s.total), s.fait + ' faites · ' + s.en_cours + ' en cours · ' + s.a_faire + ' à faire', 'blue') +
       stat('En retard', '<span style="' + (s.retard ? 'color:var(--danger)' : '') + '">' + s.retard + '</span>', 'Échéance dépassée', 'orange') +
       stat('CA visé', fmt(s.caVise) + ' FCFA', 'Hors actions annulées', 'purple') + stat('CA visé réalisé', fmt(s.caViseFait) + ' FCFA', pct(s.caVise > 0 ? s.caViseFait / s.caVise : 0) + ' des actions faites', 'green') + '</div>' +
       '<div class="card"><b>Plan d\'actions commercial</b>' +
@@ -158,7 +242,7 @@
       '<input name="objectifCA" type="number" min="0" placeholder="CA visé (FCFA)" ' + inp + 'width:140px"><input name="segment" placeholder="Segment / produit" ' + inp + 'width:140px"><button class="btn btn-primary btn-sm">Ajouter</button></form>' +
       (list.length ? '<div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--muted)"><th>Action</th><th>Responsable</th><th>Échéance</th><th>CA visé</th><th>Statut</th><th></th></tr></thead><tbody>' + list.map(function (a) {
         var late = (a.statut === 'a_faire' || a.statut === 'en_cours') && a.echeance && a.echeance < today();
-        return '<tr style="border-top:1px solid var(--border)"><td>' + esc(a.titre) + (a.segment ? ' <small style="color:var(--muted)">· ' + esc(a.segment) + '</small>' : '') + '</td><td>' + esc(a.responsable) + '</td><td style="' + (late ? 'color:var(--danger);font-weight:700' : '') + '">' + esc(a.echeance) + (late ? ' ⚠️' : '') + '</td><td>' + fmt(a.objectifCA) + '</td>' +
+        return '<tr style="border-top:1px solid var(--border)"><td>' + (a.source === 'ia' ? '<span class="chip" style="font-size:10px">🤖 IA</span> ' : '') + esc(a.titre) + (a.segment ? ' <small style="color:var(--muted)">· ' + esc(a.segment) + '</small>' : '') + '</td><td>' + esc(a.responsable) + '</td><td style="' + (late ? 'color:var(--danger);font-weight:700' : '') + '">' + esc(a.echeance) + (late ? ' ⚠️' : '') + '</td><td>' + fmt(a.objectifCA) + '</td>' +
           '<td><select ' + inp + '" data-act-statut="' + esc(a.id) + '">' + Object.keys(STATUTS).map(function (k) { return '<option value="' + k + '"' + (a.statut === k ? ' selected' : '') + '>' + STATUTS[k] + '</option>'; }).join('') + '</select></td><td><button class="btn btn-outline btn-sm" data-act="act-del" data-id="' + esc(a.id) + '">🗑</button></td></tr>';
       }).join('') + '</tbody></table></div>' : '<p class="page-sub">Aucune action. Ajoutez la première : responsable, échéance et CA visé permettent de suivre ce que le plan doit rapporter.</p>') + '</div>';
   }
@@ -169,7 +253,7 @@
     return '<div class="stats-grid">' + stat('CA prévisionnel 12 mois', fmt(tot('ca')) + ' FCFA', 'Pipeline pondéré + CA du mois en cours', 'blue') + stat('Objectif 12 mois', fmt(tot('objectif')) + ' FCFA', 'Écart : <b style="' + tone(tot('ca') - tot('objectif'), true) + '">' + fmt(tot('ca') - tot('objectif')) + '</b>', 'purple') +
       stat('Dépenses prévues', fmt(tot('depenses')) + ' FCFA', 'Réel si saisi, sinon prévu', 'orange') + stat('Solde prévisionnel', '<span style="' + tone(tot('solde'), true) + '">' + fmt(tot('solde')) + ' FCFA</span>', 'CA − dépenses commerciales', 'green') + '</div>' +
       '<div class="card" style="margin-bottom:16px"><b>Budget prévisionnel — 12 mois glissants</b><div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:10px"><thead><tr style="text-align:left;color:var(--muted)"><th>Mois</th><th>Deals</th><th>CA prévisionnel</th><th style="width:150px">vs objectif</th><th>Écart</th><th>Dépenses</th><th>Solde</th><th>Cumul</th></tr></thead><tbody>' + rows.map(function (r) {
-        return '<tr style="border-top:1px solid var(--border)"><td>' + label(r.mois) + '</td><td>' + r.deals + '</td><td>' + fmt(r.ca) + '</td><td>' + bar(r.ca, Math.max(r.objectif, 1), r.ca >= r.objectif ? 'var(--success)' : 'var(--primary)') + '<small>obj. ' + fmt(r.objectif) + '</small></td><td style="' + tone(r.ecart, true) + '">' + fmt(r.ecart) + '</td><td>' + fmt(r.depenses) + '</td><td style="' + tone(r.solde, true) + '">' + fmt(r.solde) + '</td><td style="' + tone(r.cumul, true) + '">' + fmt(r.cumul) + '</td></tr>';
+        return '<tr style="border-top:1px solid var(--border)"><td>' + label(r.mois) + '</td><td>' + r.deals + '</td><td>' + fmt(r.ca) + '</td><td>' + bar(r.ca, Math.max(r.objectif, 1), r.ca >= r.objectif ? 'var(--success)' : 'var(--primary)') + '<small>obj. ' + fmt(r.objectif) + '</small></td><td style="' + tone(r.ecart, true) + '">' + fmt(r.ecart) + '</td><td>' + fmt(r.depenses) + (r.dontIA ? '<br><small style="color:var(--muted)">dont IA ' + fmt(r.dontIA) + '</small>' : '') + '</td><td style="' + tone(r.solde, true) + '">' + fmt(r.solde) + '</td><td style="' + tone(r.cumul, true) + '">' + fmt(r.cumul) + '</td></tr>';
       }).join('') + '</tbody></table></div></div>' +
       '<div class="card"><b>Hypothèses du pipeline pondéré</b><p class="page-sub" style="margin:4px 0 10px">Chaque affaire ouverte compte pour valeur × probabilité, dans le mois courant + le délai de son étape. Modifiables : elles ne changent que cette prévision.</p>' +
       '<table style="font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--muted)"><th style="padding-right:18px">Étape</th><th style="padding-right:18px">Probabilité (%)</th><th>Délai (mois)</th></tr></thead><tbody>' + Object.keys(PROBA).map(function (k) {
@@ -200,27 +284,38 @@
       if (t.dataset.tab) { ui.tab = t.dataset.tab; render(); return; }
       var a = t.dataset.act, id = t.dataset.id;
       if (a === 'csv') csv();
-      else if (a === 'dep-del' && confirm('Supprimer cette dépense ?')) { st.depenses = st.depenses.filter(function (d) { return d.id !== id; }); save(); render(); }
-      else if (a === 'act-del' && confirm('Supprimer cette action ?')) { st.actions = st.actions.filter(function (x) { return x.id !== id; }); save(); render(); }
+      else if (a === 'rem-refresh') { rem.state = 'idle'; loadRemote(); }
+      else if (a === 'prop-ok') decide(id, true);
+      else if (a === 'prop-no') { if (confirm('Refuser cette proposition ?')) decide(id, false); }
+      else if (a === 'dep-del' && confirm('Supprimer cette dépense ?')) { st.depenses = st.depenses.filter(function (d) { return d.id !== id; }); persist('depenses'); render(); }
+      else if (a === 'act-del' && confirm('Supprimer cette action ?')) { st.actions = st.actions.filter(function (x) { return x.id !== id; }); persist('actions'); render(); }
     });
     el.addEventListener('change', function (e) {
       var t = e.target, v;
       if (t.id === 'pil-year') { ui.year = +t.value; render(); }
-      else if (t.dataset.obj) { v = t.value === '' ? null : num(t.value); if (v == null) delete st.objectifs[t.dataset.obj]; else st.objectifs[t.dataset.obj] = v; save(); render(); }
-      else if (t.dataset.depReel !== undefined) { var d = st.depenses.filter(function (x) { return x.id === t.dataset.depReel; })[0]; if (d) { d.reel = num(t.value); save(); render(); } }
-      else if (t.dataset.actStatut !== undefined) { var a = st.actions.filter(function (x) { return x.id === t.dataset.actStatut; })[0]; if (a) { a.statut = t.value; a.updatedAt = new Date().toISOString(); save(); render(); } }
-      else if (t.dataset.hypProba) { st.hyp.proba[t.dataset.hypProba] = Math.min(100, num(t.value)) / 100; save(); render(); }
-      else if (t.dataset.hypLag) { st.hyp.lag[t.dataset.hypLag] = Math.min(24, Math.round(num(t.value))); save(); render(); }
+      else if (t.dataset.usd !== undefined) { st.usdFcfa = num(t.value); persist('config'); render(); }
+      else if (t.dataset.obj) { v = t.value === '' ? null : num(t.value); st.objectifs[t.dataset.obj] = v; persist('config'); render(); }      // vide = null (effacé aussi sur les autres appareils)
+      else if (t.dataset.depReel !== undefined) { var d = st.depenses.filter(function (x) { return x.id === t.dataset.depReel; })[0]; if (d) { d.reel = num(t.value); persist('depenses'); render(); } }
+      else if (t.dataset.actStatut !== undefined) { var a = st.actions.filter(function (x) { return x.id === t.dataset.actStatut; })[0]; if (a) { a.statut = t.value; a.updatedAt = new Date().toISOString(); persist('actions'); render(); } }
+      else if (t.dataset.hypProba) { st.hyp.proba[t.dataset.hypProba] = Math.min(100, num(t.value)) / 100; persist('config'); render(); }
+      else if (t.dataset.hypLag) { st.hyp.lag[t.dataset.hypLag] = Math.min(24, Math.round(num(t.value))); persist('config'); render(); }
     });
     el.addEventListener('submit', function (e) {
       var f = e.target.closest('form[data-form]'); if (!f) return; e.preventDefault();
       var v = function (n) { return (f.elements[n].value || '').trim(); };
       if (f.dataset.form === 'dep') { if (!monthOf(v('mois'))) return; st.depenses.push({ id: uid('dep_'), mois: v('mois'), categorie: v('categorie'), libelle: v('libelle'), prevu: num(v('prevu')), reel: num(v('reel')) }); }
       else { if (!v('titre')) return; st.actions.push({ id: uid('act_'), titre: v('titre'), responsable: v('responsable'), echeance: v('echeance'), objectifCA: num(v('objectifCA')), segment: v('segment'), statut: 'a_faire', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }); }
-      save(); render();
+      persist(f.dataset.form === 'dep' ? 'depenses' : 'actions'); render();
     });
   }
 
-  window.initPilotage = function () { st = load(); bind(); render(); };
-  window.SanixPilotage = { calc: calc, KEY: KEY };
+  var visible = function () { var e = root(); return !!(e && !e.classList.contains('hidden')); };
+  var refresh = function () { if (loaded && visible()) render(); };
+  window.initPilotage = function () { ensure(); bind(); render(); loadRemote(); };
+  /** Interface du connecteur CRM (shared/crm-connector.js) : lecture et application des données reçues du serveur. */
+  window.SanixPilotage = { calc: calc, refresh: refresh, store: {
+    get: function (k) { return ensure()[k]; },
+    set: function (k, arr) { ensure()[k] = Array.isArray(arr) ? arr : []; refresh(); },
+    getConfig: function () { return toFlat(ensure()); },
+    setConfig: function (o) { fromFlat(o, ensure()); refresh(); } } };
 })();

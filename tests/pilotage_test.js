@@ -55,7 +55,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(await page.locator("#view-budget table tbody tr").count() >= 12, "tableau de 12 mois");
     const fillc = async (sel, v) => { await page.fill(sel, v); await page.dispatchEvent(sel, "change"); await page.waitForTimeout(150); };
     await fillc('[data-obj$="-03"]', "3000000");
-    ok((await page.evaluate(() => JSON.parse(localStorage.sanix_crm_pilotage).objectifs))[new Date().getFullYear() + "-03"] === 3000000, "objectif mensuel enregistré");
+    ok((await page.evaluate(() => JSON.parse(localStorage.sanix_crm_pil_config)))["obj_" + new Date().getFullYear() + "-03"] === 3000000, "objectif mensuel enregistré");
     await page.fill('form[data-form="dep"] [name=libelle]', "Billets <b>Abidjan</b>"); await page.fill('form[data-form="dep"] [name=prevu]', "120000");
     await page.click('form[data-form="dep"] button'); await page.waitForTimeout(200);
     ok((await page.locator("#view-budget").innerText()).includes("Billets <b>Abidjan</b>") && (await page.locator("#view-budget b", { hasText: "Abidjan" }).count()) === 0, "dépense ajoutée, libellé échappé (pas de HTML injecté)");
@@ -68,7 +68,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.click('[data-tab="previ"]'); await page.waitForTimeout(200);
     ok((await page.locator("#view-budget table").first().locator("tbody tr").count()) === 12, "prévisionnel : 12 mois affichés");
     await fillc('[data-hyp-proba="negociation"]', "90");
-    ok((await page.evaluate(() => JSON.parse(localStorage.sanix_crm_pilotage).hyp.proba.negociation)) === 0.9, "hypothèse de probabilité enregistrée");
+    ok((await page.evaluate(() => JSON.parse(localStorage.sanix_crm_pil_config).proba_negociation)) === 0.9, "hypothèse de probabilité enregistrée");
     await page.reload(); await page.waitForTimeout(1200);
     await page.evaluate(() => { currentUser = USERS.find((u) => u.role === "super_admin"); enterApp(currentUser); }); await page.waitForTimeout(1500);
     await page.evaluate(() => navigate("budget")); await page.click('[data-tab="actions"]');
