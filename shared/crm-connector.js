@@ -55,6 +55,7 @@
   var persistState = function () { jset(STATE_KEY, state); };
   var persistOutbox = function () { jset(OUTBOX_KEY, outbox); };
   var internal = 0;                                                                  // > 0 : écriture du connecteur lui-même (ne pas la ré-analyser)
+  var backend = 'unknown', backendAt = 0, backupWarned = false;                                         // 'absent' : fonctions SQL du connecteur non installées (migration non appliquée) → mode local, ancienne sauvegarde conservée
   var origLsSave = null, busy = false, retryTimer = null, scanTimer = {}, retryDelay = 2000, listeners = [], lastMode = 'off', ready = false, pollTimer = null, pulling = false;
   var counters = { pushed: 0, pulled: 0, rejected: 0 };
 
@@ -136,7 +137,9 @@
       .then(function (r) { return r.text().then(function (txt) { var j = null; try { j = txt ? JSON.parse(txt) : null; } catch (e) {} return { r: r, j: j }; }); })
       .then(function (x) {
         if (x.r.status === 401) { try { sessionStorage.removeItem(AIS_TOK); } catch (e) {} throw authError(); }
+        if (x.r.status === 404 && /PGRST202|find the function/i.test(JSON.stringify(x.j || ''))) { backend = 'absent'; backendAt = Date.now(); var n = new Error('Connecteur serveur non installé'); n.code = 'NOBACKEND'; throw n; }
         if (!x.r.ok) { var e = new Error((x.j && (x.j.message || x.j.error)) || ('HTTP ' + x.r.status)); e.status = x.r.status; e.code = x.j && x.j.code; throw e; }
+        backend = 'ok';
         return x.j;
       }).finally(function () { clearTimeout(t); });
   }
@@ -207,9 +210,9 @@
   }
   function failed(e) {
     state.lastErr = e && e.message ? e.message : String(e);
-    if (e && e.code === 'AUTH') lastMode = 'login'; else lastMode = navigator.onLine ? 'error' : 'offline';
+    if (e && e.code === 'AUTH') lastMode = 'login'; else if (e && e.code === 'NOBACKEND') lastMode = 'absent'; else lastMode = navigator.onLine ? 'error' : 'offline';
     persistState(); emit();
-    if (e && e.code !== 'AUTH') { retryDelay = Math.min(retryDelay * 2, 60000); kick(retryDelay); }
+    if (e && e.code !== 'AUTH' && e.code !== 'NOBACKEND') { retryDelay = Math.min(retryDelay * 2, 60000); kick(retryDelay); }
     return false;
   }
   function kick(ms) { clearTimeout(retryTimer); retryTimer = setTimeout(function () { sync(); }, ms == null ? 0 : ms); }
@@ -283,7 +286,11 @@
   }
   function initialImport() {
     if (state.init) return Promise.resolve(true);
-    var saved = backup(); toast(saved ? '💾 Sauvegarde locale créée avant la première synchronisation' : '⚠️ Sauvegarde locale impossible (espace saturé) : exportez-la depuis le panneau Synchronisation');
+    if (!state.backupAt || Date.now() - state.backupAt > 864e5) {                    // une sauvegarde par jour au plus, même si le premier envoi est repris plusieurs fois (serveur en panne, migration absente)
+      var saved = backup(), first = !state.backupAt;
+      if (saved) { state.backupAt = Date.now(); persistState(); if (first) toast('💾 Sauvegarde locale créée avant la première synchronisation'); }
+      else if (!backupWarned) { backupWarned = true; toast('⚠️ Sauvegarde locale impossible (espace saturé) : exportez-la depuis le panneau Synchronisation'); }
+    }
     ORDER.forEach(function (e) { scan(e); });                                          // tout l'existant est marqué « import » : aucun événement pour l'historique
     persistOutbox();
     var loop = function () {
@@ -301,6 +308,7 @@
   function sync() {
     if (!ready) return Promise.resolve(false);
     if (!session() || !cfg()) { lastMode = cfg() ? 'login' : 'off'; emit(); return Promise.resolve(false); }
+    if (backend === 'absent' && Date.now() - backendAt < 300000) { lastMode = 'absent'; emit(); return Promise.resolve(false); }
     ORDER.forEach(function (e) { scan(e); });
     var p = state.init ? flush() : initialImport();
     return p.then(function (ok) { if (ok) { if (!pulling) return pull().then(function () { emit(); return true; }); } emit(); return ok; });
@@ -309,7 +317,7 @@
   // ── Interface : pilule d'état, panneau « Synchronisation », fiche client ─────
   function status() {
     return { mode: lastMode, pending: pendingCount(), lastOk: state.lastOk, lastErr: state.lastErr, cursor: state.cursor, init: state.init, device: state.device, session: !!session(), configured: !!cfg(), online: navigator.onLine,
-      counters: counters, suspicious: suspiciousInfo, rejected: Object.keys(outbox).filter(function (k) { return outbox[k].attempts > 0; }).map(function (k) { return { key: k, error: outbox[k].last_error, attempts: outbox[k].attempts }; }) };
+      backend: backend, counters: counters, suspicious: suspiciousInfo, rejected: Object.keys(outbox).filter(function (k) { return outbox[k].attempts > 0; }).map(function (k) { return { key: k, error: outbox[k].last_error, attempts: outbox[k].attempts }; }) };
   }
   function updatePillFromStatus() {
     if (typeof updatePill !== 'function') return;
@@ -317,6 +325,7 @@
     if (!s.configured) return;
     if (s.mode === 'sync') updatePill('syncing', 'Synchronisation…');
     else if (s.mode === 'login') updatePill('pending', n ? n + ' en attente · connexion requise' : 'Connexion opérateur requise');
+    else if (s.mode === 'absent') updatePill('offline', 'Local · connecteur serveur absent');
     else if (s.mode === 'offline') updatePill('offline', n ? n + ' en attente · hors ligne' : 'Hors ligne');
     else if (s.mode === 'error') updatePill('error', n ? n + ' en attente · reprise auto' : 'Erreur de synchronisation');
     else updatePill(n ? 'pending' : 'ok', n ? n + ' en attente' : 'Synchronisé');
@@ -336,7 +345,7 @@
     rpc('crm_sync_status', {}).then(function (s) { serverStatus = s; render(); }).catch(function () {});
     rpc('crm_missions_overview', { p_limit: 40 }).then(function (m) { missions = m; render(); }).catch(function () {});
   }
-  var MODE_LABEL = { off: 'Supabase non configuré (mode local)', idle: 'Synchronisé', ok: 'Synchronisé', sync: 'Synchronisation…', login: 'Connexion opérateur requise', offline: 'Hors ligne : les modifications restent en file', error: 'Erreur : reprise automatique' };
+  var MODE_LABEL = { absent: 'Connecteur serveur non installé : mode local (rien n\'est perdu)', off: 'Supabase non configuré (mode local)', idle: 'Synchronisé', ok: 'Synchronisé', sync: 'Synchronisation…', login: 'Connexion opérateur requise', offline: 'Hors ligne : les modifications restent en file', error: 'Erreur : reprise automatique' };
   function render() {
     var el = document.getElementById('crmsync-body'); if (!el || el.closest('.hidden')) { renderAisPane(); return; }
     var s = status(), ss = serverStatus, ev = ss && ss.events || {}, rows = '';
@@ -348,6 +357,7 @@
         + '<div class="stat-card"><div class="stat-label">Dernier envoi</div><div class="stat-value" style="font-size:13px">' + esc(fmtT(s.lastOk)) + '</div></div>'
         + '<div class="stat-card"><div class="stat-label">Événements CRM ↔ IA</div><div class="stat-value" style="font-size:13px">' + (ss ? (ev.done || 0) + ' traités · ' + ((ev.pending || 0) + (ev.failed || 0)) + ' en cours · ' + (ev.dead || 0) + ' bloqués' : '…') + '</div></div></div>'
         + (s.lastErr ? '<p class="page-sub" style="color:var(--danger)">Dernière erreur : ' + esc(s.lastErr) + '</p>' : '')
+        + (s.mode === 'absent' ? '<p class="page-sub">Le connecteur n\'est pas installé côté serveur (migration non appliquée) : le CRM fonctionne en local et l\'ancienne sauvegarde reste utilisable. La synchronisation reprend dès l\'installation (bouton « Synchroniser maintenant »).</p>' : '')
         + (!s.session ? '<p class="page-sub">Connectez l\'agent IA (session opérateur) dans l\'onglet « Directeur commercial IA » : la synchronisation reprendra seule, rien n\'est perdu en attendant.</p>' : '')
         + (s.suspicious ? '<div class="card" style="padding:12px;border-color:var(--danger)"><b>⚠️ Suppression massive détectée</b> : ' + s.suspicious.n + ' fiches « ' + esc(s.suspicious.entity) + ' » ont disparu du navigateur. Rien n\'a été envoyé. <button class="btn btn-outline btn-sm" onclick="SanixCrmSync.confirmDeletes()">Confirmer ces suppressions</button> <button class="btn btn-outline btn-sm" onclick="SanixCrmSync.restoreFromServer()">Restaurer depuis le serveur</button></div>' : '')
         + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0"><button class="btn btn-primary btn-sm" onclick="SanixCrmSync.syncNow()">🔄 Synchroniser maintenant</button><button class="btn btn-outline btn-sm" onclick="SanixCrmSync.exportBackup()">💾 Exporter une sauvegarde</button></div>'
@@ -393,7 +403,7 @@
     var draw = function (p) {
       var pend = c._rid && outbox['clients:' + c._rid];
       var head = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b>🤖 SANIX AI — suivi de ce dossier</b><span class="badge ' + (pend ? 'badge-warning' : 'badge-success') + '">' + (pend ? 'envoi en attente' : 'synchronisé') + '</span></div>';
-      if (!p) { box.innerHTML = head + '<p class="page-sub">' + (session() ? 'Chargement…' : 'Connectez l\'agent IA (session opérateur) pour voir le suivi.') + '</p>'; return; }
+      if (!p) { box.innerHTML = head + '<p class="page-sub">' + (!session() ? 'Connectez l\'agent IA (session opérateur) pour voir le suivi.' : backend === 'absent' ? 'Connecteur serveur non installé.' : 'Chargement…') + '</p>'; return; }
       if (!p.linked) {
         box.innerHTML = head + '<p class="page-sub">Ce dossier n\'est pas encore suivi par un agent.</p><button class="btn btn-primary btn-sm" onclick="SanixCrmSync.delegate(' + Number(c.id) + ')">🤖 Confier à l\'IA</button> <button class="btn btn-outline btn-sm" onclick="SanixCrmSync.claim(' + Number(c.id) + ')">⚠️ Signaler une réclamation</button>';
         return;
@@ -448,9 +458,12 @@
     };
     wrapped._crmsync = true; window.lsSave = wrapped;
     // anciennes synchronisations (clé « anon », tables crm_*) : remplacées par le connecteur (la réception ne remplace plus jamais les données locales)
-    window.syncPush = function () { if (!cfg()) { toast('⚠️ Configurez Supabase d\'abord'); return Promise.resolve(false); } return sync(); };
-    window.syncPull = function () { if (!cfg()) { return Promise.resolve(false); } return sync(); };
-    var odel = window.aisDelegate; window.aisDelegate = function (id) { return cfg() ? delegate(id) : (odel ? odel(id) : false); };
+    // Tant que le connecteur n'est pas actif (session opérateur absente ou migration non appliquée), l'envoi hérité reste disponible ; la réception héritée,
+    // qui remplaçait les données locales, ne l'est jamais : sans connecteur elle ne fait rien.
+    var origPush = window.syncPush, origPull = window.syncPull, active = function () { return !!(cfg() && session() && backend !== 'absent'); };
+    window.syncPush = function () { if (active()) return sync(); if (typeof origPush === 'function') return origPush.apply(this, arguments); toast('⚠️ Configurez Supabase d\'abord'); return Promise.resolve(false); };
+    window.syncPull = function () { if (active()) return sync(); toast('ℹ️ Réception héritée désactivée (elle remplaçait les données locales) : connectez l\'agent IA pour synchroniser sans risque'); return Promise.resolve(false); };
+    var odel = window.aisDelegate; window.aisDelegate = function (id) { return active() ? delegate(id) : (odel ? odel(id) : false); };
     var osd = window.showClientDetail; if (typeof osd === 'function') window.showClientDetail = function (id) { var r = osd.apply(this, arguments); try { clientPanel(id); } catch (e) {} return r; };
     var oia = window.initAiSales; if (typeof oia === 'function') window.initAiSales = function () { var r = oia.apply(this, arguments); try { injectAisTab(); renderAisPane(); } catch (e) {} return r; };
     var oais = window.aisTab; if (typeof oais === 'function') window.aisTab = function (t, el) { var p = document.getElementById('ais-pane-sync'); if (p) p.classList.add('hidden'); return oais.apply(this, arguments); };
@@ -470,7 +483,7 @@
   var boot = setInterval(function () { start(); if (ready) clearInterval(boot); }, 400);
 
   window.SanixCrmSync = {
-    version: 1, status: status, syncNow: function () { return sync(); }, flush: flush, pull: pull, scan: function (e) { return e ? scan(e) : ORDER.map(scan); },
+    version: 1, status: status, syncNow: function () { backend = 'unknown'; return sync(); }, flush: flush, pull: pull, scan: function (e) { return e ? scan(e) : ORDER.map(scan); },
     openPanel: openPanel, exportBackup: exportBackup, backup: backup, delegate: delegate, claim: claim, clientPanel: clientPanel, onChange: function (f) { listeners.push(f); },
     confirmDeletes: function () { suspiciousInfo = null; var save = allowDeletes; ORDER.forEach(function (e) { var known = state.hash[e] || {}, arr = STORES[e].get(), have = {}; arr.forEach(function (o) { have[ridOf(e, o)] = 1; }); Object.keys(known).forEach(function (rid) { if (!have[rid]) queue(e, rid, 'delete', 'x', { client_ts: new Date().toISOString() }); }); }); persistOutbox(); kick(0); emit(); },
     restoreFromServer: function () { suspiciousInfo = null; state.cursor = 0; ORDER.forEach(function (e) { var known = state.hash[e] || {}, have = {}; STORES[e].get().forEach(function (o) { have[ridOf(e, o)] = 1; }); Object.keys(known).forEach(function (rid) { if (!have[rid]) { delete known[rid]; delete state.ver[e + ':' + rid]; } }); }); persistState(); kick(0); emit(); },

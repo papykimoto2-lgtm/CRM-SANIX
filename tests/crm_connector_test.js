@@ -61,7 +61,31 @@ function startBridge() {
     const sync = (page) => page.evaluate(() => window.SanixCrmSync.syncNow());
     const st = (page) => page.evaluate(() => { const s = window.SanixCrmSync.status(); return { mode: s.mode, pending: s.pending, init: s.init, lastErr: s.lastErr }; });
     const quiet = (page, ms = 25000) => wait(async () => { const s = await st(page); return s.pending === 0 && s.mode !== "sync" && s.init; }, ms, "file d'envoi vide");
+
+    console.log("▶ Mode dormant — migration non appliquée (fonctions SQL absentes) : le CRM reste utilisable, rien n'est perdu");
+    await post("/__fault", { mode: "absent", count: 1e9 });                                                           // base sans la migration : 404 PGRST202
     let page = await open();
+    const legacyReq = []; page.on("request", (r) => { if (/\/rest\/v1\/crm_/.test(r.url())) legacyReq.push(r.method() + " " + new URL(r.url()).pathname); });
+    await sync(page);
+    await wait(async () => (await st(page)).mode === "absent", 15000, "mode « connecteur absent »");
+    ok(await page.evaluate(() => window.SanixCrmSync.status().backend === "absent"), "fonctions SQL introuvables (404) : connecteur en veille, sans erreur ni boîte de dialogue");
+    ok((await page.locator("#sync-label").innerText()).includes("connecteur serveur absent"), "pilulier de l'en-tête : « Local · connecteur serveur absent »");
+    await page.evaluate(() => { CLIENTS.push({ id: Math.max(...CLIENTS.map((x) => x.id)) + 1, nom: "Dormant SA", phone: "07 90 90 90 90", email: "", secteur: "Commerce", statut: "prospect", commercial: "Aïcha", valeur: 100000, adresse: "Abidjan", notes: "créé avant l'installation", interactions: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() }); saveStore("clients"); });
+    ok(await page.evaluate(() => CLIENTS.some((x) => x.nom === "Dormant SA") && JSON.parse(localStorage.getItem("sanix_crm_clients")).some((x) => x.nom === "Dormant SA")), "le CRM continue d'enregistrer localement (fiche créée pendant la veille)");
+    const n0 = (await post("/__calls", {})).calls; await page.waitForTimeout(3500);
+    ok((await post("/__calls", {})).calls === n0, "aucune rafale de tentatives : le serveur n'est pas sollicité tant que le connecteur est absent");
+    await page.evaluate(() => window.SanixCrmSync.openPanel("etat"));
+    await wait(async () => (await page.locator("#crmsync-body").innerText()).includes("Connecteur serveur non installé"), 10000, "panneau d'état");
+    ok(true, "panneau « Synchronisation » : explication « connecteur serveur non installé : mode local »");
+    await page.evaluate(() => document.getElementById("modal-crmsync").classList.add("hidden"));
+    const names = await page.evaluate(() => JSON.stringify(CLIENTS.map((x) => x.nom))), reqBefore = legacyReq.length;
+    await page.evaluate(() => syncPull());                                                                              // ancienne réception : désactivée (elle remplaçait les données locales)
+    await page.waitForTimeout(400);
+    ok(legacyReq.length === reqBefore && await page.evaluate((n) => JSON.stringify(CLIENTS.map((x) => x.nom)) === n, names), "ancienne réception « remplace tout » : désactivée, aucune donnée touchée, aucune requête");
+    await page.evaluate(() => syncPush()); await wait(async () => legacyReq.some((q) => q.startsWith("POST /rest/v1/crm_clients")), 10000, "ancien envoi");
+    ok(true, "ancien envoi (tables crm_*) : toujours disponible tant que le connecteur n'est pas installé");
+    await post("/__fault", { mode: "none", count: 0 });                                                                // la migration est appliquée
+    await sync(page);                                                                                                  // « Synchroniser maintenant » : nouvelle détection immédiate
 
     console.log("▶ Phase B — import initial : sauvegarde, idempotence, aucun événement pour l'historique");
     await quiet(page);

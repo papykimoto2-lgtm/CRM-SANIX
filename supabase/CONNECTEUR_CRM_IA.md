@@ -125,7 +125,7 @@ L'import initial n'émet **aucun** événement (pas de mission pour l'historique
 
 ## 6. Mise en service (ordre)
 
-1. Fusionner la PR (Vercel déploie le CRM avec `shared/crm-connector.js`).
+1. Fusionner la PR (Vercel déploie le CRM avec `shared/crm-connector.js`). **Fusionner avant la migration est sans risque** : le connecteur détecte l'absence des fonctions SQL (404 `PGRST202`) et se met en veille (pilulier « Local · connecteur serveur absent », aucune rafale de requêtes, une sauvegarde locale par jour au plus) ; l'ancien envoi (tables `crm_*`) reste disponible, l'ancienne réception « remplace tout » est désactivée dans tous les cas ; le CRM enregistre en local comme avant. Dès que la migration est appliquée, la reprise est automatique (nouvelle détection au plus 5 min après, ou tout de suite par « Synchroniser maintenant ») : fiches créées pendant la veille incluses dans l'import initial (importées comme historique, sans mission).
 2. Appliquer `20261111000000_crm_ai_connector.sql` (SQL Editor, ou `setup_all.sql` régénéré). Planification : le script crée `crm-ai-events` (chaque minute) et `crm-ai-purge` si `pg_cron` est actif.
 3. Ouvrir le CRM, connecter l'agent IA (opérateur) : sauvegarde locale, import initial, puis synchronisation continue. Vérifier le pilulier : « Synchronisé ».
 4. Une fois **tous** les navigateurs mis à jour : exécuter `supabase/lockdown_crm_legacy.sql` (supprime l'accès public aux anciennes tables).
@@ -143,7 +143,7 @@ Retour arrière : désactiver la planification (`select cron.unschedule('crm-ai-
 | `crm_connector_test.ts` (18, PostgreSQL réel) | droits et RLS, import idempotent, scénarios 1 à 9, événements CRM, tombstones, curseur, tableau de bord, isolation du moteur, XSS | 18 réussis |
 | `crm_agents_loop_test.ts` (PostgreSQL réel, **vrai moteur et vrais outils des agents**, seul le modèle de langage est scripté) | prospect du CRM → qualification (`update_prospect`, `set_stage`) → rendez-vous (`list_free_slots`, `book_appointment`) → compte rendu (`record_appointment_report`) → offre (`create_offer`, grille officielle) → tout apparaît dans le CRM ; garde-fous de l'outil (avant le rendez-vous, doublon, trop court, hors périmètre) | 1 réussi |
 | Suite Deno complète (moteur, ventes, présence, rapports + connecteur) | non-régression | 44 réussis |
-| `tests/crm_connector_test.js` (CRM réel dans Chromium → HTTP → PostgreSQL réel) | import et sauvegarde, scénarios 1 à 9 avec coupure réseau, panne 503, réponse perdue | 36 contrôles |
+| `tests/crm_connector_test.js` (CRM réel dans Chromium → HTTP → PostgreSQL réel) | mode dormant (migration absente), import et sauvegarde, scénarios 1 à 9 avec coupure réseau, panne 503, réponse perdue | 43 contrôles |
 
 ## 8. Limites connues
 

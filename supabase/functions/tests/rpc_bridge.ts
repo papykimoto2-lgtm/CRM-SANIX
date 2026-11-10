@@ -2,7 +2,7 @@
 // (rôle authenticated + jwt.sub) et l'émulation de pg_cron (traitement des événements CRM ↔ IA toutes les 400 ms). Sert au test de bout en bout du CRM
 // (tests/crm_connector_test.js : navigateur réel → HTTP → SQL réel). Jamais déployée.
 //   deno run --allow-net --allow-env --allow-read rpc_bridge.ts   (variables : TEST_PG_PORT, BRIDGE_PORT)
-// Routes de test : POST /__sql {text, params} (SQL en tant que service), POST /__sql_as {text, uid} (identité d'un opérateur), POST /__fault {mode: "fail" | "drop", count, status}, POST /__cron {on}, POST /__stop.
+// Routes de test : POST /__sql {text, params} (SQL en tant que service), POST /__sql_as {text, uid} (identité d'un opérateur), POST /__fault {mode: "fail" | "drop" | "absent", count, status} ("absent" : fonctions SQL introuvables, 404 PGRST202, comme une base sans la migration), POST /__cron {on}, POST /__stop.
 import pg from "npm:pg@8.13.1";
 
 const { Pool, types } = pg;
@@ -68,6 +68,7 @@ const server = Deno.serve({ port: Number(Deno.env.get("BRIDGE_PORT") ?? 0), host
   const uid = TOKENS[(req.headers.get("authorization") ?? "").replace(/^Bearer /, "")];
   if (!req.headers.get("apikey") || !uid) return json({ message: "JWT invalid", code: "PGRST301" }, 401);
   calls++;
+  if (fault && fault.count > 0 && fault.mode === "absent") { fault.count--; return json({ code: "PGRST202", message: `Could not find the function public.${m[1]} in the schema cache` }, 404); }
   if (fault && fault.count > 0 && fault.mode === "fail") { fault.count--; return json({ message: "Service indisponible (panne simulée)" }, fault.status ?? 503); }
   const body = await req.json().catch(() => ({}));
   try {
