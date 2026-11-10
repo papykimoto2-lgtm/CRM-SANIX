@@ -13,11 +13,12 @@ const STAGES = [
 ];
 const LABEL = Object.fromEntries(STAGES);
 const money = n => `${num(n)} FCFA`;
-let prospects=[], products=[], offers=[], selected=null, filter={q:"",stage:"",owner:""};
+const PAGE=50, MAX_ROWS=1000;   // affichage par pages de 50 ; la base est lue jusqu'à 1 000 prospects
+let prospects=[], products=[], offers=[], selected=null, filter={q:"",stage:"",owner:""}, shown=PAGE;
 
 export async function loadSales() {
   const [p, pr, o] = await Promise.all([
-    q(S.sb.from("ai_prospects").select("id,crm_client_id,entreprise,secteur,ville,pays,decideur,telephone,whatsapp,email,stage,score,priorite,potentiel_fcfa,produits_recommandes,owner_id,opt_out,next_action_at,last_outbound_at,last_inbound_at,created_at,resume_ia").order("updated_at",{ascending:false}).limit(500)),
+    q(S.sb.from("ai_prospects").select("id,crm_client_id,entreprise,secteur,ville,pays,decideur,telephone,whatsapp,email,stage,score,priorite,potentiel_fcfa,produits_recommandes,owner_id,opt_out,next_action_at,last_outbound_at,last_inbound_at,created_at,resume_ia").order("updated_at",{ascending:false}).limit(MAX_ROWS)),
     q(S.sb.from("ai_products").select("id,nom,marche_cible,actif").eq("actif",true).order("nom")),
     q(S.sb.from("ai_offers").select("id,reference,prospect_id,product_id,total_ht,total_ttc,statut,created_at").order("created_at",{ascending:false}).limit(100)),
   ]);
@@ -27,7 +28,7 @@ const stageOptions = (v) => STAGES.map(([k,l])=>html`<option value="${k}" ${v===
 const productName = id => products.find(p=>p.id===id)?.nom ?? id ?? "—";
 
 export function renderSales(main) {
-  const total=prospects.length, qualified=prospects.filter(p=>(p.score??0)>=60).length;
+  const total=prospects.length, capped=total>=MAX_ROWS, qualified=prospects.filter(p=>(p.score??0)>=60).length;
   const active=prospects.filter(p=>!["perdu","en_veille","marche_gagne","client_fidelise"].includes(p.stage)).length;
   const potential=prospects.reduce((s,p)=>s+Number(p.potentiel_fcfa||0),0);
   const qtxt=filter.q.toLowerCase();
@@ -38,7 +39,7 @@ export function renderSales(main) {
       <div class="actions"><button class="btn" type="button" data-act="sales-refresh">Actualiser</button><button class="btn pri" type="button" data-act="sales-new">＋ Nouveau prospect</button></div>
     </div>
     <div class="grid g4" style="margin:12px 0">
-      <div class="card kpi"><b>${total}</b><span>Prospects suivis</span></div>
+      <div class="card kpi"><b>${capped?`${total}+`:total}</b><span>Prospects suivis</span></div>
       <div class="card kpi"><b>${active}</b><span>Pipeline actif</span></div>
       <div class="card kpi"><b>${qualified}</b><span>Qualifiés (score ≥ 60)</span></div>
       <div class="card kpi"><b>${money(potential)}</b><span>Potentiel commercial</span></div>
@@ -48,7 +49,7 @@ export function renderSales(main) {
       <select id="sales-stage" aria-label="Filtrer par étape"><option value="">Toutes les étapes</option>${stageOptions(filter.stage)}</select>
     </div>
     <div class="scroll"><table class="tbl"><thead><tr><th>Entreprise / Contact</th><th>Produit</th><th>Étape</th><th>Score</th><th>Potentiel</th><th>Prochaine action</th><th></th></tr></thead><tbody>
-    ${raw(rows.map(p=>html`<tr>
+    ${raw(rows.slice(0,shown).map(p=>html`<tr>
       <td><b>${p.entreprise}</b><div class="small muted">${[p.secteur,p.ville].filter(Boolean).join(" · ")||"—"} · ${p.decideur||"Contact non renseigné"}</div><div class="small muted">${p.email||p.whatsapp||p.telephone||""}${p.crm_client_id?html` · CRM #${p.crm_client_id}`:""}</div></td>
       <td class="small">${(p.produits_recommandes??[]).map(productName).join(", ")||"À déterminer"}</td>
       <td><select data-sales-stage data-id="${p.id}" aria-label="Étape de ${p.entreprise}">${stageOptions(p.stage)}</select></td>
@@ -58,10 +59,12 @@ export function renderSales(main) {
       <td><button class="btn sm" type="button" data-act="sales-open" data-id="${p.id}">Ouvrir</button></td>
     </tr>`).join("")||html`<tr><td colspan="7" class="muted">Aucun prospect correspondant.</td></tr>`.s)}
     </tbody></table></div>
+    ${rows.length>shown?html`<p style="text-align:center;margin:10px 0"><button class="btn" type="button" data-act="sales-more">Afficher plus (${rows.length-shown} restants)</button></p>`:""}
+    ${capped?html`<p class="small muted">Affichage limité aux ${MAX_ROWS} prospects les plus récents : les indicateurs ne portent que sur ceux-ci.</p>`:""}
     <p class="small muted" style="margin-top:10px">Le rattachement CRM utilise l'identifiant numérique du client (<code>crm_client_id</code>). Les données commerciales restent dans les tables SANIX AI SALES ; aucune table client du CRM principal n'est modifiée automatiquement.</p>
   </section>`.s;
-  $("#sales-q").oninput=e=>{filter.q=e.target.value;renderSales(main);const el=$("#sales-q");el.focus();el.setSelectionRange(filter.q.length,filter.q.length);};
-  $("#sales-stage").onchange=e=>{filter.stage=e.target.value;renderSales(main);};
+  $("#sales-q").oninput=e=>{filter.q=e.target.value;shown=PAGE;renderSales(main);const el=$("#sales-q");el.focus();el.setSelectionRange(filter.q.length,filter.q.length);};
+  $("#sales-stage").onchange=e=>{filter.stage=e.target.value;shown=PAGE;renderSales(main);};
 }
 
 function newProspectForm() {
@@ -123,6 +126,7 @@ export async function salesAction(el) {
   if(el.dataset.act==="sales-new") return newProspectForm();
   if(el.dataset.act==="sales-open") return openProspect(id);
   if(el.dataset.act==="sales-refresh"){await loadSales();renderSales($("#main"));return;}
+  if(el.dataset.act==="sales-more"){shown+=PAGE;renderSales($("#main"));return;}
   if(el.dataset.act==="sales-qualify"||el.dataset.act==="sales-contact"){
     el.disabled=true;
     try{const {data,error}=await S.sb.functions.invoke("ai-sales-director",{body:{action:el.dataset.act==="sales-qualify"?"qualifier":"contacter",prospect_id:id}});

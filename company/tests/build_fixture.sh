@@ -13,6 +13,7 @@ $P -d vc_ui -f fixture.sql -f fixture_presence.sql >/dev/null
   'ai_report_settings', (select json_agg(t) from ai_report_settings t), 'ai_report_recipients', (select json_agg(t) from ai_report_recipients t), 'ai_daily_reports', (select json_agg(t) from ai_daily_reports t),
   'ai_agent_charters', (select json_agg(t) from ai_agent_charters t), 'ai_operators', (select json_agg(t) from ai_operators t), 'ai_prospects', (select json_agg(t) from ai_prospects t),
   'ai_kpis', (select coalesce(json_agg(t), '[]') from ai_kpis t), 'ai_governance', (select json_agg(t) from ai_governance t),
+  'ai_products', (select json_agg(t) from ai_products t), 'ai_offers', (select coalesce(json_agg(t), '[]') from ai_offers t),
   'ai_agent_events', (select coalesce(json_agg(t), '[]') from ai_agent_events t), 'ai_agent_communications', (select coalesce(json_agg(t), '[]') from ai_agent_communications t),
   'ai_messages', (select coalesce(json_agg(t), '[]') from ai_messages t), 'ai_actions', (select coalesce(json_agg(t), '[]') from (select * from ai_actions where action = 'send_message') t),
   'rpc', json_build_object('ai_budget_status', ai_budget_status(), 'ai_agent_stats', (select json_agg(t) from ai_agent_stats(now() - interval '7 days', now()) t))

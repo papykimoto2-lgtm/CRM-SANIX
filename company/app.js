@@ -438,6 +438,7 @@ const ACT = {
   "sales-new": (el) => SALES.salesAction(el),
   "sales-open": (el) => SALES.salesAction(el),
   "sales-refresh": (el) => SALES.salesAction(el),
+  "sales-more": (el) => SALES.salesAction(el),
   "sales-qualify": (el) => SALES.salesAction(el),
   "sales-contact": (el) => SALES.salesAction(el),
   "tab": (el) => go(el.dataset.id),

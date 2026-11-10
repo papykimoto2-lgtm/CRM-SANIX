@@ -76,6 +76,7 @@
       window.__emit("ai_agent_tasks", "INSERT", t);
       return { data: { task_id: t.id, agent: ag.nom }, error: null };
     }
+    if (fn === "ai-sales-director" && ["qualifier", "contacter"].includes(body.action)) return { data: { ok: true }, error: null };
     if (body.action === "report_now" || body.action === "report_resend") return { data: { id: uid(), statut: "envoye", envoyes: ["president@sanix-africa.ci"] }, error: null };
     return { data: null, error: { message: "action inconnue", context: { json: async () => ({ error: "action inconnue" }) } } };
   };
