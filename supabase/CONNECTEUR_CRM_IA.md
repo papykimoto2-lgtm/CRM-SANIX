@@ -10,6 +10,7 @@ Le moteur IA (25 agents, missions, bureau 3D, bureau du Président) n'est pas mo
 | Service navigateur du CRM | `shared/crm-connector.js` (chargé par `index.html`) |
 | Interface bureau 3D / Président | `company/office_panel.js`, `company/app.js`, `company/state.js` |
 | Tests SQL (PostgreSQL réel) | `supabase/functions/tests/crm_connector_test.ts` |
+| Boucle réelle avec le moteur et les outils des agents (modèle scripté) | `supabase/functions/tests/crm_agents_loop_test.ts` |
 | Test de bout en bout (CRM réel + PostgreSQL réel) | `tests/crm_connector_test.js` + `supabase/functions/tests/rpc_bridge.ts` |
 
 ## 1. Phase A — audit exact du CRM (`index.html`, 16 545 lignes)
@@ -100,6 +101,8 @@ Tables SANIX AI réutilisées (aucune dupliquée) : `ai_prospects` (+ `crm_rid`,
 | | `ia.mission.assigned` / `.completed` | `ai_agent_tasks` avec `prospect_id` | historique du dossier, compte rendu |
 | | `ia.alert.raised` | `ai_incidents` (attention/critique), mission échouée ou bloquée | alerte dans le dossier et dans le bureau du Président |
 
+La consigne de chaque mission créée par le connecteur (ou par `crm_assign_mission`) contient `prospect_id = <uuid>` : le moteur l'ajoute au périmètre de l'agent, qui peut alors agir sur le dossier sans le rechercher.
+
 L'import initial n'émet **aucun** événement (pas de mission pour l'historique). Les écritures de l'IA dans le CRM (`origin = 'ia'`) n'en émettent pas non plus (pas d'écho). Une panne du connecteur ne fait jamais échouer le travail d'un agent ni la saisie du CRM (déclencheurs protégés).
 
 ## 4. Synchronisation du navigateur (`shared/crm-connector.js`)
@@ -127,6 +130,9 @@ L'import initial n'émet **aucun** événement (pas de mission pour l'historique
 3. Ouvrir le CRM, connecter l'agent IA (opérateur) : sauvegarde locale, import initial, puis synchronisation continue. Vérifier le pilulier : « Synchronisé ».
 4. Une fois **tous** les navigateurs mis à jour : exécuter `supabase/lockdown_crm_legacy.sql` (supprime l'accès public aux anciennes tables).
 5. Optionnel : `select crm_backfill_ia();` rattrape les offres, rendez-vous et prospects IA déjà existants.
+6. **Outil de compte rendu** (`record_appointment_report`, nouveau) : redéployer les fonctions Edge (`supabase/tools/deploy_functions.sh`), **puis** l'ouvrir aux deux agents concernés (les installations neuves l'ont déjà via `seed_agents.sql`) :
+   `update ai_agents set outils = array_append(outils, 'record_appointment_report') where code in ('ia_rdv_1', 'ia_nego_1') and not ('record_appointment_report' = any(outils));`
+   Sans cet outil, un agent peut réserver un rendez-vous (visible dans l'agenda du CRM) mais pas en rédiger le compte rendu.
 
 Retour arrière : désactiver la planification (`select cron.unschedule('crm-ai-events')`) ; les données du CRM restent dans les navigateurs ; aucune table existante n'a été modifiée (colonnes ajoutées, nullables).
 
@@ -135,7 +141,8 @@ Retour arrière : désactiver la planification (`select cron.unschedule('crm-ai-
 | Test | Contrôle | Résultat |
 |---|---|---|
 | `crm_connector_test.ts` (18, PostgreSQL réel) | droits et RLS, import idempotent, scénarios 1 à 9, événements CRM, tombstones, curseur, tableau de bord, isolation du moteur, XSS | 18 réussis |
-| Suite Deno complète (moteur, ventes, présence, rapports + connecteur) | non-régression | 42 réussis |
+| `crm_agents_loop_test.ts` (PostgreSQL réel, **vrai moteur et vrais outils des agents**, seul le modèle de langage est scripté) | prospect du CRM → qualification (`update_prospect`, `set_stage`) → rendez-vous (`list_free_slots`, `book_appointment`) → compte rendu (`record_appointment_report`) → offre (`create_offer`, grille officielle) → tout apparaît dans le CRM ; garde-fous de l'outil (avant le rendez-vous, doublon, trop court, hors périmètre) | 1 réussi |
+| Suite Deno complète (moteur, ventes, présence, rapports + connecteur) | non-régression | 44 réussis |
 | `tests/crm_connector_test.js` (CRM réel dans Chromium → HTTP → PostgreSQL réel) | import et sauvegarde, scénarios 1 à 9 avec coupure réseau, panne 503, réponse perdue | 36 contrôles |
 
 ## 8. Limites connues

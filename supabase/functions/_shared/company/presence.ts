@@ -65,7 +65,7 @@ export function activityFor(tool: string, input: Record<string, any>): string | 
     case "escalate_to_human": case "demander_validation": case "demander_ressources": case "attendre_sous_taches": return "attente";
     case "creer_agent": case "modifier_agent": case "changer_etat_agent": case "assigner_mission": case "evaluer_tache":
     case "convoquer_reunion": case "repondre_president": return "management";
-    case "terminer_mission": return "preparation_rapport";
+    case "terminer_mission": case "record_appointment_report": return "preparation_rapport";
     case "signaler_difficulte": return "en_difficulte";
     default: return null;
   }

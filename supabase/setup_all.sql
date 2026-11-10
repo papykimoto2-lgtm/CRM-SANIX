@@ -2280,7 +2280,9 @@ begin
             'montant', to_char(coalesce(nullif(ev.payload->>'montant', '')::numeric, public.crm_num(ev.payload->>'ttc')), 'FM999G999G999G999'),
             'solde', to_char(public.crm_num(ev.payload->>'solde'), 'FM999G999G999G999'), 'type', coalesce(ev.payload->>'type', 'rendez-vous'),
             'quand', coalesce(ev.payload->>'date', '') || ' ' || coalesce(ev.payload->>'heure', ''));
-  v_task := public.crm_make_task(rt.agent_code, rt.task_type, public.crm_tpl(rt.titre_tpl, v_vars), public.crm_tpl(rt.desc_tpl, v_vars), rt.priorite, rt.echeance_h, p.id, ev.id);
+  -- l'identifiant du prospect figure dans la consigne : le moteur l'ajoute au périmètre de l'agent (sans lui, l'agent ne pourrait pas agir sur le dossier)
+  v_task := public.crm_make_task(rt.agent_code, rt.task_type, public.crm_tpl(rt.titre_tpl, v_vars),
+              public.crm_tpl(rt.desc_tpl, v_vars) || case when p.id is not null then E'\n\nDossier SANIX AI : prospect_id = ' || p.id else '' end, rt.priorite, rt.echeance_h, p.id, ev.id);
   select * into a from public.ai_agents where id = (select agent_id from public.ai_agent_tasks where id = v_task);
   if p.id is not null then
     update public.ai_prospects set agent_id = a.id where id = p.id and (agent_id is distinct from a.id) and ev.type in ('crm.prospect.created', 'crm.client.created');
@@ -2674,7 +2676,8 @@ begin
   select * into a from public.ai_agents where id = p_agent and archived_at is null;
   if a.id is null or a.etat <> 'actif' then raise exception 'Agent indisponible' using errcode = 'P0001'; end if;
   insert into public.ai_agent_tasks(agent_id, donneur_user_id, type, titre, description, objectifs, priorite, echeance, prospect_id)
-  values (p_agent, auth.uid(), 'mission', left(btrim(p_titre), 200), left(coalesce(nullif(btrim(p_description), ''), p_titre), 8000), '[]'::jsonb,
+  values (p_agent, auth.uid(), 'mission', left(btrim(p_titre), 200),
+          left(coalesce(nullif(btrim(p_description), ''), p_titre) || case when p_prospect is not null then E'\n\nDossier SANIX AI : prospect_id = ' || p_prospect else '' end, 8000), '[]'::jsonb,
           least(greatest(coalesce(p_priorite, 3), 1), 5), case when p_echeance_h is not null then now() + make_interval(hours => p_echeance_h) end, p_prospect)
   returning id into v_id;
   return v_id;

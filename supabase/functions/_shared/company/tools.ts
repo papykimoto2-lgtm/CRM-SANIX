@@ -145,7 +145,7 @@ async function alertManager(ctx: CoCtx, agent: AgentRow, objet: string, contenu:
 }
 
 const ACTION_TOOLS = new Set(["creer_agent", "modifier_agent", "changer_etat_agent", "assigner_mission", "transmettre", "send_message",
-  "create_prospect", "update_prospect", "set_stage", "book_appointment", "create_offer", "schedule_followup", "escalate_to_human",
+  "create_prospect", "update_prospect", "set_stage", "book_appointment", "record_appointment_report", "create_offer", "schedule_followup", "escalate_to_human",
   "convoquer_reunion", "repondre_president", "evaluer_tache"]);
 
 export function allowedTools(a: AgentRow): string[] {
