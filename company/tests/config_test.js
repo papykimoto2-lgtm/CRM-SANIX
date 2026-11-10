@@ -30,22 +30,32 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
         ],
         ai_cells: [{ id: "immosuite", nom: "Cellule ImmoSuite", product_id: "immosuite", responsable_agent_id: null, actif: true }],
         ai_cell_members: [],
+        ai_segment_rules: [{ id: 1, priorite: 10, champ: "secteur", motif: "immobilier|foncier", segment: "immosuite", actif: true, note: "Secteur immobilier" },
+                           { id: 2, priorite: 20, champ: "entreprise", motif: "\\malu|menuiser", segment: "aluexpert", actif: true, note: null }],
+        ai_pilote_entonnoir: [
+          { segment: "immosuite", prospects: 95, dans_le_pilote: 20, qualifies: 0, prioritaires: 0, contactes: 0, reponses: 0, rendez_vous: 0, demonstrations: 0, offres: 0, ca_ht_crm: 7627119, cout_ia_usd: 0 },
+          { segment: "a_verifier", prospects: 103, dans_le_pilote: 0, qualifies: 0, prioritaires: 0, contactes: 0, reponses: 0, rendez_vous: 0, demonstrations: 0, offres: 0, ca_ht_crm: 0, cout_ia_usd: 0 },
+          { segment: "hors_perimetre", prospects: 197, dans_le_pilote: 0, qualifies: 0, prioritaires: 0, contactes: 0, reponses: 0, rendez_vous: 0, demonstrations: 0, offres: 0, ca_ht_crm: 0, cout_ia_usd: 0 }],
+        ai_pilote: [{ prospect_id: "11111111-1111-1111-1111-111111111111", product_id: "immosuite", raison: "Sélection automatique : e-mail et téléphone", ai_prospects: { entreprise: "Promoteur <b>Test</b>", secteur: "Immobilier", telephone: "+2250700000001", email: "a@b.ci" } }],
       };
       window.__DB = DB; window.__RPC = [];
       const builder = (t) => { const api = { select: () => api, order: () => api, then: (res, rej) => Promise.resolve({ data: DB[t], error: null }).then(res, rej) }; return api; };
       const apply = (n, a) => {
         if (n === "ai_cfg_save_product") { const p = DB.ai_products.find((x) => x.id === a.p_id); if (p) Object.assign(p, a.p); else DB.ai_products.push({ id: a.p_id, actif: false, ...a.p }); }
         if (n === "ai_cfg_set_member") { DB.ai_cell_members = DB.ai_cell_members.filter((m) => !(m.cell_id === a.p_cell && m.role_code === a.p_role && m.agent_id === a.p_agent)); if (a.p_on) DB.ai_cell_members.push({ cell_id: a.p_cell, role_code: a.p_role, agent_id: a.p_agent, ordre: 0 }); }
+        if (n === "ai_segmenter_prospects") return a.p_appliquer ? { applique: true, fiches_modifiees: 14, segments_calcules: { immosuite: 95 } } : { applique: false, segments_calcules: { immosuite: 95, aluexpert: 108, a_verifier: 103, hors_perimetre: 198 }, deja_travailles: 0, choix_manuels: 0 };
+        if (n === "ai_choisir_pilote") return { immosuite: { quota: a.p_quotas.immosuite, ajoutes: 20, manque: 0 }, aluexpert: { quota: 20, ajoutes: 20, manque: 0 }, avicosuite: { quota: 10, ajoutes: 1, manque: 9 } };
+        if (n === "ai_cfg_save_segment_rule" && a.p.id) { const r = DB.ai_segment_rules.find((x) => x.id === a.p.id); if (r) Object.assign(r, a.p); }
         return { ok: true };
       };
       S.sb = new Proxy(real, { get(t, k) {
         if (k === "from") return (tb) => (DB[tb] ? builder(tb) : t.from(tb));
-        if (k === "rpc") return (n, a) => { if (n.startsWith("ai_cfg_")) { window.__RPC.push({ n, a }); return Promise.resolve({ data: apply(n, a), error: null }); } return t.rpc(n, a); };
+        if (k === "rpc") return (n, a) => { if (n.startsWith("ai_cfg_") || ["ai_segmenter_prospects", "ai_choisir_pilote"].includes(n)) { window.__RPC.push({ n, a }); return Promise.resolve({ data: apply(n, a), error: null }); } return t.rpc(n, a); };
         const v = Reflect.get(t, k); return typeof v === "function" ? v.bind(t) : v;
       } });
     });
     const rpcs = () => page.evaluate(() => window.__RPC);
-    const body = () => page.locator("#main").innerText();
+    const body = async () => (await page.locator("#main").innerText()).replace(/[\u202f\u00a0]/g, " ");
 
     console.log("▶ Onglet Paramétrage (direction)");
     ok(await page.locator("#tabs button[data-id=cfg]").count() === 1, "onglet « Paramétrage » visible pour la direction");
@@ -100,6 +110,33 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     await page.fill('#cfg-form [name=outils]', "update_prospect, set_stage, get_prospect"); await page.click('#cfg-form button[type=submit]'); await page.waitForTimeout(400);
     r = (await rpcs()).at(-1);
     ok(r.n === "ai_cfg_save_role" && r.a.p.code === "qualification" && r.a.p.outils.length === 3, "modèle de poste modifié");
+    console.log("▶ Pilote : segmentation, sélection, entonnoir");
+    await page.evaluate(() => { window.confirm = () => true; });
+    await page.click('button[data-act="cfg-sec"][data-sec="pilote"]'); await page.waitForTimeout(300);
+    ok((await body()).includes("Entonnoir par logiciel") && (await body()).includes("ImmoSuite ERP") && (await body()).includes("Hors périmètre commercial actuel") && (await body()).includes("À vérifier"), "entonnoir par segment : logiciels, à vérifier, hors périmètre");
+    ok((await body()).includes("7 627 119"), "ventes du CRM (HT) rapprochées par logiciel");
+    ok(await page.evaluate(() => window.__XSS === undefined) && !(await page.locator("#main b", { hasText: "Test" }).count()), "nom de prospect : échappé");
+    ok((await body()).includes("immobilier|foncier") && (await body()).includes("Règles de segmentation"), "règles de segmentation affichées");
+    await page.click('button[data-act="cfg-seg-preview"]'); await page.waitForTimeout(300);
+    r = (await rpcs()).at(-1);
+    ok(r.n === "ai_segmenter_prospects" && r.a.p_appliquer === false && (await body()).includes("rien n'est enregistré"), "aperçu : fonction appelée sans écriture, répartition affichée");
+    await page.click('button[data-act="cfg-seg-apply"]'); await page.waitForTimeout(400);
+    r = (await rpcs()).filter((c) => c.n === "ai_segmenter_prospects").at(-1);
+    ok(r.a.p_appliquer === true, "application de la segmentation demandée après confirmation");
+    await page.click('button[data-act="cfg-rule-toggle"][data-id="2"]'); await page.waitForTimeout(300);
+    r = (await rpcs()).at(-1);
+    ok(r.n === "ai_cfg_save_segment_rule" && r.a.p.id === 2 && r.a.p.actif === false, "règle désactivée sans toucher au code");
+    await page.click('button[data-act="cfg-rule-new"]'); await page.waitForTimeout(200);
+    await page.fill('#cfg-form [name=motif]', "poulet|ferme"); await page.selectOption('#cfg-form [name=segment]', "immosuite"); await page.fill('#cfg-form [name=priorite]', "12");
+    await page.click('#cfg-form button[type=submit]'); await page.waitForTimeout(400);
+    r = (await rpcs()).at(-1);
+    ok(r.n === "ai_cfg_save_segment_rule" && r.a.p.motif === "poulet|ferme" && r.a.p.priorite === 12 && r.a.p.champ === "entreprise", "nouvelle règle enregistrée");
+    await page.fill('#cfg-pilote-form [name=q_immosuite]', "20"); await page.click('#cfg-pilote-form button[type=submit]'); await page.waitForTimeout(400);
+    r = (await rpcs()).filter((c) => c.n === "ai_choisir_pilote").at(-1);
+    ok(r.a.p_quotas.immosuite === 20 && !("aluexpert" in r.a.p_quotas), "sélection du pilote : quotas des seuls logiciels ACTIFS (AluExpert a été désactivé plus haut)");
+    await page.click('button[data-act="cfg-pilote-del"]'); await page.waitForTimeout(300);
+    r = (await rpcs()).at(-1);
+    ok(r.n === "ai_cfg_pilote_set" && r.a.p_on === false, "retrait d'un prospect du pilote");
     ok(errors.filter((e) => !/Failed to load resource|favicon/.test(e)).length === 0, "aucune erreur JavaScript" + (errors.length ? " : " + errors.slice(0, 3).join(" | ") : ""));
     console.log("\nParamétrage : TOUT EST OK");
   } finally { await browser.close(); server.close && server.close(); }
