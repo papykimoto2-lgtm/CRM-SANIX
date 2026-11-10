@@ -2,7 +2,7 @@
 //  {action:"mission", titre, consigne, secteur, ville, objectif, product_id?}  → Lead Hunter (opérateur)
 //  {action:"qualifier"|"contacter", prospect_id}                              → opérateur
 //  {action:"tick"}  + en-tête x-cron-secret                                    → relances dues (pg_cron / scheduler)
-import { audit, cors, db, env, HttpError, json, requireOperator, safeEqual } from "../_shared/core.ts";
+import { audit, cors, cronSecret, db, env, HttpError, json, requireOperator, safeEqual } from "../_shared/core.ts";
 import { runAgent } from "../_shared/agent.ts";
 import { BudgetError, LlmKeyMissingError, TransientLlmError } from "../_shared/llm.ts";
 
@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
 
     if (body.action === "tick") {
-      if (!safeEqual(req.headers.get("x-cron-secret") ?? "", env("CRON_SECRET"))) throw new HttpError(401, "Non autorisé");
+      if (!safeEqual(req.headers.get("x-cron-secret") ?? "", await cronSecret())) throw new HttpError(401, "Non autorisé");
       return json(req, await tick());
     }
 

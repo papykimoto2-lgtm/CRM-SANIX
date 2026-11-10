@@ -49,6 +49,19 @@ function safeEqual(a, b) {
   for (let i = 0; i < ea.length; i++) r |= ea[i] ^ eb[i];
   return r === 0;
 }
+var _cron = null;
+async function cronSecret() {
+  if (_cron && Date.now() - _cron.at < 3e4) return _cron.v;
+  let v = "";
+  try {
+    const { data } = await db().rpc("ai_cron_secret");
+    if (typeof data === "string") v = data;
+  } catch {
+  }
+  if (!v) v = env("CRON_SECRET");
+  _cron = { v, at: Date.now() };
+  return v;
+}
 var HttpError = class extends Error {
   constructor(status, message) {
     super(message);
@@ -2939,7 +2952,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action ?? "");
     if (action === "tick" || action === "report_tick") {
-      if (!safeEqual(req.headers.get("x-cron-secret") ?? "", env("CRON_SECRET"))) throw new HttpError(401, "Non autoris\xE9");
+      if (!safeEqual(req.headers.get("x-cron-secret") ?? "", await cronSecret())) throw new HttpError(401, "Non autoris\xE9");
       if (action === "tick") {
         const { work, ...res } = await tickCompany();
         EdgeRuntime.waitUntil(work);

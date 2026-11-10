@@ -64,6 +64,25 @@ export function safeEqual(a: string, b: string): boolean {
   return r === 0;
 }
 
+let _cron: { v: string; at: number } | null = null;
+/**
+ * Secret du planificateur (en-tête x-cron-secret) : lu dans le Vault par la fonction SQL ai_cron_secret() (réservée au service,
+ * créée par supabase/schedule_cron.sql), donc rien à recopier dans les secrets Edge. Repli : secret Edge CRON_SECRET (installations sans Vault).
+ * Mémorisé 30 s : un flot de requêtes non authentifiées ne sollicite pas la base à chaque appel.
+ */
+export async function cronSecret(): Promise<string> {
+  if (_cron && Date.now() - _cron.at < 30_000) return _cron.v;
+  let v = "";
+  try {
+    const { data } = await db().rpc("ai_cron_secret");
+    if (typeof data === "string") v = data;
+  } catch { /* Vault absent : repli sur le secret Edge */ }
+  if (!v) v = env("CRON_SECRET");
+  _cron = { v, at: Date.now() };
+  return v;
+}
+export function resetCronSecretCache(): void { _cron = null; }
+
 export class HttpError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }

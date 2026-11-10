@@ -1,7 +1,7 @@
 // SANIX AI VIRTUAL COMPANY — point d'entrée unique.
 //  Président (JWT opérateur « direction ») : instruction · assign_mission · request_report · report_now · report_resend
 //  Planificateur (x-cron-secret)           : tick (chaque minute) · report_tick (toutes les 5 minutes)
-import { audit, clip, cors, db, env, errMsg, HttpError, json, requireOperator, safeEqual } from "../_shared/core.ts";
+import { audit, clip, cors, cronSecret, db, env, errMsg, HttpError, json, requireOperator, safeEqual } from "../_shared/core.ts";
 import { BudgetError, LlmKeyMissingError, TransientLlmError } from "../_shared/llm.ts";
 import { createInstructionTask, runTask } from "../_shared/company/engine.ts";
 import { assignMission, requestReport } from "../_shared/company/president.ts";
@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
     const action = String(body.action ?? "");
 
     if (action === "tick" || action === "report_tick") {
-      if (!safeEqual(req.headers.get("x-cron-secret") ?? "", env("CRON_SECRET"))) throw new HttpError(401, "Non autorisé");
+      if (!safeEqual(req.headers.get("x-cron-secret") ?? "", await cronSecret())) throw new HttpError(401, "Non autorisé");
       if (action === "tick") {
         const { work, ...res } = await tickCompany();
         EdgeRuntime.waitUntil(work);
