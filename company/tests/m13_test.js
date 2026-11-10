@@ -328,7 +328,8 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
     for (let i = 0; i < N; i++) { const c = JSON.parse(JSON.stringify(base[i % base.length])); c.id = `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`; c.code = `bulk_${i}`; c.nom = `Agent ${i + 1}`; c.manager_id = base[0].manager_id; big.ai_agents.push(c); }
     const L = await newPage(browser, { fixture: JSON.stringify(big) });
     const t0 = Date.now(); await L.page.goto(`http://localhost:${PORT}/company/?debug=1`); await L.page.waitForSelector("#app:not([hidden])");
-    await L.page.waitForFunction(() => window.__vc?.office?.stats().avatars >= 170 && window.__vc.office.stats().queued === 0, null, { timeout: 40000 });
+    // Chargement progressif de 176 humains sous le rendu logiciel : 20 à 39 s mesurés selon la charge de la machine ; la durée est affichée, pas évaluée (le contrôle porte sur la file vidée).
+    await L.page.waitForFunction(() => window.__vc?.office?.stats().avatars >= 170 && window.__vc.office.stats().queued === 0, null, { timeout: 120000 });
     const ls = await ev(L.page, () => window.__vc.office.stats());
     ok(ls.avatars === 26 + N, `${ls.avatars} avatars chargés progressivement en ${((Date.now() - t0) / 1000).toFixed(1)} s`);
     ok(ls.markers > 100 && ls.markers < ls.avatars, `grande charge : ${ls.markers} avatars simplifiés, les plus pertinents restent détaillés`);
