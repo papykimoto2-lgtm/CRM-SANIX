@@ -95,6 +95,12 @@ async function loadCore() {
     q(S.sb.from("ai_approvals").select("*, ai_prospects(entreprise)").eq("statut", "en_attente").order("created_at")),
   ]);
   Object.assign(S, { agents, depts, tasks, approvals });
+  // WhatsApp en mode manuel (sans clé d'API) : messages approuvés à envoyer à la main, et ceux déjà envoyés à la main (pour saisir la réponse). Tolérant à l'absence de la migration.
+  try {
+    const sel = "id,prospect_id,contenu,created_at,meta,ai_prospects(entreprise,decideur,phone_norm,telephone,whatsapp)", base = () => S.sb.from("ai_messages").select(sel).eq("sens", "sortant").eq("canal", "whatsapp");
+    const [waQueue, waSent] = await Promise.all([q(base().eq("statut", "a_envoyer").order("created_at")), q(base().eq("statut", "envoye").order("created_at", { ascending: false }).limit(40))]);
+    S.waQueue = waQueue; S.waSent = waSent.filter((m) => m.meta?.mode === "manuel").slice(0, 12);
+  } catch { S.waQueue = []; S.waSent = []; }
   const first = !S.taskStatus.size; for (const t of tasks) noteTask(t, first);
   try { await loadOfficeMeetings(); } catch (e) { console.warn("réunions", e.message); }
   if (isDir()) {
@@ -149,7 +155,7 @@ function subscribe() {
     on("ai_agent_meetings", "*", async () => { try { await loadOfficeMeetings(); S.office?.setMeetings(S.officeMeetings); } catch (e) { console.warn("réunions", e.message); } if (S.tab === "meet") scheduleRefresh(); });
     on("ai_meeting_participants", "INSERT", async () => { try { await loadOfficeMeetings(); S.office?.setMeetings(S.officeMeetings); } catch { /* repris au prochain rafraîchissement */ } });
     on("ai_agent_tasks", "*", (p) => { if (p.new?.id) noteTask(p.new); scheduleRefresh(); });
-    for (const t of ["ai_executive_messages", "ai_approvals"]) on(t, "*", () => scheduleRefresh());
+    for (const t of ["ai_executive_messages", "ai_approvals", "ai_messages"]) on(t, "*", () => scheduleRefresh());
     ch.subscribe((status) => {
       if (status === "SUBSCRIBED") { P.setSync("live"); if (wasDown) { wasDown = false; scheduleRefresh(50); } }   // rattrapage de ce qui a été manqué
       else if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) { wasDown = true; P.setSync("reconnecting"); }
@@ -173,7 +179,7 @@ const TABS = [
 const visibleTabs = () => TABS.filter((t) => !t.dir || isDir());
 
 function renderTabs() {
-  $("#tabs").innerHTML = visibleTabs().map((t) => `<button role="tab" type="button" data-act="tab" data-id="${t.id}" aria-selected="${t.id === S.tab}">${esc(t.label)}${t.id === "valid" && S.approvals.length ? `<span class="badge">${S.approvals.length}</span>` : ""}</button>`).join("");
+  $("#tabs").innerHTML = visibleTabs().map((t) => `<button role="tab" type="button" data-act="tab" data-id="${t.id}" aria-selected="${t.id === S.tab}">${esc(t.label)}${t.id === "valid" && S.approvals.length + (S.waQueue?.length ?? 0) ? `<span class="badge">${S.approvals.length + (S.waQueue?.length ?? 0)}</span>` : ""}</button>`).join("");
 }
 async function go(tab) {
   if (!visibleTabs().some((t) => t.id === tab)) tab = "office";
@@ -284,11 +290,32 @@ function approvalCard(a) {
     <div class="small">${a.ai_prospects?.entreprise ? html`<b>${a.ai_prospects.entreprise}</b> — ` : ""}${a.motif}</div>${approvalDetail(a)}${ag ? html`<div class="small muted">Demandé par ${ag.nom}</div>` : ""}
     ${isDir() ? html`<div class="actions"><button class="btn sm ok" type="button" data-act="decide" data-id="${a.id}" data-ok="1">✔ Approuver</button><button class="btn sm bad" type="button" data-act="decide" data-id="${a.id}" data-ok="0">✖ Refuser</button></div>` : ""}</div>`;
 }
+/** Numéro prêt pour wa.me : chiffres seulement, indicatif compris (un numéro ivoirien à 10 chiffres reçoit 225). Vide si invalide. */
+const waNum = (p) => { const d = String(p?.phone_norm || p?.whatsapp || p?.telephone || "").replace(/\D/g, ""); return d.length === 10 ? "225" + d : d.length >= 11 && d.length <= 15 ? d : ""; };
+const waCard = (m) => {
+  const p = m.ai_prospects ?? {}, num = waNum(p), url = num ? `https://wa.me/${num}?text=${encodeURIComponent(m.contenu)}` : "";
+  return html`<div class="card" data-wa="${m.id}"><div><b>${p.entreprise ?? "Prospect"}</b> <span class="muted small">${num ? "+" + num : "aucun numéro WhatsApp"}${p.decideur ? " · " + p.decideur : ""}</span></div>
+    <pre class="small" style="white-space:pre-wrap;font-family:inherit;margin:8px 0">${m.contenu}</pre>
+    <div class="actions">${url ? html`<a class="btn sm pri" href="${url}" target="_blank" rel="noopener noreferrer">Ouvrir dans WhatsApp</a>` : ""}
+      <button class="btn sm ok" type="button" data-act="wa-sent" data-id="${m.id}">J'ai envoyé</button><button class="btn sm bad" type="button" data-act="wa-cancel" data-id="${m.id}">Ne pas envoyer</button></div></div>`;
+};
+function waSection() {
+  const q1 = S.waQueue ?? [], sent = S.waSent ?? [];
+  if (!q1.length && !sent.length) return html``;
+  return html`<h3 style="margin:16px 0 4px">📲 WhatsApp à envoyer (${q1.length})</h3>
+    <p class="small muted">Sans clé d'API, rien ne part automatiquement : ouvrez WhatsApp avec le message prérempli, envoyez-le depuis votre propre numéro, puis cliquez sur « J'ai envoyé ».</p>
+    ${q1.length ? html`<div class="grid g2">${q1.map(waCard)}</div>` : html`<div class="card muted">Aucun message en attente d'envoi.</div>`}
+    ${sent.length ? html`<h4 style="margin:12px 0 4px">Envoyés à la main — saisir la réponse du prospect</h4><div class="grid g2">${sent.map((m) => html`<div class="card"><b>${m.ai_prospects?.entreprise ?? "Prospect"}</b> <span class="muted small">${fmtDT(m.meta?.envoye_le ?? m.created_at)}</span>
+      <div class="actions" style="margin-top:6px"><button class="btn sm" type="button" data-act="wa-reply" data-prospect="${m.prospect_id}">Saisir la réponse reçue</button></div></div>`)}</div>` : ""}`;
+}
 function renderValid(main) {
   const groups = {}; for (const a of S.approvals) (groups[a.type] ??= []).push(a);
-  main.innerHTML = html`<section class="panel"><h2>Validations en attente</h2><p class="sub">Décisions qui dépassent les délégations des collaborateurs IA.</p>
+  main.innerHTML = html`<section class="panel"><h2>Validations en attente</h2><p class="sub">Décisions qui dépassent les délégations des collaborateurs IA.</p>${waSection()}
     ${Object.keys(groups).length ? Object.entries(groups).map(([t, l]) => html`<div style="display:flex;align-items:center;gap:10px;margin:16px 0 4px"><h3 style="margin:0">${APP_LABEL[t] ?? t} (${l.length})</h3>
       ${isDir() && l.length > 1 ? html`<button class="btn sm ok" type="button" data-act="decide-batch" data-type="${t}" data-ok="1">Tout approuver</button><button class="btn sm bad" type="button" data-act="decide-batch" data-type="${t}" data-ok="0">Tout refuser</button>` : ""}</div><div class="grid g2" data-paginate data-pg-size="10" data-pg-sizes="10,25,50">${l.map(approvalCard)}</div>`) : html`<div class="card muted">Aucune validation en attente. 👌</div>`}</section>`.s;
+}
+async function waAct(fn, args, msg) {
+  try { const r = await q(S.sb.rpc(fn, args)); toast(r?.desinscrit ? "Réponse enregistrée : prospect désinscrit (STOP)" : msg, "ok"); await loadCore(); render(); } catch (e) { toast(e.message, "bad"); }
 }
 async function decide(ids, ok, commentaire = null) {
   try {
@@ -481,6 +508,18 @@ const ACT = {
     const c = ok ? null : await askText("Refuser la demande", "Motif (transmis à l'agent)", { requis: false });
     if (!ok && c === null) return;
     await decide([el.dataset.id], ok, c || null);
+  },
+  "wa-sent": async (el) => {
+    const note = await askText("Message envoyé", "Note (facultatif)", { requis: false }); if (note === null) return;
+    await waAct("ai_wa_marquer_envoye", { p_id: Number(el.dataset.id), p_note: note || null }, "Envoi enregistré");
+  },
+  "wa-cancel": async (el) => {
+    const motif = await askText("Ne pas envoyer ce message", "Motif (facultatif)", { requis: false }); if (motif === null) return;
+    await waAct("ai_wa_annuler", { p_id: Number(el.dataset.id), p_motif: motif || null }, "Message abandonné");
+  },
+  "wa-reply": async (el) => {
+    const t = await askText("Réponse reçue", "Texte de la réponse du prospect (tel qu'il l'a écrit)"); if (!t) return;
+    await waAct("ai_wa_reponse", { p_prospect: el.dataset.prospect, p_texte: t }, "Réponse enregistrée");
   },
   "decide-batch": async (el) => {
     const ids = S.approvals.filter((a) => a.type === el.dataset.type).map((a) => a.id), ok = el.dataset.ok === "1";

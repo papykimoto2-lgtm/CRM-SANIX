@@ -41,7 +41,7 @@
       if (s.op === "select") for (const [c, asc] of [...s.orders].reverse()) out = [...out].sort((a, b) => (asc ? 1 : -1) * cmp(a[c], b[c]));
       if (s.lim !== null) out = out.slice(0, s.lim);
       if (s.op === "select" || s.ret) {
-        if (s.cols.includes("ai_prospects(")) out = out.map((r) => ({ ...r, ai_prospects: r.prospect_id ? { entreprise: T("ai_prospects").find((p) => p.id === r.prospect_id)?.entreprise ?? null } : null }));
+        if (s.cols.includes("ai_prospects(")) out = out.map((r) => ({ ...r, ai_prospects: r.prospect_id ? (({ entreprise, decideur, phone_norm, telephone, whatsapp }) => ({ entreprise: entreprise ?? null, decideur, phone_norm, telephone, whatsapp }))(T("ai_prospects").find((p) => p.id === r.prospect_id) ?? {}) : null }));
         else if (s.cols !== "*") { const cols = s.cols.split(",").map((c) => c.trim()); out = out.map((r) => Object.fromEntries(cols.map((c) => [c, r[c]]))); }
       }
       if (s.head) return { data: null, error: null, count: out.length };
@@ -59,6 +59,14 @@
     if (name === "ai_agent_stats") return Promise.resolve({ data: R.ai_agent_stats, error: null });
     if (name === "ai_decide_approval") { T("ai_approvals").splice(0, T("ai_approvals").length, ...T("ai_approvals").filter((a) => a.id !== args.p_id)); return Promise.resolve({ data: null, error: null }); }
     if (name === "ai_decide_approvals_batch") { T("ai_approvals").splice(0, T("ai_approvals").length, ...T("ai_approvals").filter((a) => !args.p_ids.includes(a.id))); return Promise.resolve({ data: args.p_ids.length, error: null }); }
+    // WhatsApp en mode manuel (test wa_manuel_test.js) : seulement si le jeu de données porte la table ai_messages
+    if (name.startsWith("ai_wa_") && T("ai_messages")) {
+      const m = T("ai_messages").find((x) => x.id === args.p_id);
+      if (name === "ai_wa_marquer_envoye" && m) { m.statut = "envoye"; m.meta = { ...(m.meta ?? {}), mode: "manuel", envoye_le: new Date().toISOString(), note: args.p_note }; }
+      if (name === "ai_wa_annuler" && m) { m.statut = "echec"; m.meta = { ...(m.meta ?? {}), motif: args.p_motif }; }
+      if (name === "ai_wa_reponse") T("ai_messages").push({ id: 900 + T("ai_messages").length, prospect_id: args.p_prospect, canal: "whatsapp", sens: "entrant", auteur: "prospect", contenu: args.p_texte, statut: "recu", meta: {}, created_at: new Date().toISOString() });
+      return Promise.resolve({ data: { ok: true, desinscrit: false }, error: null });
+    }
     if (name === "ai_set_agent_etat") { const a = T("ai_agents").find((x) => x.id === args.p_agent); if (a) a.etat = args.p_etat; return Promise.resolve({ data: null, error: null }); }
     // connecteur CRM ↔ IA (fonctions SQL réservées aux opérateurs) : actives seulement si le jeu de données porte un bloc « crm » (test crm_office_test.js)
     if (FX.crm && name === "crm_dashboard") return Promise.resolve({ data: FX.crm.dashboard, error: null });
