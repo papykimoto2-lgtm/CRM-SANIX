@@ -99,11 +99,53 @@
   var allowDeletes = function () { return ready && Date.now() - startedAt > 8000; };
   var startedAt = Date.now();
   /** Compare le magasin local à la dernière version synchronisée ; place les créations, modifications et suppressions dans la file. */
+  var NOSTAMP = { created_at: 1, updated_at: 1, createdAt: 1, updatedAt: 1 };
+  var withoutStamps = function (d) { var o = {}; Object.keys(d).forEach(function (k) { if (!NOSTAMP[k]) o[k] = d[k]; }); return o; };
+  var phoneKey = function (p) { return String(p || '').replace(/\D/g, '').slice(-10); };
+  /** Deux fiches locales portant le même identifiant stable bouclaient à l'envoi : le serveur fusionne une fiche locale avec celle d'un autre appareil (même nom + même téléphone),
+      l'appareil adopte l'identifiant canonique (rekey) alors qu'il a déjà reçu cette fiche, et l'une des deux est renvoyée à chaque échange sans jamais être acquittée.
+      On garde la fiche qui correspond à la dernière version synchronisée ; une copie jumelle (même nom + même téléphone pour un client, même contenu sinon) est absorbée
+      (ses échanges sont conservés, les affaires et rendez-vous qui la visaient sont rattachés à la fiche gardée) ; toute autre copie reçoit son propre identifiant : aucune donnée perdue. */
+  function dedupeRids(entity, arr) {
+    var c = STORES[entity]; if (c.idMode !== 'int') return arr;
+    var by = {}, dup = false;
+    arr.forEach(function (o) { if (o && o._rid) { var g = by[o._rid] || (by[o._rid] = []); g.push(o); if (g.length > 1) dup = true; } });
+    if (!dup) return arr;
+    var known = state.hash[entity] || {}, clients = entity === 'clients' ? arr : STORES.clients.get(), drop = [], remap = {}, remapped = false;
+    Object.keys(by).forEach(function (rid) {
+      var g = by[rid]; if (g.length < 2) return;
+      var keep = g.find(function (o) { return fnv(stable(payload(entity, o, clients))) === known[rid]; }) || g[0];
+      g.forEach(function (o) {
+        if (o === keep) return;
+        var twin = entity === 'clients' ? norm(o.nom) === norm(keep.nom) && phoneKey(o.phone) === phoneKey(keep.phone)
+                                        : stable(withoutStamps(payload(entity, o, clients))) === stable(withoutStamps(payload(entity, keep, clients)));
+        if (!twin) { o._rid = newRid(c.prefix); return; }
+        if (entity === 'clients') {
+          remap[o.id] = keep.id; remapped = true;
+          if (Array.isArray(o.interactions) && o.interactions.length) {
+            var have = {}; keep.interactions = Array.isArray(keep.interactions) ? keep.interactions : [];
+            keep.interactions.forEach(function (i) { have[[i.date, i.type, i.note].join('|')] = 1; });
+            o.interactions.forEach(function (i) { var k = [i.date, i.type, i.note].join('|'); if (!have[k]) { have[k] = 1; keep.interactions.push(i); } });
+          }
+        }
+        drop.push(o);
+      });
+    });
+    if (remapped) ['deals', 'rdv'].forEach(function (e) {
+      var list = STORES[e].get(), ch = false;
+      list.forEach(function (o) { if (o && o.clientId != null && remap[o.clientId] != null) { o.clientId = remap[o.clientId]; ch = true; } });
+      if (ch) saveLocal(e, list);
+    });
+    var out = arr.filter(function (o) { return drop.indexOf(o) < 0; });
+    saveLocal(entity, out);
+    return out;
+  }
   function scan(entity) {
     var c = STORES[entity]; if (!c) return 0;
     if (/^pil_/.test(entity) && state.noPil && Date.now() - (state.noPilAt || 0) < 600000) return 0;      // migration du pilotage absente côté serveur
     var arr; try { arr = c.get(); } catch (e) { return 0; }
     if (!Array.isArray(arr)) return 0;
+    arr = dedupeRids(entity, arr);
     var known = state.hash[entity] || (state.hash[entity] = {}), seen = {}, changed = 0, touched = false, clients = entity === 'clients' ? arr : STORES.clients.get(), nk = {};
     arr.forEach(function (o) {
       if (!o || typeof o !== 'object') return;
