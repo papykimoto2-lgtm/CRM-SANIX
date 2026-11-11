@@ -4,10 +4,10 @@
 import { $, closeModal, html, openModal, raw, toast } from "./ui.js";
 import { q, S } from "./state.js";
 
-let D = { products: [], pricing: [], aliases: [], roles: [], cells: [], members: [] }, sec = "logiciels", hooks = {};
+let D = { products: [], pricing: [], aliases: [], roles: [], cells: [], members: [], rules: [], funnel: [], pilote: [], phase3: false }, sec = "logiciels", hooks = {}, apercu = null;
 /** app.js fournit le rechargement des agents (évite une importation circulaire). */
 export const setHooks = (h) => { hooks = h; };
-const SECTIONS = [["logiciels", "💻 Logiciels"], ["equipes", "🧩 Équipes"], ["agents", "🤖 Agents"], ["roles", "🎭 Rôles"]];
+const SECTIONS = [["logiciels", "💻 Logiciels"], ["equipes", "🧩 Équipes"], ["agents", "🤖 Agents"], ["roles", "🎭 Rôles"], ["pilote", "🎯 Pilote"]];
 const lines = (a) => (a ?? []).join("\n"), csv = (a) => (a ?? []).join(", ");
 const split = (s, sep) => String(s ?? "").split(sep).map((x) => x.trim()).filter(Boolean);
 const productName = (id) => D.products.find((p) => p.id === id)?.nom ?? id ?? "—";
@@ -24,7 +24,17 @@ export async function loadConfig() {
     q(S.sb.from("ai_cells").select("*").order("nom")),
     q(S.sb.from("ai_cell_members").select("*").order("ordre")),
   ]);
-  D = { products: products ?? [], pricing: pricing ?? [], aliases: aliases ?? [], roles: roles ?? [], cells: cells ?? [], members: members ?? [] };
+  // Phase 3 (segmentation et pilote) : tolérant à l'absence de la migration, sans empêcher les autres sections
+  let rules = [], funnel = [], pilote = [], phase3 = false;
+  try {
+    [rules, funnel, pilote] = await Promise.all([
+      q(S.sb.from("ai_segment_rules").select("*").order("priorite").order("id")),
+      q(S.sb.from("ai_pilote_entonnoir").select("*").order("segment")),
+      q(S.sb.from("ai_pilote").select("prospect_id,product_id,raison,ai_prospects(entreprise,secteur,telephone,email)").order("product_id")),
+    ]);
+    phase3 = true;
+  } catch { /* migration 20261115 non appliquée */ }
+  D = { products: products ?? [], pricing: pricing ?? [], aliases: aliases ?? [], roles: roles ?? [], cells: cells ?? [], members: members ?? [], rules: rules ?? [], funnel: funnel ?? [], pilote: pilote ?? [], phase3 };
 }
 
 const rpc = async (name, args) => { try { const r = await q(S.sb.rpc(name, args)); return r ?? {}; } catch (e) { toast(e.message, "bad"); throw e; } };
@@ -33,7 +43,17 @@ async function refresh(main = $("#main")) { await loadConfig(); renderConfig(mai
 export function renderConfig(main) {
   main.innerHTML = html`<div class="head"><h2>🛠️ Paramétrage</h2><p class="muted small">Logiciels vendus, équipes, agents et rôles : tout se modifie ici, sans toucher au code. Les changements sont journalisés.</p></div>
     <div class="actions" role="tablist" style="margin-bottom:14px">${SECTIONS.map(([k, l]) => html`<button class="btn ${sec === k ? "pri" : ""}" type="button" data-act="cfg-sec" data-sec="${k}">${l}</button>`)}</div>
-    ${raw(({ logiciels: viewProducts, equipes: viewCells, agents: viewAgents, roles: viewRoles }[sec])().toString())}`.s;
+    ${raw(({ logiciels: viewProducts, equipes: viewCells, agents: viewAgents, roles: viewRoles, pilote: viewPilote }[sec])().toString())}`.s;
+  const pf = $("#cfg-pilote-form");                                           // sélection du pilote : quotas par logiciel actif
+  if (pf) pf.onsubmit = async (e) => {
+    e.preventDefault(); const f = new FormData(pf), quotas = {};
+    for (const p of D.products.filter((x) => x.actif)) quotas[p.id] = Number(f.get(`q_${p.id}`) || 0);
+    try {
+      const r = await rpc("ai_choisir_pilote", { p_quotas: quotas });
+      const manque = Object.entries(r).filter(([, v]) => v.manque > 0).map(([k, v]) => `${productName(k)} : ${v.manque} manquant(s)`);
+      toast(manque.length ? `Pilote sélectionné — ${manque.join(" ; ")}` : "Pilote sélectionné", "ok"); await refresh(main);
+    } catch { /* affiché */ }
+  };
 }
 
 // ─── Logiciels ───────────────────────────────────────────────────────────────
@@ -171,6 +191,36 @@ function roleForm(r) {
   };
 }
 
+// ─── Pilote : segmentation par logiciel, sélection, entonnoir mesuré ─────────
+const SEG_SPECIAUX = { hors_perimetre: "Hors périmètre commercial actuel", a_verifier: "À vérifier (Industrie sans indice d'activité)", non_segmente: "Non segmenté" };
+const segName = (s) => SEG_SPECIAUX[s] ?? productName(s);
+function viewPilote() {
+  if (!D.phase3) return html`<div class="card"><p class="muted">La migration <b>20261115000000_phase3_pilote.sql</b> n'est pas encore appliquée : segmentation et pilote indisponibles.</p></div>`;
+  const f = (n) => num(n), actifs = D.products.filter((p) => p.actif);
+  return html`<p class="small muted">La segmentation range chaque prospect dans le logiciel qu'il peut acheter (règles ci-dessous, modifiables), « à vérifier » ou « hors périmètre ». Rien n'est forcé : l'Industrie sans indice reste à confirmer par l'enrichissement. Le pilote prend les prospects les plus joignables, dans la limite de ce qui existe.</p>
+    <div class="card" style="margin-bottom:14px"><b>Entonnoir par logiciel (données réelles)</b><div class="scroll"><table class="tbl"><thead><tr><th>Segment</th><th class="num">Prospects</th><th class="num">Pilote</th><th class="num">Qualifiés</th><th class="num">Prioritaires</th><th class="num">Contactés</th><th class="num">Réponses</th><th class="num">RDV</th><th class="num">Démos</th><th class="num">Offres</th><th class="num">CA CRM HT</th><th class="num">Coût IA</th></tr></thead><tbody>${D.funnel.map((r) => html`<tr><td><b>${segName(r.segment)}</b></td><td class="num">${f(r.prospects)}</td><td class="num">${f(r.dans_le_pilote)}</td><td class="num">${f(r.qualifies)}</td><td class="num">${f(r.prioritaires)}</td><td class="num">${f(r.contactes)}</td><td class="num">${f(r.reponses)}</td><td class="num">${f(r.rendez_vous)}</td><td class="num">${f(r.demonstrations)}</td><td class="num">${f(r.offres)}</td><td class="num">${f(r.ca_ht_crm)}</td><td class="num">$${Number(r.cout_ia_usd ?? 0).toFixed(2)}</td></tr>`)}</tbody></table></div></div>
+    <div class="card" style="margin-bottom:14px"><div class="actions" style="justify-content:space-between"><b>Règles de segmentation</b><div class="actions"><button class="btn sm" type="button" data-act="cfg-rule-new">＋ Règle</button><button class="btn sm" type="button" data-act="cfg-seg-preview">Aperçu de la répartition</button><button class="btn sm pri" type="button" data-act="cfg-seg-apply">Appliquer</button></div></div>
+      ${apercu ? html`<p class="small" id="cfg-apercu">Aperçu (rien n'est enregistré) : ${Object.entries(apercu.segments_calcules ?? {}).map(([k, v]) => `${segName(k)} ${v}`).join(" · ")} — ${apercu.deja_travailles ?? 0} fiche(s) déjà travaillée(s) jamais modifiée(s), ${apercu.choix_manuels ?? 0} choix manuel(s) conservé(s).</p>` : ""}
+      <div class="scroll"><table class="tbl"><thead><tr><th class="num">Priorité</th><th>Champ</th><th>Motif (expression régulière, sans accents)</th><th>Segment</th><th>État</th><th></th></tr></thead><tbody>${D.rules.map((r) => html`<tr><td class="num">${r.priorite}</td><td>${r.champ}</td><td><code>${r.motif}</code><div class="small muted">${r.note ?? ""}</div></td><td>${segName(r.segment)}</td><td>${r.actif ? "Active" : "Inactive"}</td><td><button class="btn sm" type="button" data-act="cfg-rule-toggle" data-id="${r.id}">${r.actif ? "Désactiver" : "Activer"}</button></td></tr>`)}</tbody></table></div></div>
+    <div class="card"><b>Sélection du pilote (30 à 50 prospects réels)</b>
+      <form id="cfg-pilote-form" class="form" style="margin:10px 0">${actifs.map((p) => html`<label class="f">${p.nom}<input name="q_${p.id}" type="number" min="0" max="200" value="${D.pilote.filter((x) => x.product_id === p.id).length || (p.id === "avicosuite" ? 10 : 20)}"></label>`)}<div class="actions" style="align-self:end"><button class="btn pri" type="submit">Sélectionner</button></div></form>
+      <div class="scroll"><table class="tbl"><thead><tr><th>Entreprise</th><th>Logiciel</th><th>Contacts</th><th>Raison</th><th></th></tr></thead><tbody>${D.pilote.map((x) => html`<tr><td>${x.ai_prospects?.entreprise ?? "—"}</td><td>${productName(x.product_id)}</td><td>${[x.ai_prospects?.telephone ? "tél." : "", x.ai_prospects?.email ? "e-mail" : ""].filter(Boolean).join(" + ") || "—"}</td><td class="small muted">${x.raison ?? ""}</td><td><button class="btn sm" type="button" data-act="cfg-pilote-del" data-id="${x.prospect_id}">Retirer</button></td></tr>`)}</tbody></table></div>
+      ${D.pilote.length ? "" : html`<p class="muted small">Aucun prospect dans le pilote. Appliquez d'abord la segmentation, puis sélectionnez.</p>`}</div>`;
+}
+function ruleForm() {
+  const segs = [...D.products.map((p) => [p.id, p.nom]), ["hors_perimetre", SEG_SPECIAUX.hors_perimetre], ["a_verifier", SEG_SPECIAUX.a_verifier]];
+  openModal(html`<h3>Nouvelle règle de segmentation</h3><form id="cfg-form" class="form"><label class="f">Champ<select name="champ"><option value="entreprise">Nom de l'entreprise</option><option value="secteur">Secteur</option><option value="resume_ia">Résumé IA</option></select></label>
+    <label class="f">Motif (expression régulière)<input name="motif" required maxlength="300" placeholder="ex. \\mpoulet|ferme"></label>
+    <label class="f">Segment<select name="segment">${segs.map(([k, l]) => html`<option value="${k}">${l}</option>`)}</select></label>
+    <label class="f">Priorité (plus petit = d'abord)<input name="priorite" type="number" value="15"></label><label class="f" style="grid-column:1/-1">Note<input name="note" maxlength="300"></label>
+    <div class="actions" style="grid-column:1/-1"><button class="btn pri" type="submit">Enregistrer</button><button class="btn" type="button" data-act="close-modal">Annuler</button></div></form>`);
+  $("#cfg-form").onsubmit = async (e) => {
+    e.preventDefault(); const f = new FormData(e.currentTarget);
+    try { await rpc("ai_cfg_save_segment_rule", { p: { champ: f.get("champ"), motif: f.get("motif"), segment: f.get("segment"), priorite: Number(f.get("priorite")), note: f.get("note") } }); closeModal(); toast("Règle enregistrée", "ok"); apercu = null; await refresh(); } catch { /* affiché */ }
+  };
+}
+const num = (n) => (n === null || n === undefined ? "—" : Number(n).toLocaleString("fr-FR", { maximumFractionDigits: 0 }));
+
 // ─── Actions (déléguées par app.js : data-act="cfg-…" et data-act-change="cfg-…") ───
 export async function configAction(el, ev) {
   const a = el.dataset.act ?? el.dataset.actChange, id = el.dataset.id, main = $("#main");
@@ -188,5 +238,13 @@ export async function configAction(el, ev) {
     else if (a === "cfg-agent-edit") agentForm(S.agents.find((x) => x.id === id));
     else if (a === "cfg-role-new") roleForm(null);
     else if (a === "cfg-role-edit") roleForm(D.roles.find((x) => x.code === id));
+    else if (a === "cfg-rule-new") ruleForm();
+    else if (a === "cfg-rule-toggle") { const r = D.rules.find((x) => String(x.id) === id); await rpc("ai_cfg_save_segment_rule", { p: { id: Number(id), actif: !r.actif } }); apercu = null; await refresh(main); }
+    else if (a === "cfg-seg-preview") { apercu = await rpc("ai_segmenter_prospects", { p_appliquer: false }); renderConfig(main); }
+    else if (a === "cfg-seg-apply") {
+      if (!confirm("Appliquer la segmentation ? Les fiches « identifié » ou « enregistré » reçoivent leur segment et leur logiciel recommandé ; les fiches déjà travaillées et les choix manuels ne sont jamais modifiés.")) return;
+      const r = await rpc("ai_segmenter_prospects", { p_appliquer: true }); apercu = r; toast(`${r.fiches_modifiees ?? 0} fiche(s) segmentée(s)`, "ok"); await refresh(main);
+    }
+    else if (a === "cfg-pilote-del") { await rpc("ai_cfg_pilote_set", { p_prospect: id, p_on: false }); await refresh(main); }
   } catch { /* message déjà affiché par rpc() */ }
 }
