@@ -3,7 +3,7 @@
 // Garde-fous : budget (llm.ts), plafond de tours, échéance d'exécution, nombre d'essais (SQL), suspension automatique.
 import type Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { audit, clip, db, errMsg } from "../core.ts";
-import { BudgetError, callClaude, textOf, TransientLlmError } from "../llm.ts";
+import { BudgetError, callClaude, textOf, TransientLlmError, ProviderBillingError, ProviderConfigurationError } from "../llm.ts";
 import { loadPortfolio } from "../catalogue.ts";
 import { commercialRules, charterToText, COMPANY_RULES, DG_RULES, MANAGER_METHOD } from "../prompts.ts";
 import { CRM_TOOL_NAMES, type CrmCtx, uuidsIn } from "../crm_tools.ts";
@@ -299,6 +299,15 @@ async function onError(ctx: CoCtx, e: unknown): Promise<RunOutcome> {
     await release("[Système] Service IA indisponible : reprise ultérieure.", true);
     await incidentOnce("llm_indisponible", "attention", `Service IA indisponible : ${clip(e.message, 200)}`, 3 * 60e3);
     return "reportee";
+  }  if (e instanceof ProviderBillingError || e instanceof ProviderConfigurationError) {
+    const billing = e instanceof ProviderBillingError;
+    const type = billing ? "fournisseur_credits_insuffisants" : "fournisseur_authentification";
+    const note = `[Système] ${e.message} Mission mise en attente sans pénaliser ni suspendre l’agent. Corriger la configuration fournisseur puis relancer la mission.`;
+    await db().from("ai_agent_tasks").update({ statut: "bloquee", progression: await saveJournal(ctx, note) }).eq("id", task.id);
+    await db().from("ai_agents").update({ activite: "disponible" }).eq("id", agent.id).not("activite", "eq", "en_reunion");
+    await incidentOnce(type, "critique", e.message, 6 * 3600e3);
+    await publishActivity(agent.id, "disponible", task.id);
+    return "bloquee";
   }
   const msg = errMsg(e);
   console.error("runTask", agent.code, msg);

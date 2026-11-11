@@ -36,6 +36,13 @@ export async function tickCompany(): Promise<TickResult> {
   const { data: panne } = await db().from("ai_incidents").select("id").eq("type", "llm_indisponible")
     .gte("created_at", new Date(Date.now() - 3 * 60e3).toISOString()).limit(1);
   if (panne?.length) return { ...res, ignore: "Service IA indisponible : pause de 3 minutes" };
+  // Pause courte globale en cas de problème de facturation ou d’authentification fournisseur.
+  const { data: fournisseurEnErreur } = await db().from("ai_incidents").select("id")
+    .in("type", ["fournisseur_credits_insuffisants", "fournisseur_authentification"])
+    .gte("created_at", new Date(Date.now() - 10 * 60e3).toISOString()).limit(1);
+  if (fournisseurEnErreur?.length) {
+    return { ...res, ignore: "Compte IA en vérification : corriger la facturation ou la clé fournisseur avant reprise." };
+  }
 
   const deadline = Date.now() + runBudgetMs();
   const [{ data: reunions }, { data: missions }] = await Promise.all([

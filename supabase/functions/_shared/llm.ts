@@ -33,6 +33,10 @@ export function costUsd(model: string, u: UsageLike): number {
 export class BudgetError extends Error {}
 /** Panne passagère du fournisseur (réseau, 429, 5xx) : la mission est reprise plus tard, sans faute de l'agent. */
 export class TransientLlmError extends Error {}
+/** Compte fournisseur sans crédit ou facturation inactive : jamais une faute de l'agent. */
+export class ProviderBillingError extends Error {}
+/** Clé invalide ou accès fournisseur refusé : jamais une faute de l'agent. */
+export class ProviderConfigurationError extends Error {}
 /** Secret ANTHROPIC_API_KEY absent des fonctions Edge : configuration à compléter, jamais une faute de l'agent (mission reportée, essai rendu). */
 export class LlmKeyMissingError extends TransientLlmError {}
 
@@ -93,8 +97,17 @@ export async function callClaude(o: CallOpts): Promise<CallResult> {
     message = await client().beta.messages.create(params as unknown as Anthropic.Beta.MessageCreateParamsNonStreaming) as Anthropic.Beta.BetaMessage;
   } catch (e) {
     const status = (e as { status?: number }).status;
-    if (e instanceof Anthropic.APIConnectionError || status === 429 || status === 529 || (status !== undefined && status >= 500)) {
-      throw new TransientLlmError(errMsg(e));
+    const message = errMsg(e);
+    const normalized = message.toLowerCase();
+    // Anthropic renvoie parfois les erreurs de crédit en HTTP 400.
+    if (/credit balance|insufficient credit|credit.*too low|billing.*(inactive|disabled|payment)|payment required|purchase credits/.test(normalized)) {
+      throw new ProviderBillingError("Facturation Anthropic : crédits insuffisants ou facturation inactive. Vérifier le compte associé à ANTHROPIC_API_KEY.");
+    }
+    if (status === 401 || status === 403) {
+      throw new ProviderConfigurationError("Accès Anthropic refusé (clé invalide, révoquée ou sans autorisation). Vérifier ANTHROPIC_API_KEY dans les secrets Supabase.");
+    }
+    if (e instanceof Anthropic.APIConnectionError || status === 408 || status === 409 || status === 425 || status === 429 || status === 529 || (status !== undefined && status >= 500)) {
+      throw new TransientLlmError(message);
     }
     throw e;
   }
