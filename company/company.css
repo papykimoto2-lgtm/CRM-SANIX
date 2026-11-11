@@ -126,6 +126,8 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:13px}
 .msg.d{align-self:flex-start;background:var(--s2);border:1px solid var(--line);border-bottom-left-radius:4px}
 .msg small{display:block;opacity:.7;margin-top:4px;font-size:11px}
 .compose{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);align-items:flex-end}
+.voice-tools{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px 10px 0}.voice-tools #voice-status{font-size:11px;color:var(--mute);flex:1 1 150px}.voice-tools .btn.active{border-color:var(--ok);color:var(--ok)}.voice-tools .btn.listening{background:var(--bad);border-color:var(--bad);color:#fff;animation:pulse 1s infinite}
+@media(max-width:600px){.voice-tools{gap:6px}.voice-tools .btn{font-size:11px;padding:6px 8px}.voice-tools #voice-status{flex-basis:100%;order:3}.compose{gap:6px}.compose textarea{min-width:0;flex:1}.compose .btn{white-space:nowrap}}
 .compose textarea{min-height:46px;max-height:180px}
 .quick{display:flex;gap:6px;flex-wrap:wrap;padding:8px 10px 0}
 .quick button{border:1px solid var(--line);background:var(--s2);color:var(--tx);border-radius:999px;padding:4px 11px;font-size:12px;cursor:pointer}
