@@ -2807,6 +2807,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
         📒 <strong>Comptabilité auto :</strong> chaque commande/contrat encaissé génère ses écritures SYSCOHADA (ventes 70x, TVA collectée 4431, clients 411, trésorerie 52x/57x). Référentiel : SYSCOHADA révisé · TVA 18% · Côte d'Ivoire (DGI).
       </div>
 
+      <div id="compta-ia-note" style="display:none;margin-bottom:12px;padding:8px 12px;border-radius:8px;background:var(--surface2,#f3f4f6);font-size:12px;color:var(--muted)"></div>
       <!-- Onglets -->
       <div class="tabs" id="compta-tabs" style="margin-bottom:16px;overflow-x:auto;flex-wrap:nowrap">
         <div class="tab active" onclick="comptaTab('journal',this)">📓 Journal</div>
@@ -13029,6 +13030,28 @@ let _comptaTab = 'journal';
 let _comptaExercice = new Date().getFullYear();
 let _ecLignes = [];
 
+// Dépenses de l'API d'IA (SANIX AI) : lues sur le serveur (consommation réelle des agents + recharges déclarées), converties en FCFA au taux USD/FCFA du module Budget.
+let AI_COMPTA = { recharges:[], conso:[], loaded:false, err:'' };
+function comptaIAUsdFcfa(){ try{ return window.SanixPilotage && window.SanixPilotage.store && window.SanixPilotage.store.usdFcfa ? window.SanixPilotage.store.usdFcfa() : 0; }catch(e){ return 0; } }
+function comptaIANote(){
+  const el = document.getElementById('compta-ia-note'); if(!el) return;
+  const aDesDonnees = AI_COMPTA.conso.length || AI_COMPTA.recharges.length;
+  let msg = '';
+  if(aDesDonnees && !(comptaIAUsdFcfa()>0)) msg = '⚠️ Dépenses de l\'IA non comptabilisées : renseignez le taux USD → FCFA dans « Budget & plan d\'actions ».';
+  else if(aDesDonnees) msg = '🤖 Les dépenses de l\'API d\'IA sont comptabilisées automatiquement (charge 634000, fournisseur 401000 ; recharges réglées par la banque 521000) au taux de '+comptaIAUsdFcfa()+' FCFA pour 1 $. Confirmez le traitement de la TVA avec votre comptable.';
+  el.textContent = msg; el.style.display = msg ? '' : 'none';
+}
+async function comptaLoadIA(){
+  try{
+    const S = window.SanixCrmSync;
+    if(!S || !S.available || !S.available()) return;
+    const r = await S.rpcAux('ai_credit_compta', { p_months:12 });
+    AI_COMPTA = { recharges:Array.isArray(r&&r.recharges)?r.recharges:[], conso:Array.isArray(r&&r.conso_mois)?r.conso_mois:[], loaded:true, err:'' };
+  }catch(e){ AI_COMPTA.err = (e && e.code==='NOFUNC') ? 'absent' : ((e&&e.message)||'erreur'); return; }
+  comptaIANote();
+  try{ comptaRenderStats(); comptaRender(); }catch(e){}
+}
+
 // Plan comptable SYSCOHADA — comptes utilisés par un éditeur de logiciels
 const PLAN_COMPTABLE = {
   '411000':'Clients',
@@ -13043,6 +13066,7 @@ const PLAN_COMPTABLE = {
   '706000':'Services vendus (licences, prestations)',
   '707000':'Ventes de logiciels / produits accessoires',
   '622000':'Rémunérations d\'intermédiaires (commissions apporteurs)',
+  '634000':'Redevances pour logiciels et licences (API d\'IA)',
   '627000':'Services bancaires',
   '6311':  'Frais sur effets / Mobile Money',
   '445':   'État, TVA',
@@ -13124,6 +13148,34 @@ function comptaGenerateAuto() {
     });
   }
 
+  // 4. DÉPENSES DE L'API D'IA → charge du mois (consommation réelle) + règlements (recharges), au taux USD/FCFA du module Budget
+  const taux = comptaIAUsdFcfa();
+  if(taux>0){
+    const finMois = m => { const [y,mo]=m.split('-').map(Number); const d=new Date(y,mo,0).getDate(); const f=m+'-'+String(d).padStart(2,'0'); const auj=new Date().toISOString().split('T')[0]; return f>auj ? auj : f; };
+    AI_COMPTA.conso.forEach(c=>{
+      const fcfa = Math.round((Number(c.cout_usd)||0)*taux); if(fcfa<=0) return;
+      auto.push({
+        id:'auto_ia_'+c.mois, auto:true, date:finMois(c.mois), journal:'AC', piece:'IA-'+c.mois,
+        libelle:`API d'IA (Anthropic) — consommation ${c.mois} (${(Number(c.cout_usd)||0).toFixed(2)} $)`,
+        lignes:[
+          {compte:'634000', libelle:'API d\'IA '+c.mois, debit:fcfa, credit:0},
+          {compte:'401000', libelle:'Anthropic', debit:0, credit:fcfa},
+        ]
+      });
+    });
+    AI_COMPTA.recharges.forEach(r=>{
+      const fcfa = Math.round((Number(r.montant_usd)||0)*taux); if(fcfa<=0) return;
+      auto.push({
+        id:'auto_iarech_'+r.id, auto:true, date:r.date, journal:'BQ', piece:'IA-REC-'+r.id,
+        libelle:`Recharge crédit API d'IA (Anthropic) — ${(Number(r.montant_usd)||0).toFixed(2)} $`+(r.note?' — '+r.note:''),
+        lignes:[
+          {compte:'401000', libelle:'Anthropic', debit:fcfa, credit:0},
+          {compte:'521000', libelle:'Règlement recharge', debit:0, credit:fcfa},
+        ]
+      });
+    });
+  }
+
   return auto;
 }
 
@@ -13150,6 +13202,8 @@ function initComptabilite() {
   }
   comptaRenderStats();
   comptaRender();
+  comptaIANote();
+  comptaLoadIA();       // dépenses de l'IA : chargées sur le serveur, l'écran se rafraîchit à leur arrivée
   // Badge
   const n = comptaAllEcritures().filter(e=>(e.date||'').startsWith(_comptaExercice)).length;
   const b = document.getElementById('sb-compta-badge');

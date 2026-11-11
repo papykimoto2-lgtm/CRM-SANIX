@@ -54,3 +54,16 @@ Plus d'opportunité sur la livraison : le périmètre commercial passe à **quat
 | Abandon | opérateur | « Ne pas envoyer » (`ai_wa_annuler`) |
 | Réponse du prospect | opérateur | « Saisir la réponse reçue » (`ai_wa_reponse`) |
 Garde-fous : un prospect désinscrit ne peut pas être marqué contacté ; un message n'est jamais marqué envoyé sans la confirmation d'un opérateur (auteur et date conservés, opération journalisée) ; le traitement automatique ne touche pas aux messages WhatsApp en attente tant que la clé n'est pas posée.
+
+## Crédit de l'API Anthropic et comptabilité de l'IA (migration 20261123)
+
+**Pourquoi un solde « estimé ».** Anthropic ne communique pas à une clé d'API le solde du crédit prépayé de la Console. L'appli le tient donc elle-même : *dernier solde constaté + recharges suivantes − consommation enregistrée par les agents* (`ai_actions.cout_usd`). C'est une estimation : recalez-la avec la Console de temps en temps (Gouvernance → « Crédit de l'API Anthropic » → « Solde lu dans la Console »). Rien n'est inventé : tant qu'aucun montant n'est saisi, l'écran affiche « Non renseigné ».
+
+**Où le voir.** Bureau SANIX AI → ⚖️ Gouvernance : solde estimé, rythme des 7 derniers jours, jours restants, dernière recharge, alerte sous 2 $ ou sous 3 jours ; pastille « Crédit … $ » dans l'en-tête dès qu'un solde est saisi. La saisie (solde constaté ou recharge) est réservée à la direction et journalisée (`ai_actions`).
+
+**Comptabilité (CRM → Comptabilité).** Les dépenses de l'API sont comptabilisées automatiquement, au taux USD/FCFA saisi dans « Budget & plan d'actions » (sans taux : aucune écriture et un message le rappelle) :
+- consommation du mois : journal AC, débit **634000** (redevances pour logiciels et licences), crédit **401000** (fournisseur Anthropic), datée du dernier jour du mois (aujourd'hui pour le mois en cours) ;
+- recharge : journal BQ, débit **401000**, crédit **521000** (banque). Le solde débiteur du 401000 représente le crédit non encore consommé.
+Les écritures sont régénérées à chaque affichage depuis le serveur : aucune donnée en double entre appareils. **À confirmer avec le comptable** : choix des comptes et traitement de la TVA sur un service acheté à l'étranger.
+
+Tests : `supabase/functions/tests/credit_api_sql_test.sh` (PostgreSQL réel), `company/tests/credit_test.js` (écran), `tests/compta_ia_test.js` (écritures).

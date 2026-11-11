@@ -316,6 +316,7 @@
   window.SanixPilotage = { calc: calc, refresh: refresh, store: {
     get: function (k) { return ensure()[k]; },
     set: function (k, arr) { ensure()[k] = Array.isArray(arr) ? arr : []; refresh(); },
+    usdFcfa: function () { return num(ensure().usdFcfa); },                       // taux USD → FCFA saisi dans « Budget & plan d'actions » (0 s'il n'est pas renseigné)
     getConfig: function () { return toFlat(ensure()); },
     setConfig: function (o) { fromFlat(o, ensure()); refresh(); } } };
 })();

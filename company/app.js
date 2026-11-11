@@ -107,6 +107,7 @@ async function loadCore() {
   if (isDir()) {
     const [gov, budget] = await Promise.all([q(S.sb.from("ai_governance").select("*").eq("id", 1).single()), q(S.sb.rpc("ai_budget_status"))]);
     Object.assign(S, { gov, budget });
+    try { S.credit = await q(S.sb.rpc("ai_credit_status")); } catch { S.credit = null; }     // migration 20261123 absente : la carte l'indique
   }
   try { S.kpis = (await q(S.sb.from("ai_kpis").select("*")))[0] ?? null; } catch { S.kpis = null; }
   try { S.products = await q(S.sb.from("ai_products").select("id,nom").eq("actif", true).order("nom")); } catch { S.products = []; }
@@ -195,6 +196,7 @@ function renderChips() {
   c.push(html`<span class="chip ok" title="Collaborateurs actifs / plafond"><i></i>${n}${g ? ` / ${g.max_agents_actifs}` : ""} agents</span>`);
   c.push(html`<span class="chip" title="Missions actives"><i></i>${S.tasks.filter((t) => OPEN.includes(t.statut)).length} missions</span>`);
   if (b) c.push(html`<span class="chip ${b.jour_usd >= b.budget_jour_usd * 0.85 ? "warn" : ""}" title="Coût IA du jour / budget quotidien"><i></i>IA ${num(b.jour_usd, 2)} / ${num(b.budget_jour_usd, 0)} $</span>`);
+  if (S.credit?.saisi) c.push(html`<span class="chip ${creditAlerte(S.credit) ? "warn" : ""}" title="Solde estimé du crédit de l'API Anthropic"><i></i>Crédit ${num(S.credit.solde_usd, 2)} $</span>`);
   if (g && !g.actif) c.push(html`<span class="chip bad"><i></i>Entreprise en pause</span>`);
   if (g) c.push(html`<span class="chip ${g.communication_externe === "autonome" ? "warn" : ""}" title="Communication externe vers les prospects"><i></i>Com. externe : ${{ interdite: "interdite", validation: "validée par vous", autonome: "autonome" }[g.communication_externe]}</span>`);
   $("#status-chips").innerHTML = c.map((x) => x.s).join("");
@@ -447,6 +449,25 @@ function gauge(label, v, max, fmt = (x) => x) {
   const r = max ? Math.min(100, v / max * 100) : 0;
   return html`<div class="gauge"><div class="l"><span>${label}</span><b>${fmt(v)} / ${fmt(max)}</b></div><div class="bar ${r > 90 ? "low" : r > 70 ? "mid" : ""}"><b style="width:${r}%"></b></div></div>`;
 }
+/** Alerte de crédit : moins de 2 $ ou moins de 3 jours au rythme des 7 derniers jours. */
+function creditAlerte(c) { return !!c?.saisi && (c.solde_usd < 2 || (c.jours_restants != null && c.jours_restants <= 3)); }
+function creditCard() {
+  const c = S.credit;
+  const aide = html`<p class="muted small" style="margin:8px 0 0">Anthropic ne donne pas le solde de la Console par l'API : il est estimé ici (dernier solde saisi + recharges − consommation enregistrée par les agents). Recalez-le avec la Console de temps en temps.</p>`;
+  const form = html`<form id="credit-form" class="form" style="margin-top:12px"><label class="f">Saisie<select name="type"><option value="solde_constate">Solde lu dans la Console</option><option value="recharge">Recharge effectuée</option></select></label>
+      <label class="f">Montant ($)<input type="number" name="montant" min="0" step="0.01" required></label><label class="f">Date de la recharge<input type="date" name="date" max="${new Date().toISOString().slice(0, 10)}"></label>
+      <label class="f">Note<input name="note" maxlength="300" placeholder="facultatif"></label><div class="actions"><button class="btn pri" type="submit">Enregistrer</button></div></form>`;
+  if (!c) return html`<div class="card" style="margin-top:12px"><h3 style="margin-top:0">Crédit de l'API Anthropic</h3><p class="muted">Suivi du crédit non installé sur le serveur (migration 20261123).</p></div>`;
+  if (!c.saisi) return html`<div class="card" style="margin-top:12px"><h3 style="margin-top:0">Crédit de l'API Anthropic</h3><p class="muted">Non renseigné. Saisissez le solde affiché dans la Console Anthropic pour démarrer le suivi.</p>${form}${aide}</div>`;
+  const alerte = creditAlerte(c);
+  return html`<div class="card" style="margin-top:12px"><h3 style="margin-top:0">Crédit de l'API Anthropic</h3>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:baseline"><div><div class="muted small">Solde estimé</div><b style="font-size:26px;${alerte ? "color:var(--danger)" : ""}">${usd(c.solde_usd)}</b></div>
+      <div><div class="muted small">Rythme (7 jours)</div><b>${usd(c.rythme_jour_usd)} / jour</b></div>
+      <div><div class="muted small">Jours restants</div><b>${c.jours_restants == null ? "—" : c.jours_restants}</b></div></div>
+    ${alerte ? html`<p style="color:var(--danger);margin:8px 0 0"><b>Crédit bas :</b> rechargez la Console Anthropic (ou activez la recharge automatique) avant que les agents ne s'arrêtent.</p>` : ""}
+    <p class="muted small" style="margin:8px 0 0">Base : ${usd(c.base_usd ?? 0)} ${c.base_at ? "le " + fmtDT(c.base_at) : "(aucun solde constaté)"} · recharges depuis : ${usd(c.recharges_depuis_usd)} · dépensé depuis : ${usd(c.depense_depuis_usd)}${c.derniere_recharge ? ` · dernière recharge : ${usd(c.derniere_recharge.montant_usd)} le ${fmtDT(c.derniere_recharge.at)}` : ""}</p>
+    ${form}${aide}</div>`;
+}
 function renderGov(main) {
   const g = S.gov, b = S.budget;
   if (!g) { main.innerHTML = html`<section class="panel"><div class="card muted">Gouvernance non disponible.</div></section>`.s; return; }
@@ -459,8 +480,19 @@ function renderGov(main) {
       <label class="f" style="margin-top:10px">Communication externe (WhatsApp, e-mail aux prospects)<select id="g-comm"><option value="interdite" ${g.communication_externe === "interdite" ? "selected" : ""}>Interdite</option><option value="validation" ${g.communication_externe === "validation" ? "selected" : ""}>Chaque message validé par le président</option><option value="autonome" ${g.communication_externe === "autonome" ? "selected" : ""}>Autonome (messages envoyés directement)</option></select></label>
       <label class="f" style="margin-top:10px">Modèle d'IA (direction)<select id="g-model">${["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"].map((m) => html`<option ${g.modele === m ? "selected" : ""}>${m}</option>`)}</select></label>
       ${"modele_operationnel" in g ? html`<label class="f" style="margin-top:10px">Modèle des agents d'exécution (moins cher)<select id="g-model-op"><option value="" ${!g.modele_operationnel ? "selected" : ""}>Identique à la direction</option>${["claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5"].map((m) => html`<option ${g.modele_operationnel === m ? "selected" : ""}>${m}</option>`)}</select></label><p class="small muted">Les agents de niveau 4 et 5 (qualification, rédaction, recherche) utilisent ce modèle ; la direction garde le modèle ci-dessus. Un modèle moins cher multiplie le nombre de missions possibles avec le même budget.</p>` : ""}</div></div>
+    ${creditCard()}
     <form id="gov-form" class="card" style="margin-top:12px"><h3 style="margin-top:0">Limites</h3><div class="form">${GOV_NUM.map(([k, l, mn, mx, st]) => html`<label class="f">${l}<input type="number" name="${k}" min="${mn}" max="${mx}" step="${st}" value="${g[k]}" required></label>`)}</div>
     <div class="actions"><button class="btn pri" type="submit">Enregistrer la gouvernance</button></div></form></section>`.s;
+  const cf = $("#credit-form");
+  if (cf) cf.onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target.elements, montant = Number(f.montant.value);
+    if (!Number.isFinite(montant) || montant < 0) { toast("Montant invalide", "bad"); return; }
+    try {
+      await q(S.sb.rpc("ai_credit_ajouter", { p_type: f.type.value, p_montant: montant, p_date: f.type.value === "recharge" && f.date.value ? f.date.value : null, p_note: f.note.value || null }));
+      toast(f.type.value === "recharge" ? "Recharge enregistrée" : "Solde constaté enregistré", "ok"); await loadCore(); render();
+    } catch (err) { toast(err.message, "bad"); }
+  };
   $("#gov-form").onsubmit = async (e) => {
     e.preventDefault();
     const patch = { actif: $("#g-actif").checked, creation_autonome: $("#g-auto").checked, validation_outils_externes: $("#g-ext").checked, communication_externe: $("#g-comm").value, modele: $("#g-model").value };
