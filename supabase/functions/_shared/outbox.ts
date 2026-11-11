@@ -1,6 +1,6 @@
 // Envoi des messages sortants sous gouvernance : interdit | validation (file d'approbation) | autonome.
 import { audit, db, errMsg } from "./core.ts";
-import { AI_DISCLOSURE, isFirstOutbound, type Prospect, sendEmail, sendWhatsApp } from "./channels.ts";
+import { AI_DISCLOSURE, isFirstOutbound, type Prospect, sendEmail, sendWhatsApp, whatsappConfigured } from "./channels.ts";
 
 export type CommMode = "interdite" | "validation" | "autonome";
 
@@ -84,8 +84,10 @@ export async function flushOutbox(limit = 20): Promise<{ envoyes: number; en_fil
   const { data: rows } = await db().from("ai_messages").select("id, prospect_id, canal, contenu, meta")
     .eq("sens", "sortant").eq("statut", "a_envoyer").order("created_at").limit(limit);
   let envoyes = 0, en_file = 0;
+  const waOk = whatsappConfigured();
   for (const m of rows ?? []) {
     try {
+      if (m.canal === "whatsapp" && !waOk) { en_file++; continue; }               // mode manuel : un opérateur l'envoie depuis son WhatsApp ; on n'y touche pas (pas de course avec sa confirmation)
       const { data: p } = await db().from("ai_prospects").select("*").eq("id", m.prospect_id).maybeSingle();
       if (!p || p.opt_out) {
         await db().from("ai_messages").update({ statut: "echec", meta: { ...(m.meta ?? {}), detail: "Prospect désinscrit ou introuvable" } }).eq("id", m.id);

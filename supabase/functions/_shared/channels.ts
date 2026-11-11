@@ -15,6 +15,9 @@ export const AI_DISCLOSURE =
 const WA_WINDOW_MS = 24 * 3600 * 1000;
 const GRAPH = "https://graph.facebook.com/v21.0";
 
+/** Vrai seulement si les clés de l'API WhatsApp sont posées ; sinon les messages approuvés restent « a_envoyer » et un opérateur les envoie à la main (mode manuel). */
+export const whatsappConfigured = (): boolean => !!(env("WHATSAPP_TOKEN", false) && env("WHATSAPP_PHONE_NUMBER_ID", false));
+
 export type SendResult = { ok: boolean; statut: string; detail: string; external_id?: string; template?: boolean };
 
 export async function sendWhatsApp(p: Prospect, text: string): Promise<SendResult> {

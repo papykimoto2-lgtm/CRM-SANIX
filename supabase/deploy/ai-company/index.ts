@@ -258,6 +258,7 @@ async function loadPortfolio() {
 var AI_DISCLOSURE = "Je suis l'assistant commercial virtuel (IA) de SANIX AFRICA ; un conseiller humain peut prendre le relais \xE0 tout moment.";
 var WA_WINDOW_MS = 24 * 3600 * 1e3;
 var GRAPH = "https://graph.facebook.com/v21.0";
+var whatsappConfigured = () => !!(env("WHATSAPP_TOKEN", false) && env("WHATSAPP_PHONE_NUMBER_ID", false));
 async function sendWhatsApp(p, text2) {
   if (p.opt_out) return { ok: false, statut: "echec", detail: "Prospect d\xE9sinscrit : envoi interdit" };
   if (!p.phone_norm) return { ok: false, statut: "echec", detail: "Aucun num\xE9ro WhatsApp" };
@@ -402,8 +403,13 @@ async function flushOutbox(limit = 20) {
   if (mode === "interdite") return { envoyes: 0, en_file: 0 };
   const { data: rows } = await db().from("ai_messages").select("id, prospect_id, canal, contenu, meta").eq("sens", "sortant").eq("statut", "a_envoyer").order("created_at").limit(limit);
   let envoyes = 0, en_file = 0;
+  const waOk = whatsappConfigured();
   for (const m of rows ?? []) {
     try {
+      if (m.canal === "whatsapp" && !waOk) {
+        en_file++;
+        continue;
+      }
       const { data: p } = await db().from("ai_prospects").select("*").eq("id", m.prospect_id).maybeSingle();
       if (!p || p.opt_out) {
         await db().from("ai_messages").update({ statut: "echec", meta: { ...m.meta ?? {}, detail: "Prospect d\xE9sinscrit ou introuvable" } }).eq("id", m.id);
