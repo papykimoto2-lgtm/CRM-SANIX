@@ -19,7 +19,7 @@ sg() { local got; got=$(seg "$2"); if [ "$got" = "$3" ]; then echo "  ✓ $1"; e
 
 echo "▶ Migration relançable"
 $P -d "$DB" -f "$MIG" >/dev/null 2>&1 && echo "  ✓ deuxième exécution sans erreur" || { echo "  ✗ deuxième exécution"; exit 1; }
-check "6 règles de départ (configuration, modifiable)" "select count(*) from ai_segment_rules" "6"
+check "7 règles de départ dont la livraison (configuration, modifiable)" "select count(*) from ai_segment_rules" "7"
 
 echo "▶ AvicoSuite = Angel's Agro (migration 20261116)"
 UNI="$HERE/../../migrations/20261116000000_unifier_avicosuite_angels_agro.sql"
@@ -27,7 +27,7 @@ q "insert into ai_products(id, nom, marche_cible, actif) values ('avicosuite', '
 $P -d "$DB" -f "$UNI" >/dev/null && $P -d "$DB" -f "$UNI" >/dev/null && echo "  ✓ migration relançable" || { echo "  ✗ migration d'unification"; exit 1; }
 check "Angel's Agro → AvicoSuite" "select ai_product_of('Angel''s Agro')" "avicosuite"
 check "AviNest Pro → AvicoSuite" "select ai_product_of('AviNest Pro')" "avicosuite"
-check "Angel's Livraison reste hors périmètre" "select coalesce(ai_product_of('Angel''s Livraison'), 'null')" "null"
+check "Angel's Transport reste hors périmètre" "select coalesce(ai_product_of('Angel''s Transport'), 'null')" "null"
 check "fonctionnalités reprises du catalogue du CRM" "select cardinality(fonctionnalites) from ai_products where id = 'avicosuite'" "13"
 q "insert into auth.users(id) values ('$DIR'), ('$COM')" >/dev/null
 q "insert into ai_operators(user_id, nom, role) values ('$DIR', 'Direction', 'direction'), ('$COM', 'Commercial', 'commercial')" >/dev/null
@@ -53,7 +53,7 @@ q "insert into ai_prospects(entreprise, secteur, telephone, email, stage, produi
 echo "▶ Aperçu : aucune écriture"
 checka "aperçu pour un opérateur non direction" "$COM" "select (ai_segmenter_prospects(false)->'segments_calcules'->>'immosuite')::int" "5"
 check "rien n'est enregistré par l'aperçu" "select count(*) from ai_prospects where segment is not null" "0"
-checka "répartition calculée : ImmoSuite 5 (dont le déjà travaillé)" "$COM" "select ai_segmenter_prospects(false)->'segments_calcules' = '{\"aluexpert\": 3, \"a_verifier\": 2, \"immosuite\": 5, \"avicosuite\": 2, \"hors_perimetre\": 3}'::jsonb" "t"
+checka "répartition calculée : ImmoSuite 5 (dont le déjà travaillé)" "$COM" "select ai_segmenter_prospects(false)->'segments_calcules' = '{\"aluexpert\": 3, \"a_verifier\": 2, \"immosuite\": 5, \"avicosuite\": 2, \"hors_perimetre\": 2, \"angels\": 1}'::jsonb" "t"
 refused "appliquer est réservé à la direction" "$COM" "select ai_segmenter_prospects(true)" "Réservé à la direction"
 
 echo "▶ Application"
@@ -67,7 +67,7 @@ sg "industrie sans indice → à vérifier (jamais forcé)" "Ets Kouassi Industr
 sg "ferme avicole → AvicoSuite même classée Industrie" "Ferme Avicole du Nord" "avicosuite"
 sg "poulets (secteur Services) → AvicoSuite" "Poulets de Bouaké" "avicosuite"
 sg "santé → hors périmètre" "Clinique Sainte Marie" "hors_perimetre"
-sg "logistique → hors périmètre" "Express Colis" "hors_perimetre"
+sg "logistique → Angel's Livraison (4e logiciel)" "Express Colis" "angels"
 sg "secteur inconnu → hors périmètre (défaut)" "Divers Commerce" "hors_perimetre"
 check "fiche déjà travaillée : jamais touchée" "select coalesce(segment, 'null') || '|' || array_to_string(produits_recommandes, ',') from ai_prospects where entreprise = 'Promoteur Déjà Travaillé'" "null|medicor"
 check "logiciel recommandé = segment (plus d'ancien produit)" "select array_to_string(produits_recommandes, ',') from ai_prospects where entreprise = 'Alutech Services'" "aluexpert"
@@ -82,7 +82,7 @@ as "$DIR" "select ai_segmenter_prospects(true)" >/dev/null
 sg "une nouvelle application ne défait jamais un choix manuel" "Ets Kouassi Industrie" "aluexpert"
 refused "segment inconnu refusé" "$DIR" "select ai_cfg_set_segment('$(q "select id from ai_prospects limit 1")', 'inexistant')" "absent du catalogue"
 refused "règle à expression invalide refusée avant écriture" "$DIR" "select ai_cfg_save_segment_rule('{\"champ\":\"entreprise\",\"motif\":\"(\",\"segment\":\"aluexpert\"}')" "invalid regular expression"
-check "aucune règle ajoutée par l'erreur" "select count(*) from ai_segment_rules" "6"
+check "aucune règle ajoutée par l'erreur" "select count(*) from ai_segment_rules" "7"
 as "$DIR" "select ai_cfg_save_segment_rule('{\"champ\":\"entreprise\",\"motif\":\"kouassi\",\"segment\":\"immosuite\",\"priorite\":5}')" >/dev/null
 check "nouvelle règle (priorité 5) appliquée avant les autres" "select ai_segment_of(p) from ai_prospects p where entreprise = 'Ets Kouassi Industrie'" "immosuite"
 as "$DIR" "select ai_cfg_save_segment_rule(jsonb_build_object('id', $(q "select id from ai_segment_rules where motif = 'kouassi'"), 'actif', false))" >/dev/null
@@ -104,7 +104,7 @@ as "$DIR" "select ai_cfg_pilote_set('$(pid 'Promoteur Beta')', false)" >/dev/nul
 check "retrait manuel" "select count(*) from ai_pilote pl join ai_prospects p on p.id = pl.prospect_id where p.entreprise = 'Promoteur Beta'" "0"
 
 echo "▶ Entonnoir par logiciel"
-check "répartition de toute la base par segment" "select string_agg(segment || '=' || prospects, ',' order by segment) from ai_pilote_entonnoir" "a_verifier=1,aluexpert=4,avicosuite=2,hors_perimetre=3,immosuite=4,non_segmente=1"
+check "répartition de toute la base par segment" "select string_agg(segment || '=' || prospects, ',' order by segment) from ai_pilote_entonnoir" "a_verifier=1,aluexpert=4,angels=1,avicosuite=2,hors_perimetre=2,immosuite=4,non_segmente=1"
 check "pilote ImmoSuite : 3" "select dans_le_pilote from ai_pilote_entonnoir where segment = 'immosuite'" "3"
 q "update ai_prospects set crit_produit = 25, crit_besoin = 25, crit_finance = 15, crit_decideur = 15, crit_court_terme = 10, crit_disponibilite = 10, score_justification = 'Éléments observables : site officiel et programme en cours' where entreprise = 'Promoteur Alpha'" >/dev/null
 q "insert into ai_messages(prospect_id, canal, sens, auteur, contenu, statut) select id, 'email', 'sortant', 'agent', 'Bonjour', 'envoye' from ai_prospects where entreprise = 'Promoteur Alpha'" >/dev/null
@@ -116,4 +116,14 @@ check "ventes du CRM (HT) rapprochées par logiciel" "select ca_ht_crm::bigint f
 q "grant select on all tables in schema public to authenticated" >/dev/null     # équivalent des droits par défaut de Supabase ; la protection par ligne (RLS) reste appliquée
 checka "l'entonnoir est lisible par un opérateur" "$COM" "select prospects from ai_pilote_entonnoir where segment = 'immosuite'" "4"
 check "le journal conserve les opérations de configuration" "select count(*) >= 5 from ai_actions where agent = 'operateur' and action in ('cfg_segmentation','cfg_pilote','cfg_segment_manuel','cfg_regle_segment')" "t"
+
+echo "▶ Angel's Livraison, 4e logiciel (migration 20261117)"
+check "logiciel actif et renommé" "select actif::text||'|'||nom from ai_products where id = 'angels'" "true|Angel's Livraison"
+check "Angel's Livraison → angels" "select ai_product_of('Angel''s Livraison')" "angels"
+check "Angel's Transport reste hors périmètre" "select coalesce(ai_product_of('Angel''s Transport'), 'null')" "null"
+check "recommandation : le logiciel suit le segment" "select produits_recommandes::text from ai_prospects where entreprise = 'Express Colis'" "{angels}"
+check "fonctionnalités reprises du catalogue du CRM" "select cardinality(fonctionnalites) from ai_products where id = 'angels'" "14"
+LIV="$HERE/../../migrations/20261117000000_angels_livraison_quatrieme_logiciel.sql"
+$P -d "$DB" -f "$LIV" >/dev/null && echo "  ✓ migration relançable" || { echo "  ✗ migration livraison"; exit 1; }
+check "une seule règle livraison après deux exécutions" "select count(*) from ai_segment_rules where segment = 'angels'" "1"
 echo; echo "Tous les contrôles SQL de la Phase 3 sont passés."
