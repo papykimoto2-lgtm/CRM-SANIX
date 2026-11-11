@@ -6,7 +6,7 @@ export type AgentRow = {
   niveau: number; personnalite: string | null; specialite: string | null; outils: string[];
   etat: "actif" | "attente_validation" | "suspendu" | "archive";
   activite: string; temporaire: boolean; expire_at: string | null; effort: "low" | "medium" | "high";
-  budget_jour_usd: number | null; charte_version: number; incidents_consecutifs: number;
+  budget_jour_usd: number | null; charte_version: number; incidents_consecutifs: number; role_code?: string | null;
 };
 
 export type TaskRow = {
@@ -27,7 +27,7 @@ export type Governance = {
   suspension_apres_incidents: number; modele: string;
 };
 
-export const AGENT_COLS = "id, code, nom, fonction, departement_id, manager_id, niveau, personnalite, specialite, outils, etat, activite, temporaire, expire_at, effort, budget_jour_usd, charte_version, incidents_consecutifs";
+export const AGENT_COLS = "id, code, nom, fonction, departement_id, manager_id, niveau, personnalite, specialite, outils, etat, activite, temporaire, expire_at, effort, budget_jour_usd, charte_version, incidents_consecutifs, role_code";
 
 export function norm(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();

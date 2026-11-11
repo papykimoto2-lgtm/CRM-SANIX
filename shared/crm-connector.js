@@ -99,6 +99,18 @@
   var allowDeletes = function () { return ready && Date.now() - startedAt > 8000; };
   var startedAt = Date.now();
   /** Compare le magasin local à la dernière version synchronisée ; place les créations, modifications et suppressions dans la file. */
+  /** Clé naturelle du client d'une affaire (nom + téléphone) : identique sur tous les appareils, contrairement à l'identifiant du client qui ne converge qu'après la fusion par le serveur. */
+  function dealClientKey(o, clients) {
+    var c = o && o.clientId != null ? clients.find(function (x) { return String(x.id) === String(o.clientId); }) : null;
+    if (!c && o && o.client) { var n = norm(o.client), hit = clients.filter(function (x) { return norm(x.nom) === n; }); c = hit.length === 1 ? hit[0] : null; }
+    return c ? norm(c.nom) + '|' + String(c.phone || '').replace(/\D/g, '').slice(-10) : null;
+  }
+  /** Une affaire « générée depuis le prospect » (une par client, créée automatiquement sur chaque appareil) reçoit un identifiant dérivé de la clé naturelle de son client :
+      deux appareils produisent alors la MÊME affaire au lieu d'en créer chacun une (1 474 affaires pour 552 clients en production avant ce correctif). Les autres affaires gardent un identifiant aléatoire. */
+  function generatedDealRid(entity, o, clients) {
+    if (entity !== 'deals' || !o || !o.fromProspect) return null;
+    var k = dealClientKey(o, clients); return k ? 'dp_' + fnv(k) : null;
+  }
   var NOSTAMP = { created_at: 1, updated_at: 1, createdAt: 1, updatedAt: 1 };
   var withoutStamps = function (d) { var o = {}; Object.keys(d).forEach(function (k) { if (!NOSTAMP[k]) o[k] = d[k]; }); return o; };
   var phoneKey = function (p) { return String(p || '').replace(/\D/g, '').slice(-10); };
@@ -118,7 +130,8 @@
       g.forEach(function (o) {
         if (o === keep) return;
         var twin = entity === 'clients' ? norm(o.nom) === norm(keep.nom) && phoneKey(o.phone) === phoneKey(keep.phone)
-                                        : stable(withoutStamps(payload(entity, o, clients))) === stable(withoutStamps(payload(entity, keep, clients)));
+                 : entity === 'deals' && o.fromProspect && keep.fromProspect ? dealClientKey(o, clients) !== null && dealClientKey(o, clients) === dealClientKey(keep, clients) && o.logiciel === keep.logiciel && Number(o.valeur) === Number(keep.valeur) && o.stage === keep.stage
+                 : stable(withoutStamps(payload(entity, o, clients))) === stable(withoutStamps(payload(entity, keep, clients)));
         if (!twin) { o._rid = newRid(c.prefix); return; }
         if (entity === 'clients') {
           remap[o.id] = keep.id; remapped = true;
@@ -150,7 +163,7 @@
     arr.forEach(function (o) {
       if (!o || typeof o !== 'object') return;
       var rid = ridOf(entity, o);
-      if (!rid) { if (c.idMode !== 'int') return; o._rid = rid = newRid(c.prefix); touched = true; }
+      if (!rid) { if (c.idMode !== 'int') return; o._rid = rid = generatedDealRid(entity, o, clients) || newRid(c.prefix); touched = true; }
       seen[rid] = 1;
       var d = payload(entity, o, clients), h = fnv(stable(d)), extra = {};
       if (entity === 'clients') {                                                    // deux fiches identiques (même nom et même téléphone) : une seule porte la clé naturelle

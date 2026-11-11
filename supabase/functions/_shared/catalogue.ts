@@ -12,7 +12,7 @@ export async function loadPortfolio(): Promise<string> {
   const { data: refs } = await db().from("ai_product_references").select("product_id, client").eq("citable", true).order("client");   // seulement les références autorisées par la direction
   const parProduit = new Map<string, string[]>();
   for (const r of (refs ?? []) as { product_id: string; client: string }[]) parProduit.set(r.product_id, [...(parProduit.get(r.product_id) ?? []), r.client]);
-  const text = portfolioText(((data ?? []) as { id: string; nom: string; marche_cible: string }[]).map((p) => ({ nom: p.nom, marche_cible: p.marche_cible, references: parProduit.get(p.id) })));
+  const text = portfolioText(((data ?? []) as { id: string; nom: string; marche_cible: string }[]).map((p) => ({ id: p.id, nom: p.nom, marche_cible: p.marche_cible, references: parProduit.get(p.id) })));
   cache = { at: Date.now(), text };
   return text;
 }

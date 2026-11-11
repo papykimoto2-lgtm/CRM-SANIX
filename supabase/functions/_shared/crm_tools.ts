@@ -50,7 +50,7 @@ const DEFS: Record<string, { description: string; props: Props }> = {
     props: { stage: nul("string"), secteur: nul("string"), ville: nul("string"), score_min: nul("integer"), limite: { type: "integer" } } },
   get_prospect: { description: "Fiche prospect, 30 derniers messages tous canaux, offres, RDV, relances.", props: P },
   recommend_products: { description: "Logiciels SANIX pertinents pour un secteur et des besoins.", props: { secteur: S(), besoins_texte: S() } },
-  get_product: { description: "Fonctionnalités réellement livrées, questions de découverte, argumentaire, démo, grille tarifaire.", props: { product_id: S() } },
+  get_product: { description: "Fonctionnalités réellement livrées, questions de découverte, argumentaire, démo, grille tarifaire. product_id : identifiant du logiciel (ex. immosuite) ; le nom commercial est aussi accepté.", props: { product_id: S() } },
   update_prospect: { description: "Enrichit / qualifie la fiche. null = inchangé.", props: {
     ...P, secteur: nul("string"), decideur: nul("string"), decideur_fonction: nul("string"),
     email: nul("string"), logiciel_actuel: nul("string"),
@@ -124,6 +124,21 @@ export function assertScope(ctx: CrmCtx, pid: unknown): string {
   return id;
 }
 
+
+// ── Logiciels : l'agent peut citer l'identifiant (immosuite), le nom commercial (« ImmoSuite ERP », « Angel's Livraison ») ou un nom du CRM (alias) ──
+const slug = (t: unknown) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+/** Identifiant du logiciel ACTIF désigné par `ref` ; sinon une erreur qui liste les logiciels actifs (l'agent se corrige au tour suivant au lieu de se bloquer). */
+export async function resolveProductId(ref: unknown): Promise<string> {
+  const n = slug(ref);
+  const [{ data: prods }, { data: aliases }] = await Promise.all([
+    db().from("ai_products").select("id,nom").eq("actif", true), db().from("ai_product_aliases").select("alias,product_id")]);
+  const actifs = (prods ?? []) as { id: string; nom: string }[];
+  const hit = n ? (actifs.find((p) => slug(p.id) === n || slug(p.nom) === n) ??
+    actifs.find((p) => (aliases ?? []).some((a: { alias: string; product_id: string }) => a.product_id === p.id && slug(a.alias) === n))) : undefined;
+  if (hit) return hit.id;
+  throw new Error(`Produit inconnu « ${String(ref ?? "")} ». Logiciels actifs (utilise l'identifiant) : ${actifs.map((p) => `${p.id} (${p.nom})`).join(" ; ") || "aucun"}`);
+}
+
 export async function runCrmTool(ctx: CrmCtx, name: string, raw: Record<string, unknown>): Promise<unknown> {
   const input = normalize(name, raw);
   const pid = "prospect_id" in DEFS[name].props ? assertScope(ctx, input.prospect_id) : "";
@@ -160,6 +175,7 @@ export async function runCrmTool(ctx: CrmCtx, name: string, raw: Record<string, 
       return data?.length ? data : { info: "Aucun produit évident : poser des questions de découverte." };
     }
     case "get_product": {
+      input.product_id = await resolveProductId(input.product_id);
       const [{ data: p }, { data: prix }] = await Promise.all([
         db().from("ai_products").select("id,nom,marche_cible,fonctionnalites,questions_decouverte,argumentaire,demo_url,video_url,brochure_url")
           .eq("id", input.product_id).eq("actif", true).maybeSingle(),
@@ -172,6 +188,7 @@ export async function runCrmTool(ctx: CrmCtx, name: string, raw: Record<string, 
       const patch: Record<string, unknown> = {};
       for (const k of ["secteur", "decideur", "decideur_fonction", "email", "logiciel_actuel", "besoins",
         "produits_recommandes", "budget_estime", "potentiel_fcfa"]) if (input[k] !== null) patch[k] = input[k];
+      if (Array.isArray(patch.produits_recommandes)) patch.produits_recommandes = [...new Set(await Promise.all((patch.produits_recommandes as unknown[]).map((r) => resolveProductId(r))))];
       if (typeof patch.email === "string" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(patch.email)) delete patch.email;
       if (input.resume !== null) patch.resume_ia = String(input.resume).slice(0, 2000);
       const c = input.criteres;
@@ -215,6 +232,7 @@ export async function runCrmTool(ctx: CrmCtx, name: string, raw: Record<string, 
       const p = await loadProspect(pid);
       const debut = new Date(input.debut);
       if (isNaN(+debut) || +debut < Date.now() + 3600e3) throw new Error("Créneau invalide ou trop proche");
+      if (input.product_id) input.product_id = await resolveProductId(input.product_id);
       const op = await commercialFor(pid);
       const fin = new Date(+debut + 45 * 60e3);
       const visio = input.mode === "visio" ? env("DEMO_VISIO_URL", false) || null : null;
@@ -257,6 +275,7 @@ export async function runCrmTool(ctx: CrmCtx, name: string, raw: Record<string, 
       return data;
     }
     case "create_offer": {
+      input.product_id = await resolveProductId(input.product_id);
       const { data: grille } = await db().from("ai_pricing").select("*").eq("product_id", input.product_id).eq("actif", true);
       if (!grille?.length) throw new Error("Aucun tarif officiel pour ce produit : escalader à la direction");
       const lignes = (input.lignes as { poste: string; qte: number }[]).map((l) => {
@@ -307,10 +326,11 @@ export async function runCrmTool(ctx: CrmCtx, name: string, raw: Record<string, 
     case "create_prospect": {
       if (ctx.created >= ctx.createCap) return { info: `Plafond de ${ctx.createCap} prospects atteint pour cette exécution : arrête et rapporte.` };
       const email = input.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email) ? input.email : null;
+      const produit = await resolveProductId(input.produit_recommande);
       const { data, error } = await db().from("ai_prospects").insert({
         entreprise: String(input.entreprise).slice(0, 200), secteur: input.secteur, ville: input.ville, commune: input.commune,
         telephone: input.telephone, email, site_web: input.site_web, decideur: input.decideur, decideur_fonction: input.decideur_fonction,
-        besoins: (input.besoins_detectes ?? []).slice(0, 10), produits_recommandes: [input.produit_recommande],
+        besoins: (input.besoins_detectes ?? []).slice(0, 10), produits_recommandes: [produit],
         source: ctx.source, source_url: input.source_url, stage: "enregistre", mission_id: ctx.missionId ?? null,
       }).select("id").single();
       if (error) return { doublon: error.code === "23505", info: error.code === "23505" ? "Déjà en base" : error.message };

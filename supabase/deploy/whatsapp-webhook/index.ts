@@ -55,17 +55,20 @@ function client() {
   return _client;
 }
 var _model = null;
-async function governanceModel() {
-  if (_model && Date.now() - _model.at < 6e4) return _model.v;
-  const { data } = await db().from("ai_governance").select("modele").eq("id", 1).maybeSingle();
-  const v = data?.modele ?? "claude-opus-5-5";
-  _model = { v, at: Date.now() };
-  return v;
+async function governanceModels() {
+  if (_model && Date.now() - _model.at < 6e4) return _model;
+  const { data } = await db().from("ai_governance").select("*").eq("id", 1).maybeSingle();
+  _model = { v: data?.modele ?? "claude-opus-5-5", op: data?.modele_operationnel ?? null, at: Date.now() };
+  return _model;
+}
+async function modelForLevel(niveau) {
+  const m = await governanceModels();
+  return niveau != null && niveau >= 4 && m.op ? m.op : m.v;
 }
 async function callClaude(o) {
   const { data: b } = await db().rpc("ai_budget_check", { p_agent: o.agentId ?? null });
   if (b && b.ok === false) throw new BudgetError(String(b.raison ?? "Budget IA atteint"));
-  const model = o.model ?? await governanceModel();
+  const model = o.model ?? await modelForLevel(o.niveau);
   const params = {
     model,
     max_tokens: o.maxTokens ?? 16e3,
@@ -300,7 +303,7 @@ var DEFS = {
   },
   get_prospect: { description: "Fiche prospect, 30 derniers messages tous canaux, offres, RDV, relances.", props: P },
   recommend_products: { description: "Logiciels SANIX pertinents pour un secteur et des besoins.", props: { secteur: S(), besoins_texte: S() } },
-  get_product: { description: "Fonctionnalit\xE9s r\xE9ellement livr\xE9es, questions de d\xE9couverte, argumentaire, d\xE9mo, grille tarifaire.", props: { product_id: S() } },
+  get_product: { description: "Fonctionnalit\xE9s r\xE9ellement livr\xE9es, questions de d\xE9couverte, argumentaire, d\xE9mo, grille tarifaire. product_id : identifiant du logiciel (ex. immosuite) ; le nom commercial est aussi accept\xE9.", props: { product_id: S() } },
   update_prospect: { description: "Enrichit / qualifie la fiche. null = inchang\xE9.", props: {
     ...P,
     secteur: nul("string"),
@@ -415,6 +418,18 @@ function assertScope(ctx, pid) {
   }
   return id;
 }
+var slug = (t) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+async function resolveProductId(ref) {
+  const n = slug(ref);
+  const [{ data: prods }, { data: aliases }] = await Promise.all([
+    db().from("ai_products").select("id,nom").eq("actif", true),
+    db().from("ai_product_aliases").select("alias,product_id")
+  ]);
+  const actifs = prods ?? [];
+  const hit = n ? actifs.find((p) => slug(p.id) === n || slug(p.nom) === n) ?? actifs.find((p) => (aliases ?? []).some((a) => a.product_id === p.id && slug(a.alias) === n)) : void 0;
+  if (hit) return hit.id;
+  throw new Error(`Produit inconnu \xAB ${String(ref ?? "")} \xBB. Logiciels actifs (utilise l'identifiant) : ${actifs.map((p) => `${p.id} (${p.nom})`).join(" ; ") || "aucun"}`);
+}
 async function runCrmTool(ctx, name, raw) {
   const input = normalize(name, raw);
   const pid = "prospect_id" in DEFS[name].props ? assertScope(ctx, input.prospect_id) : "";
@@ -447,6 +462,7 @@ async function runCrmTool(ctx, name, raw) {
       return data?.length ? data : { info: "Aucun produit \xE9vident : poser des questions de d\xE9couverte." };
     }
     case "get_product": {
+      input.product_id = await resolveProductId(input.product_id);
       const [{ data: p }, { data: prix }] = await Promise.all([
         db().from("ai_products").select("id,nom,marche_cible,fonctionnalites,questions_decouverte,argumentaire,demo_url,video_url,brochure_url").eq("id", input.product_id).eq("actif", true).maybeSingle(),
         db().from("ai_pricing").select("poste,libelle,prix_ht,unite,remise_agent_max_pct").eq("product_id", input.product_id).eq("actif", true)
@@ -467,6 +483,7 @@ async function runCrmTool(ctx, name, raw) {
         "budget_estime",
         "potentiel_fcfa"
       ]) if (input[k] !== null) patch[k] = input[k];
+      if (Array.isArray(patch.produits_recommandes)) patch.produits_recommandes = [...new Set(await Promise.all(patch.produits_recommandes.map((r) => resolveProductId(r))))];
       if (typeof patch.email === "string" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(patch.email)) delete patch.email;
       if (input.resume !== null) patch.resume_ia = String(input.resume).slice(0, 2e3);
       const c = input.criteres;
@@ -522,6 +539,7 @@ async function runCrmTool(ctx, name, raw) {
       const p = await loadProspect(pid);
       const debut = new Date(input.debut);
       if (isNaN(+debut) || +debut < Date.now() + 36e5) throw new Error("Cr\xE9neau invalide ou trop proche");
+      if (input.product_id) input.product_id = await resolveProductId(input.product_id);
       const op = await commercialFor(pid);
       const fin = new Date(+debut + 45 * 6e4);
       const visio = input.mode === "visio" ? env("DEMO_VISIO_URL", false) || null : null;
@@ -585,6 +603,7 @@ Prochaine \xE9tape : ${String(input.prochaine_etape).trim()}` : "")).slice(0, 4e
       return data;
     }
     case "create_offer": {
+      input.product_id = await resolveProductId(input.product_id);
       const { data: grille } = await db().from("ai_pricing").select("*").eq("product_id", input.product_id).eq("actif", true);
       if (!grille?.length) throw new Error("Aucun tarif officiel pour ce produit : escalader \xE0 la direction");
       const lignes = input.lignes.map((l) => {
@@ -650,6 +669,7 @@ Prochaine \xE9tape : ${String(input.prochaine_etape).trim()}` : "")).slice(0, 4e
     case "create_prospect": {
       if (ctx.created >= ctx.createCap) return { info: `Plafond de ${ctx.createCap} prospects atteint pour cette ex\xE9cution : arr\xEAte et rapporte.` };
       const email = input.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email) ? input.email : null;
+      const produit = await resolveProductId(input.produit_recommande);
       const { data, error } = await db().from("ai_prospects").insert({
         entreprise: String(input.entreprise).slice(0, 200),
         secteur: input.secteur,
@@ -661,7 +681,7 @@ Prochaine \xE9tape : ${String(input.prochaine_etape).trim()}` : "")).slice(0, 4e
         decideur: input.decideur,
         decideur_fonction: input.decideur_fonction,
         besoins: (input.besoins_detectes ?? []).slice(0, 10),
-        produits_recommandes: [input.produit_recommande],
+        produits_recommandes: [produit],
         source: ctx.source,
         source_url: input.source_url,
         stage: "enregistre",
@@ -685,7 +705,7 @@ async function commercialFor(pid) {
 // functions/_shared/prompts.ts
 function portfolioText(products) {
   if (!products.length) return "PORTEFEUILLE : aucun logiciel actif dans le catalogue \u2014 ne propose aucun logiciel et signale-le \xE0 ta hi\xE9rarchie (escalate_to_human).";
-  const base = `PORTEFEUILLE (logiciels actifs du catalogue ; aucun autre logiciel ne doit \xEAtre pr\xE9sent\xE9 ni recommand\xE9) : ${products.map((p) => `${p.nom} (${p.marche_cible})`).join(", ")}.`;
+  const base = `PORTEFEUILLE (logiciels actifs du catalogue ; aucun autre logiciel ne doit \xEAtre pr\xE9sent\xE9 ni recommand\xE9) : ${products.map((p) => `${p.nom}${p.id ? ` [id : ${p.id}]` : ""} (${p.marche_cible})`).join(", ")}.`;
   const cites = products.filter((p) => p.references?.length);
   const refs = cites.length ? ` R\xC9F\xC9RENCES CLIENTS CITABLES (accord de la direction ; seules celles-ci peuvent \xEAtre nomm\xE9es \xE0 un prospect, sans rien ajouter qui ne soit pas dans le catalogue) : ${cites.map((p) => `${p.nom} : ${p.references.join(", ")}`).join(" ; ")}.` : " Aucune r\xE9f\xE9rence client n'est citable pour l'instant : ne nomme aucun client.";
   return base + refs;
@@ -745,7 +765,7 @@ async function loadPortfolio() {
   const { data: refs } = await db().from("ai_product_references").select("product_id, client").eq("citable", true).order("client");
   const parProduit = /* @__PURE__ */ new Map();
   for (const r of refs ?? []) parProduit.set(r.product_id, [...parProduit.get(r.product_id) ?? [], r.client]);
-  const text = portfolioText((data ?? []).map((p) => ({ nom: p.nom, marche_cible: p.marche_cible, references: parProduit.get(p.id) })));
+  const text = portfolioText((data ?? []).map((p) => ({ id: p.id, nom: p.nom, marche_cible: p.marche_cible, references: parProduit.get(p.id) })));
   cache = { at: Date.now(), text };
   return text;
 }
@@ -933,7 +953,8 @@ async function runAgent(run, brief) {
         system: v1System(await loadPortfolio()),
         messages,
         tools,
-        effort: run.mode === "mission" ? "high" : "medium"
+        effort: run.mode === "mission" ? "high" : "medium",
+        niveau: 5
       });
       if (res.stop_reason === "refusal") {
         resume = "Requ\xEAte refus\xE9e par le mod\xE8le : escalade humaine.";
