@@ -56,6 +56,9 @@
     Q.push({ rpc: name, args: Object.keys(args) }); CALLS.push({ rpc: name, args });
     const R = FX.rpc;
     if (name === "ai_budget_status") return Promise.resolve({ data: R.ai_budget_status, error: null });
+    // Crédit API (test credit_test.js) : état tenu en mémoire ; absent du jeu de données = fonction non installée
+    if (name === "ai_credit_status") return Promise.resolve(R.ai_credit_status ? { data: R.ai_credit_status, error: null } : { data: null, error: { message: "Could not find the function" } });
+    if (name === "ai_credit_ajouter") { R.ai_credit_status = { saisi: true, solde_usd: args.p_type === "solde_constate" ? args.p_montant : (R.ai_credit_status?.solde_usd ?? 0) + args.p_montant, base_usd: args.p_montant, base_at: new Date().toISOString(), recharges_depuis_usd: 0, depense_depuis_usd: 0, rythme_jour_usd: 1.5, jours_restants: 3 }; return Promise.resolve({ data: { ok: true }, error: null }); }
     if (name === "ai_agent_stats") return Promise.resolve({ data: R.ai_agent_stats, error: null });
     if (name === "ai_decide_approval") { T("ai_approvals").splice(0, T("ai_approvals").length, ...T("ai_approvals").filter((a) => a.id !== args.p_id)); return Promise.resolve({ data: null, error: null }); }
     if (name === "ai_decide_approvals_batch") { T("ai_approvals").splice(0, T("ai_approvals").length, ...T("ai_approvals").filter((a) => !args.p_ids.includes(a.id))); return Promise.resolve({ data: args.p_ids.length, error: null }); }
