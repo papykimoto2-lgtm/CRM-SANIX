@@ -10,7 +10,7 @@ function cors(req) {
   const origin = req.headers.get("origin") ?? "";
   return {
     "Access-Control-Allow-Origin": ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
-    "Access-Control-Allow-Headers": "authorization, content-type, x-cron-secret",
+    "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info, x-cron-secret, x-supabase-api-version",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Vary": "Origin"
   };
