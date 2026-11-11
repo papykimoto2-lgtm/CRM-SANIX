@@ -29,6 +29,7 @@ exports.newPage = async (browser, { w = 1440, h = 900, mobile = false, reduced =
   const CRM = crmCfg === undefined ? { url: "https://demo.supabase.co", key: "eyJhbGciOiJIUzI1NiJ9." + Buffer.from(JSON.stringify({ role: "anon" })).toString("base64") + ".sig" } : crmCfg;
   if (CRM) await ctx.addInitScript((c) => { if (!sessionStorage.getItem("__cfg")) { localStorage.setItem("sanix_crm_supabase_config", JSON.stringify(c)); sessionStorage.setItem("__cfg", "1"); } }, CRM);
   for (const pattern of [...block, ...(process.env.BLOCK ? process.env.BLOCK.split(",") : [])]) await ctx.route(pattern, (r) => r.abort());   // ressources indisponibles (repli) ; BLOCK="motif,motif" : diagnostic
+  await ctx.route("**/company/vendor/supabase.umd.js", (r) => r.fulfill({ status: 200, contentType: "text/javascript", body: "/* fake: défini par addInitScript */" }));   // supabase-js est hébergé avec l'application
   await ctx.route("https://cdn.jsdelivr.net/**", (r) => {
     const u = r.request().url();
     if (u.includes("supabase-js")) return r.fulfill({ status: 200, contentType: "text/javascript", headers: CORS, body: "/* fake: défini par addInitScript */" });
