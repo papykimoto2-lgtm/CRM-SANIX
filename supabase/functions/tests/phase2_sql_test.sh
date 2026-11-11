@@ -36,12 +36,12 @@ check "seuils : 80 → prioritaire" "select priorite from ai_prospects where ent
 echo "▶ Produits du CRM et ventes HT par logiciel"
 check "AviNest Pro = AvicoSuite" "select ai_product_of('AviNest Pro')" "avicosuite"
 check "casse et espaces ignorés" "select ai_product_of('  Sanix AluExpert ERP ')" "aluexpert"
-check "produit inconnu → null" "select coalesce(ai_product_of('Angel''s Livraison'), 'null')" "null"
+check "produit hors périmètre (Angel's Transport) → null" "select coalesce(ai_product_of('Angel''s Transport'), 'null')" "null"
 q "insert into crm_records(entity, rid, data) values
   ('commandes','c1','{\"logiciel\":\"ImmoSuite ERP\",\"statut\":\"en_cours\",\"htNet\":3389831,\"ttc\":4000000}'),
   ('commandes','c2','{\"logiciel\":\"ImmoSuite ERP\",\"statut\":\"en_cours\",\"htNet\":4237288,\"ttc\":5000000}'),
   ('commandes','c3','{\"logiciel\":\"AviNest Pro\",\"statut\":\"livree\",\"htNet\":338983,\"ttc\":400000}'),
-  ('commandes','c4','{\"logiciel\":\"Angel''s Livraison\",\"statut\":\"en_cours\",\"htNet\":508475,\"ttc\":600000}'),
+  ('commandes','c4','{\"logiciel\":\"Angel''s Transport\",\"statut\":\"en_cours\",\"htNet\":508475,\"ttc\":600000}'),
   ('commandes','c5','{\"logiciel\":\"ImmoSuite ERP\",\"statut\":\"brouillon\",\"htNet\":9000000,\"ttc\":10620000}'),
   ('commandes','c6','{\"logiciel\":\"ImmoSuite ERP\",\"statut\":\"annulee\",\"htNet\":9000000,\"ttc\":10620000}')" >/dev/null
 check "ImmoSuite : 2 ventes, 7 627 119 FCFA HT (4 M + 5 M TTC), brouillons et annulées exclus" "select commandes||' · '||ca_ht||' · '||ca_ttc from ai_ventes_par_produit where produit = 'immosuite'" "2 · 7627119 · 9000000"

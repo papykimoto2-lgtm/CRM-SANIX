@@ -23,7 +23,7 @@ q "insert into ai_operators(user_id, nom, role) values ('$DIR', 'Direction', 'di
 echo "▶ Configuration par défaut (donnée, pas code)"
 check "18 rôles (dont les 14 du cahier des charges)" "select count(*) from ai_roles" "18"
 check "directeur général et directeur commercial portent leur rôle" "select string_agg(role_code, ',' order by role_code) from ai_agents where role_code is not null" "directeur_commercial,directeur_general"
-check "trois cellules : ImmoSuite, AluExpert, AvicoSuite" "select string_agg(product_id, ',' order by product_id) from ai_cells" "aluexpert,avicosuite,immosuite"
+check "quatre cellules : ImmoSuite, AluExpert, AvicoSuite, Angel's Livraison" "select string_agg(product_id, ',' order by product_id) from ai_cells" "aluexpert,angels,avicosuite,immosuite"
 check "routage des événements du CRM par rôle" "select count(*) from crm_ai_routing where role_code is not null" "8"
 $P -d "$DB" -f "$SEED" >/dev/null 2>&1
 check "après seed_agents.sql : 19 agents ont un rôle" "select count(*) from ai_agents where role_code is not null" "19"
@@ -43,7 +43,7 @@ echo "▶ Permissions"
 refused "un commercial ne peut pas modifier le catalogue" "$COM" "select ai_cfg_save_product('immosuite', '{\"nom\":\"X\"}')" "Réservé à la direction"
 refused "un commercial ne peut pas créer d'agent" "$COM" "select ai_cfg_create_agent('{\"role_code\":\"lead_hunter\",\"nom\":\"Pirate\"}')" "Réservé à la direction"
 refused "un commercial ne peut pas modifier les cellules" "$COM" "select ai_cfg_set_member('immosuite','lead_hunter','$(id ia_hunter_2)',true,0::smallint)" "Réservé à la direction"
-checka "un commercial lit la configuration" "$COM" "select count(*) from ai_cells" "3"
+checka "un commercial lit la configuration" "$COM" "select count(*) from ai_cells" "4"
 refused "aucune écriture directe dans les cellules" "$DIR" "update ai_cells set nom = 'x'" "permission denied"
 
 echo "▶ Logiciels (catalogue)"

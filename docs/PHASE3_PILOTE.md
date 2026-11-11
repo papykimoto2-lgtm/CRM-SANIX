@@ -37,3 +37,8 @@ Pilote proposé : **20 ImmoSuite + 20 AluExpert + ce qui existe en AvicoSuite** 
 
 ## 5. Critères de réussite du pilote
 Segmentation pertinente (relue), informations vérifiables et sourcées, score toujours justifié, logiciel recommandé adapté, messages personnalisés et validés, aucun envoi non autorisé, coût IA mesuré par logiciel. **Aucun taux de conversion n'est fixé à l'avance** : l'entonnoir du pilote les établit.
+
+## Quatrième logiciel : Angel's Livraison (décision de la direction)
+Plus d'opportunité sur la livraison : le périmètre commercial passe à **quatre logiciels** — ImmoSuite ERP, Sanix AluExpert, AvicoSuite (= Angel's Agro) et **Angel's Livraison** (livraison à moto, coursiers, messagerie). Angel's Transport reste hors périmètre.
+- Migration `20261117000000_angels_livraison_quatrieme_logiciel.sql` : produit `angels` renommé et activé (14 fonctionnalités du catalogue du CRM, grille tarifaire existante : 600 000 FCFA/an, 60 000 FCFA/mois), noms du CRM rattachés, règle de segmentation « logistique, livraison, coursier, messagerie, expédition » (priorité 85, avant « hors périmètre »), cellule dédiée aux mêmes agents partagés qu'AvicoSuite.
+- Données : 30 prospects Logistique segmentés `angels` ; pilote de 20 (4 avec e-mail et téléphone, 16 par téléphone seul) ; la vente « Angel's Livraison » du CRM (508 475 FCFA HT) est comptée dans ce logiciel.
