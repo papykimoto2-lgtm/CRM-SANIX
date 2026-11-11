@@ -111,6 +111,12 @@
     if (entity !== 'deals' || !o || !o.fromProspect) return null;
     var k = dealClientKey(o, clients); return k ? 'dp_' + fnv(k) : null;
   }
+  /** Un client SANS téléphone n'a pas de clé naturelle côté serveur (nom + téléphone requis) : chaque appareil créait alors sa propre copie des clients amorcés (8 clients réels → 16 fiches en production).
+      Son identifiant dérive donc de son nom : deux appareils produisent la MÊME fiche. Les clients avec téléphone gardent leur identifiant aléatoire (le serveur les fusionne déjà). */
+  function generatedClientRid(entity, o) {
+    if (entity !== 'clients' || !o || !norm(o.nom) || phoneKey(o.phone)) return null;
+    return STORES.clients.prefix + '_n' + fnv(norm(o.nom));
+  }
   var NOSTAMP = { created_at: 1, updated_at: 1, createdAt: 1, updatedAt: 1 };
   var withoutStamps = function (d) { var o = {}; Object.keys(d).forEach(function (k) { if (!NOSTAMP[k]) o[k] = d[k]; }); return o; };
   var phoneKey = function (p) { return String(p || '').replace(/\D/g, '').slice(-10); };
@@ -163,7 +169,7 @@
     arr.forEach(function (o) {
       if (!o || typeof o !== 'object') return;
       var rid = ridOf(entity, o);
-      if (!rid) { if (c.idMode !== 'int') return; o._rid = rid = generatedDealRid(entity, o, clients) || newRid(c.prefix); touched = true; }
+      if (!rid) { if (c.idMode !== 'int') return; o._rid = rid = generatedDealRid(entity, o, clients) || generatedClientRid(entity, o) || newRid(c.prefix); touched = true; }
       seen[rid] = 1;
       var d = payload(entity, o, clients), h = fnv(stable(d)), extra = {};
       if (entity === 'clients') {                                                    // deux fiches identiques (même nom et même téléphone) : une seule porte la clé naturelle
