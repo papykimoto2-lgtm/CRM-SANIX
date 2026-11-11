@@ -20,6 +20,15 @@ sg() { local got; got=$(seg "$2"); if [ "$got" = "$3" ]; then echo "  ✓ $1"; e
 echo "▶ Migration relançable"
 $P -d "$DB" -f "$MIG" >/dev/null 2>&1 && echo "  ✓ deuxième exécution sans erreur" || { echo "  ✗ deuxième exécution"; exit 1; }
 check "6 règles de départ (configuration, modifiable)" "select count(*) from ai_segment_rules" "6"
+
+echo "▶ AvicoSuite = Angel's Agro (migration 20261116)"
+UNI="$HERE/../../migrations/20261116000000_unifier_avicosuite_angels_agro.sql"
+q "insert into ai_products(id, nom, marche_cible, actif) values ('avicosuite', 'AvicoSuite', 'Fermes avicoles', true) on conflict (id) do nothing" >/dev/null
+$P -d "$DB" -f "$UNI" >/dev/null && $P -d "$DB" -f "$UNI" >/dev/null && echo "  ✓ migration relançable" || { echo "  ✗ migration d'unification"; exit 1; }
+check "Angel's Agro → AvicoSuite" "select ai_product_of('Angel''s Agro')" "avicosuite"
+check "AviNest Pro → AvicoSuite" "select ai_product_of('AviNest Pro')" "avicosuite"
+check "Angel's Livraison reste hors périmètre" "select coalesce(ai_product_of('Angel''s Livraison'), 'null')" "null"
+check "fonctionnalités reprises du catalogue du CRM" "select cardinality(fonctionnalites) from ai_products where id = 'avicosuite'" "13"
 q "insert into auth.users(id) values ('$DIR'), ('$COM')" >/dev/null
 q "insert into ai_operators(user_id, nom, role) values ('$DIR', 'Direction', 'direction'), ('$COM', 'Commercial', 'commercial')" >/dev/null
 

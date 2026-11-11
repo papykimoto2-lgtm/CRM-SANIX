@@ -7,7 +7,7 @@ Principe : **l'organisation, les équipes, les agents et les logiciels vendus so
 | Élément | Table | Comment le modifier |
 |---|---|---|
 | Logiciels vendus (nom, marché cible, secteurs, mots-clés, fonctionnalités, argumentaire) | `ai_products` | Paramétrage → Logiciels (`ai_cfg_save_product`). Un logiciel **actif** est présenté et recommandé ; **inactif**, il disparaît du portefeuille des agents (à la minute suivante). Un nouveau logiciel est créé inactif |
-| Noms de logiciels du CRM (ex. « AviNest Pro » = AvicoSuite) | `ai_product_aliases` | Fiche du logiciel → « Noms utilisés dans le CRM » (`ai_cfg_set_alias`). Sert au chiffre d'affaires par logiciel et au routage |
+| Noms de logiciels du CRM (ex. « AviNest Pro » et « Angel's Agro » = AvicoSuite : un seul logiciel, trois noms ; migration 20261116) | `ai_product_aliases` | Fiche du logiciel → « Noms utilisés dans le CRM » (`ai_cfg_set_alias`). Sert au chiffre d'affaires par logiciel et au routage |
 | Grille tarifaire officielle | `ai_pricing` | Inchangé (jamais de prix inventé : sans grille, les agents escaladent) ; l'écran signale les logiciels sans grille |
 | Modèles de postes (niveau, département, outils, effort, description) | `ai_roles` | Paramétrage → Rôles (`ai_cfg_save_role`) |
 | Cellules : un logiciel, un responsable, qui tient quel rôle | `ai_cells`, `ai_cell_members` | Paramétrage → Équipes (`ai_cfg_save_cell`, `ai_cfg_set_member`). Un agent peut servir plusieurs cellules ; un rôle sans agent est un **poste vacant** |
