@@ -38,14 +38,15 @@ create table if not exists public.ai_segment_rules (
   unique (champ, motif, segment)
 );
 -- Les motifs sont des expressions régulières PostgreSQL appliquées au texte en minuscules et sans accents (\m = début de mot).
-insert into public.ai_segment_rules(priorite, champ, motif, segment, note) values
+insert into public.ai_segment_rules(priorite, champ, motif, segment, note)
+select v.priorite, v.champ, v.motif, v.segment, v.note from (values
   (10, 'secteur',    'immobilier|foncier|promotion', 'immosuite', 'Secteur immobilier ou foncier'),
   (20, 'entreprise', '\malu|menuiser|vitr(erie|age)|miroiter|facade|fenetre|baie vitree|charpente metal|metallerie', 'aluexpert', 'Nom évoquant l''aluminium, la menuiserie, la vitrerie ou la métallerie'),
   (30, 'entreprise', 'avic|poulet|poule|pondeuse|volaille|couvoir|provende|oeuf', 'avicosuite', 'Nom évoquant l''aviculture'),
   (31, 'secteur',    'avicult|avicole|elevage', 'avicosuite', 'Secteur avicole ou élevage'),
   (90, 'secteur',    'sante|logisti|livraison|transport|distribution|pharma|clinique', 'hors_perimetre', 'Secteurs sans logiciel du périmètre commercial actuel'),
-  (95, 'secteur',    'industrie', 'a_verifier', 'Industrie sans indice d''activité : à confirmer par l''enrichissement (jamais forcé)')
-on conflict (champ, motif, segment) do nothing;
+  (95, 'secteur',    'industrie', 'a_verifier', 'Industrie sans indice d''activité : à confirmer par l''enrichissement (jamais forcé)')) v(priorite, champ, motif, segment, note)
+ where not exists (select 1 from public.ai_segment_rules r where r.priorite = v.priorite and r.champ = v.champ and r.segment = v.segment);   -- relançable même après une correction de motif
 alter table public.ai_segment_rules enable row level security;
 drop policy if exists seg_read on public.ai_segment_rules;
 create policy seg_read on public.ai_segment_rules for select to authenticated using (public.ai_is_operator());
