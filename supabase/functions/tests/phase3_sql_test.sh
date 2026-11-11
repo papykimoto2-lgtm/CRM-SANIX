@@ -126,4 +126,18 @@ check "fonctionnalités reprises du catalogue du CRM" "select cardinality(foncti
 LIV="$HERE/../../migrations/20261117000000_angels_livraison_quatrieme_logiciel.sql"
 $P -d "$DB" -f "$LIV" >/dev/null && echo "  ✓ migration relançable" || { echo "  ✗ migration livraison"; exit 1; }
 check "une seule règle livraison après deux exécutions" "select count(*) from ai_segment_rules where segment = 'angels'" "1"
+
+echo "▶ Règles corrigées après relecture (migration 20261119)"
+RC="$HERE/../../migrations/20261119000000_corriger_regles_segmentation.sql"
+$P -d "$DB" -f "$RC" >/dev/null && $P -d "$DB" -f "$RC" >/dev/null && echo "  ✓ migration relançable" || { echo "  ✗ migration des règles"; exit 1; }
+q "insert into ai_prospects(entreprise, secteur) values ('Polyclinique Avicennes','Santé'), ('TECHNALUX','Industrie'), ('SAM LE VITRIER','Industrie'), ('MENUI''DEAL.CI','Industrie'), ('VITRINES','Industrie'), ('Ferme Avicole Bis','Agriculture'), ('Couvoir Moderne','Agriculture'), ('Salubrité Services','Industrie')" >/dev/null
+reg() { local n="${2//\'/\'\'}"; check "$1" "select ai_segment_of(p) from ai_prospects p where entreprise = '$n'" "$3"; }
+reg "« Avicennes » n'est pas avicole (clinique)" "Polyclinique Avicennes" "hors_perimetre"
+reg "alu à l'intérieur du nom : TECHNALUX → AluExpert" "TECHNALUX" "aluexpert"
+reg "« alu » au milieu d'un mot (Salubrité) n'est pas de l'aluminium" "Salubrité Services" "a_verifier"
+reg "vitrier → AluExpert" "SAM LE VITRIER" "aluexpert"
+reg "menui → AluExpert" "MENUI'DEAL.CI" "aluexpert"
+reg "une vitrine (devanture) n'est pas de la vitrerie : à vérifier" "VITRINES" "a_verifier"
+reg "ferme avicole → AvicoSuite" "Ferme Avicole Bis" "avicosuite"
+reg "couvoir → AvicoSuite" "Couvoir Moderne" "avicosuite"
 echo; echo "Tous les contrôles SQL de la Phase 3 sont passés."
