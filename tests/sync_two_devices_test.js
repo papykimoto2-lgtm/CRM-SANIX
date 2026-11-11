@@ -68,6 +68,10 @@ function startBridge() {
     ok(a1.ridsEnDouble === 0, "A : aucun identifiant en double après réception");
     const srvDeals = (await sql("select count(*)::int n from crm_records where entity = 'deals' and deleted_at is null"))[0].n;
     ok(srvDeals <= srv && a1.deals === b2.deals && b2.deals === srvDeals, `affaires : une seule par client sur A (${a1.deals}), B (${b2.deals}) et la base centrale (${srvDeals} pour ${srv} clients), plus de doublons entre appareils`);
+    const dupNoms = (await sql("select count(*)::int n from (select lower(data->>'nom') nm from crm_records where entity = 'clients' and deleted_at is null and coalesce(data->>'phone','') = '' group by 1 having count(*) > 1) t"))[0].n;
+    ok(dupNoms === 0, 'clients sans téléphone : aucun nom en double dans la base centrale (' + dupNoms + ')');
+    const dupCmd = (await sql("select count(*)::int n from (select lower(data->>'client')||lower(data->>'logiciel') k from crm_records where entity = 'commandes' and deleted_at is null group by 1 having count(*) > 1) t"))[0].n;
+    ok(dupCmd === 0, 'commandes : aucune commande en double (même client et même logiciel) (' + dupCmd + ')');
     ok(errors.length === 0, "aucune erreur JavaScript" + (errors.length ? " : " + errors.slice(0, 3).join(" | ") : ""));
     console.log("\nSynchronisation à deux appareils : TOUT EST OK");
   } finally { await browser.close(); bridge.proc.kill(); server.close && server.close(); }

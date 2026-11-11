@@ -45,6 +45,10 @@ var BudgetError = class extends Error {
 };
 var TransientLlmError = class extends Error {
 };
+var ProviderBillingError = class extends Error {
+};
+var ProviderConfigurationError = class extends Error {
+};
 var LlmKeyMissingError = class extends TransientLlmError {
 };
 var _client = null;
@@ -88,8 +92,16 @@ async function callClaude(o) {
     message = await client().beta.messages.create(params);
   } catch (e) {
     const status = e.status;
-    if (e instanceof Anthropic.APIConnectionError || status === 429 || status === 529 || status !== void 0 && status >= 500) {
-      throw new TransientLlmError(errMsg(e));
+    const message2 = errMsg(e);
+    const normalized = message2.toLowerCase();
+    if (/credit balance|insufficient credit|credit.*too low|billing.*(inactive|disabled|payment)|payment required|purchase credits/.test(normalized)) {
+      throw new ProviderBillingError("Facturation Anthropic : cr\xE9dits insuffisants ou facturation inactive. V\xE9rifier le compte associ\xE9 \xE0 ANTHROPIC_API_KEY.");
+    }
+    if (status === 401 || status === 403) {
+      throw new ProviderConfigurationError("Acc\xE8s Anthropic refus\xE9 (cl\xE9 invalide, r\xE9voqu\xE9e ou sans autorisation). V\xE9rifier ANTHROPIC_API_KEY dans les secrets Supabase.");
+    }
+    if (e instanceof Anthropic.APIConnectionError || status === 408 || status === 409 || status === 425 || status === 429 || status === 529 || status !== void 0 && status >= 500) {
+      throw new TransientLlmError(message2);
     }
     throw e;
   }

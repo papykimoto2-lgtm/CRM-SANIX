@@ -12625,7 +12625,7 @@ function _seedCommandesInitialesOnce(){
     if(COMMANDES.some(x=>norm(x.client)===norm(o.client)&&x.logiciel===o.logiciel)) return;
     const htNet=Math.round(o.ttc/1.18);
     COMMANDES.push({
-      id:'cmd_init_'+c.id, ref:cmdNumero(), client:c.nom, date:today, logiciel:o.logiciel, typeLicence:'Perpetuelle',
+      id:'cmd_init_'+norm(c.nom)+'_'+norm(o.logiciel), ref:cmdNumero(), client:c.nom, date:today, logiciel:o.logiciel, typeLicence:'Perpetuelle',
       htBrut:htNet, remise:0, htNet, tva:o.ttc-htNet, ttc:o.ttc, acompte:o.acompte, solde:Math.max(0,o.ttc-o.acompte),
       commercial:c.commercial||'', statut:'en_cours', presId:'', notes:'Avance versée : '+o.acompte.toLocaleString('fr-FR')+' FCFA'
     });
@@ -12876,7 +12876,7 @@ function _seedClientsNouveauxLogOnce(){
     if(COMMANDES.some(x=>norm(x.client)===norm(o.nom)&&x.logiciel===o.logiciel)) return;
     const htNet=Math.round(o.valeur/1.18);
     COMMANDES.push({
-      id:'cmd_init_'+c.id, ref:cmdNumero(), client:c.nom, date:today, logiciel:o.logiciel, typeLicence:'Perpetuelle',
+      id:'cmd_init_'+norm(c.nom)+'_'+norm(o.logiciel), ref:cmdNumero(), client:c.nom, date:today, logiciel:o.logiciel, typeLicence:'Perpetuelle',
       htBrut:htNet, remise:0, htNet, tva:o.valeur-htNet, ttc:o.valeur, acompte:o.acompte, solde:Math.max(0,o.valeur-o.acompte),
       commercial:'', statut:o.statut_cmd, presId:'',
       notes:o.acompte>=o.valeur ? 'Soldé : '+o.valeur.toLocaleString('fr-FR')+' FCFA encaissés' : (o.acompte>0?'Avance versée : '+o.acompte.toLocaleString('fr-FR')+' FCFA':'Aucune avance versée')
