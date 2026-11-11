@@ -6,6 +6,7 @@ import * as P from "./office_panel.js";
 import { LOGIN_ALIASES, SUPABASE_DEFAULT } from "./config.js";
 import * as SALES from "./sales.js";
 import * as CFG from "./config_panel.js";
+import { initVoice } from "./voice.js";
 
 // ───────────────────────── Configuration & session ─────────────────────────
 const LS = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
@@ -248,15 +249,18 @@ function renderExec(main, soft = false) {
     const el = $("#msgs"), nearEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     el.innerHTML = body; if (nearEnd) el.scrollTop = el.scrollHeight;
     const side = $("#exec-side"); if (side) side.innerHTML = crmCard().s + approvalsInline().s;
+    initVoice();
     return;
   }
   main.innerHTML = html`<section class="panel"><div class="exec"><div class="card chat" style="padding:0"><div class="msgs" id="msgs" tabindex="0" aria-label="Conversation avec le directeur général IA">${raw(body)}</div>
     <div class="quick">${quickInstructions().map((t, i) => html`<button type="button" data-act="quick" data-i="${i}">${clipT(t, 54)}</button>`)}</div>
-    <form class="compose" id="exec-form"><textarea id="exec-t" rows="2" maxlength="4000" placeholder="Votre instruction au directeur général IA…" aria-label="Instruction"></textarea><button class="btn pri" type="submit" id="exec-send">Envoyer</button></form></div>
+    <div class="voice-tools" aria-label="Assistant vocal"><button class="btn sm" type="button" id="exec-mic" aria-pressed="false">🎙️ Dicter</button><button class="btn sm" type="button" id="exec-voice" aria-pressed="false">🔇 Lecture vocale désactivée</button><span id="voice-status" role="status" aria-live="polite">Dictée en français disponible</span></div>
+    <form class="compose" id="exec-form"><textarea id="exec-t" rows="2" maxlength="4000" placeholder="Dictez ou écrivez votre instruction au directeur général IA…" aria-label="Instruction"></textarea><button class="btn pri" type="submit" id="exec-send">Envoyer</button></form></div>
     <aside class="card" id="exec-side" style="overflow:auto">${crmCard()}${approvalsInline()}</aside></div></section>`.s;
   const el = $("#msgs"); el.scrollTop = el.scrollHeight;
   $("#exec-form").onsubmit = sendInstruction;
   $("#exec-t").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("#exec-form").requestSubmit(); } });
+  initVoice();
   if (S.prefill) { $("#exec-t").value = S.prefill; S.prefill = null; $("#exec-t").focus(); }
 }
 const approvalsInline = () => html`<h3 style="margin:0 0 6px">Décisions attendues</h3>${S.approvals.length ? S.approvals.slice(0, 8).map(approvalCard) : html`<p class="muted small">Aucune validation en attente.</p>`}${S.approvals.length > 8 ? html`<button class="btn sm" data-act="tab" data-id="valid">Voir les ${S.approvals.length} validations</button>` : ""}`;
