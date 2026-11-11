@@ -36,6 +36,7 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
           { segment: "immosuite", prospects: 95, dans_le_pilote: 20, qualifies: 0, prioritaires: 0, contactes: 0, reponses: 0, rendez_vous: 0, demonstrations: 0, offres: 0, ca_ht_crm: 7627119, cout_ia_usd: 0 },
           { segment: "a_verifier", prospects: 103, dans_le_pilote: 0, qualifies: 0, prioritaires: 0, contactes: 0, reponses: 0, rendez_vous: 0, demonstrations: 0, offres: 0, ca_ht_crm: 0, cout_ia_usd: 0 },
           { segment: "hors_perimetre", prospects: 197, dans_le_pilote: 0, qualifies: 0, prioritaires: 0, contactes: 0, reponses: 0, rendez_vous: 0, demonstrations: 0, offres: 0, ca_ht_crm: 0, cout_ia_usd: 0 }],
+        ai_product_references: [{ id: "r1", product_id: "immosuite", client: "Client <b>Réf</b>", note: "Client réel", citable: false }, { id: "r2", product_id: "aluexpert", client: "Beda Alu", note: null, citable: true }],
         ai_pilote: [{ prospect_id: "11111111-1111-1111-1111-111111111111", product_id: "immosuite", raison: "Sélection automatique : e-mail et téléphone", ai_prospects: { entreprise: "Promoteur <b>Test</b>", secteur: "Immobilier", telephone: "+2250700000001", email: "a@b.ci" } }],
       };
       window.__DB = DB; window.__RPC = [];
@@ -46,6 +47,7 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
         if (n === "ai_segmenter_prospects") return a.p_appliquer ? { applique: true, fiches_modifiees: 14, segments_calcules: { immosuite: 95 } } : { applique: false, segments_calcules: { immosuite: 95, aluexpert: 108, a_verifier: 103, hors_perimetre: 198 }, deja_travailles: 0, choix_manuels: 0 };
         if (n === "ai_choisir_pilote") return { immosuite: { quota: a.p_quotas.immosuite, ajoutes: 20, manque: 0 }, aluexpert: { quota: 20, ajoutes: 20, manque: 0 }, avicosuite: { quota: 10, ajoutes: 1, manque: 9 } };
         if (n === "ai_cfg_save_segment_rule" && a.p.id) { const r = DB.ai_segment_rules.find((x) => x.id === a.p.id); if (r) Object.assign(r, a.p); }
+        if (n === "ai_cfg_save_reference" && a.p.id) { const r = DB.ai_product_references.find((x) => x.id === a.p.id); if (r) Object.assign(r, a.p); }
         return { ok: true };
       };
       S.sb = new Proxy(real, { get(t, k) {
@@ -137,6 +139,20 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     await page.click('button[data-act="cfg-pilote-del"]'); await page.waitForTimeout(300);
     r = (await rpcs()).at(-1);
     ok(r.n === "ai_cfg_pilote_set" && r.a.p_on === false, "retrait d'un prospect du pilote");
+    console.log("▶ Références clients : citables sur feu vert");
+    await page.click('button[data-act="cfg-sec"][data-sec="references"]'); await page.waitForTimeout(300);
+    ok((await body()).includes("Beda Alu") && (await body()).includes("Interne") && (await body()).includes("Citable"), "références affichées avec leur statut (interne ou citable)");
+    ok(await page.evaluate(() => window.__XSS === undefined) && !(await page.locator("#main b:text-is('Réf')").count()), "nom de client malveillant : échappé");
+    await page.click('button[data-act="cfg-ref-toggle"][data-id="r1"]'); await page.waitForTimeout(300);
+    r = (await rpcs()).at(-1);
+    ok(r.n === "ai_cfg_save_reference" && r.a.p.id === "r1" && r.a.p.citable === true, "feu vert donné : référence rendue citable");
+    await page.click('button[data-act="cfg-ref-toggle"][data-id="r2"]'); await page.waitForTimeout(300);
+    r = (await rpcs()).at(-1);
+    ok(r.n === "ai_cfg_save_reference" && r.a.p.id === "r2" && r.a.p.citable === false, "feu vert retiré");
+    await page.click('button[data-act="cfg-ref-new"]'); await page.waitForTimeout(200);
+    await page.fill('#cfg-form [name=client]', "Nouveau Client"); await page.click('#cfg-form button[type=submit]'); await page.waitForTimeout(400);
+    r = (await rpcs()).at(-1);
+    ok(r.n === "ai_cfg_save_reference" && r.a.p.client === "Nouveau Client" && r.a.p.citable === false, "nouvelle référence créée interne par défaut");
     ok(errors.filter((e) => !/Failed to load resource|favicon/.test(e)).length === 0, "aucune erreur JavaScript" + (errors.length ? " : " + errors.slice(0, 3).join(" | ") : ""));
     console.log("\nParamétrage : TOUT EST OK");
   } finally { await browser.close(); server.close && server.close(); }

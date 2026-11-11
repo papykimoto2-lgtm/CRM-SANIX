@@ -576,7 +576,10 @@ if (new URLSearchParams(location.search).has("debug")) window.__vc = S;
     if (bad) { localStorage.setItem(bad[0], JSON.stringify({ url: bad[1].url, key: "" })); localStorage.removeItem(OWN_CFG); }
     showConfig(bad ? keyProblem(bad[1].key) : ""); return;
   }
-  if (!window.supabase) { gate(html`<h1>Bibliothèque indisponible</h1><p class="muted">Impossible de charger supabase-js (réseau ou bloqueur). Rechargez la page.</p>`); return; }
+  if (!window.supabase) {
+    gate(html`<h1>Bibliothèque indisponible</h1><p class="muted">Impossible de charger supabase-js. Rechargez la page ; si le problème persiste, videz le cache du site ou mettez l'application à jour.</p><div class="actions"><button class="btn pri" type="button" id="reload-btn">Recharger</button></div>`);
+    $("#reload-btn")?.addEventListener("click", () => location.reload()); return;
+  }
   S.sb = window.supabase.createClient(S.cfg.url, S.cfg.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storage: window.sessionStorage } });
   start();
 })();

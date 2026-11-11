@@ -86,3 +86,32 @@ T("PA2 · le portefeuille présenté aux agents est le catalogue ACTIF : activer
   assert(s.includes("aucun logiciel actif"), "catalogue vide : les agents sont invités à le signaler, pas à improviser");
   await dropAll();
 });
+
+T("PA3 · références clients : jamais nommées par les agents sans feu vert de la direction, retirées dès que le feu vert l'est", async () => {
+  await world();
+  await mkAgent("ia_t", "IA Testeur", 4, "sanix_ai_sales_director", ["lister_prospects", "get_prospect"]);
+  const prompt = async () => {
+    resetPortfolioCache(); llm.calls = [];
+    const t = await mkTask("ia_t", `Mission ${Math.random().toString(36).slice(2, 8)}`, { donneur: "sanix_ai_sales_director" });
+    script({ "IA Testeur": [() => done("Mission traitée avec succès sur les données du CRM.", ["Mission traitée : résultat enregistré"])] });
+    await runTask(t, { deadline: Date.now() + 60000 });
+    return String(llm.calls[0].system);
+  };
+  const ref = await cfg("ai_cfg_save_reference($1::jsonb)", [JSON.stringify({ product_id: "immosuite", client: "Client Pilote Test", note: "Client réel de test" })]) as { id: string; citable: boolean };
+  eq(ref.citable, false, "une référence est interne par défaut");
+  let s = await prompt();
+  assert(!s.includes("Client Pilote Test"), "un client non autorisé n'est jamais présenté aux agents");
+  assert(s.includes("Aucune référence client n'est citable"), "sans référence citable, l'agent a pour consigne de ne nommer aucun client");
+  await cfg("ai_cfg_save_reference($1::jsonb)", [JSON.stringify({ id: ref.id, citable: true })]);
+  s = await prompt();
+  assert(s.includes("RÉFÉRENCES CLIENTS CITABLES") && s.includes("ImmoSuite ERP : Client Pilote Test"), "feu vert donné : la référence est citable pour son logiciel");
+  const tr = await rows("select citable_le is not null and citable_par is not null as ok from ai_product_references where id = $1", [ref.id]);
+  eq(tr[0]?.ok, true, "le feu vert est daté et signé");
+  await cfg("ai_cfg_save_reference($1::jsonb)", [JSON.stringify({ id: ref.id, citable: false })]);
+  s = await prompt();
+  assert(!s.includes("Client Pilote Test"), "feu vert retiré : la référence disparaît des consignes à la minute suivante");
+  let refused = false;
+  try { await as(COMMERCIAL, "select ai_cfg_save_reference($1::jsonb)", [JSON.stringify({ product_id: "immosuite", client: "Intrus" })]); } catch { refused = true; }
+  assert(refused, "seule la direction peut enregistrer ou autoriser une référence");
+  await dropAll();
+});
