@@ -69,7 +69,7 @@ export async function runAgent(run: RunMode, brief: string): Promise<{ resume: s
   for (; tours < MAX_TURNS; tours++) {
     const { message: res } = await callClaude({
       label, prospectId: pid, missionId: mid, system: v1System(await loadPortfolio()), messages, tools,
-      effort: run.mode === "mission" ? "high" : "medium",
+      effort: run.mode === "mission" ? "high" : "medium", niveau: 5,
     });
     if (res.stop_reason === "refusal") { resume = "Requête refusée par le modèle : escalade humaine."; break; }
     messages.push({ role: "assistant", content: res.content });

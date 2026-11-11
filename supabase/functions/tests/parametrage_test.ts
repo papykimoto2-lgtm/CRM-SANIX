@@ -5,6 +5,7 @@ import { sql } from "./fake_supabase.ts";
 import { done, llm, script } from "./fake_anthropic.ts";
 import { runTask } from "../_shared/company/engine.ts";
 import { resetPortfolioCache } from "../_shared/catalogue.ts";
+import { runCrmTool, type CrmCtx } from "../_shared/crm_tools.ts";
 
 const T = (name: string, fn: () => Promise<void>) => Deno.test({ name, fn, sanitizeOps: false, sanitizeResources: false });
 const COMMERCIAL = "22222222-2222-2222-2222-222222222222";
@@ -80,7 +81,7 @@ T("PA2 · le portefeuille présenté aux agents est le catalogue ACTIF : activer
   assert(!s.includes("MedicorERP") && !s.includes("Angel's") && !s.includes("DistriPro"), "un logiciel désactivé n'est plus jamais présenté aux agents");
   await cfg("ai_cfg_save_product('nouveau', '{\"nom\": \"Nouveau Logiciel\", \"marche_cible\": \"PME\", \"actif\": true}'::jsonb)");
   s = await prompt();
-  assert(s.includes("Nouveau Logiciel (PME)"), "un logiciel ajouté et activé par la direction apparaît sans modifier le code");
+  assert(s.includes("Nouveau Logiciel [id : nouveau] (PME)"), "un logiciel ajouté et activé par la direction apparaît sans modifier le code");
   for (const id of ["immosuite", "aluexpert", "avicosuite", "nouveau"]) await cfg("ai_cfg_save_product($1, '{\"actif\": false}'::jsonb)", [id]);
   s = await prompt();
   assert(s.includes("aucun logiciel actif"), "catalogue vide : les agents sont invités à le signaler, pas à improviser");
@@ -113,5 +114,23 @@ T("PA3 · références clients : jamais nommées par les agents sans feu vert de
   let refused = false;
   try { await as(COMMERCIAL, "select ai_cfg_save_reference($1::jsonb)", [JSON.stringify({ product_id: "immosuite", client: "Intrus" })]); } catch { refused = true; }
   assert(refused, "seule la direction peut enregistrer ou autoriser une référence");
+  await dropAll();
+});
+
+T("PA4 · un agent retrouve un logiciel par son identifiant, son nom commercial ou un nom du CRM ; sinon l'erreur lui liste les logiciels actifs", async () => {
+  await world();
+  await sql("insert into ai_prospects(entreprise, secteur, stage) values ('Prospect Outil', 'Immobilier', 'enregistre')");
+  const pid = String(await val("select id from ai_prospects where entreprise = 'Prospect Outil'"));
+  const ctx: CrmCtx = { agentLabel: "test", agentId: null, scope: new Set([pid]), createCap: 0, created: 0, source: "test" };
+  const nom = async (ref: string) => ((await runCrmTool(ctx, "get_product", { prospect_id: null, product_id: ref })) as { id: string }).id;
+  eq(await nom("immosuite"), "immosuite", "identifiant");
+  eq(await nom("ImmoSuite ERP"), "immosuite", "nom commercial (le cas qui bloquait les missions du pilote)");
+  eq(await nom("Sanix AluExpert ERP"), "aluexpert", "nom du CRM (alias)");
+  eq(await nom("  immosuite-erp "), "immosuite", "casse, espaces et tirets ignorés");
+  let err = ""; try { await nom("Logiciel Fantôme"); } catch (e) { err = (e as Error).message; }
+  assert(err.includes("Produit inconnu") && err.includes("immosuite (ImmoSuite ERP)") && err.includes("aluexpert"), "produit inconnu : l'erreur liste les logiciels actifs avec leur identifiant");
+  await cfg("ai_cfg_save_product('immosuite', '{\"actif\": false}'::jsonb)");
+  err = ""; try { await nom("ImmoSuite ERP"); } catch (e) { err = (e as Error).message; }
+  assert(err.includes("Produit inconnu"), "un logiciel désactivé n'est plus accessible aux agents");
   await dropAll();
 });

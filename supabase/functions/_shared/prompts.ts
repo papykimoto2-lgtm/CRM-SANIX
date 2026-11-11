@@ -2,9 +2,9 @@
 
 /** Portefeuille commercial : construit à chaque exécution depuis les logiciels ACTIFS du catalogue (ai_products), jamais figé dans le code.
  *  Références clients : seules celles marquées « citables » par la direction apparaissent ; aucune autre ne doit être nommée. */
-export function portfolioText(products: { nom: string; marche_cible: string; references?: string[] }[]): string {
+export function portfolioText(products: { id?: string; nom: string; marche_cible: string; references?: string[] }[]): string {
   if (!products.length) return "PORTEFEUILLE : aucun logiciel actif dans le catalogue — ne propose aucun logiciel et signale-le à ta hiérarchie (escalate_to_human).";
-  const base = `PORTEFEUILLE (logiciels actifs du catalogue ; aucun autre logiciel ne doit être présenté ni recommandé) : ${products.map((p) => `${p.nom} (${p.marche_cible})`).join(", ")}.`;
+  const base = `PORTEFEUILLE (logiciels actifs du catalogue ; aucun autre logiciel ne doit être présenté ni recommandé) : ${products.map((p) => `${p.nom}${p.id ? ` [id : ${p.id}]` : ""} (${p.marche_cible})`).join(", ")}.`;
   const cites = products.filter((p) => p.references?.length);
   const refs = cites.length
     ? ` RÉFÉRENCES CLIENTS CITABLES (accord de la direction ; seules celles-ci peuvent être nommées à un prospect, sans rien ajouter qui ne soit pas dans le catalogue) : ${cites.map((p) => `${p.nom} : ${p.references!.join(", ")}`).join(" ; ")}.`

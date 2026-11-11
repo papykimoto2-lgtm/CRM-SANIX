@@ -453,12 +453,14 @@ function renderGov(main) {
       <label class="chk" style="margin-top:8px"><input type="checkbox" id="g-ext" ${g.validation_outils_externes ? "checked" : ""}> Valider les agents dotés d'outils de communication externe</label>
       ${"consentement_requis" in g ? html`<label class="chk" style="margin-top:8px"><input type="checkbox" id="g-consent" ${g.consentement_requis ? "checked" : ""}> Exiger une preuve de consentement avant tout envoi (WhatsApp, e-mail) : un prospect sans preuve ne reçoit rien</label>` : ""}
       <label class="f" style="margin-top:10px">Communication externe (WhatsApp, e-mail aux prospects)<select id="g-comm"><option value="interdite" ${g.communication_externe === "interdite" ? "selected" : ""}>Interdite</option><option value="validation" ${g.communication_externe === "validation" ? "selected" : ""}>Chaque message validé par le président</option><option value="autonome" ${g.communication_externe === "autonome" ? "selected" : ""}>Autonome (messages envoyés directement)</option></select></label>
-      <label class="f" style="margin-top:10px">Modèle d'IA<select id="g-model">${["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"].map((m) => html`<option ${g.modele === m ? "selected" : ""}>${m}</option>`)}</select></label></div></div>
+      <label class="f" style="margin-top:10px">Modèle d'IA (direction)<select id="g-model">${["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"].map((m) => html`<option ${g.modele === m ? "selected" : ""}>${m}</option>`)}</select></label>
+      ${"modele_operationnel" in g ? html`<label class="f" style="margin-top:10px">Modèle des agents d'exécution (moins cher)<select id="g-model-op"><option value="" ${!g.modele_operationnel ? "selected" : ""}>Identique à la direction</option>${["claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5"].map((m) => html`<option ${g.modele_operationnel === m ? "selected" : ""}>${m}</option>`)}</select></label><p class="small muted">Les agents de niveau 4 et 5 (qualification, rédaction, recherche) utilisent ce modèle ; la direction garde le modèle ci-dessus. Un modèle moins cher multiplie le nombre de missions possibles avec le même budget.</p>` : ""}</div></div>
     <form id="gov-form" class="card" style="margin-top:12px"><h3 style="margin-top:0">Limites</h3><div class="form">${GOV_NUM.map(([k, l, mn, mx, st]) => html`<label class="f">${l}<input type="number" name="${k}" min="${mn}" max="${mx}" step="${st}" value="${g[k]}" required></label>`)}</div>
     <div class="actions"><button class="btn pri" type="submit">Enregistrer la gouvernance</button></div></form></section>`.s;
   $("#gov-form").onsubmit = async (e) => {
     e.preventDefault();
     const patch = { actif: $("#g-actif").checked, creation_autonome: $("#g-auto").checked, validation_outils_externes: $("#g-ext").checked, communication_externe: $("#g-comm").value, modele: $("#g-model").value };
+    if ($("#g-model-op")) patch.modele_operationnel = $("#g-model-op").value || null;
     if ($("#g-consent")) patch.consentement_requis = $("#g-consent").checked;
     for (const [k, , mn, mx] of GOV_NUM) {
       const v = Number(e.target.elements[k].value);

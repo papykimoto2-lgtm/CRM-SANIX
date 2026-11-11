@@ -45,13 +45,19 @@ function client(): Anthropic {
   return _client;
 }
 
-let _model: { v: ModelId; at: number } | null = null;
-export async function governanceModel(): Promise<ModelId> {
-  if (_model && Date.now() - _model.at < 60_000) return _model.v;
-  const { data } = await db().from("ai_governance").select("modele").eq("id", 1).maybeSingle();
-  const v = (data?.modele as ModelId) ?? "claude-opus-5-5";
-  _model = { v, at: Date.now() };
-  return v;
+let _model: { v: ModelId; op: ModelId | null; at: number } | null = null;
+async function governanceModels(): Promise<{ v: ModelId; op: ModelId | null }> {
+  if (_model && Date.now() - _model.at < 60_000) return _model;
+  const { data } = await db().from("ai_governance").select("*").eq("id", 1).maybeSingle();   // « * » : tolère un schéma sans la colonne modele_operationnel
+  _model = { v: (data?.modele as ModelId) ?? "claude-opus-5-5", op: (data?.modele_operationnel as ModelId | null) ?? null, at: Date.now() };
+  return _model;
+}
+export async function governanceModel(): Promise<ModelId> { return (await governanceModels()).v; }
+/** Modèle d'un agent : les agents d'exécution (niveau ≥ 4 dans l'organigramme) peuvent tourner sur un modèle moins cher
+ *  (réglage de gouvernance `modele_operationnel`) ; la direction (niveaux 1 à 3) garde le modèle principal. Sans réglage, tout le monde garde le modèle principal. */
+export async function modelForLevel(niveau?: number | null): Promise<ModelId> {
+  const m = await governanceModels();
+  return niveau != null && niveau >= 4 && m.op ? m.op : m.v;
 }
 export function resetModelCache(): void { _model = null; }
 
@@ -65,6 +71,8 @@ export type CallOpts = {
   effort?: Effort;
   maxTokens?: number;
   model?: ModelId;
+  /** Niveau de l'agent dans l'organigramme : choisit le modèle (principal ou opérationnel). */
+  niveau?: number | null;
   /** Schéma JSON : sortie structurée garantie (pas d'outils dans ce cas). */
   format?: Record<string, unknown>;
 };
@@ -74,7 +82,7 @@ export async function callClaude(o: CallOpts): Promise<CallResult> {
   const { data: b } = await db().rpc("ai_budget_check", { p_agent: o.agentId ?? null });
   if (b && b.ok === false) throw new BudgetError(String(b.raison ?? "Budget IA atteint"));
 
-  const model = o.model ?? await governanceModel();
+  const model = o.model ?? await modelForLevel(o.niveau);
   const params: Record<string, unknown> = {
     model,
     max_tokens: o.maxTokens ?? 16000,

@@ -103,3 +103,18 @@ T("P7 · score /100 : justification obligatoire, barème du cahier des charges, 
   assert(sans.includes("score_justifie"), "la base refuse aussi un score sans justification");
   await dropAll();
 });
+
+T("P2-MODELE · les agents d'exécution peuvent tourner sur un modèle moins cher, la direction garde le modèle principal ; sans réglage rien ne change", async () => {
+  await freshDb(); await president();
+  const { modelForLevel, resetModelCache } = await import("../_shared/llm.ts");
+  resetModelCache(); eq(await modelForLevel(5), "claude-opus-5-5", "sans réglage : le modèle principal pour tous");
+  await sql("update ai_governance set modele_operationnel = 'claude-sonnet-5-5' where id = 1"); resetModelCache();
+  eq(await modelForLevel(5), "claude-sonnet-5-5", "agent d'exécution (niveau 5) : modèle opérationnel");
+  eq(await modelForLevel(4), "claude-sonnet-5-5", "niveau 4 : modèle opérationnel");
+  eq(await modelForLevel(3), "claude-opus-5-5", "direction (niveau 3) : modèle principal");
+  eq(await modelForLevel(1), "claude-opus-5-5", "directeur général : modèle principal");
+  eq(await modelForLevel(null), "claude-opus-5-5", "niveau inconnu : modèle principal");
+  let refus = ""; try { await sql("update ai_governance set modele_operationnel = 'gpt-4' where id = 1"); } catch (e) { refus = (e as Error).message; }
+  assert(refus.includes("modele_operationnel"), "un modèle inconnu est refusé par la base");
+  await dropAll();
+});

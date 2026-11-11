@@ -116,8 +116,8 @@ async function buildBrief(ctx: CoCtx): Promise<Brief> {
     const charge = new Map<string, number>();
     for (const t of open ?? []) charge.set(t.agent_id, (charge.get(t.agent_id) ?? 0) + 1);
     const lignes = org.agents.slice(0, 90).map((a) =>
-      `${a.code} | ${a.nom} | ${a.fonction} | ${a.departement_id} | N${a.niveau} | ${a.etat}/${a.activite} | chef : ${org.byId(a.manager_id)?.code ?? "—"} | missions ouvertes : ${charge.get(a.id) ?? 0}${a.temporaire ? " | temporaire" : ""}`);
-    L.push(`Organisation actuelle (${org.agents.length} agents) :\n${lignes.join("\n")}`);
+      `${a.code} | ${a.nom} | ${a.fonction} | ${a.departement_id} | N${a.niveau} | ${a.etat}/${a.activite} | chef : ${org.byId(a.manager_id)?.code ?? "—"} | missions ouvertes : ${charge.get(a.id) ?? 0}${a.temporaire ? " | temporaire" : ""} | rôle : ${a.role_code ?? "—"} | outils CRM : ${a.outils.filter((t) => CRM_TOOL_NAMES.includes(t)).join(",") || "aucun"}`);
+    L.push(`Organisation actuelle (${org.agents.length} agents) :\n${lignes.join("\n")}\nRègle d'affectation : confie une mission à l'agent qui porte le rôle et les outils CRM nécessaires (qualifier un prospect = update_prospect ; écrire = send_message ; rechercher = create_prospect). Un agent sans l'outil ne peut pas terminer la mission : ne la lui confie pas.`);
     const { data: st } = await db().rpc("ai_budget_status");
     if (st) {
       L.push(`Gouvernance : agents actifs ${st.agents_actifs}/${st.max_agents_actifs} · créations aujourd'hui ${st.creations_jour}/${st.max_creations_jour} · missions actives ${st.missions_actives}/${st.max_missions_actives} · budget IA du jour ${st.jour_usd}/${st.budget_jour_usd} $ · du mois ${st.mois_usd}/${st.budget_mois_usd} $ · plafond par agent ${gov.budget_agent_jour_usd} $/jour · création autonome : ${gov.creation_autonome ? "oui" : "non (validation du président)"} · communication externe : ${gov.communication_externe}.`);
@@ -165,7 +165,7 @@ export async function runTask(taskId: string, opts: { deadline: number }): Promi
       for (let turn = 0; turn < gov.max_tours_execution; turn++) {
         if (Date.now() > opts.deadline) return { kind: "deadline" };
         const { message: res, cost } = await callClaude({
-          label: `agent:${agent.code}`, agentId: agent.id, taskId: task.id, system, messages, tools, effort: agent.effort,
+          label: `agent:${agent.code}`, agentId: agent.id, taskId: task.id, system, messages, tools, effort: agent.effort, niveau: agent.niveau,
         });
         cout += cost;
         // Recherche web (outil serveur) : l'agent consulte des sources → animation d'écran
