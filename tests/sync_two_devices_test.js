@@ -42,7 +42,7 @@ function startBridge() {
       return page;
     };
 
-    const stat = (p) => p.evaluate(() => { const s = window.SanixCrmSync.status(); const rids = {}; CLIENTS.forEach((c) => { rids[c._rid] = (rids[c._rid] || 0) + 1; }); return { mode: s.mode, pending: s.pending, init: s.init, lastErr: s.lastErr, clients: CLIENTS.length, ridsEnDouble: Object.values(rids).filter((n) => n > 1).length, pushed: s.counters.pushed }; });
+    const stat = (p) => p.evaluate(() => { const s = window.SanixCrmSync.status(); const rids = {}; CLIENTS.forEach((c) => { rids[c._rid] = (rids[c._rid] || 0) + 1; }); return { mode: s.mode, pending: s.pending, init: s.init, lastErr: s.lastErr, clients: CLIENTS.length, deals: DEALS.length, ridsEnDouble: Object.values(rids).filter((n) => n > 1).length, pushed: s.counters.pushed }; });
     const calls = async () => (await post("/__calls", {})).calls;
     const settled = (p) => wait(async () => { const s = await stat(p); return s.init && s.pending === 0 && s.mode !== "sync"; }, 60000, "file d'envoi vide");
     const srvClients = async () => (await sql("select count(*)::int n from crm_records where entity = 'clients' and deleted_at is null"))[0].n;
@@ -61,9 +61,13 @@ function startBridge() {
     const b2 = await stat(B2);
     ok(b2.pending === 0 && b2.pushed === pushed0 && (await calls()) - n0 <= 2, "B : plus aucun envoi après la convergence (pas de boucle, aucune rafale d'appels)");
     await A.evaluate(() => window.SanixCrmSync.syncNow()); await settled(A);
+    await B2.evaluate(() => window.SanixCrmSync.syncNow()); await settled(B2); await A.evaluate(() => window.SanixCrmSync.syncNow()); await settled(A);   // dernier échange : les suppressions d'affaires jumelles se propagent
+    await wait(async () => { await A.evaluate(() => window.SanixCrmSync.syncNow()); await A.waitForTimeout(1500); const a = await stat(A), b = await stat(B2); return a.deals === b.deals && a.pending === 0; }, 40000, "convergence des affaires");
     const a1 = await stat(A), srv = await srvClients();
     ok(a1.clients === b2.clients && b2.clients === srv, `A, B et la base centrale ont le même nombre de clients (${srv})`);
     ok(a1.ridsEnDouble === 0, "A : aucun identifiant en double après réception");
+    const srvDeals = (await sql("select count(*)::int n from crm_records where entity = 'deals' and deleted_at is null"))[0].n;
+    ok(srvDeals <= srv && a1.deals === b2.deals && b2.deals === srvDeals, `affaires : une seule par client sur A (${a1.deals}), B (${b2.deals}) et la base centrale (${srvDeals} pour ${srv} clients), plus de doublons entre appareils`);
     ok(errors.length === 0, "aucune erreur JavaScript" + (errors.length ? " : " + errors.slice(0, 3).join(" | ") : ""));
     console.log("\nSynchronisation à deux appareils : TOUT EST OK");
   } finally { await browser.close(); bridge.proc.kill(); server.close && server.close(); }

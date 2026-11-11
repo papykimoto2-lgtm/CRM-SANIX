@@ -1,7 +1,7 @@
 // SANIX AI — PARAMÉTRAGE (direction) : logiciels, équipes (cellules par logiciel), agents et rôles.
 // Rien de l'organisation ni du catalogue n'est figé dans le code : cet écran lit et modifie les tables ai_products, ai_roles, ai_cells, ai_cell_members et
 // ai_agents par les fonctions d'administration ai_cfg_* (direction seule, journalisées côté serveur).
-import { $, closeModal, html, openModal, raw, toast } from "./ui.js";
+import { $, askText, closeModal, html, openModal, raw, toast } from "./ui.js";
 import { q, S } from "./state.js";
 
 let D = { products: [], pricing: [], aliases: [], roles: [], cells: [], members: [], rules: [], funnel: [], pilote: [], phase3: false, refs: [], refsOk: false }, sec = "logiciels", hooks = {}, apercu = null;
@@ -30,7 +30,7 @@ export async function loadConfig() {
     [rules, funnel, pilote] = await Promise.all([
       q(S.sb.from("ai_segment_rules").select("*").order("priorite").order("id")),
       q(S.sb.from("ai_pilote_entonnoir").select("*").order("segment")),
-      q(S.sb.from("ai_pilote").select("prospect_id,product_id,raison,ai_prospects(entreprise,secteur,telephone,email)").order("product_id")),
+      q(S.sb.from("ai_pilote").select("prospect_id,product_id,raison,ai_prospects(entreprise,secteur,telephone,email,consentement)").order("product_id")),
     ]);
     phase3 = true;
   } catch { /* migration 20261115 non appliquée */ }
@@ -46,6 +46,12 @@ export function renderConfig(main) {
   main.innerHTML = html`<div class="head"><h2>🛠️ Paramétrage</h2><p class="muted small">Logiciels vendus, équipes, agents et rôles : tout se modifie ici, sans toucher au code. Les changements sont journalisés.</p></div>
     <div class="actions" role="tablist" style="margin-bottom:14px">${SECTIONS.map(([k, l]) => html`<button class="btn ${sec === k ? "pri" : ""}" type="button" data-act="cfg-sec" data-sec="${k}">${l}</button>`)}</div>
     ${raw(({ logiciels: viewProducts, equipes: viewCells, agents: viewAgents, roles: viewRoles, pilote: viewPilote, references: viewRefs }[sec])().toString())}`.s;
+  const cf = $("#cfg-consent-form");                                          // preuve de consentement pour tout le pilote d'un logiciel
+  if (cf) cf.onsubmit = async (e) => {
+    e.preventDefault(); const f = new FormData(cf), n = D.pilote.filter((x) => x.product_id === f.get("product")).length;
+    if (!confirm(`Enregistrer cette preuve de consentement (${f.get("canal")}) pour les ${n} prospects du pilote ${productName(f.get("product"))} qui n'en ont pas ? Elle sera datée, signée par votre compte et journalisée.`)) return;
+    try { const r = await rpc("ai_consentement_pilote", { p_product: f.get("product"), p_canal: f.get("canal"), p_preuve: f.get("preuve") }); toast(`Preuve enregistrée pour ${r.prospects ?? 0} prospect(s)`, "ok"); await refresh(main); } catch { /* affiché */ }
+  };
   const pf = $("#cfg-pilote-form");                                           // sélection du pilote : quotas par logiciel actif
   if (pf) pf.onsubmit = async (e) => {
     e.preventDefault(); const f = new FormData(pf), quotas = {};
@@ -228,8 +234,14 @@ function viewPilote() {
       <div class="scroll"><table class="tbl"><thead><tr><th class="num">Priorité</th><th>Champ</th><th>Motif (expression régulière, sans accents)</th><th>Segment</th><th>État</th><th></th></tr></thead><tbody>${D.rules.map((r) => html`<tr><td class="num">${r.priorite}</td><td>${r.champ}</td><td><code>${r.motif}</code><div class="small muted">${r.note ?? ""}</div></td><td>${segName(r.segment)}</td><td>${r.actif ? "Active" : "Inactive"}</td><td><button class="btn sm" type="button" data-act="cfg-rule-toggle" data-id="${r.id}">${r.actif ? "Désactiver" : "Activer"}</button></td></tr>`)}</tbody></table></div></div>
     <div class="card"><b>Sélection du pilote (30 à 50 prospects réels)</b>
       <form id="cfg-pilote-form" class="form" style="margin:10px 0">${actifs.map((p) => html`<label class="f">${p.nom}<input name="q_${p.id}" type="number" min="0" max="200" value="${D.pilote.filter((x) => x.product_id === p.id).length || (p.id === "avicosuite" ? 10 : 20)}"></label>`)}<div class="actions" style="align-self:end"><button class="btn pri" type="submit">Sélectionner</button></div></form>
-      <div class="scroll"><table class="tbl"><thead><tr><th>Entreprise</th><th>Logiciel</th><th>Contacts</th><th>Raison</th><th></th></tr></thead><tbody>${D.pilote.map((x) => html`<tr><td>${x.ai_prospects?.entreprise ?? "—"}</td><td>${productName(x.product_id)}</td><td>${[x.ai_prospects?.telephone ? "tél." : "", x.ai_prospects?.email ? "e-mail" : ""].filter(Boolean).join(" + ") || "—"}</td><td class="small muted">${x.raison ?? ""}</td><td><button class="btn sm" type="button" data-act="cfg-pilote-del" data-id="${x.prospect_id}">Retirer</button></td></tr>`)}</tbody></table></div>
-      ${D.pilote.length ? "" : html`<p class="muted small">Aucun prospect dans le pilote. Appliquez d'abord la segmentation, puis sélectionnez.</p>`}</div>`;
+      <div class="scroll"><table class="tbl"><thead><tr><th>Entreprise</th><th>Logiciel</th><th>Contacts</th><th>Consentement</th><th>Raison</th><th></th></tr></thead><tbody>${D.pilote.map((x) => html`<tr><td>${x.ai_prospects?.entreprise ?? "—"}</td><td>${productName(x.product_id)}</td><td>${[x.ai_prospects?.telephone ? "tél." : "", x.ai_prospects?.email ? "e-mail" : ""].filter(Boolean).join(" + ") || "—"}</td><td class="small">${["whatsapp", "email"].filter((c) => x.ai_prospects?.consentement?.[c]?.preuve).join(", ") || html`<span class="muted">aucune preuve</span>`}</td><td class="small muted">${x.raison ?? ""}</td><td class="actions"><button class="btn sm" type="button" data-act="cfg-consent-one" data-id="${x.prospect_id}">Preuve</button><button class="btn sm" type="button" data-act="cfg-pilote-del" data-id="${x.prospect_id}">Retirer</button></td></tr>`)}</tbody></table></div>
+      ${D.pilote.length ? "" : html`<p class="muted small">Aucun prospect dans le pilote. Appliquez d'abord la segmentation, puis sélectionnez.</p>`}</div>
+    <div class="card" style="margin-top:14px"><b>Preuve de consentement du pilote</b>
+      <p class="small muted">Avec « Exiger une preuve de consentement » (Gouvernance), un agent ne peut même pas préparer un message pour un prospect sans preuve. Vous enregistrez ici la base juridique du premier contact (source, date, forme) : elle est datée, signée par votre compte et journalisée. Ne l'enregistrez que si elle existe réellement.</p>
+      <form id="cfg-consent-form" class="form"><label class="f">Logiciel<select name="product">${actifs.map((p) => html`<option value="${p.id}">${p.nom}</option>`)}</select></label>
+        <label class="f">Canal<select name="canal"><option value="whatsapp">WhatsApp</option><option value="email">E-mail</option></select></label>
+        <label class="f" style="grid-column:1/-1">Preuve (20 caractères au moins)<textarea name="preuve" rows="2" maxlength="500" required placeholder="ex. intérêt légitime B2B : entreprise listée dans l'annuaire public X, coordonnées professionnelles, consultée le 11/11/2026"></textarea></label>
+        <div class="actions" style="grid-column:1/-1"><button class="btn pri" type="submit">Enregistrer pour tout le pilote de ce logiciel</button></div></form></div>`;
 }
 function ruleForm() {
   const segs = [...D.products.map((p) => [p.id, p.nom]), ["hors_perimetre", SEG_SPECIAUX.hors_perimetre], ["a_verifier", SEG_SPECIAUX.a_verifier]];
@@ -275,6 +287,11 @@ export async function configAction(el, ev) {
     else if (a === "cfg-seg-apply") {
       if (!confirm("Appliquer la segmentation ? Les fiches « identifié » ou « enregistré » reçoivent leur segment et leur logiciel recommandé ; les fiches déjà travaillées et les choix manuels ne sont jamais modifiés.")) return;
       const r = await rpc("ai_segmenter_prospects", { p_appliquer: true }); apercu = r; toast(`${r.fiches_modifiees ?? 0} fiche(s) segmentée(s)`, "ok"); await refresh(main);
+    }
+    else if (a === "cfg-consent-one") {
+      const t = await askText("Preuve de consentement", "Source, date et forme du consentement (10 caractères au moins)", { placeholder: "ex. demande de démo reçue par e-mail le 10/11/2026" }); if (!t) return;
+      const canal = confirm("OK = WhatsApp, Annuler = e-mail") ? "whatsapp" : "email";
+      await rpc("ai_consentement_enregistrer", { p_prospect: id, p_canal: canal, p_preuve: t }); toast("Preuve enregistrée", "ok"); await refresh(main);
     }
     else if (a === "cfg-pilote-del") { await rpc("ai_cfg_pilote_set", { p_prospect: id, p_on: false }); await refresh(main); }
   } catch { /* message déjà affiché par rpc() */ }

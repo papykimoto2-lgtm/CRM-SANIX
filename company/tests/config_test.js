@@ -52,7 +52,7 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
       };
       S.sb = new Proxy(real, { get(t, k) {
         if (k === "from") return (tb) => (DB[tb] ? builder(tb) : t.from(tb));
-        if (k === "rpc") return (n, a) => { if (n.startsWith("ai_cfg_") || ["ai_segmenter_prospects", "ai_choisir_pilote"].includes(n)) { window.__RPC.push({ n, a }); return Promise.resolve({ data: apply(n, a), error: null }); } return t.rpc(n, a); };
+        if (k === "rpc") return (n, a) => { if (n.startsWith("ai_cfg_") || ["ai_segmenter_prospects", "ai_choisir_pilote", "ai_consentement_pilote", "ai_consentement_enregistrer"].includes(n)) { window.__RPC.push({ n, a }); return Promise.resolve({ data: apply(n, a), error: null }); } return t.rpc(n, a); };
         const v = Reflect.get(t, k); return typeof v === "function" ? v.bind(t) : v;
       } });
     });
@@ -139,6 +139,18 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     await page.click('button[data-act="cfg-pilote-del"]'); await page.waitForTimeout(300);
     r = (await rpcs()).at(-1);
     ok(r.n === "ai_cfg_pilote_set" && r.a.p_on === false, "retrait d'un prospect du pilote");
+    console.log("▶ Pilote : preuve de consentement");
+    await page.click('button[data-act="cfg-sec"][data-sec="pilote"]'); await page.waitForTimeout(300);
+    ok((await body()).includes("Consentement") && (await body()).includes("Preuve de consentement du pilote"), "colonne et formulaire « Consentement » présents");
+    await page.fill('#cfg-consent-form [name=preuve]', "Intérêt légitime B2B : annuaire public, 11/11/2026"); await page.click('#cfg-consent-form button[type=submit]'); await page.waitForTimeout(400);
+    r = (await rpcs()).filter((c) => c.n === "ai_consentement_pilote").at(-1);
+    ok(r && r.a.p_canal === "whatsapp" && r.a.p_preuve.startsWith("Intérêt légitime") && r.a.p_product, "preuve du pilote : enregistrée pour le logiciel choisi, après confirmation");
+    const one = page.locator('button[data-act="cfg-consent-one"]').first();
+    if (await one.count()) {
+      await one.click(); await page.waitForTimeout(250); await page.fill("#ask-t", "Demande de démo reçue le 10/11/2026"); await page.click('#ask button[type=submit]'); await page.waitForTimeout(400);
+      r = (await rpcs()).filter((c) => c.n === "ai_consentement_enregistrer").at(-1);
+      ok(r && r.a.p_preuve === "Demande de démo reçue le 10/11/2026" && r.a.p_canal === "whatsapp", "preuve individuelle enregistrée");
+    }
     console.log("▶ Références clients : citables sur feu vert");
     await page.click('button[data-act="cfg-sec"][data-sec="references"]'); await page.waitForTimeout(300);
     ok((await body()).includes("Beda Alu") && (await body()).includes("Interne") && (await body()).includes("Citable"), "références affichées avec leur statut (interne ou citable)");

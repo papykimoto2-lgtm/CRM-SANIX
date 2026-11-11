@@ -140,4 +140,19 @@ reg "menui → AluExpert" "MENUI'DEAL.CI" "aluexpert"
 reg "une vitrine (devanture) n'est pas de la vitrerie : à vérifier" "VITRINES" "a_verifier"
 reg "ferme avicole → AvicoSuite" "Ferme Avicole Bis" "avicosuite"
 reg "couvoir → AvicoSuite" "Couvoir Moderne" "avicosuite"
+
+echo "▶ Preuves de consentement et coût IA par logiciel (migration 20261122)"
+CNS="$HERE/../../migrations/20261122000000_consentement_et_cout_pilote.sql"
+$P -d "$DB" -f "$CNS" >/dev/null && $P -d "$DB" -f "$CNS" >/dev/null && echo "  ✓ migration relançable" || { echo "  ✗ migration consentement"; exit 1; }
+CP=$(pid "Promoteur Alpha")
+check "aucune preuve au départ" "select coalesce(consentement->'whatsapp'->>'preuve', '') from ai_prospects where id = '$CP'" ""
+checka "la direction enregistre une preuve datée et signée" "$DIR" "select (ai_consentement_enregistrer('$CP', 'whatsapp', 'Demande de démo reçue par e-mail le 10/11/2026')->>'ok')" "true"
+check "preuve, date et auteur conservés" "select (consentement->'whatsapp'->>'preuve') || '|' || (consentement->'whatsapp'->>'par') || '|' || ((consentement->'whatsapp'->>'at')::timestamptz <= now())::text from ai_prospects where id = '$CP'" "Demande de démo reçue par e-mail le 10/11/2026|$DIR|true"
+refused "un commercial ne peut pas attester un consentement" "$COM" "select ai_consentement_enregistrer('$CP', 'email', 'Preuve assez longue pour passer')" "Réservé à la direction"
+refused "preuve trop courte refusée" "$DIR" "select ai_consentement_enregistrer('$CP', 'email', 'oui')" "trop courte"
+refused "canal inconnu refusé" "$DIR" "select ai_consentement_enregistrer('$CP', 'sms', 'Preuve assez longue pour passer')" "Canal invalide"
+checka "lot : les prospects du pilote sans preuve la reçoivent" "$DIR" "select (ai_consentement_pilote('immosuite', 'whatsapp', 'Intérêt légitime B2B : annuaire public, coordonnées professionnelles, 11/11/2026')->>'prospects')" "2"
+checka "lot : relancé, plus personne à compléter" "$DIR" "select (ai_consentement_pilote('immosuite', 'whatsapp', 'Intérêt légitime B2B : annuaire public, coordonnées professionnelles, 11/11/2026'))->>'prospects'" "0"
+q "insert into ai_actions(agent, action, prospect_id, cout_usd) values ('agent:test', 'llm_turn', '$CP', 0.5), ('agent:test', 'llm_turn', null, 9)" >/dev/null
+check "coût IA rattaché au logiciel du prospect (le coût sans prospect ni mission n'est attribué à aucun logiciel)" "select round(cout_ia_usd::numeric, 2) from ai_pilote_entonnoir where segment = 'immosuite'" "0.50"
 echo; echo "Tous les contrôles SQL de la Phase 3 sont passés."
