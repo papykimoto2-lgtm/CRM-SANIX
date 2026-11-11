@@ -155,7 +155,7 @@ iframe.rpt{width:100%;height:66dvh;border:1px solid var(--line);border-radius:10
 @media (max-width:980px){
   .office{grid-template-columns:1fr;grid-template-rows:62dvh auto;height:auto}
   .side{border-left:0;border-top:1px solid var(--line)}
-  .exec{grid-template-columns:1fr;height:auto}.chat{height:70dvh}
+  .exec{grid-template-columns:minmax(0,1fr);height:auto}.chat{height:auto;min-height:70dvh;min-width:0}
   .panel.full{height:auto}
   .hint{display:none}
 }
@@ -166,4 +166,12 @@ iframe.rpt{width:100%;height:66dvh;border:1px solid var(--line);border-radius:10
   .topbar .chips::-webkit-scrollbar{display:none}
   .topbar #who{display:none}
   .office{grid-template-rows:68dvh auto}
+}
+
+/* Bureau du Président sur téléphone : la conversation passe avant les suggestions et la saisie (elle était réduite à une bande illisible quand le texte est agrandi) */
+@media(max-width:600px){
+  .msgs{min-height:48dvh;max-height:62dvh}
+  .quick{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin;padding-bottom:6px}
+  .quick button{flex:0 0 auto;white-space:nowrap;max-width:70vw;overflow:hidden;text-overflow:ellipsis}
+  .compose textarea{min-height:40px;max-height:96px}
 }
