@@ -100,6 +100,10 @@ var BudgetError = class extends Error {
 };
 var TransientLlmError = class extends Error {
 };
+var ProviderBillingError = class extends Error {
+};
+var ProviderConfigurationError = class extends Error {
+};
 var LlmKeyMissingError = class extends TransientLlmError {
 };
 var _client = null;
@@ -144,8 +148,16 @@ async function callClaude(o) {
     message = await client().beta.messages.create(params);
   } catch (e) {
     const status = e.status;
-    if (e instanceof Anthropic.APIConnectionError || status === 429 || status === 529 || status !== void 0 && status >= 500) {
-      throw new TransientLlmError(errMsg(e));
+    const message2 = errMsg(e);
+    const normalized = message2.toLowerCase();
+    if (/credit balance|insufficient credit|credit.*too low|billing.*(inactive|disabled|payment)|payment required|purchase credits/.test(normalized)) {
+      throw new ProviderBillingError("Facturation Anthropic : cr\xE9dits insuffisants ou facturation inactive. V\xE9rifier le compte associ\xE9 \xE0 ANTHROPIC_API_KEY.");
+    }
+    if (status === 401 || status === 403) {
+      throw new ProviderConfigurationError("Acc\xE8s Anthropic refus\xE9 (cl\xE9 invalide, r\xE9voqu\xE9e ou sans autorisation). V\xE9rifier ANTHROPIC_API_KEY dans les secrets Supabase.");
+    }
+    if (e instanceof Anthropic.APIConnectionError || status === 408 || status === 409 || status === 425 || status === 429 || status === 529 || status !== void 0 && status >= 500) {
+      throw new TransientLlmError(message2);
     }
     throw e;
   }
@@ -2123,6 +2135,16 @@ async function onError(ctx, e) {
     await incidentOnce("llm_indisponible", "attention", `Service IA indisponible : ${clip(e.message, 200)}`, 3 * 6e4);
     return "reportee";
   }
+  if (e instanceof ProviderBillingError || e instanceof ProviderConfigurationError) {
+    const billing = e instanceof ProviderBillingError;
+    const type = billing ? "fournisseur_credits_insuffisants" : "fournisseur_authentification";
+    const note = `[Syst\xE8me] ${e.message} Mission mise en attente sans p\xE9naliser ni suspendre l\u2019agent. Corriger la configuration fournisseur puis relancer la mission.`;
+    await db().from("ai_agent_tasks").update({ statut: "bloquee", progression: await saveJournal(ctx, note) }).eq("id", task.id);
+    await db().from("ai_agents").update({ activite: "disponible" }).eq("id", agent.id).not("activite", "eq", "en_reunion");
+    await incidentOnce(type, "critique", e.message, 6 * 36e5);
+    await publishActivity(agent.id, "disponible", task.id);
+    return "bloquee";
+  }
   const msg = errMsg(e);
   console.error("runTask", agent.code, msg);
   await release2(`[Syst\xE8me] Erreur d'ex\xE9cution : ${clip(msg, 300)}`, false);
@@ -2422,6 +2444,10 @@ async function tickCompany() {
   }
   const { data: panne } = await db().from("ai_incidents").select("id").eq("type", "llm_indisponible").gte("created_at", new Date(Date.now() - 3 * 6e4).toISOString()).limit(1);
   if (panne?.length) return { ...res, ignore: "Service IA indisponible : pause de 3 minutes" };
+  const { data: fournisseurEnErreur } = await db().from("ai_incidents").select("id").in("type", ["fournisseur_credits_insuffisants", "fournisseur_authentification"]).gte("created_at", new Date(Date.now() - 10 * 6e4).toISOString()).limit(1);
+  if (fournisseurEnErreur?.length) {
+    return { ...res, ignore: "Compte IA en v\xE9rification : corriger la facturation ou la cl\xE9 fournisseur avant reprise." };
+  }
   const deadline = Date.now() + runBudgetMs();
   const [{ data: reunions }, { data: missions }] = await Promise.all([
     db().rpc("ai_claim_meetings", { p_n: 1 }),
