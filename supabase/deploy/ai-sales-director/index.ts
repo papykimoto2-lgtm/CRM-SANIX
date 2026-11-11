@@ -733,7 +733,10 @@ async function commercialFor(pid) {
 // functions/_shared/prompts.ts
 function portfolioText(products) {
   if (!products.length) return "PORTEFEUILLE : aucun logiciel actif dans le catalogue \u2014 ne propose aucun logiciel et signale-le \xE0 ta hi\xE9rarchie (escalate_to_human).";
-  return `PORTEFEUILLE (logiciels actifs du catalogue ; aucun autre logiciel ne doit \xEAtre pr\xE9sent\xE9 ni recommand\xE9) : ${products.map((p) => `${p.nom} (${p.marche_cible})`).join(", ")}.`;
+  const base = `PORTEFEUILLE (logiciels actifs du catalogue ; aucun autre logiciel ne doit \xEAtre pr\xE9sent\xE9 ni recommand\xE9) : ${products.map((p) => `${p.nom} (${p.marche_cible})`).join(", ")}.`;
+  const cites = products.filter((p) => p.references?.length);
+  const refs = cites.length ? ` R\xC9F\xC9RENCES CLIENTS CITABLES (accord de la direction ; seules celles-ci peuvent \xEAtre nomm\xE9es \xE0 un prospect, sans rien ajouter qui ne soit pas dans le catalogue) : ${cites.map((p) => `${p.nom} : ${p.references.join(", ")}`).join(" ; ")}.` : " Aucune r\xE9f\xE9rence client n'est citable pour l'instant : ne nomme aucun client.";
+  return base + refs;
 }
 var commercialRules = (portfolio) => `${portfolio}
 
@@ -786,8 +789,11 @@ var cache = null;
 var TTL_MS = 6e4;
 async function loadPortfolio() {
   if (cache && Date.now() - cache.at < TTL_MS) return cache.text;
-  const { data } = await db().from("ai_products").select("nom, marche_cible").eq("actif", true).order("nom");
-  const text = portfolioText(data ?? []);
+  const { data } = await db().from("ai_products").select("id, nom, marche_cible").eq("actif", true).order("nom");
+  const { data: refs } = await db().from("ai_product_references").select("product_id, client").eq("citable", true).order("client");
+  const parProduit = /* @__PURE__ */ new Map();
+  for (const r of refs ?? []) parProduit.set(r.product_id, [...parProduit.get(r.product_id) ?? [], r.client]);
+  const text = portfolioText((data ?? []).map((p) => ({ nom: p.nom, marche_cible: p.marche_cible, references: parProduit.get(p.id) })));
   cache = { at: Date.now(), text };
   return text;
 }

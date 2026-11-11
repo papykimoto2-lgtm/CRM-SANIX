@@ -4,10 +4,10 @@
 import { $, closeModal, html, openModal, raw, toast } from "./ui.js";
 import { q, S } from "./state.js";
 
-let D = { products: [], pricing: [], aliases: [], roles: [], cells: [], members: [], rules: [], funnel: [], pilote: [], phase3: false }, sec = "logiciels", hooks = {}, apercu = null;
+let D = { products: [], pricing: [], aliases: [], roles: [], cells: [], members: [], rules: [], funnel: [], pilote: [], phase3: false, refs: [], refsOk: false }, sec = "logiciels", hooks = {}, apercu = null;
 /** app.js fournit le rechargement des agents (évite une importation circulaire). */
 export const setHooks = (h) => { hooks = h; };
-const SECTIONS = [["logiciels", "💻 Logiciels"], ["equipes", "🧩 Équipes"], ["agents", "🤖 Agents"], ["roles", "🎭 Rôles"], ["pilote", "🎯 Pilote"]];
+const SECTIONS = [["logiciels", "💻 Logiciels"], ["equipes", "🧩 Équipes"], ["agents", "🤖 Agents"], ["roles", "🎭 Rôles"], ["pilote", "🎯 Pilote"], ["references", "⭐ Références"]];
 const lines = (a) => (a ?? []).join("\n"), csv = (a) => (a ?? []).join(", ");
 const split = (s, sep) => String(s ?? "").split(sep).map((x) => x.trim()).filter(Boolean);
 const productName = (id) => D.products.find((p) => p.id === id)?.nom ?? id ?? "—";
@@ -34,7 +34,9 @@ export async function loadConfig() {
     ]);
     phase3 = true;
   } catch { /* migration 20261115 non appliquée */ }
-  D = { products: products ?? [], pricing: pricing ?? [], aliases: aliases ?? [], roles: roles ?? [], cells: cells ?? [], members: members ?? [], rules: rules ?? [], funnel: funnel ?? [], pilote: pilote ?? [], phase3 };
+  let refs = [], refsOk = false;                                              // références clients (migration 20261118) : tolérant à son absence
+  try { refs = await q(S.sb.from("ai_product_references").select("*").order("product_id").order("client")); refsOk = true; } catch { /* migration non appliquée */ }
+  D = { products: products ?? [], pricing: pricing ?? [], aliases: aliases ?? [], roles: roles ?? [], cells: cells ?? [], members: members ?? [], rules: rules ?? [], funnel: funnel ?? [], pilote: pilote ?? [], phase3, refs: refs ?? [], refsOk };
 }
 
 const rpc = async (name, args) => { try { const r = await q(S.sb.rpc(name, args)); return r ?? {}; } catch (e) { toast(e.message, "bad"); throw e; } };
@@ -43,7 +45,7 @@ async function refresh(main = $("#main")) { await loadConfig(); renderConfig(mai
 export function renderConfig(main) {
   main.innerHTML = html`<div class="head"><h2>🛠️ Paramétrage</h2><p class="muted small">Logiciels vendus, équipes, agents et rôles : tout se modifie ici, sans toucher au code. Les changements sont journalisés.</p></div>
     <div class="actions" role="tablist" style="margin-bottom:14px">${SECTIONS.map(([k, l]) => html`<button class="btn ${sec === k ? "pri" : ""}" type="button" data-act="cfg-sec" data-sec="${k}">${l}</button>`)}</div>
-    ${raw(({ logiciels: viewProducts, equipes: viewCells, agents: viewAgents, roles: viewRoles, pilote: viewPilote }[sec])().toString())}`.s;
+    ${raw(({ logiciels: viewProducts, equipes: viewCells, agents: viewAgents, roles: viewRoles, pilote: viewPilote, references: viewRefs }[sec])().toString())}`.s;
   const pf = $("#cfg-pilote-form");                                           // sélection du pilote : quotas par logiciel actif
   if (pf) pf.onsubmit = async (e) => {
     e.preventDefault(); const f = new FormData(pf), quotas = {};
@@ -91,6 +93,28 @@ function productForm(p) {
       for (const a of have) if (!want.has(a)) await rpc("ai_cfg_set_alias", { p_alias: a, p_product: id, p_on: false });
       closeModal(); toast("Logiciel enregistré", "ok"); await refresh();
     } catch { /* message déjà affiché */ }
+  };
+}
+
+// ─── Références clients : citables par les agents seulement sur feu vert de la direction ───
+function viewRefs() {
+  if (!D.refsOk) return html`<p class="small muted">Les références clients ne sont pas encore installées (migration 20261118).</p>`;
+  return html`<div class="actions" style="margin-bottom:10px"><button class="btn pri" type="button" data-act="cfg-ref-new">＋ Nouvelle référence</button></div>
+    <p class="small muted">Un client <b>interne</b> n'est jamais nommé par les agents. Il ne devient <b>citable</b> qu'avec votre feu vert (accord du client à être cité) : le feu vert est daté et peut être retiré à tout moment.</p>
+    <div class="scroll"><table class="tbl"><thead><tr><th>Logiciel</th><th>Client</th><th>Note</th><th>Statut</th><th></th></tr></thead><tbody>${D.refs.length ? D.refs.map((r) => html`<tr><td>${productName(r.product_id)}</td><td><b>${r.client}</b></td><td>${r.note ?? ""}</td>
+      <td>${r.citable ? html`<span class="pill" style="--c:#16a34a"><i></i>Citable</span>` : html`<span class="pill" style="--c:#6b7280"><i></i>Interne</span>`}</td>
+      <td class="actions"><button class="btn sm" type="button" data-act="cfg-ref-toggle" data-id="${r.id}">${r.citable ? "Retirer le feu vert" : "Donner le feu vert"}</button><button class="btn sm" type="button" data-act="cfg-ref-del" data-id="${r.id}" aria-label="Supprimer ${r.client}">✕</button></td></tr>`) : html`<tr><td colspan="5" class="muted">Aucune référence.</td></tr>`}</tbody></table></div>`;
+}
+function refForm() {
+  openModal(html`<h3>Nouvelle référence client</h3><form id="cfg-form" class="form">
+    <label class="f">Logiciel<select name="product_id">${D.products.map((p) => html`<option value="${p.id}">${p.nom}</option>`)}</select></label>
+    <label class="f">Client<input name="client" required minlength="2" maxlength="120"></label>
+    <label class="f" style="grid-column:1/-1">Note (facultatif)<input name="note" maxlength="300"></label>
+    <p class="small muted" style="grid-column:1/-1">La référence est créée <b>interne</b> ; le feu vert se donne ensuite dans la liste.</p>
+    <div class="actions" style="grid-column:1/-1"><button class="btn pri" type="submit">Enregistrer</button><button class="btn" type="button" data-act="close-modal">Annuler</button></div></form>`);
+  $("#cfg-form").onsubmit = async (e) => {
+    e.preventDefault(); const f = new FormData(e.currentTarget);
+    try { await rpc("ai_cfg_save_reference", { p: { product_id: f.get("product_id"), client: f.get("client"), note: f.get("note"), citable: false } }); closeModal(); toast("Référence enregistrée (interne)", "ok"); await refresh(); } catch { /* affiché */ }
   };
 }
 
@@ -229,6 +253,13 @@ export async function configAction(el, ev) {
     else if (a === "cfg-product-new") productForm(null);
     else if (a === "cfg-product-edit") productForm(D.products.find((p) => p.id === id));
     else if (a === "cfg-product-toggle") { const p = D.products.find((x) => x.id === id); await rpc("ai_cfg_save_product", { p_id: id, p: { actif: !p.actif } }); toast(p.actif ? "Logiciel désactivé" : "Logiciel activé", "ok"); await refresh(main); }
+    else if (a === "cfg-ref-new") refForm();
+    else if (a === "cfg-ref-toggle") {
+      const r = D.refs.find((x) => x.id === id);
+      if (!r.citable && !confirm(`Autoriser les agents à citer « ${r.client} » comme référence de ${productName(r.product_id)} ? Confirmez que ce client a donné son accord.`)) return;
+      await rpc("ai_cfg_save_reference", { p: { id, citable: !r.citable } }); toast(r.citable ? "Feu vert retiré" : "Référence citable", "ok"); await refresh(main);
+    }
+    else if (a === "cfg-ref-del") { if (!confirm("Supprimer cette référence ?")) return; await rpc("ai_cfg_delete_reference", { p_id: id }); await refresh(main); }
     else if (a === "cfg-cell-new") cellForm();
     else if (a === "cfg-cell-toggle") { const c = D.cells.find((x) => x.id === id); await rpc("ai_cfg_save_cell", { p: { id, actif: !c.actif } }); await refresh(main); }
     else if (a === "cfg-cell-resp") { await rpc("ai_cfg_save_cell", { p: { id, responsable_agent_id: el.value || null } }); toast("Responsable enregistré", "ok"); await refresh(main); }
