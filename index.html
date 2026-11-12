@@ -2563,7 +2563,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
       </div>
 
       <!-- Stats -->
-      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px" id="cmd-stats"></div>
+      <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:20px" id="cmd-stats"></div>
 
       <!-- Filtres -->
       <div class="flex gap-2" style="margin-bottom:16px;flex-wrap:wrap">
@@ -2585,7 +2585,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
             <thead>
               <tr>
                 <th>N° Commande</th><th>Date</th><th>Client</th><th>Logiciel</th>
-                <th>Montant HT</th><th>TVA</th><th>TTC</th><th>Statut</th><th>Commercial</th><th>Actions</th>
+                <th>Montant HT</th><th>TVA</th><th>TTC</th><th>Versé</th><th>Reste à payer</th><th>Statut</th><th>Commercial</th><th>Actions</th>
               </tr>
             </thead>
             <tbody id="cmd-tbody"></tbody>
@@ -2834,7 +2834,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
       </div>
 
       <!-- Stats compta -->
-      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px" id="compta-stats"></div>
+      <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:20px" id="compta-stats"></div>
 
       <!-- Zone de contenu -->
       <div id="compta-content"></div>
@@ -9717,18 +9717,26 @@ function initCommandes() {
   renderCommandes();
 }
 
+// Reste à payer d'une commande : TTC moins le total versé (jamais négatif).
+function cmdReste(c){ return Math.max(0,(c.ttc||0)-(c.acompte||0)); }
+
 function renderCmdStats() {
   const el = document.getElementById('cmd-stats');
   if(!el) return;
   const total    = COMMANDES.length;
   const enAttente= COMMANDES.filter(c=>c.statut==='confirmee'||c.statut==='brouillon').length;
   const livrees  = COMMANDES.filter(c=>c.statut==='livree').length;
-  const ca       = COMMANDES.filter(c=>c.statut!=='annulee').reduce((s,c)=>s+(c.ttc||0),0);
+  const actives  = COMMANDES.filter(c=>c.statut!=='annulee');
+  const ca       = actives.reduce((s,c)=>s+(c.ttc||0),0);
+  const encaisse = actives.reduce((s,c)=>s+(c.acompte||0),0);
+  const reste    = actives.reduce((s,c)=>s+cmdReste(c),0);
   el.innerHTML = [
     {ico:'🛒',v:total,     lbl:'Total commandes',    c:'var(--primary)', bg:'var(--primary-l)'},
     {ico:'⏳',v:enAttente, lbl:'En attente/Confirmées',c:'var(--warning)',bg:'var(--warning-l)'},
     {ico:'📦',v:livrees,   lbl:'Livrées',            c:'var(--success)', bg:'var(--success-l)'},
     {ico:'💰',v:(ca/1000).toFixed(0)+'k',lbl:'CA commandes FCFA',c:'var(--purple)',bg:'var(--purple-l)'},
+    {ico:'✅',v:encaisse.toLocaleString('fr-FR'),lbl:'Encaissé FCFA',c:'var(--success)',bg:'var(--success-l)'},
+    {ico:'⏰',v:reste.toLocaleString('fr-FR'),lbl:'Reste à encaisser FCFA',c:'var(--danger)',bg:'var(--danger-l)'},
   ].map(s=>`
     <div class="stat-card" style="--accent:${s.c}">
       <div class="stat-icon" style="background:${s.bg}">${s.ico}</div>
@@ -9747,7 +9755,7 @@ function renderCommandes() {
   let list = [...COMMANDES].sort((a,b)=>b.date.localeCompare(a.date));
   if(q)  list = list.filter(c=>(c.ref+c.client+c.logiciel).toLowerCase().includes(q));
   if(st) list = list.filter(c=>c.statut===st);
-  if(!list.length) { tbody.innerHTML=`<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px">Aucune commande</td></tr>`; return; }
+  if(!list.length) { tbody.innerHTML=`<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:24px">Aucune commande</td></tr>`; return; }
   const fv = n => (n||0).toLocaleString('fr-FR');
   tbody.innerHTML = list.map(c=>{
     const s = CMD_STATUT[c.statut]||{lbl:c.statut,cls:'badge-muted'};
@@ -9759,6 +9767,8 @@ function renderCommandes() {
       <td>${fv(c.htNet)} FCFA</td>
       <td>${fv(c.tva)} FCFA</td>
       <td style="font-weight:700">${fv(c.ttc)} FCFA</td>
+      <td style="color:var(--success);font-weight:600">${fv(c.acompte)} FCFA</td>
+      <td style="font-weight:600;color:${cmdReste(c)>0?'var(--danger)':'var(--muted)'}">${cmdReste(c)>0?fv(cmdReste(c))+' FCFA':'Soldé'}</td>
       <td><span class="badge ${s.cls}">${s.lbl}</span></td>
       <td>${c.commercial||'—'}</td>
       <td>
@@ -13264,8 +13274,9 @@ function comptaRenderStats() {
   const el = document.getElementById('compta-stats');
   if(!el) return;
   const list = comptaAllEcritures().filter(e=>(e.date||'').startsWith(''+_comptaExercice));
-  let ca=0, tvaColl=0, charges=0;
+  let ca=0, tvaColl=0, charges=0, facture=0, encaisse=0;
   list.forEach(e=>e.lignes.forEach(l=>{
+    if(l.compte==='411000'){ facture += l.debit; encaisse += l.credit; }
     if(l.compte.startsWith('70')) ca += l.credit;
     if(l.compte==='4431') tvaColl += l.credit;
     if(l.compte.startsWith('6')) charges += l.debit;
@@ -13274,6 +13285,8 @@ function comptaRenderStats() {
   el.innerHTML = [
     {ico:'💰',v:comptaFmt(ca),     lbl:"Chiffre d'affaires HT", c:'var(--primary)', bg:'var(--primary-l)'},
     {ico:'🧾',v:comptaFmt(tvaColl),lbl:'TVA collectée',          c:'var(--warning)', bg:'var(--warning-l)'},
+    {ico:'✅',v:comptaFmt(encaisse),lbl:'Encaissé (clients)',      c:'var(--success)', bg:'var(--success-l)'},
+    {ico:'⏰',v:comptaFmt(Math.max(0,facture-encaisse)),lbl:'Reste à encaisser', c:'var(--danger)', bg:'var(--danger-l)'},
     {ico:'📉',v:comptaFmt(charges),lbl:'Charges',                c:'var(--danger)',  bg:'var(--danger-l)'},
     {ico:'📈',v:comptaFmt(resultat),lbl:'Résultat',              c:resultat>=0?'var(--success)':'var(--danger)', bg:resultat>=0?'var(--success-l)':'var(--danger-l)'},
   ].map(s=>`<div class="stat-card" style="--accent:${s.c}"><div class="stat-icon" style="background:${s.bg}">${s.ico}</div><div class="stat-val" style="color:${s.c};font-size:18px">${s.v}</div><div class="stat-label">${s.lbl}</div></div>`).join('');
