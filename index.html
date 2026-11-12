@@ -9774,6 +9774,7 @@ function renderCommandes() {
       <td>
         <div class="flex gap-1">
           <button onclick="imprimerBonCommande('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;color:var(--primary)" title="Bon de commande">🖨️</button>
+          <button onclick="choisirFacture('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;color:var(--success)" title="Imprimer la facture (avec ou sans TVA)">🧾</button>
           <button onclick="editCommande('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px">✏️</button>
           <button onclick="creerContratFromCmd('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;color:var(--success)" title="Créer contrat">📝</button>
           <button onclick="deleteCommande('${c.id}')" class="btn btn-sm" style="padding:3px 8px;font-size:11px;background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2)">🗑</button>
@@ -9870,6 +9871,104 @@ function saveCommande() {
 }
 
 function editCommande(id) { openCommandeModal(id); }
+
+// ─── Facture d'une commande : avec TVA (HT + TVA = TTC) ou sans TVA (montant net, TVA non applicable) ───
+function choisirFacture(id){
+  const c = COMMANDES.find(x=>x.id===id);
+  if(!c) { showToast('❌ Commande introuvable'); return; }
+  const old=document.getElementById('fac-choix'); if(old) old.remove();
+  const fv = n=>(n||0).toLocaleString('fr-FR');
+  const ov=document.createElement('div'); ov.id='fac-choix';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
+  ov.innerHTML=`<div style="background:var(--surface,#fff);color:var(--text,#111);border-radius:14px;padding:22px;max-width:420px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+    <div style="font-weight:800;font-size:16px;margin-bottom:4px">🧾 Imprimer la facture</div>
+    <div style="font-size:12px;color:var(--muted,#64748b);margin-bottom:16px">${_facEsc(c.client)} · ${_facEsc(c.logiciel||'')} · ${fv(c.ttc)} FCFA — versé ${fv(c.acompte)}, reste ${fv(cmdReste(c))}</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn btn-primary" id="fac-avec">Avec TVA (${CONFIG.tva||18} %)</button>
+      <button class="btn btn-outline" id="fac-sans">Sans TVA (TVA non applicable)</button>
+      <button class="btn btn-outline" id="fac-annul" style="border:none;color:var(--muted,#64748b)">Annuler</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#fac-avec').onclick=()=>{ ov.remove(); imprimerFacture(id,true); };
+  ov.querySelector('#fac-sans').onclick=()=>{ ov.remove(); imprimerFacture(id,false); };
+  ov.querySelector('#fac-annul').onclick=()=>ov.remove();
+}
+function _facEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch])); }
+function imprimerFacture(id, avecTva) {
+  const c = COMMANDES.find(x=>x.id===id);
+  if(!c) { showToast('❌ Commande introuvable'); return; }
+  const fv = n=>(n||0).toLocaleString('fr-FR');
+  const taux = CONFIG.tva||18;
+  const total = c.ttc||0, verse = Math.min(c.acompte||0,total), reste = cmdReste(c);
+  const ht = c.htNet || Math.round(total/(1+taux/100)), tva = total-ht;
+  const today = new Date().toISOString().slice(0,10);
+  const dateFr = new Date().toLocaleDateString('fr-FR');
+  const ref = 'FAC-'+String(c.ref||c.id).replace(/^CMD-/,'');
+  const log = LOGICIELS.find(l=>l.nom===c.logiciel);
+  const typeLic = {Annuelle:'Licence annuelle',Mensuelle:'Abonnement mensuel',Perpetuelle:'Licence perpétuelle',SaaS:'Abonnement SaaS'}[c.typeLicence]||c.typeLicence||'Licence';
+  const etat = reste<=0 ? ['SOLDÉE','#059669'] : verse>0 ? ['AVANCE PERÇUE','#D97706'] : ['À RÉGLER','#DC2626'];
+  const td='border:1px solid #ccc;padding:8px';
+  const lignesTotal = avecTva ? `
+    <tr><td style="${td}">Total HT</td><td style="${td};text-align:right;font-weight:600">${fv(ht)}</td></tr>
+    <tr><td style="${td}">TVA (${taux}%)</td><td style="${td};text-align:right">${fv(tva)}</td></tr>
+    <tr style="background:#EFF6FF"><td style="${td};font-weight:800">TOTAL TTC</td><td style="${td};text-align:right;font-weight:800;color:#1E3A5F">${fv(total)} FCFA</td></tr>` : `
+    <tr style="background:#EFF6FF"><td style="${td};font-weight:800">MONTANT TOTAL NET</td><td style="${td};text-align:right;font-weight:800;color:#1E3A5F">${fv(total)} FCFA</td></tr>`;
+  const html = `${docHeader()}
+  <div style="text-align:center;margin-bottom:18px">
+    <div style="font-size:20px;font-weight:800;color:#1E3A5F;letter-spacing:2px">FACTURE</div>
+    <div style="font-size:12px;color:#666;margin-top:2px">N° ${_facEsc(ref)} · Date : ${dateFr} · Commande ${_facEsc(c.ref||'')}</div>
+    <div style="display:inline-block;margin-top:8px;border:2px solid ${etat[1]};color:${etat[1]};font-weight:800;font-size:12px;letter-spacing:2px;padding:2px 12px">${etat[0]}</div>
+  </div>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:18px"><tr>
+    <td style="border:1px solid #ccc;padding:10px;background:#f5f7fa;width:50%;vertical-align:top">
+      <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Émetteur</div>
+      <strong>${_facEsc(CONFIG.raisonSociale||'SANIX Africa Division Technologies')}</strong><br>
+      <span style="font-size:11px;color:#555">${_facEsc(CONFIG.adresse||'Songon Kassamblé, Abidjan')}<br>
+      ${_facEsc(CONFIG.tel||'')} · ${_facEsc(CONFIG.email||'sanixafrica699@gmail.com')}<br>
+      ${CONFIG.rccm?'RCCM : '+_facEsc(CONFIG.rccm):''} ${CONFIG.cc?'· NCC : '+_facEsc(CONFIG.cc):''}</span>
+    </td>
+    <td style="border:1px solid #ccc;padding:10px;background:#f5f7fa;vertical-align:top">
+      <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Client</div>
+      <strong>${_facEsc(c.client)}</strong><br>
+      <span style="font-size:11px;color:#555">Abidjan — Côte d'Ivoire</span>
+    </td>
+  </tr></table>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+    <thead><tr style="background:#1E3A5F;color:#fff">
+      <th style="padding:8px;text-align:left">Désignation</th>
+      <th style="padding:8px;text-align:center">Type</th>
+      <th style="padding:8px;text-align:right">${avecTva?'Montant HT':'Montant net'} (FCFA)</th>
+    </tr></thead>
+    <tbody><tr>
+      <td style="border:1px solid #ccc;padding:10px"><strong>${_facEsc(c.logiciel||'Logiciel')}</strong>${log&&log.version?' '+_facEsc(log.version):''}
+        ${log&&log.desc?`<br><span style="font-size:10px;color:#777">${_facEsc(log.desc.substring(0,120))}</span>`:''}</td>
+      <td style="border:1px solid #ccc;padding:10px;text-align:center;font-size:11px">${_facEsc(typeLic)}</td>
+      <td style="border:1px solid #ccc;padding:10px;text-align:right;font-weight:600">${fv(avecTva?ht:total)}</td>
+    </tr></tbody>
+  </table>
+  <table style="width:60%;border-collapse:collapse;margin-left:auto;margin-bottom:16px">
+    ${lignesTotal}
+    <tr><td style="${td}">Montant versé</td><td style="${td};text-align:right;color:#059669">− ${fv(verse)}</td></tr>
+    <tr style="background:${reste>0?'#FFF7ED':'#ECFDF5'}"><td style="${td};font-weight:800">RESTE À PAYER</td><td style="${td};text-align:right;font-weight:800;color:${reste>0?'#D97706':'#059669'}">${fv(reste)} FCFA</td></tr>
+  </table>
+  <p style="font-size:11px;color:#444;line-height:1.7;margin-bottom:6px">
+    <strong>Conditions :</strong> Prix en francs CFA (XOF). ${avecTva?'TVA '+taux+' % incluse dans le total TTC.':'TVA : non applicable.'}
+    ${c.notes?'<br><strong>Notes :</strong> '+_facEsc(c.notes):''}
+  </p>
+  <table style="width:100%;margin-top:30px"><tr>
+    <td style="width:50%;vertical-align:top"><strong>Pour ${_facEsc(CONFIG.sigle||'SANIX')}</strong><br><span style="font-size:10px;color:#888">Cachet et signature</span></td>
+    <td style="width:50%;vertical-align:top"><strong>Le Client</strong><br><span style="font-size:10px;color:#888">Lu et approuvé</span></td>
+  </tr></table>${docSecurityFooter({type:'facture',ref:ref,client:c.client,montant:total,date:today},true)}`;
+  const w = window.open('','_blank','width=900,height=1000');
+  if(!w) { showToast('⚠️ Autorisez les popups pour imprimer'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><title>Facture ${_facEsc(ref)}</title>
+    <style>@page{margin:1.5cm}body{font-family:Georgia,serif;font-size:13px;line-height:1.6;color:#1a1a1a;max-width:800px;margin:0 auto;padding:20px}table{border-collapse:collapse}p{margin:8px 0}</style>
+    </head><body>${html}<div style="margin-top:30px;text-align:center" class="no-print"><button onclick="window.print()" style="padding:10px 24px;background:#1E3A5F;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer">🖨️ Imprimer / Enregistrer en PDF</button></div>
+    <style>@media print{.no-print{display:none}}</style></body></html>`);
+  w.document.close();
+  showToast('🧾 Facture '+(avecTva?'avec TVA':'sans TVA')+' générée');
+}
 
 function imprimerBonCommandeFromModal() {
   const id = document.getElementById('cmd-edit-id').value;
@@ -12630,6 +12729,43 @@ function _paiementZahara20261111Once(){
   if(cmdOk && typeof showToast==='function') showToast('✅ Paiement Zahara Multiservices enregistré : 1 000 000 FCFA (reste 3 000 000)');
 }
 
+// Angel's Groupe — facture SA-FAC-2026-002 du 12/11/2026 : 1 270 000 FCFA (2 modules à 600 000 + 2 hébergements à 35 000),
+// 1 200 000 versés (600 000 + 600 000), reste 70 000 = hébergement non payé. Chaque commande de module porte son hébergement.
+// Valeurs absolues, appliquées seulement à l'état connu (600 000 soldé) : même résultat sur tous les appareils.
+function _paiementAngels20261112Once(){
+  const FLAG='sanix_crm_paiement_angels_20261112_v1';
+  if(localStorage.getItem(FLAG)) return;
+  const norm=s=>(s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+  const NOM='Angel\'s Groupe', TTC=635000, VERSE=600000;
+  let n=0;
+  // Une seule commande par module : en cas de doublon, seule la commande d'origine (sinon la première par identifiant) reçoit le paiement.
+  const vus=new Set(), rang=o=>(/^cmd_angels_/.test(String(o.id))?'0':'1')+String(o.id);
+  COMMANDES.filter(x=>norm(x.client)===norm(NOM)&&(x.logiciel==='Angel\'s Livraison'||x.logiciel==='Angel\'s Transport')).sort((x,y)=>rang(x)<rang(y)?-1:1).forEach(o=>{
+    if(vus.has(o.logiciel)) return; vus.add(o.logiciel);
+    if((o.ttc||0)!==600000) return;
+    const htNet=Math.round(TTC/1.18);
+    Object.assign(o,{htBrut:htNet,remise:0,htNet,tva:TTC-htNet,ttc:TTC,acompte:VERSE,solde:TTC-VERSE,
+      notes:'Module 600 000 FCFA payé + hébergement 35 000 FCFA non payé — facture SA-FAC-2026-002'});
+    n++;
+  });
+  if(n>0){
+    const note='Facture SA-FAC-2026-002 : 1 270 000 FCFA (Angel\'s Livraison + Angel\'s Transport + hébergement). Versé 1 200 000 (600 000 + 600 000), reste 70 000 (hébergement).';
+    const c=CLIENTS.find(x=>norm(x.nom)===norm(NOM));
+    if(c){
+      c.valeur=1270000; c.notes=note; c.updated_at=new Date().toISOString();
+      const d=DEALS.find(x=>x.clientId===c.id); if(d){ d.valeur=1270000; saveStore('deals'); }
+      if(!c.interactions) c.interactions=[];
+      if(!c.interactions.some(i=>i.type==='Facture émise'&&(i.note||'').indexOf('SA-FAC-2026-002')===0))
+        c.interactions.push({date:'2026-11-12T12:00:00.000Z',type:'Facture émise',note:'SA-FAC-2026-002 — total 1 270 000 FCFA, versé 1 200 000, reste 70 000 (hébergement)',ico:'🧾'});
+    }
+    saveStore('clients'); saveStore('commandes');
+  }
+  localStorage.setItem(FLAG,'1');
+  try{ renderClients(getFilteredClients()); }catch(e){}
+  try{ initCommandes(); }catch(e){}
+  if(n>0 && typeof showToast==='function') showToast('✅ Angel\'s Groupe mis à jour : 1 200 000 FCFA versés, reste 70 000 (hébergement)');
+}
+
 // ═══ PROSPECTS LIVRAISON — 30 agences d'Abidjan (cible Angel's Livraison) ═══
 const PROSPECTS_LIVRAISON = [{"nom":"IvoirRapid","phone":"+225 07 68 70 05 00","email":"https://ivoirrapid.ci","adresse":"Abidjan (13 communes)","notes":"Prospect Angel's Livraison — agence de livraison (e-commerce/colis J+0) · Autres n° : 2721374346, 0708000577 · WhatsApp : +225 07 08 00 05 77 · Site : https://ivoirrapid.ci/ · Facebook : https://www.facebook.com/IvoirRapidCI · Dirigeant : page entreprise non confirmee) (Georges Al Gharib) · Source publique, n° non vérifié"},{"nom":"Aerobiz Livraison","phone":"+225 07 47 64 74 05","email":"","adresse":"Abidjan","notes":"Prospect Angel's Livraison — agence de livraison (moto (1000F Abidjan, 2000F Bassam)) · WhatsApp : +225 07 47 64 74 05 · Facebook : https://www.facebook.com/aerobizlivraison/ · Source publique, n° non vérifié"},{"nom":"LICY Express","phone":"+225 07 68 64 74 46","email":"infos@licyexpress.com","adresse":"Adjamé","notes":"Prospect Angel's Livraison — agence de livraison (livraison/courses professionnelles) · Site : https://www.licyexpress.com/ · Facebook : https://www.facebook.com/licyexpress/ · Dirigeant : Cynthia Thanaud (Fondatrice) · Source publique, n° non vérifié"},{"nom":"Kronos Express","phone":"+225 07 08 75 48 94","email":"","adresse":"Port-Bouet","notes":"Prospect Angel's Livraison — agence de livraison (moto express / coursier) · Autres n° : 2521003379, 0102784878, 0544774453 · WhatsApp : +225 07 08 75 48 94 · Source publique, n° non vérifié"},{"nom":"Utb Express","phone":"+225 05 56 37 88 86","email":"","adresse":"Treichville","notes":"Prospect Angel's Livraison — agence de livraison (colis / courrier express) · Autres n° : 2721242488, 0565377577, 0505759162 · WhatsApp : +225 05 85 28 67 11 · Facebook : https://www.facebook.com/UTBEXPRESS/?locale=fr_FR · Dirigeant : KOFFI Armel Désiré (Directeur Général) · Source publique, n° non vérifié"},{"nom":"Afco Sarl","phone":"+225 05 56 08 96 25","email":"","adresse":"Plateau","notes":"Prospect Angel's Livraison — agence de livraison (colis / courrier express) · Autres n° : 2720321008, 0103300200 · WhatsApp : +225 01 03 30 02 00 · Site : http://www.logistica.fr · Facebook : https://www.facebook.com/logistica1er · Source publique, n° non vérifié"},{"nom":"Afrety","phone":"+225 07 67 80 09 17","email":"","adresse":"Cocody","notes":"Prospect Angel's Livraison — agence de livraison (colis / courrier express) · WhatsApp : +225 07 67 80 09 17 · Site : https://www.afrety.com · Facebook : https://twitter.com/afretycom?lang=fr · Source publique, n° non vérifié"},{"nom":"Coditrans","phone":"+225 01 01 81 07 80","email":"","adresse":"Koumassi","notes":"Prospect Angel's Livraison — agence de livraison (colis / courrier express) · Autres n° : 2721757060, 2721757061, 2721757078, 2721757079 · WhatsApp : +225 01 01 81 07 80 · Site : https://www.coditrans.ci · Facebook : https://fr-fr.facebook.com/pages/category/Company/Coditrans-CI-268862440199485/ · Source publique, n° non vérifié"},{"nom":"Logistica","phone":"+225 01 03 30 02 00","email":"","adresse":"Yopougon","notes":"Prospect Angel's Livraison — agence de livraison (colis / courrier express) · Autres n° : 2723485048 · WhatsApp : +225 01 03 30 02 00 · Site : http://www.logistica.fr · Facebook : https://www.facebook.com/logistica1er · Source publique, n° non vérifié"},{"nom":"Service de Livraison MS","phone":"+225 05 56 32 77 88","email":"","adresse":"Koumassi/Marcory","notes":"Prospect Angel's Livraison — agence de livraison (moto/livraison) · Facebook : https://www.facebook.com/p/Service-de-Livraison-MS-100078052360886/ · Source publique, n° non vérifié"},{"nom":"Coursier Express","phone":"+225 27 24 35 22 01","email":"","adresse":"Marcory","notes":"Prospect Angel's Livraison — agence de livraison (courses particuliers) · Site : https://coursier.ci/ · Facebook : https://www.facebook.com/p/Coursier-Express-100062869005428/ · Source publique, n° non vérifié"},{"nom":"Last Mile Distribution Company","phone":"+225 07 09 91 23 12","email":"","adresse":"Yopougon","notes":"Prospect Angel's Livraison — agence de livraison (e-commerce / last-mile) · Autres n° : 2721760187, 0787718020 · Site : http://www.lmdc.ci · Facebook : https://www.facebook.com/lmdcsarl · Source publique, n° non vérifié"},{"nom":"LivUrge","phone":"+225 07 08 73 73 64","email":"","adresse":"Abidjan","notes":"Prospect Angel's Livraison — agence de livraison (express) · Autres n° : 0712505017, 0712505018 · WhatsApp : +225 07 08 73 73 64 · Site : https://livurge.com/service-livraison-abidjan/ · Facebook : https://www.facebook.com/p/LivUrge-61571755199098/ · Source publique, n° non vérifié"},{"nom":"City Messenger Ci","phone":"+225 07 68 21 22 22","email":"","adresse":"Cocody","notes":"Prospect Angel's Livraison — agence de livraison (colis / courrier express) · Autres n° : 0555312222 · Site : http://www.citymessenger.org · Source publique, n° non vérifié"},{"nom":"Delifast","phone":"+225 01 42 70 49 62","email":"","adresse":"Cocody","notes":"Prospect Angel's Livraison — agence de livraison (colis / courrier express) · Site : https://delifast.co · Dirigeant : non publie (societe DELIFAST SERVICES, Angre Cocody) (non trouve) · Source publique, n° non vérifié"},{"nom":"Livraison Abidjan (livraison225)","phone":"+225 07 59 01 57 58","email":"Abidjanlivraison@gmail.com","adresse":"","notes":"Prospect Angel's Livraison — agence de livraison (moto/colis/boutique en ligne) · Facebook : https://www.facebook.com/livraison225/ · Source publique, n° non vérifié"},{"nom":"Rm Express Glob","phone":"+225 07 09 59 39 70","email":"","adresse":"Cocody","notes":"Prospect Angel's Livraison — agence de livraison (colis / courrier express) · Autres n° : 2522009680, 0545030618 · WhatsApp : +225 05 45 03 06 18 · Facebook : https://www.facebook.com/rmexpressGLOB · Source publique, n° non vérifié"},{"nom":"BK Express (anzilivraison)","phone":"+225 07 49 01 41 42","email":"","adresse":"Abidjan/Bassam/Bingerville/Anyama","notes":"Prospect Angel's Livraison — agence de livraison (moto/colis) · Autres n° : 0747335786, 0789540579 · Facebook : https://www.facebook.com/anzilivraison/ · Source publique, n° non vérifié"},{"nom":"Colis Abidjan Express","phone":"+225 07 47 47 43 34","email":"fret@colis-abidjan.com","adresse":"Bingerville","notes":"Prospect Angel's Livraison — agence de livraison (livraison/colis/courrier) · Autres n° : 0747474270 · Facebook : https://www.facebook.com/colisexpressabidjan/ · Instagram : @colisexpressabidjan (non vérifié) · Source publique, n° non vérifié"},{"nom":"Colivoire Express","phone":"+225 01 51 50 11 47","email":"","adresse":"Cocody","notes":"Prospect Angel's Livraison — agence de livraison (colis / courrier express) · Autres n° : 2722416373, 0707345031 · Site : http://www.colivoirexpress.com · Facebook : https://www.facebook.com/colivoirexpress · Source publique, n° non vérifié"},{"nom":"Icare Cargo","phone":"+225 01 03 86 37 37","email":"","adresse":"Plateau","notes":"Prospect Angel's Livraison — agence de livraison (colis / courrier express) · Autres n° : 2720325122, 0103863838, 0103863939, 0101015262 · Site : https://fr.icare-cargo.com · Facebook : https://www.facebook.com/icarecargoci/ · Source publique, n° non vérifié"},{"nom":"O'Black","phone":"+225 07 87 29 29 46","email":"","adresse":"Cocody","notes":"Prospect Angel's Livraison — agence de livraison (moto express / coursier) · Autres n° : 2722268140, 0759992507 · Site : https://www.oblackci.com/ · Source publique, n° non vérifié"},{"nom":"Paps","phone":"+225 07 48 29 24 45","email":"","adresse":"Cocody","notes":"Prospect Angel's Livraison — agence de livraison (colis / courrier express) · Autres n° : 2722246401 · Site : http://www.papslogistics.com · Instagram : https://twitter.com/Paps_app · Source publique, n° non vérifié"},{"nom":"Pcp Express (Paris Center Plus Ci)","phone":"+225 05 75 92 46 99","email":"","adresse":"Treichville","notes":"Prospect Angel's Livraison — agence de livraison (colis / courrier express) · Autres n° : 2721245053, 0708197296, 0141811483 · Site : http://pariscenterplus.com/ · Facebook : https://www.facebook.com/P.center.ci/ · Source publique, n° non vérifié"},{"nom":"Pro-Colis Express","phone":"+225 01 71 33 90 90","email":"procolisexpress@gmail.com","adresse":"Cocody","notes":"Prospect Angel's Livraison — agence de livraison (courrier/colis express) · Facebook : https://www.facebook.com/procolisexpress/ · Source publique, n° non vérifié"},{"nom":"Royal Courrier","phone":"+225 07 08 48 63 82","email":"","adresse":"Adjamé","notes":"Prospect Angel's Livraison — agence de livraison (livraison/colis/courrier) · Site : http://www.royalcourrier-ci.com · Facebook : https://www.facebook.com/p/Royal-Courrier-Express-100083169190644/ · Source publique, n° non vérifié"},{"nom":"TOM le coursier","phone":"+225 07 49 20 02 21","email":"","adresse":"Cocody (Angré Groupement 4000)","notes":"Prospect Angel's Livraison — agence de livraison (coursier/colis/courriers) · Facebook : https://www.facebook.com/tomlecoursier/ · Source publique, n° non vérifié"},{"nom":"Best Of Services","phone":"+225 01 40 03 15 15","email":"","adresse":"Treichville","notes":"Prospect Angel's Livraison — agence de livraison (colis / courrier express) · Autres n° : 0708162907 · WhatsApp : +225 07 08 16 29 07 · Source publique, n° non vérifié"},{"nom":"7Safar Express","phone":"+225 01 42 20 30 62","email":"","adresse":"Yopougon","notes":"Prospect Angel's Livraison — agence de livraison (colis / courrier express) · Autres n° : 2721788363 · Source publique, n° non vérifié"},{"nom":"Abidjan Express","phone":"+225 27 20 33 91 81","email":"","adresse":"Plateau","notes":"Prospect Angel's Livraison — agence de livraison (colis / courrier express) · Site : http://www.abidjanexpress.com · Source publique, n° non vérifié"}];
 function _seedProspectsLivraisonOnce(){
@@ -13057,7 +13193,7 @@ function _seedProspectsCliniqueOnce(){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
-  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedClientsAngelsOnce(); _seedCommandesInitialesOnce(); _fixSoldesAluOnce(); _noteImmoOnce(); _paiementZahara20261111Once(); _seedProspectsLivraisonOnce(); _seedClientsNouveauxLogOnce(); _seedProspectsAluExpertOnce(); _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
+  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedClientsAngelsOnce(); _seedCommandesInitialesOnce(); _fixSoldesAluOnce(); _noteImmoOnce(); _paiementZahara20261111Once(); _paiementAngels20261112Once(); _seedProspectsLivraisonOnce(); _seedClientsNouveauxLogOnce(); _seedProspectsAluExpertOnce(); _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
   // Refresh notifications toutes les 2 minutes
   setInterval(updateSidebarNotifications, 120000);
 });
