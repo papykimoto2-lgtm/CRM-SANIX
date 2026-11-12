@@ -3323,9 +3323,9 @@ Seriez-vous disponible pour une démonstration {rdv} ?
       <div class="form-group">
         <label class="form-label">Type de licence</label>
         <select class="form-input" id="lic-type" onchange="licAutoFillDates()">
+          <option value="Perpetuelle">♾️ Perpétuelle</option>
           <option value="Annuelle">📅 Annuelle (1 an)</option>
           <option value="Mensuelle">🔄 Mensuelle</option>
-          <option value="Perpetuelle">♾️ Perpétuelle</option>
           <option value="SaaS">☁️ SaaS mensuel</option>
           <option value="Essai">🕐 Essai / Démo (15 jours)</option>
           <option value="Triennale">📆 Triennale (3 ans)</option>
@@ -3518,9 +3518,9 @@ Seriez-vous disponible pour une démonstration {rdv} ?
       <div class="form-group">
         <label class="form-label">Type licence</label>
         <select class="form-input" id="cmd-type-licence">
+          <option value="Perpetuelle">♾️ Perpétuelle</option>
           <option value="Annuelle">📅 Annuelle</option>
           <option value="Mensuelle">🔄 Mensuelle</option>
-          <option value="Perpetuelle">♾️ Perpétuelle</option>
           <option value="SaaS">☁️ SaaS</option>
         </select>
       </div>
@@ -4411,9 +4411,9 @@ Seriez-vous disponible pour une démonstration {rdv} ?
       <div class="form-group">
         <label class="form-label">Type de licence</label>
         <select class="form-input" id="l-type-licence" onchange="togglePrixMensuel()">
+          <option value="Perpetuelle">♾️ Perpétuelle (une fois)</option>
           <option value="Annuelle">📅 Licence annuelle</option>
           <option value="Mensuelle">🔄 Abonnement mensuel</option>
-          <option value="Perpetuelle">♾️ Perpétuelle (une fois)</option>
           <option value="SaaS">☁️ SaaS (mensuel cloud)</option>
         </select>
       </div>
@@ -4583,7 +4583,7 @@ const LOGICIELS_SEED = [
     version:'v4.0',
     cat:'Immobilier',
     plateforme:'Web',
-    type_licence:'Annuelle',
+    type_licence:'Perpetuelle',
     support:'1an',
     desc:'ERP immobilier complet pour promoteurs et gestionnaires : programmes, lots, unités, ventes, souscripteurs diaspora, DQE/étude de prix, SYSCOHADA, FEC DGI, portail client.',
     modules:'Programmes,Lots & Unités,Ventes,Souscripteurs,DQE / Étude de Prix,Comptabilité SYSCOHADA,FEC Export,Portail Client,Messagerie interne,Visiteurs & Accueil,Admin Médias,Sync Supabase',
@@ -4607,7 +4607,7 @@ const LOGICIELS_SEED = [
     version:'v2.0',
     cat:'Distribution',
     plateforme:'Web',
-    type_licence:'Annuelle',
+    type_licence:'Perpetuelle',
     support:'1an',
     desc:'ERP distribution & commerce : gestion clients/fournisseurs, commandes, livraisons partielles, avoirs, encours & blocage, conditions distributeur, grand livre auxiliaire, SYSCOHADA.',
     modules:'Clients & Fournisseurs,Commandes & BL,Livraisons partielles,Avoirs clients,Encours & Blocage,Stock FIFO,Facturation TVA,Grand Livre Auxiliaire,SYSCOHADA,Supabase Sync',
@@ -4631,7 +4631,7 @@ const LOGICIELS_SEED = [
     version:'v1.5',
     cat:'Santé',
     plateforme:'Web',
-    type_licence:'Annuelle',
+    type_licence:'Perpetuelle',
     support:'Premium',
     desc:'ERP hospitalier complet : portail patient IPP, agenda consultations, file d\'attente, dossiers médicaux, bloc opératoire, radiologie, laboratoire avec alertes automate, comptabilité analytique, SYSCOHADA.',
     modules:'Portail Patient,Agenda & Rendez-vous,File d\'attente / Triage,Dossiers Médicaux,Bloc Opératoire,Radiologie,Laboratoire & Automate,Facturation,Comptabilité Analytique,SYSCOHADA,Supabase Sync',
@@ -4655,7 +4655,7 @@ const LOGICIELS_SEED = [
     version:'v1.0',
     cat:'Industrie',
     plateforme:'Web',
-    type_licence:'Annuelle',
+    type_licence:'Perpetuelle',
     support:'Premium',
     desc:'ERP industriel Industrie 4.0 : production temps réel, ordres de fabrication, rendement & pertes, maintenance préventive/curative, qualité & traçabilité lots, coût de revient, IoT-ready, offline.',
     modules:'Production & OF,Rendement & Pertes,Maintenance Préventive,Gestion Pannes,Qualité & Traçabilité,Stock & Approvisionnement,Commercial & Distribution,Finance & Coût de Revient,RH & Présence,Tableau de Bord KPI,IoT Ready,Offline Mode',
@@ -4679,7 +4679,7 @@ const LOGICIELS_SEED = [
     version:'v1.2',
     cat:'Ressources Humaines',
     plateforme:'Web',
-    type_licence:'Annuelle',
+    type_licence:'Perpetuelle',
     support:'1an',
     desc:'ERP RH complet : gestion du personnel, contrats, paie SYSCOHADA, congés & absences, évaluations de performance, formations, tableau de bord direction.',
     modules:'Personnel & Contrats,Paie & Bulletins,Congés & Absences,Évaluations,Formations,Recrutement,Tableau de Bord RH,SYSCOHADA,Export DGI',
@@ -4703,7 +4703,7 @@ const LOGICIELS_SEED = [
     version:'v1.3',
     cat:'Commerce',
     plateforme:'Multi-plateforme',
-    type_licence:'Annuelle',
+    type_licence:'Perpetuelle',
     support:'1an',
     desc:'POS & gestion de stock multi-PDV : caisse tactile, FIFO, ardoise/crédit client, Mobile Money Wave/Orange/MTN, rôles, PWA offline, SYSCOHADA.',
     modules:'Caisse POS,Stock Multi-PDV,Ardoise & Crédit Client,Fournisseurs & Achats,FIFO Approvisionnement,Mobile Money,Rapports & KPI,PWA Offline,SYSCOHADA',
@@ -4727,7 +4727,7 @@ const LOGICIELS_SEED = [
     version:'v1.1',
     cat:'Distribution',
     plateforme:'Desktop Windows',
-    type_licence:'Annuelle',
+    type_licence:'Perpetuelle',
     support:'1an',
     desc:'ERP garage & flotte automobile : fiches véhicules, ordres de réparation, Gantt maintenance préventive/VT, stock pièces détachées, affectation mécaniciens, licences 15j démo, Supabase sync XHR.',
     modules:'Véhicules & Flotte,Ordres de Réparation,Maintenance Préventive,Planification Gantt,Stock Pièces,Mécaniciens & Affectation,Facturation,Licence & Démo,Supabase Sync',
@@ -4751,7 +4751,7 @@ const LOGICIELS_SEED = [
     version:'v1.0',
     cat:'Agriculture',
     plateforme:'Web',
-    type_licence:'Annuelle',
+    type_licence:'Perpetuelle',
     support:'1an',
     desc:'ERP agricole avec GIS/cartographie Leaflet satellite, traçabilité complète par lot (MA-XXX-YYMMDD), campagnes & itinéraires techniques, main-d\'œuvre, intrants FIFO, SYSCOHADA, BI SVG.',
     modules:'Parcelles & Cartographie GIS,Campagnes & Itinéraires,Lots & Traçabilité,Main-d\'œuvre & Pointage,Intrants & Stock FIFO,Récoltes & Rendements,Ventes & Facturation,SYSCOHADA,BI & Tableaux de Bord',
@@ -4775,7 +4775,7 @@ const LOGICIELS_SEED = [
     version:'v1.0',
     cat:'Distribution',
     plateforme:'Desktop Windows',
-    type_licence:'Annuelle',
+    type_licence:'Perpetuelle',
     support:'1an',
     desc:'ERP dépôt boissons 3 niveaux (concessionnaire → dépôt → client) : emballages consignés comme actif financier, stock liquide/bouteille/casier unifié, SYSCOHADA, launcher Windows batch.',
     modules:'Articles & Stock Unifié,Emballages Consignés,Commandes & Livraisons,Clients & Concessionnaires,Facturation,Comptabilité SYSCOHADA,Tableau de Bord,Launcher Windows',
@@ -4799,7 +4799,7 @@ const LOGICIELS_SEED = [
     version:'v2.0',
     cat:'Commerce',
     plateforme:'Web',
-    type_licence:'Annuelle',
+    type_licence:'Perpetuelle',
     support:'1an',
     desc:'CRM commercial SANIX : pipeline Kanban, clients & prospects, médiathèque par logiciel, carte Leaflet géolocalisation, Gantt déploiement, rapports terrain, commissions apporteurs, Supabase sync.',
     modules:'Pipeline Kanban,Clients & Prospects,Catalogue Logiciels,Médiathèque,Équipe Commerciale,Commissions,Carte & Géoloc,Planning Déploiement,Rapports Terrain,Messagerie,Supabase Sync',
@@ -4823,7 +4823,7 @@ const LOGICIELS_SEED = [
     version:'v1.0',
     cat:'Distribution',
     plateforme:'Web',
-    type_licence:'Annuelle',
+    type_licence:'Perpetuelle',
     support:'1an',
     desc:'ERP distributeur de produits phytosanitaires : SYSCOHADA SIG cascade, TVA déclaration & liquidation, clôture exercice avec détermination résultat & à-nouveaux, livraisons/réceptions partielles, conditions distributeur avec blocage encours, cartographie Leaflet offline, dashboards SVG par module.',
     modules:'Clients & Fournisseurs,Commandes & BL,Livraisons partielles,Conditions Distributeur,Encours & Blocage,Stock FIFO,Facturation TVA 18%,TVA Déclaration & Liquidation,Clôture Exercice,Résultat & À-Nouveaux,SYSCOHADA SIG Cascade,Cartographie Leaflet,Dashboards SVG',
@@ -4871,7 +4871,7 @@ const LOGICIELS_SEED = [
     version:'v1.0',
     cat:'Industrie',
     plateforme:'Web',
-    type_licence:'Annuelle',
+    type_licence:'Perpetuelle',
     support:'1an',
     desc:'ERP pour ateliers de menuiserie aluminium : devis & proforma, ordres de fabrication, planning et suivi de production, feuilles de route, stock & achats, calcul du coût de revient (matière, main-d\'œuvre, pose), facturation, Supabase sync et mode hors-ligne.',
     modules:'Devis & Proforma,Ordres de Fabrication,Planning Production,Suivi Journalier,Feuilles de Route,Stock & Valorisation,Achats,Coût de Revient,Facturation,Rapports,Supabase Sync,IndexedDB Offline',
@@ -4896,7 +4896,7 @@ const LOGICIELS_SEED = [
     version:'v1.0',
     cat:'Logistique',
     plateforme:'Web',
-    type_licence:'Annuelle',
+    type_licence:'Perpetuelle',
     support:'1an',
     desc:'ERP de livraison à moto : commandes à 12 statuts, centre de livraison et affectation, tournées multi-livraisons, application livreur mobile avec carte et GPS, preuve de livraison par code et signature, paiement à la livraison et reversement, commissions livreurs, rentabilité par livreur, zone et moto, entretien des motos, vendeurs partenaires, étiquettes QR, notifications WhatsApp. Regroupable avec Angel\'s Agro et Angel\'s Transport dans le Hub holding (vue consolidée trésorerie, CA, créances, résultat).',
     modules:'Clients & Adresses,Commandes,Centre de Livraison,Tournées,Application Livreur,GPS & Carte,Preuve de Livraison,Paiement à la Livraison,Commissions,Motos & Entretien,Vendeurs Partenaires,Étiquettes QR,Factures & Avoirs,Rentabilité,Rôles & Audit,PWA Offline',
@@ -4921,7 +4921,7 @@ const LOGICIELS_SEED = [
     version:'v1.0',
     cat:'Aviculture',
     plateforme:'Web',
-    type_licence:'Annuelle',
+    type_licence:'Perpetuelle',
     support:'1an',
     desc:'ERP avicole : lots et élevage, suivi quotidien (mortalité, aliment, eau, pesée, œufs), prophylaxie avec délai d\'attente bloquant la vente, programme nutritionnel par souche, couvoir, conditionnement des œufs, stock, fabrication d\'aliment et achats, ventes et créances, trésorerie et rentabilité par lot, comptabilité SYSCOHADA, rapports WhatsApp. Remplace AviNest Pro dans le Hub Angel\'s Group. Regroupable dans le Hub holding.',
     modules:'Tableau de Bord,Lots & Élevage,Suivi Quotidien,Prophylaxie,Programme Nutritionnel,Couvoir,Conditionnement,Stock & Fabrication,Achats,Ventes & Créances,Trésorerie & Rentabilité,SYSCOHADA,Rapports WhatsApp,Personnel & Rôles,PWA Offline',
@@ -4946,7 +4946,7 @@ const LOGICIELS_SEED = [
     version:'v1.0',
     cat:'Logistique',
     plateforme:'Web',
-    type_licence:'Annuelle',
+    type_licence:'Perpetuelle',
     support:'1an',
     desc:'Gestion de flotte et de transport : véhicules et chauffeurs avec dossiers (carte grise, assurance, permis), contrats de recette ou de location avec avenants, échéances, encaissements (paiement partiel, mobile money), reçus, caisse et clôture, dépenses, GPS (zones, historique), maintenance, sinistres, portail chauffeur, comptabilité en partie double. Regroupable dans le Hub holding.',
     modules:'Tableau de Bord,Véhicules,Chauffeurs,Contrats Recette & Location,Planning,Échéances,Encaissements,Reçus,Caisse & Clôture,Dépenses,GPS,Maintenance,Sinistres,Portail Chauffeur,Comptabilité,Droits & Audit',
@@ -4971,7 +4971,7 @@ const LOGICIELS_SEED = [
     version:'v1.0',
     cat:'Hôtellerie',
     plateforme:'Web',
-    type_licence:'Annuelle',
+    type_licence:'Perpetuelle',
     support:'1an',
     desc:'ERP hôtelier complet : réservations, plan et gestion des chambres, contrôle des accès, check-in / check-out, fichier clients, restaurant, salles de conférence, spa, stocks et dépôts, caisse, ressources humaines et rapports.',
     modules:'Tableau de Bord,Réservations,Chambres,Accès,Check-in / Check-out,Clients,Restaurant,Conférences,Spa,Stocks & Dépôts,Caisse,RH,Rapports,Paramétrage',
@@ -4995,7 +4995,7 @@ const LOGICIELS_SEED = [
     version:'v1.0',
     cat:'Finance',
     plateforme:'Web',
-    type_licence:'Annuelle',
+    type_licence:'Perpetuelle',
     support:'1an',
     desc:'Logiciel d\'expertise comptable SYSCOHADA : saisie des écritures, grand livre, balance, compte de résultat et bilan, à-nouveaux, lettrage, échéancier, comptes tiers et auxiliaires, fiscalité, états financiers, caisse, achats, stock, facturation, immobilisations, rentabilité, gestion des exercices.',
     modules:'Cockpit,Écritures,Grand Livre,Balance,Résultat,Bilan,États Financiers,Lettrage,Échéancier,Tiers & Auxiliaires,Fiscalité,Caisse,Achats,Stock,Facturation,Immobilisations,Rentabilité,Exercices,Plan Comptable',
@@ -6190,7 +6190,7 @@ function renderLogiciels() {
   document.getElementById('logiciels-grid').innerHTML = list.map(l=>{
     const mods = (l.modules||'').split(',').map(m=>m.trim()).filter(Boolean);
     const modsHtml = mods.length ? mods.slice(0,5).map(m=>`<span style="display:inline-block;background:var(--primary-l);color:var(--primary);font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;margin:1px 2px 1px 0">${m}</span>`).join('')+(mods.length>5?`<span style="font-size:10px;color:var(--muted)">+${mods.length-5}</span>`:'') : '';
-    const licIcon = LIC_LBL[l.type_licence]||'📅';
+    const licIcon = LIC_LBL[l.type_licence]||'♾️';
     return `
     <div class="soft-card" id="log-card-${l.id}">
       <div class="soft-header" style="background:linear-gradient(135deg,${l.color},${l.color}CC);position:relative">
@@ -6204,7 +6204,7 @@ function renderLogiciels() {
         </div>
         <div style="position:absolute;right:14px;bottom:14px;display:flex;gap:5px;align-items:center">
           <span style="background:rgba(255,255,255,.15);border-radius:12px;padding:2px 9px;font-size:10px;color:#fff;font-weight:700">${l.ventes||0} ventes</span>
-          <span style="background:rgba(255,255,255,.1);border-radius:12px;padding:2px 7px;font-size:10px;color:#fff">${licIcon} ${l.type_licence||'Annuelle'}</span>
+          <span style="background:rgba(255,255,255,.1);border-radius:12px;padding:2px 7px;font-size:10px;color:#fff">${licIcon} ${l.type_licence==='Perpetuelle'||!l.type_licence?'Perpétuelle':l.type_licence}</span>
         </div>
       </div>
       <div class="soft-body">
@@ -6270,7 +6270,7 @@ function openLogicielModal(id=null) {
     setVal('l-version', l.version||'');
     setVal('l-cat', l.cat||'Autre');
     setVal('l-plateforme', l.plateforme||'Web');
-    setVal('l-type-licence', l.type_licence||'Annuelle');
+    setVal('l-type-licence', l.type_licence||'Perpetuelle');
     setVal('l-support', l.support||'30j');
     setVal('l-desc', l.desc||'');
     setVal('l-modules', l.modules||'');
@@ -6302,7 +6302,7 @@ function openLogicielModal(id=null) {
     setVal('l-prix',''); setVal('l-prix-mensuel',''); setVal('l-remise-max','0');
     setVal('l-commission','10'); setVal('l-ventes','0'); setVal('l-prospects','0');
     setVal('l-actif','true'); setVal('l-plateforme','Web');
-    setVal('l-type-licence','Annuelle'); setVal('l-support','30j');
+    setVal('l-type-licence','Perpetuelle'); setVal('l-support','30j');
     setVal('l-icon','📦'); setVal('l-icon-custom','');
     selectColor('#1E3A5F');
     // Reset logo
@@ -6479,7 +6479,7 @@ function updateLogicielSelects() {
 }
 
 function togglePrixMensuel() {
-  const type = document.getElementById('l-type-licence')?.value||'Annuelle';
+  const type = document.getElementById('l-type-licence')?.value||'Perpetuelle';
   const grp = document.getElementById('grp-prix-mensuel');
   if(grp) grp.style.display = (type==='Mensuelle'||type==='SaaS') ? '' : 'none';
 }
@@ -9832,6 +9832,7 @@ function openCommandeModal(id=null, presId=null) {
     document.getElementById('cmd-ttc').value='';
     document.getElementById('cmd-solde').value='';
     document.getElementById('cmd-statut').value='confirmee';
+    document.getElementById('cmd-type-licence').value='Perpetuelle';
     if(presId) {
       const p = PRESENTATIONS.find(x=>x.id===presId);
       if(p) {
@@ -9877,6 +9878,7 @@ function saveCommande() {
     showToast('✅ Commande créée — '+cmdNumero());
   }
   lsSave('commandes', COMMANDES);
+  try{ _licencesDepuisCommandes(); }catch(e){}
   closeCommandeModal();
   initCommandes();
   updateSidebarBadges();
@@ -12925,6 +12927,49 @@ function _paiementFermeJolan20261112Once(){
   if(typeof showToast==='function') showToast(deja?'✅ Ferme Jolan : fiche mise à jour (commande déjà saisie)':'✅ Ferme Jolan : module additionnel enregistré — 50 000 FCFA versés, reste 20 000');
 }
 
+// ─── Les logiciels sont vendus sous licence PERPÉTUELLE (permanente) ───
+// 1. Une seule fois : catalogue, commandes et licences « annuelles » passent en perpétuel (sans date de fin).
+function _licencesPerpetuellesOnce(){
+  const FLAG='sanix_crm_licences_perpetuelles_v1';
+  if(localStorage.getItem(FLAG)) return;
+  let a=0,b=0,c=0;
+  LOGICIELS.forEach(l=>{ if(l.type_licence==='Annuelle'||!l.type_licence){ l.type_licence='Perpetuelle'; a++; } });
+  COMMANDES.forEach(o=>{ if(o.typeLicence==='Annuelle'||!o.typeLicence){ o.typeLicence='Perpetuelle'; b++; } });
+  LICENCES.forEach(l=>{ if(l.type==='Annuelle'||!l.type){ l.type='Perpetuelle'; l.fin=null; if(l.statut==='expiree'||l.statut==='renouvellement') l.statut='active'; c++; } });
+  if(a) saveStore('logiciels'); if(b) saveStore('commandes'); if(c) saveStore('licences');
+  localStorage.setItem(FLAG,'1');
+}
+// 2. À chaque chargement : chaque commande vendue (ni brouillon, ni annulée) reçoit sa licence perpétuelle, une seule fois.
+//    Identifiant et clé dérivés de la commande : deux appareils créent la MÊME licence (pas de doublon à la synchronisation).
+//    Une licence supprimée à la main n'est pas recréée (la commande garde la trace « licAuto »).
+function _licCleDepuis(txt){
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789', h=SXHASH.sha256hex('licence|'+txt); let k='';
+  for(let i=0;i<12;i++) k+=chars[parseInt(h.substr(i*2,2),16)%chars.length];
+  return 'SANIX-'+k.slice(0,4)+'-'+k.slice(4,8)+'-'+k.slice(8,12);
+}
+function _licencesDepuisCommandes(){
+  const norm=s=>(s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+  let n=0, marque=0;
+  COMMANDES.forEach(o=>{
+    if(o.licAuto||o.statut==='annulee'||o.statut==='brouillon'||!o.client||!o.logiciel) return;
+    const type=o.typeLicence||'Perpetuelle';
+    if(type!=='Perpetuelle') return;                               // abonnements et essais : licence saisie à la main, avec sa date de fin
+    const id='lic_cmd_'+String(o.id).replace(/[^A-Za-z0-9_.:-]/g,'_');
+    const existe=LICENCES.some(l=>l.id===id||l.cmdId===o.id||(norm(l.client)===norm(o.client)&&l.logiciel===o.logiciel));
+    if(!existe){
+      LICENCES.push({id, cmdId:o.id, key:_licCleDepuis(norm(o.client)+'|'+norm(o.logiciel)+'|'+o.id), client:o.client, logiciel:o.logiciel, type:'Perpetuelle', postes:1,
+        debut:o.date||new Date().toISOString().slice(0,10), fin:null, statut:'active', env:'production', contratId:null, commercial:o.commercial||'',
+        notes:'Licence perpétuelle — commande '+(o.ref||''), alerte30:false, alerte7:false, alerte1:false, createdAt:(o.date||new Date().toISOString().slice(0,10))+'T12:00:00.000Z'});
+      n++;
+    }
+    o.licAuto=true; marque++;
+  });
+  if(n) saveStore('licences');
+  if(marque) saveStore('commandes');
+  if(n){ try{ initLicences(); }catch(e){} try{ updateSidebarBadges(); }catch(e){} }
+  return n;
+}
+
 // Commandes en double : chaque appareil créait autrefois sa propre copie des commandes de départ.
 //  1. Commandes créées automatiquement (identifiant cmd_init_… / cmd_angels_…) : une seule par client et par logiciel.
 //  2. Toute commande strictement identique à une autre (client, logiciel, date, montant, versé, statut) : une seule gardée.
@@ -13379,7 +13424,7 @@ function _seedProspectsCliniqueOnce(){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
-  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedClientsAngelsOnce(); _seedCommandesInitialesOnce(); _fixSoldesAluOnce(); _noteImmoOnce(); _paiementZahara20261111Once(); _paiementAngels20261112Once(); _dedoublonnerCommandes(); _seedProspectsLivraisonOnce(); _seedClientsNouveauxLogOnce(); _paiementFermeJolan20261112Once(); _numerosFacturesInitOnce(); _seedProspectsAluExpertOnce(); _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
+  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedClientsAngelsOnce(); _seedCommandesInitialesOnce(); _fixSoldesAluOnce(); _noteImmoOnce(); _paiementZahara20261111Once(); _paiementAngels20261112Once(); _dedoublonnerCommandes(); _licencesPerpetuellesOnce(); _seedProspectsLivraisonOnce(); _seedClientsNouveauxLogOnce(); _paiementFermeJolan20261112Once(); _numerosFacturesInitOnce(); _licencesDepuisCommandes(); _seedProspectsAluExpertOnce(); _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
   // Refresh notifications toutes les 2 minutes
   setInterval(updateSidebarNotifications, 120000);
 });
@@ -15868,7 +15913,7 @@ function renderLicences() {
       </td>
       <td style="font-weight:600">${l.client}</td>
       <td>${l.logiciel}</td>
-      <td style="font-size:11px">${l.type||'Annuelle'}</td>
+      <td style="font-size:11px">${l.type==='Perpetuelle'||!l.type?'♾️ Perpétuelle':l.type}</td>
       <td style="font-size:12px">${l.debut||'—'}</td>
       <td style="font-size:12px">${l.type==='Perpetuelle'?'♾️':l.fin||'—'}</td>
       <td>${licDaysLeftHtml(days,l.type)}</td>
@@ -15935,7 +15980,7 @@ function openLicenceModal(id=null) {
     document.getElementById('lic-key').value=l.key;
     document.getElementById('lic-key-display').textContent=l.key;
     const sv=(elId,v)=>{ const e=document.getElementById(elId); if(e) e.value=v||''; };
-    sv('lic-client',l.client); sv('lic-logiciel',l.logiciel); sv('lic-type',l.type||'Annuelle');
+    sv('lic-client',l.client); sv('lic-logiciel',l.logiciel); sv('lic-type',l.type||'Perpetuelle');
     sv('lic-postes',l.postes||1); sv('lic-debut',l.debut); sv('lic-fin',l.fin||'');
     sv('lic-statut',l.statut); sv('lic-env',l.env||'production');
     sv('lic-contrat-link',l.contratId||''); sv('lic-commercial',l.commercial||'');
@@ -15947,7 +15992,7 @@ function openLicenceModal(id=null) {
     genLicKey();
     document.getElementById('lic-debut').value=new Date().toISOString().split('T')[0];
     document.getElementById('lic-fin').value='';
-    document.getElementById('lic-type').value='Annuelle';
+    document.getElementById('lic-type').value='Perpetuelle';
     document.getElementById('lic-statut').value='active';
     document.getElementById('lic-env').value='production';
     document.getElementById('lic-postes').value='1';
