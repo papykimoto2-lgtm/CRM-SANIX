@@ -8250,16 +8250,14 @@ const PERM_ICONS = {
 
 // Raw user store — passwords hashed on init
 let USERS_RAW = [
-  {id:1,nom:'Cyrille KESSIE',login:'kessie',email:'cyrille@sanix-africa.ci',phone:'',role:'super_admin',rawPass:'Azerty@2026',actif:true,lastLogin:null,init:'CK',color:'#2563EB'},
+  {id:1,nom:'Cyrille KESSIE',login:'kessie',email:'cyrille@sanix-africa.ci',phone:'',role:'super_admin',hash:'54691f24a528d78a42750f5e9dd26d69d5275e023072559b1494cd95c0c659f0',actif:true,lastLogin:null,init:'CK',color:'#2563EB'},
 ];
 let USERS = [];
 
 async function initUsersHashAll() {
   USERS = [];
   for(const u of USERS_RAW) {
-    const hash = await sha256(u.rawPass + SALT);
-    const {rawPass,...safe} = u;
-    USERS.push({...safe, hash});
+    USERS.push({...u});
   }
 }
 
@@ -9283,20 +9281,13 @@ alter table crm_ecritures     enable row level security;
 alter table crm_config        enable row level security;
 
 -- ════════════════════════════════════════════════
--- Policies anon (accès via clé anon — ajuster en prod)
+-- Accès : AUCUNE politique anon. RLS active, aucun accès par la clé publique.
+-- Données synchronisées via crm_records (connecteur, opérateurs authentifiés).
+-- Archive lisible par la direction : supabase/lockdown_crm_legacy.sql
 -- ════════════════════════════════════════════════
-do $$
-declare t text;
-begin
-  for t in select unnest(array[
-    'crm_deals','crm_clients','crm_deployments','crm_users_data',
-    'crm_logiciels','crm_presentations','crm_commandes','crm_contrats',
-    'crm_licences','crm_apporteurs','crm_documents','crm_ecritures','crm_config'])
-  loop
-    execute format('drop policy if exists "anon_all_%s" on %I;', t, t);
-    execute format('create policy "anon_all_%s" on %I for all using (true) with check (true);', t, t);
-  end loop;
-end $$;
+revoke all on crm_deals, crm_clients, crm_deployments, crm_users_data, crm_logiciels,
+  crm_presentations, crm_commandes, crm_contrats, crm_licences, crm_apporteurs,
+  crm_documents, crm_ecritures, crm_config from anon;
 
 -- ✅ Schéma installé. 13 tables synchronisables.`;
 
