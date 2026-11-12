@@ -10301,7 +10301,7 @@ function renderContrats() {
       <td style="font-weight:600">${c.client}</td>
       <td>${c.logiciel}</td>
       <td style="font-weight:700">${fv(c.montant)} FCFA</td>
-      <td style="font-size:11px">${c.duree||'—'}</td>
+      <td style="font-size:11px">${({'1an':'1 an','2ans':'2 ans','3ans':'3 ans',indeterminee:'Indéterminée',ponctuel:'Ponctuel'})[c.duree]||c.duree||'—'}</td>
       <td><span class="badge ${s.cls}">${s.lbl}</span></td>
       <td style="font-size:11px;color:var(--primary)">${cmdRef}</td>
       <td>
