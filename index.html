@@ -8589,7 +8589,7 @@ async function saveUser() {
     const hash = await sha256(rawPass + SALT);
     const init = nom.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
     const colors = ['#2563EB','#7C3AED','#059669','#D97706','#0D9488','#EA580C','#DC2626'];
-    USERS.push({id:USERS.length+10,nom,email,phone,role,hash,actif,lastLogin:null,init,color:colors[USERS.length%colors.length]});
+    USERS.push({id:Math.max(9,...USERS.map(u=>Number(u.id)||0))+1,nom,email,phone,role,hash,actif,lastLogin:null,init,color:colors[USERS.length%colors.length]});
   }
   closeUserModal();
   renderUsersGrid();
@@ -8657,7 +8657,11 @@ function loadAll() {
   let loaded = 0;
   Object.entries(LS_STORES).forEach(([key, store]) => {
     let data = lsLoad(key);
-    if(data && Array.isArray(data) && data.length > 0) {
+    // Une liste vide enregistrée est un choix de l'utilisateur (tout supprimé) : on ne ressuscite pas les données de démonstration.
+    // Exceptions : comptes (le compte initial doit exister) et logiciels (le catalogue est fusionné avec le seed ci-dessous).
+    const vide = Array.isArray(data) && data.length === 0 && key !== 'users_data' && key !== 'logiciels';
+    if(vide) { store.set([]); loaded++; }
+    else if(data && Array.isArray(data) && data.length > 0) {
       // Pour logiciels : merger le seed pour les IDs absents
       if(key === 'logiciels') {
         const _dup = new Set(['log_avinest','log_menkoimmo']);
@@ -8921,79 +8925,16 @@ function sbFromRow(key, row) {
   return {...renamed, ...(data||{})};
 }
 
+// Synchronisation : assurée par shared/crm-connector.js (RPC crm_sync_*, session opérateur, versions, suppressions, idempotence).
+// L'ancien moteur (tables crm_*, clé anon) est retiré : il écrasait les modifications des autres appareils (dernier écrivain gagnant),
+// n'envoyait jamais les suppressions, remplaçait les données locales à la réception et exposait les comptes utilisateurs à la clé publique.
 async function syncPush() {
-  if(!SB_CONFIG){ syncLog('warn','⚠️ Supabase non configuré'); showToast('⚠️ Configurez Supabase d\'abord'); return; }
-  if(!navigator.onLine){ syncLog('warn','📡 Hors-ligne — push différé'); showToast('📡 Hors-ligne — push différé'); return; }
-  updatePill('syncing','Sync...');
-  syncLog('info','⬆ Push Supabase démarré...');
-  let ok=0, err=0;
-  const ts = new Date().toISOString();
-  for(const [key, table] of Object.entries(SB_TABLES)) {
-    const data = LS_STORES[key]?.get();
-    if(!data||!data.length) continue;
-    try {
-      const rows = data.map(r=>({...sbToRow(key,r), updated_at:ts}));
-      await withTimeout(sbFetch(table,'POST',rows));
-      ok++;
-      syncLog('ok',`✅ Push ${table}: ${rows.length} lignes`);
-    } catch(e) {
-      err++;
-      syncLog('err',`❌ Push ${table}: ${e.message}`);
-    }
-  }
-  const label = err>0 ? `Push partiel (${err} erreur(s))` : 'Synchronisé';
-  // Push CONFIG entreprise (singleton)
-  try {
-    await withTimeout(sbFetch('crm_config','POST',[{id:1, data:CONFIG, updated_at:ts}]));
-    syncLog('ok','✅ Push config entreprise');
-  } catch(e) { syncLog('warn','⚠️ Push config: '+e.message); }
-  updatePill(err>0?'error':'ok', label);
-  lsSave('last_sync', {ts, direction:'push', ok, err});
-  updateLastSyncInfo();
-  syncLog(err>0?'warn':'ok', `⬆ Push terminé — ${ok} OK, ${err} erreur(s)`);
-  if(err===0) showToast(`⬆ Push réussi — ${ok} table(s)`);
+  if(window.SanixCrmSync && window.SanixCrmSync.available()) return window.SanixCrmSync.syncNow();
+  syncLog('warn','⚠️ Synchronisation indisponible : session opérateur requise');
+  showToast('⚠️ Connectez votre session opérateur (Sync cloud) pour synchroniser');
+  return false;
 }
-
-async function syncPull() {
-  if(!SB_CONFIG){ syncLog('warn','⚠️ Supabase non configuré'); return; }
-  if(!navigator.onLine){ syncLog('warn','📡 Hors-ligne'); return; }
-  updatePill('syncing','Pull...');
-  syncLog('info','⬇ Pull Supabase démarré...');
-  let ok=0;
-  for(const [key, table] of Object.entries(SB_TABLES)) {
-    try {
-      const rows = await withTimeout(sbFetch(table,'GET',null,'?select=*'));
-      if(rows && rows.length) {
-        const mapped = rows.map(r=>sbFromRow(key,r));
-        LS_STORES[key]?.set(mapped);
-        lsSave(key, mapped);
-        ok++;
-        syncLog('ok',`⬇ Pull ${table}: ${rows.length} lignes`);
-      }
-    } catch(e) { syncLog('err',`❌ Pull ${table}: ${e.message}`); }
-  }
-  lsSave('last_sync', {ts:new Date().toISOString(), direction:'pull', ok});
-  // Pull CONFIG entreprise
-  try {
-    const rows = await withTimeout(sbFetch('crm_config','GET',null,'?id=eq.1&select=data'));
-    if(rows && rows[0] && rows[0].data) {
-      CONFIG = {...CONFIG_DEFAULT, ...rows[0].data};
-      persistConfig();
-      applyConfig();
-      syncLog('ok','⬇ Pull config entreprise');
-    }
-  } catch(e) { syncLog('warn','⚠️ Pull config: '+e.message); }
-  updateLastSyncInfo();
-  updatePill('ok','Synchronisé');
-  syncLog('ok',`⬇ Pull terminé — ${ok} table(s) mises à jour`);
-  // Refresh toutes les vues
-  try { initPipeline(); }catch(e){}
-  try { initClients(); }catch(e){}
-  try { initPlanning(); }catch(e){}
-  try { initLogiciels(); }catch(e){}
-  try { initDashboard360(); }catch(e){}
-  showToast(`⬇ Pull complet — ${ok} table(s)`);
-}
+async function syncPull() { return syncPush(); }
 
 function toggleAutoSync(el) {
   el.classList.toggle('on');
@@ -9013,7 +8954,6 @@ async function syncFull() {
   if(!SB_CONFIG){ showToast('⚠️ Configurez Supabase d\'abord'); return; }
   if(!navigator.onLine){ showToast('📡 Hors-ligne'); return; }
   syncLog('info','🔄 Synchronisation complète démarrée...');
-  await syncPull();
   await syncPush();
   syncLog('ok','🔄 Synchronisation complète terminée');
   showToast('🔄 Synchronisation complète OK');
