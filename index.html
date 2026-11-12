@@ -9879,6 +9879,7 @@ function saveCommande() {
   }
   lsSave('commandes', COMMANDES);
   try{ _licencesDepuisCommandes(); }catch(e){}
+  try{ _contratsDepuisCommandes(); }catch(e){}
   closeCommandeModal();
   initCommandes();
   updateSidebarBadges();
@@ -10341,6 +10342,7 @@ function openContratModal(typeDefault='contrat', cmdId=null) {
     document.getElementById('contrat-montant').value='';
   }
   document.getElementById('contrat-statut').value='brouillon';
+  document.getElementById('contrat-duree').value='indeterminee';   // licences perpétuelles : durée indéterminée par défaut
   document.getElementById('modal-contrat').classList.remove('hidden');
   setTimeout(()=>document.getElementById('contrat-client').focus(),100);
 }
@@ -12970,6 +12972,33 @@ function _licencesDepuisCommandes(){
   return n;
 }
 
+// ─── Un contrat de licence par commande vendue, créé en « Brouillon » (en attente de signature) ───
+// Le statut « Signé » reste une saisie manuelle : le CRM ne déclare jamais un contrat signé à votre place.
+// Identifiant dérivé de la commande (même contrat sur tous les appareils) ; un contrat supprimé à la main n'est pas recréé (« ctrAuto »).
+function _contratsDepuisCommandes(){
+  const norm=s=>(s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+  let n=0, marque=0, lies=0;
+  COMMANDES.forEach(o=>{
+    if(o.ctrAuto||o.statut==='annulee'||o.statut==='brouillon'||!o.client||!o.logiciel) return;
+    const id='ctr_cmd_'+String(o.id).replace(/[^A-Za-z0-9_.:-]/g,'_');
+    let ctr=CONTRATS.find(c=>c.id===id||c.cmdId===o.id||(c.type==='contrat'&&norm(c.client)===norm(o.client)&&c.logiciel===o.logiciel));
+    if(!ctr){
+      const perp=(o.typeLicence||'Perpetuelle')==='Perpetuelle';
+      ctr={id, ref:'CTR-'+String(o.ref||o.id).replace(/^CMD-/,''), type:'contrat', client:o.client, date:o.date||new Date().toISOString().slice(0,10), logiciel:o.logiciel,
+        duree:perp?'indeterminee':'1an', montant:o.ttc||0, paiement:(o.acompte||0)>=(o.ttc||0)?'comptant':'acompte_solde', statut:'brouillon', cmdId:o.id,
+        notes:'Contrat de licence'+(perp?' perpétuelle':'')+' — commande '+(o.ref||'')+'. À faire signer.'};
+      CONTRATS.push(ctr); n++;
+    }
+    const lic=LICENCES.find(l=>l.cmdId===o.id&&!l.contratId); if(lic){ lic.contratId=ctr.id; lies++; }
+    o.ctrAuto=true; marque++;
+  });
+  if(n) saveStore('contrats');
+  if(lies) saveStore('licences');
+  if(marque) saveStore('commandes');
+  if(n){ try{ initContrats(); }catch(e){} try{ updateSidebarBadges(); }catch(e){} }
+  return n;
+}
+
 // Commandes en double : chaque appareil créait autrefois sa propre copie des commandes de départ.
 //  1. Commandes créées automatiquement (identifiant cmd_init_… / cmd_angels_…) : une seule par client et par logiciel.
 //  2. Toute commande strictement identique à une autre (client, logiciel, date, montant, versé, statut) : une seule gardée.
@@ -13424,7 +13453,7 @@ function _seedProspectsCliniqueOnce(){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
-  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedClientsAngelsOnce(); _seedCommandesInitialesOnce(); _fixSoldesAluOnce(); _noteImmoOnce(); _paiementZahara20261111Once(); _paiementAngels20261112Once(); _dedoublonnerCommandes(); _licencesPerpetuellesOnce(); _seedProspectsLivraisonOnce(); _seedClientsNouveauxLogOnce(); _paiementFermeJolan20261112Once(); _numerosFacturesInitOnce(); _licencesDepuisCommandes(); _seedProspectsAluExpertOnce(); _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
+  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedClientsAngelsOnce(); _seedCommandesInitialesOnce(); _fixSoldesAluOnce(); _noteImmoOnce(); _paiementZahara20261111Once(); _paiementAngels20261112Once(); _dedoublonnerCommandes(); _licencesPerpetuellesOnce(); _seedProspectsLivraisonOnce(); _seedClientsNouveauxLogOnce(); _paiementFermeJolan20261112Once(); _numerosFacturesInitOnce(); _licencesDepuisCommandes(); _contratsDepuisCommandes(); _seedProspectsAluExpertOnce(); _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
   // Refresh notifications toutes les 2 minutes
   setInterval(updateSidebarNotifications, 120000);
 });
