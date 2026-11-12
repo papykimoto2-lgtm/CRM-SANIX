@@ -12778,6 +12778,35 @@ function _paiementAngels20261112Once(){
   if(n>0 && typeof showToast==='function') showToast('✅ Angel\'s Groupe mis à jour : 1 200 000 FCFA versés, reste 70 000 (hébergement)');
 }
 
+// Ferme Jolan — facture SA-FAC-2026-003 du 12/11/2026 : module additionnel du logiciel avicole, 70 000 FCFA sans TVA, 50 000 versés, reste 20 000.
+// La commande n'est pas recréée si elle a déjà été saisie à la main (une commande Ferme Jolan à 70 000 FCFA ou sur Angel's Agro existe déjà).
+function _paiementFermeJolan20261112Once(){
+  const FLAG='sanix_crm_paiement_fermejolan_20261112_v1';
+  if(localStorage.getItem(FLAG)) return;
+  const norm=s=>(s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+  const NOM='Ferme Jolan', LOG='Angel\'s Agro', TTC=70000, VERSE=50000;
+  const c=CLIENTS.find(x=>norm(x.nom)===norm(NOM));
+  if(!c){ return; }                                             // client pas encore reçu sur cet appareil : nouvel essai au prochain chargement
+  const deja=COMMANDES.some(x=>norm(x.client)===norm(NOM)&&((x.ttc||0)===TTC||x.logiciel===LOG));
+  if(!deja){
+    COMMANDES.push({id:'cmd_init_fermejolan_angelsagro_module', ref:cmdNumero(), client:c.nom, date:'2026-11-12', logiciel:LOG, typeLicence:'Perpetuelle',
+      htBrut:TTC, remise:0, htNet:TTC, tva:0, ttc:TTC, acompte:VERSE, solde:TTC-VERSE, sansTva:true,
+      commercial:c.commercial||'', statut:'en_cours', presId:'', notes:'Module additionnel — facture SA-FAC-2026-003 : versé 50 000, reste 20 000'});
+    saveStore('commandes');
+  }
+  if((c.valeur||0)<470000){ c.valeur=470000; const d=DEALS.find(x=>x.clientId===c.id); if(d){ d.valeur=470000; saveStore('deals'); } }
+  c.notes='Client AviNest Pro (Angel\'s Agro) — 400 000 FCFA soldé. Module additionnel 70 000 FCFA (facture SA-FAC-2026-003) : versé 50 000, reste 20 000.';
+  c.updated_at=new Date().toISOString();
+  if(!c.interactions) c.interactions=[];
+  if(!c.interactions.some(i=>i.type==='Facture émise'&&(i.note||'').indexOf('SA-FAC-2026-003')===0))
+    c.interactions.push({date:'2026-11-12T12:00:00.000Z',type:'Facture émise',note:'SA-FAC-2026-003 — module additionnel 70 000 FCFA, versé 50 000, reste 20 000',ico:'🧾'});
+  saveStore('clients');
+  localStorage.setItem(FLAG,'1');
+  try{ renderClients(getFilteredClients()); }catch(e){}
+  try{ initCommandes(); }catch(e){}
+  if(typeof showToast==='function') showToast(deja?'✅ Ferme Jolan : fiche mise à jour (commande déjà saisie)':'✅ Ferme Jolan : module additionnel enregistré — 50 000 FCFA versés, reste 20 000');
+}
+
 // Commandes en double : chaque appareil créait autrefois sa propre copie des commandes de départ.
 //  1. Commandes créées automatiquement (identifiant cmd_init_… / cmd_angels_…) : une seule par client et par logiciel.
 //  2. Toute commande strictement identique à une autre (client, logiciel, date, montant, versé, statut) : une seule gardée.
@@ -13232,7 +13261,7 @@ function _seedProspectsCliniqueOnce(){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
-  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedClientsAngelsOnce(); _seedCommandesInitialesOnce(); _fixSoldesAluOnce(); _noteImmoOnce(); _paiementZahara20261111Once(); _paiementAngels20261112Once(); _dedoublonnerCommandes(); _seedProspectsLivraisonOnce(); _seedClientsNouveauxLogOnce(); _seedProspectsAluExpertOnce(); _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
+  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedClientsAngelsOnce(); _seedCommandesInitialesOnce(); _fixSoldesAluOnce(); _noteImmoOnce(); _paiementZahara20261111Once(); _paiementAngels20261112Once(); _dedoublonnerCommandes(); _seedProspectsLivraisonOnce(); _seedClientsNouveauxLogOnce(); _paiementFermeJolan20261112Once(); _seedProspectsAluExpertOnce(); _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
   // Refresh notifications toutes les 2 minutes
   setInterval(updateSidebarNotifications, 120000);
 });
