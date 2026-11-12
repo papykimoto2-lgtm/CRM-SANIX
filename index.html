@@ -12738,7 +12738,10 @@ function _paiementAngels20261112Once(){
   const norm=s=>(s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
   const NOM='Angel\'s Groupe', TTC=635000, VERSE=600000;
   let n=0;
-  COMMANDES.filter(x=>norm(x.client)===norm(NOM)&&(x.logiciel==='Angel\'s Livraison'||x.logiciel==='Angel\'s Transport')).forEach(o=>{
+  // Une seule commande par module : en cas de doublon, seule la commande d'origine (sinon la première par identifiant) reçoit le paiement.
+  const vus=new Set(), rang=o=>(/^cmd_angels_/.test(String(o.id))?'0':'1')+String(o.id);
+  COMMANDES.filter(x=>norm(x.client)===norm(NOM)&&(x.logiciel==='Angel\'s Livraison'||x.logiciel==='Angel\'s Transport')).sort((x,y)=>rang(x)<rang(y)?-1:1).forEach(o=>{
+    if(vus.has(o.logiciel)) return; vus.add(o.logiciel);
     if((o.ttc||0)!==600000) return;
     const htNet=Math.round(TTC/1.18);
     Object.assign(o,{htBrut:htNet,remise:0,htNet,tva:TTC-htNet,ttc:TTC,acompte:VERSE,solde:TTC-VERSE,
