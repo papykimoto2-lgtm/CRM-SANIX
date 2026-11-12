@@ -3537,7 +3537,11 @@ Seriez-vous disponible pour une démonstration {rdv} ?
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">TVA 18%</label>
+        <label class="form-label">TVA</label>
+        <select class="form-input" id="cmd-tva-mode" onchange="cmdCalcTTC()" style="margin-bottom:6px">
+          <option value="avec">Avec TVA (18 %)</option>
+          <option value="sans">Sans TVA (prix net)</option>
+        </select>
         <input type="text" class="form-input" id="cmd-tva" readonly style="background:var(--surface2)">
       </div>
       <div class="form-group">
@@ -9688,12 +9692,17 @@ function cmdNumero() {
   return `CMD-${y}-${String(n).padStart(3,'0')}`;
 }
 
+// Anciens noms commerciaux affichés dans la liste des logiciels d'une commande (même logiciel, nom changé).
+const CMD_ANCIENS_NOMS = { log_angels_agro:'ex-AviNest Pro · AvicoSuite' };
+// Taux de TVA d'une commande : 18 % (paramétrable) ou 0 quand la commande est saisie « sans TVA ».
+function cmdTauxTva(){ return (document.getElementById('cmd-tva-mode')||{}).value==='sans' ? 0 : (CONFIG.tva||18)/100; }
+
 function cmdCalcTTC() {
   const ht     = parseFloat(document.getElementById('cmd-prix-ht')?.value)||0;
   const remise = parseFloat(document.getElementById('cmd-remise')?.value)||0;
   const acompte= parseFloat(document.getElementById('cmd-acompte')?.value)||0;
   const htNet  = ht * (1 - remise/100);
-  const tva    = Math.round(htNet * 0.18);
+  const tva    = Math.round(htNet * cmdTauxTva());
   const ttc    = Math.round(htNet + tva);
   const solde  = Math.max(0, ttc - acompte);
   const fv = n => n.toLocaleString('fr-FR');
@@ -9794,7 +9803,10 @@ function openCommandeModal(id=null, presId=null) {
   document.getElementById('cmd-date').value = new Date().toISOString().split('T')[0];
   // Populate
   const logSel = document.getElementById('cmd-logiciel');
-  logSel.innerHTML = '<option value="">— Sélectionner —</option>'+LOGICIELS.map(l=>`<option value="${l.nom}">${l.icon||'💻'} ${l.nom}</option>`).join('');
+  logSel.innerHTML = '<option value="">— Sélectionner —</option>'+LOGICIELS.map(l=>`<option value="${l.nom}">${l.icon||'💻'} ${l.nom}${CMD_ANCIENS_NOMS[l.id]?' ('+CMD_ANCIENS_NOMS[l.id]+')':''}</option>`).join('');
+  const _cmdEd = id ? COMMANDES.find(x=>x.id===id) : null;   // logiciel d'une ancienne commande retiré du catalogue (ex. AviNest Pro) : il reste sélectionnable pour cette commande
+  if(_cmdEd && _cmdEd.logiciel && !LOGICIELS.some(l=>l.nom===_cmdEd.logiciel)){ const o=document.createElement('option'); o.value=_cmdEd.logiciel; o.textContent='💻 '+_cmdEd.logiciel+' (ancien nom)'; logSel.appendChild(o); }
+  document.getElementById('cmd-tva-mode').value = (_cmdEd && _cmdEd.sansTva) ? 'sans' : 'avec';
   const commSel = document.getElementById('cmd-commercial');
   commSel.innerHTML = '<option value="">— Sélectionner —</option>'+EQUIPE.filter(m=>m.type==='salarie').map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('');
   document.getElementById('cmd-client-list').innerHTML = CLIENTS.map(c=>`<option value="${c.nom}">`).join('');
@@ -9845,14 +9857,14 @@ function saveCommande() {
   const htBrut  = parseFloat(gv('cmd-prix-ht'))||0;
   const remise  = parseFloat(gv('cmd-remise'))||0;
   const htNet   = Math.round(htBrut*(1-remise/100));
-  const tva     = Math.round(htNet*0.18);
+  const tva     = Math.round(htNet*cmdTauxTva());
   const ttc     = htNet+tva;
   const acompte = parseFloat(gv('cmd-acompte'))||0;
   const solde   = Math.max(0,ttc-acompte);
   const id = gv('cmd-edit-id');
   const data = {
     client, date, logiciel, typeLicence:gv('cmd-type-licence'),
-    htBrut, remise, htNet, tva, ttc, acompte, solde,
+    htBrut, remise, htNet, tva, ttc, acompte, solde, sansTva:gv('cmd-tva-mode')==='sans',
     commercial:gv('cmd-commercial'), statut:gv('cmd-statut'),
     presId:gv('cmd-pres-link'), notes:gv('cmd-notes').trim()
   };
