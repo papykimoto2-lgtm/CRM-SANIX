@@ -118,13 +118,16 @@ export async function flushIncidents(now = new Date()): Promise<number> {
   const { data: d } = await db().rpc("ai_report_data", { p_debut: new Date(now.getTime() - 24 * 3600e3).toISOString(), p_fin: now.toISOString() });
   const data = { ...(d ?? {}), agents: [], difficultes: { ...(d?.difficultes ?? {}), incidents: inc.map((i) => ({ gravite: i.gravite, type: i.type, message: i.message, at: i.created_at })) } };
   const analyse = { ...fallbackAnalyse(data), recommandations: ["Ouvrir SANIX AI VIRTUAL COMPANY : examiner les agents suspendus, réactiver ou remplacer."] };
+  const rec = await recipientsFor("incident");
+  if (!rec.length) return 0; // aucun destinataire : les incidents restent à notifier (pas d'archive inutile)
   const p = reportPeriod("incident", now, st?.fuseau ?? "Africa/Abidjan");
   const doc = buildDoc("incident", data, analyse, `${p.dateLabel} ${now.toLocaleTimeString("fr-FR", { timeZone: st?.fuseau ?? "Africa/Abidjan", hour: "2-digit", minute: "2-digit" })}`);
   const html = docToHtml(doc);
   const id = await archive({ type: "incident", debut: p.debut, fin: p.fin, donnees: data, analyse, html, cout: 0 });
-  const rec = await recipientsFor("incident");
   const res = await sendToAll("incident", rec, `⚠ SANIX AI VIRTUAL COMPANY — ${inc.length} incident(s) critique(s)`, html, null, "");
   await conclure(id, rec, res);
+  // Notifié seulement si au moins un e-mail est parti ; sinon l'alerte sera retentée au prochain passage.
+  if (!res.ok.length) return 0;
   await db().from("ai_incidents").update({ notifie_at: now.toISOString() }).in("id", inc.map((i) => i.id));
   return inc.length;
 }
