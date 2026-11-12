@@ -9774,6 +9774,7 @@ function renderCommandes() {
       <td>
         <div class="flex gap-1">
           <button onclick="imprimerBonCommande('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;color:var(--primary)" title="Bon de commande">🖨️</button>
+          <button onclick="choisirFacture('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;color:var(--success)" title="Imprimer la facture (avec ou sans TVA)">🧾</button>
           <button onclick="editCommande('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px">✏️</button>
           <button onclick="creerContratFromCmd('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;color:var(--success)" title="Créer contrat">📝</button>
           <button onclick="deleteCommande('${c.id}')" class="btn btn-sm" style="padding:3px 8px;font-size:11px;background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2)">🗑</button>
@@ -9870,6 +9871,104 @@ function saveCommande() {
 }
 
 function editCommande(id) { openCommandeModal(id); }
+
+// ─── Facture d'une commande : avec TVA (HT + TVA = TTC) ou sans TVA (montant net, TVA non applicable) ───
+function choisirFacture(id){
+  const c = COMMANDES.find(x=>x.id===id);
+  if(!c) { showToast('❌ Commande introuvable'); return; }
+  const old=document.getElementById('fac-choix'); if(old) old.remove();
+  const fv = n=>(n||0).toLocaleString('fr-FR');
+  const ov=document.createElement('div'); ov.id='fac-choix';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
+  ov.innerHTML=`<div style="background:var(--surface,#fff);color:var(--text,#111);border-radius:14px;padding:22px;max-width:420px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+    <div style="font-weight:800;font-size:16px;margin-bottom:4px">🧾 Imprimer la facture</div>
+    <div style="font-size:12px;color:var(--muted,#64748b);margin-bottom:16px">${_facEsc(c.client)} · ${_facEsc(c.logiciel||'')} · ${fv(c.ttc)} FCFA — versé ${fv(c.acompte)}, reste ${fv(cmdReste(c))}</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn btn-primary" id="fac-avec">Avec TVA (${CONFIG.tva||18} %)</button>
+      <button class="btn btn-outline" id="fac-sans">Sans TVA (TVA non applicable)</button>
+      <button class="btn btn-outline" id="fac-annul" style="border:none;color:var(--muted,#64748b)">Annuler</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#fac-avec').onclick=()=>{ ov.remove(); imprimerFacture(id,true); };
+  ov.querySelector('#fac-sans').onclick=()=>{ ov.remove(); imprimerFacture(id,false); };
+  ov.querySelector('#fac-annul').onclick=()=>ov.remove();
+}
+function _facEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch])); }
+function imprimerFacture(id, avecTva) {
+  const c = COMMANDES.find(x=>x.id===id);
+  if(!c) { showToast('❌ Commande introuvable'); return; }
+  const fv = n=>(n||0).toLocaleString('fr-FR');
+  const taux = CONFIG.tva||18;
+  const total = c.ttc||0, verse = Math.min(c.acompte||0,total), reste = cmdReste(c);
+  const ht = c.htNet || Math.round(total/(1+taux/100)), tva = total-ht;
+  const today = new Date().toISOString().slice(0,10);
+  const dateFr = new Date().toLocaleDateString('fr-FR');
+  const ref = 'FAC-'+String(c.ref||c.id).replace(/^CMD-/,'');
+  const log = LOGICIELS.find(l=>l.nom===c.logiciel);
+  const typeLic = {Annuelle:'Licence annuelle',Mensuelle:'Abonnement mensuel',Perpetuelle:'Licence perpétuelle',SaaS:'Abonnement SaaS'}[c.typeLicence]||c.typeLicence||'Licence';
+  const etat = reste<=0 ? ['SOLDÉE','#059669'] : verse>0 ? ['AVANCE PERÇUE','#D97706'] : ['À RÉGLER','#DC2626'];
+  const td='border:1px solid #ccc;padding:8px';
+  const lignesTotal = avecTva ? `
+    <tr><td style="${td}">Total HT</td><td style="${td};text-align:right;font-weight:600">${fv(ht)}</td></tr>
+    <tr><td style="${td}">TVA (${taux}%)</td><td style="${td};text-align:right">${fv(tva)}</td></tr>
+    <tr style="background:#EFF6FF"><td style="${td};font-weight:800">TOTAL TTC</td><td style="${td};text-align:right;font-weight:800;color:#1E3A5F">${fv(total)} FCFA</td></tr>` : `
+    <tr style="background:#EFF6FF"><td style="${td};font-weight:800">MONTANT TOTAL NET</td><td style="${td};text-align:right;font-weight:800;color:#1E3A5F">${fv(total)} FCFA</td></tr>`;
+  const html = `${docHeader()}
+  <div style="text-align:center;margin-bottom:18px">
+    <div style="font-size:20px;font-weight:800;color:#1E3A5F;letter-spacing:2px">FACTURE</div>
+    <div style="font-size:12px;color:#666;margin-top:2px">N° ${_facEsc(ref)} · Date : ${dateFr} · Commande ${_facEsc(c.ref||'')}</div>
+    <div style="display:inline-block;margin-top:8px;border:2px solid ${etat[1]};color:${etat[1]};font-weight:800;font-size:12px;letter-spacing:2px;padding:2px 12px">${etat[0]}</div>
+  </div>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:18px"><tr>
+    <td style="border:1px solid #ccc;padding:10px;background:#f5f7fa;width:50%;vertical-align:top">
+      <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Émetteur</div>
+      <strong>${_facEsc(CONFIG.raisonSociale||'SANIX Africa Division Technologies')}</strong><br>
+      <span style="font-size:11px;color:#555">${_facEsc(CONFIG.adresse||'Songon Kassamblé, Abidjan')}<br>
+      ${_facEsc(CONFIG.tel||'')} · ${_facEsc(CONFIG.email||'sanixafrica699@gmail.com')}<br>
+      ${CONFIG.rccm?'RCCM : '+_facEsc(CONFIG.rccm):''} ${CONFIG.cc?'· NCC : '+_facEsc(CONFIG.cc):''}</span>
+    </td>
+    <td style="border:1px solid #ccc;padding:10px;background:#f5f7fa;vertical-align:top">
+      <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Client</div>
+      <strong>${_facEsc(c.client)}</strong><br>
+      <span style="font-size:11px;color:#555">Abidjan — Côte d'Ivoire</span>
+    </td>
+  </tr></table>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+    <thead><tr style="background:#1E3A5F;color:#fff">
+      <th style="padding:8px;text-align:left">Désignation</th>
+      <th style="padding:8px;text-align:center">Type</th>
+      <th style="padding:8px;text-align:right">${avecTva?'Montant HT':'Montant net'} (FCFA)</th>
+    </tr></thead>
+    <tbody><tr>
+      <td style="border:1px solid #ccc;padding:10px"><strong>${_facEsc(c.logiciel||'Logiciel')}</strong>${log&&log.version?' '+_facEsc(log.version):''}
+        ${log&&log.desc?`<br><span style="font-size:10px;color:#777">${_facEsc(log.desc.substring(0,120))}</span>`:''}</td>
+      <td style="border:1px solid #ccc;padding:10px;text-align:center;font-size:11px">${_facEsc(typeLic)}</td>
+      <td style="border:1px solid #ccc;padding:10px;text-align:right;font-weight:600">${fv(avecTva?ht:total)}</td>
+    </tr></tbody>
+  </table>
+  <table style="width:60%;border-collapse:collapse;margin-left:auto;margin-bottom:16px">
+    ${lignesTotal}
+    <tr><td style="${td}">Montant versé</td><td style="${td};text-align:right;color:#059669">− ${fv(verse)}</td></tr>
+    <tr style="background:${reste>0?'#FFF7ED':'#ECFDF5'}"><td style="${td};font-weight:800">RESTE À PAYER</td><td style="${td};text-align:right;font-weight:800;color:${reste>0?'#D97706':'#059669'}">${fv(reste)} FCFA</td></tr>
+  </table>
+  <p style="font-size:11px;color:#444;line-height:1.7;margin-bottom:6px">
+    <strong>Conditions :</strong> Prix en francs CFA (XOF). ${avecTva?'TVA '+taux+' % incluse dans le total TTC.':'TVA : non applicable.'}
+    ${c.notes?'<br><strong>Notes :</strong> '+_facEsc(c.notes):''}
+  </p>
+  <table style="width:100%;margin-top:30px"><tr>
+    <td style="width:50%;vertical-align:top"><strong>Pour ${_facEsc(CONFIG.sigle||'SANIX')}</strong><br><span style="font-size:10px;color:#888">Cachet et signature</span></td>
+    <td style="width:50%;vertical-align:top"><strong>Le Client</strong><br><span style="font-size:10px;color:#888">Lu et approuvé</span></td>
+  </tr></table>${docSecurityFooter({type:'facture',ref:ref,client:c.client,montant:total,date:today},true)}`;
+  const w = window.open('','_blank','width=900,height=1000');
+  if(!w) { showToast('⚠️ Autorisez les popups pour imprimer'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><title>Facture ${_facEsc(ref)}</title>
+    <style>@page{margin:1.5cm}body{font-family:Georgia,serif;font-size:13px;line-height:1.6;color:#1a1a1a;max-width:800px;margin:0 auto;padding:20px}table{border-collapse:collapse}p{margin:8px 0}</style>
+    </head><body>${html}<div style="margin-top:30px;text-align:center" class="no-print"><button onclick="window.print()" style="padding:10px 24px;background:#1E3A5F;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer">🖨️ Imprimer / Enregistrer en PDF</button></div>
+    <style>@media print{.no-print{display:none}}</style></body></html>`);
+  w.document.close();
+  showToast('🧾 Facture '+(avecTva?'avec TVA':'sans TVA')+' générée');
+}
 
 function imprimerBonCommandeFromModal() {
   const id = document.getElementById('cmd-edit-id').value;
