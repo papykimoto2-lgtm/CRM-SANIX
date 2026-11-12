@@ -39,8 +39,9 @@ Deno.serve(async (req) => {
       if (contenu.length < 3) throw new HttpError(400, "Instruction trop courte");
       if (contenu.length > 4000) throw new HttpError(400, "Instruction trop longue (4 000 caractères maximum)");
 
-      const { data: b } = await db().rpc("ai_budget_check", { p_agent: null });
-      if (b && b.ok === false) {
+      const { data: b, error: budgetError } = await db().rpc("ai_budget_check", { p_agent: null });
+      if (budgetError || !b) throw new HttpError(503, "Contrôle du budget IA indisponible");
+      if (b.ok === false) {
         await db().from("ai_executive_messages").insert({ user_id: op.user_id, auteur: "president", contenu });
         await db().from("ai_executive_messages").insert({ auteur: "directeur",
           contenu: `⚠️ Je ne peux pas traiter cette instruction : ${b.raison}. Ajustez les budgets ou réactivez l'entreprise dans Gouvernance, puis renvoyez votre instruction.` });

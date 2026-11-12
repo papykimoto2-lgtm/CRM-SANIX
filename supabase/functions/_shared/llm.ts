@@ -83,8 +83,10 @@ export type CallOpts = {
 export type CallResult = { message: Anthropic.Beta.BetaMessage; cost: number };
 
 export async function callClaude(o: CallOpts): Promise<CallResult> {
-  const { data: b } = await db().rpc("ai_budget_check", { p_agent: o.agentId ?? null });
-  if (b && b.ok === false) throw new BudgetError(String(b.raison ?? "Budget IA atteint"));
+  const { data: b, error: budgetError } = await db().rpc("ai_budget_check", { p_agent: o.agentId ?? null });
+  // Échec fermé : sans contrôle de budget fiable, aucun appel payant.
+  if (budgetError || !b) throw new BudgetError("Contrôle du budget IA indisponible");
+  if (b.ok === false) throw new BudgetError(String(b.raison ?? "Budget IA atteint"));
 
   const model = o.model ?? await modelForLevel(o.niveau);
   const params: Record<string, unknown> = {

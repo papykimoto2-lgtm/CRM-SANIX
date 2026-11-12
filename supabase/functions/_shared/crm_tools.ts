@@ -1,6 +1,6 @@
 // Outils CRM (prospects, produits, rendez-vous, offres, relances) partagés par les agents v1 et v2.
 import type Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
-import { db, env } from "./core.ts";
+import { db, env, neutralize } from "./core.ts";
 import { deliverMessage } from "./outbox.ts";
 import type { Prospect } from "./channels.ts";
 
@@ -166,7 +166,11 @@ export async function runCrmTool(ctx: CrmCtx, name: string, raw: Record<string, 
         db().from("ai_followups").select("due_at,scenario,statut").eq("prospect_id", pid).eq("statut", "planifiee"),
       ]);
       const fil = (msgs.data ?? []).reverse().map((m) =>
-        m.auteur === "prospect" ? { ...m, contenu: `<message_prospect>${m.contenu}</message_prospect>` } : m);
+        m.auteur === "prospect" ? { ...m, contenu: `<message_prospect>${neutralize(m.contenu)}</message_prospect>` } : m);
+      // Champs saisis par des tiers (profil WhatsApp, web) : données non fiables, chevrons neutralisés.
+      for (const k of ["entreprise", "contact_nom", "resume_ia", "source_url", "notes"]) {
+        if (typeof (p as Record<string, unknown>)[k] === "string") (p as Record<string, unknown>)[k] = `<donnee_non_fiable>${neutralize((p as Record<string, unknown>)[k], 1000)}</donnee_non_fiable>`;
+      }
       const rdvs = (rdv.data ?? []).map(({ compte_rendu, ...r }: { compte_rendu: string | null }) => ({ ...r, compte_rendu_enregistre: !!compte_rendu }));
       return { prospect: p, fil, offres: offers.data, rdv: rdvs, relances: fu.data };
     }
@@ -234,6 +238,12 @@ export async function runCrmTool(ctx: CrmCtx, name: string, raw: Record<string, 
       if (isNaN(+debut) || +debut < Date.now() + 3600e3) throw new Error("Créneau invalide ou trop proche");
       if (input.product_id) input.product_id = await resolveProductId(input.product_id);
       const op = await commercialFor(pid);
+      if (!op) throw new Error("Aucun commercial disponible : escalader (transmettre à un humain)");
+      // Le créneau doit provenir de list_free_slots (disponibilités réelles du commercial).
+      const { data: libres } = await db().rpc("ai_free_slots", { p_operator: op, p_days: 14, p_duree_min: 45 });
+      if (!(libres ?? []).some((s: { debut: string }) => Math.abs(+new Date(s.debut) - +debut) < 60e3)) {
+        throw new Error("Créneau hors disponibilités : appeler list_free_slots et choisir l'un des créneaux proposés");
+      }
       const fin = new Date(+debut + 45 * 60e3);
       const visio = input.mode === "visio" ? env("DEMO_VISIO_URL", false) || null : null;
       const { data, error } = await db().from("ai_appointments").insert({

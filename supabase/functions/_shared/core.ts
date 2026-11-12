@@ -112,3 +112,8 @@ export function clip(v: unknown, max: number): string {
 export function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : (e && typeof e === "object" && "message" in e) ? String((e as { message: unknown }).message) : String(e);
 }
+
+/** Texte provenant d'un tiers (prospect, web) : neutralise les chevrons pour qu'il ne puisse pas fermer une balise de données ni en ouvrir une. */
+export function neutralize(v: unknown, max = 4000): string {
+  return String(v ?? "").slice(0, max).replace(/</g, "‹").replace(/>/g, "›");
+}

@@ -77,24 +77,31 @@ async function sendNow(p: Prospect & { relances_sans_reponse?: number }, canal: 
   return { statut: res.statut, detail: res.detail, message_id: id };
 }
 
+/** Rend la réservation d'un message resté en file (configuration absente) pour un prochain tick. */
+async function releaseClaim(id: string, meta: Record<string, unknown> | null) {
+  const { claimed_at: _c, ...rest } = meta ?? {};
+  await db().from("ai_messages").update({ meta: rest }).eq("id", id).eq("statut", "a_envoyer");
+}
+
 /** Envoie les messages approuvés par le président (ou mis en file faute de configuration). */
 export async function flushOutbox(limit = 20): Promise<{ envoyes: number; en_file: number }> {
   const mode = await commMode();
   if (mode === "interdite") return { envoyes: 0, en_file: 0 };
-  const { data: rows } = await db().from("ai_messages").select("id, prospect_id, canal, contenu, meta")
-    .eq("sens", "sortant").eq("statut", "a_envoyer").order("created_at").limit(limit);
+  // Réservation atomique (SKIP LOCKED) : deux ticks concurrents ne prennent jamais le même message.
+  const { data: rows, error: claimError } = await db().rpc("ai_claim_outbox", { p_limit: limit });
+  if (claimError) throw new Error(`Impossible de réserver l'outbox : ${claimError.message}`);
   let envoyes = 0, en_file = 0;
   const waOk = whatsappConfigured();
-  for (const m of rows ?? []) {
+  for (const m of (rows ?? []) as { id: string; prospect_id: string; canal: string; contenu: string; meta: Record<string, unknown> | null }[]) {
     try {
-      if (m.canal === "whatsapp" && !waOk) { en_file++; continue; }               // mode manuel : un opérateur l'envoie depuis son WhatsApp ; on n'y touche pas (pas de course avec sa confirmation)
+      if (m.canal === "whatsapp" && !waOk) { en_file++; await releaseClaim(m.id, m.meta); continue; }               // mode manuel : un opérateur l'envoie depuis son WhatsApp ; on n'y touche pas (pas de course avec sa confirmation)
       const { data: p } = await db().from("ai_prospects").select("*").eq("id", m.prospect_id).maybeSingle();
       if (!p || p.opt_out) {
         await db().from("ai_messages").update({ statut: "echec", meta: { ...(m.meta ?? {}), detail: "Prospect désinscrit ou introuvable" } }).eq("id", m.id);
         continue;
       }
       const r = await sendNow(p, m.canal, (m.meta as { objet?: string })?.objet ?? null, m.contenu, (m.meta ?? {}) as Record<string, unknown>, "outbox", m.id);
-      if (r.statut === "a_envoyer") en_file++; else envoyes++;
+      if (r.statut === "a_envoyer") { en_file++; await releaseClaim(m.id, m.meta); } else if (r.statut === "echec") { /* marqué en échec par sendNow */ } else envoyes++;
     } catch (e) {
       await audit({ agent: "outbox", action: "flush_erreur", ok: false, payload: { id: m.id, e: errMsg(e) } });
     }

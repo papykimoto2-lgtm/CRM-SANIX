@@ -75,6 +75,9 @@ async function audit(row) {
 function errMsg(e) {
   return e instanceof Error ? e.message : e && typeof e === "object" && "message" in e ? String(e.message) : String(e);
 }
+function neutralize(v, max = 4e3) {
+  return String(v ?? "").slice(0, max).replace(/</g, "\u2039").replace(/>/g, "\u203A");
+}
 
 // functions/_shared/llm.ts
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
@@ -118,8 +121,9 @@ async function modelForLevel(niveau) {
   return niveau != null && niveau >= 4 && m.op ? m.op : m.v;
 }
 async function callClaude(o) {
-  const { data: b } = await db().rpc("ai_budget_check", { p_agent: o.agentId ?? null });
-  if (b && b.ok === false) throw new BudgetError(String(b.raison ?? "Budget IA atteint"));
+  const { data: b, error: budgetError } = await db().rpc("ai_budget_check", { p_agent: o.agentId ?? null });
+  if (budgetError || !b) throw new BudgetError("Contr\xF4le du budget IA indisponible");
+  if (b.ok === false) throw new BudgetError(String(b.raison ?? "Budget IA atteint"));
   const model = o.model ?? await modelForLevel(o.niveau);
   const params = {
     model,
@@ -513,7 +517,10 @@ async function runCrmTool(ctx, name, raw) {
         db().from("ai_appointments").select("id,debut,mode,statut,product_id,compte_rendu").eq("prospect_id", pid),
         db().from("ai_followups").select("due_at,scenario,statut").eq("prospect_id", pid).eq("statut", "planifiee")
       ]);
-      const fil = (msgs.data ?? []).reverse().map((m) => m.auteur === "prospect" ? { ...m, contenu: `<message_prospect>${m.contenu}</message_prospect>` } : m);
+      const fil = (msgs.data ?? []).reverse().map((m) => m.auteur === "prospect" ? { ...m, contenu: `<message_prospect>${neutralize(m.contenu)}</message_prospect>` } : m);
+      for (const k of ["entreprise", "contact_nom", "resume_ia", "source_url", "notes"]) {
+        if (typeof p[k] === "string") p[k] = `<donnee_non_fiable>${neutralize(p[k], 1e3)}</donnee_non_fiable>`;
+      }
       const rdvs = (rdv.data ?? []).map(({ compte_rendu, ...r }) => ({ ...r, compte_rendu_enregistre: !!compte_rendu }));
       return { prospect: p, fil, offres: offers.data, rdv: rdvs, relances: fu.data };
     }
@@ -601,6 +608,11 @@ async function runCrmTool(ctx, name, raw) {
       if (isNaN(+debut) || +debut < Date.now() + 36e5) throw new Error("Cr\xE9neau invalide ou trop proche");
       if (input.product_id) input.product_id = await resolveProductId(input.product_id);
       const op = await commercialFor(pid);
+      if (!op) throw new Error("Aucun commercial disponible : escalader (transmettre \xE0 un humain)");
+      const { data: libres } = await db().rpc("ai_free_slots", { p_operator: op, p_days: 14, p_duree_min: 45 });
+      if (!(libres ?? []).some((s) => Math.abs(+new Date(s.debut) - +debut) < 6e4)) {
+        throw new Error("Cr\xE9neau hors disponibilit\xE9s : appeler list_free_slots et choisir l'un des cr\xE9neaux propos\xE9s");
+      }
       const fin = new Date(+debut + 45 * 6e4);
       const visio = input.mode === "visio" ? env("DEMO_VISIO_URL", false) || null : null;
       const { data, error } = await db().from("ai_appointments").insert({
