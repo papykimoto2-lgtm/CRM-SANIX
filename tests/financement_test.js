@@ -282,4 +282,24 @@ const Op = calc.optimiser(hp), spx = Op.seuils.prix; ok(spx && spx.valeur === nu
 ok(calc.simuler(Object.assign({}, hp, calc.scalePrix(hp, spx.facteur)), "avec", {}).pointMort !== null && calc.simuler(Object.assign({}, hp, calc.scalePrix(hp, spx.facteur * 0.98)), "avec", {}).pointMort === null, "seuil de prix : rentable au seuil, pas 2 % en dessous");
 ok(Op.leviers.filter((l) => l.id === "prix")[0].dEbitda5 > 0, "levier prix : améliore l'EBITDA avec les logiciels");
 
+console.log("▶ Logiciels : le modèle suit le CRM sans perdre vos modifications");
+const cat0 = [{ id: "x", nom: "Alpha", typeLicence: "Perpetuelle", prixNum: 500000, prixMensuel: 50000 }, { id: "y", nom: "Beta", typeLicence: "Perpetuelle", prixNum: 800000, prixMensuel: 80000 }];
+const ven0 = [{ cle: calc.cle("alpha"), n: 2, ht: 1e6 }, { cle: calc.cle("beta"), n: 2, ht: 1.6e6 }];
+const d0 = calc.produitsDefaut({ logiciels: cat0, ventesLogiciel: ven0 }), edits = { x: { mode: "annuelle", prixAnnuel: 400000 } };
+let f = calc.fusionProduits(d0, edits);
+ok(f[0].mode === "annuelle" && f[0].prixAnnuel === 400000 && f[1].mode === "perpetuelle", "vos modifications s'appliquent au bon logiciel, champ par champ");
+const cat1 = cat0.concat([{ id: "z", nom: "Gamma", typeLicence: "Annuelle", prixNum: 300000, prixMensuel: 30000 }]); cat1[1] = Object.assign({}, cat1[1], { prixNum: 900000 }); cat1[0] = Object.assign({}, cat1[0], { prixNum: 550000 });
+const d1 = calc.produitsDefaut({ logiciels: cat1, ventesLogiciel: ven0.concat([{ cle: calc.cle("gamma"), n: 1, ht: 300000 }]) }); f = calc.fusionProduits(d1, edits);
+ok(f.length === 3 && f[2].id === "z" && f[2].mode === "annuelle", "un logiciel ajouté au catalogue apparaît, même après des modifications dans le modèle");
+ok(f[1].prixLicence === 900000, "un prix changé au catalogue est repris tant que vous ne l'avez pas modifié dans le modèle");
+ok(f[0].prixLicence === 550000 && f[0].mode === "annuelle" && f[0].prixAnnuel === 400000, "sur un logiciel modifié, seuls les champs modifiés restent figés ; le prix de licence suit le catalogue");
+near(f.reduce((t, p) => t + p.part, 0), 100, 0.2, "les parts suivent les nouvelles ventes");
+f = calc.fusionProduits(d0.slice(1), edits); ok(f.length === 1 && f[0].id === "y" && f[0].mode === "perpetuelle", "logiciel retiré du catalogue : sa modification est ignorée");
+ok(calc.fusionProduits(d0, null).length === 2 && calc.fusionProduits(null, {}).length === 0, "sans modification ni catalogue : aucun calcul invalide");
+const dff = calc.diffProduits(d0, [Object.assign({}, d0[0], { prixLicence: 123, mode: "mensuelle" }), d0[1], { id: "inconnu", nom: "?", mode: "perpetuelle" }]);
+ok(dff.length === 2 && dff.every((x) => x.id === "x") && dff.some((x) => x.champ === "prixLicence" && x.valeur === 123), "différence entre deux listes : seuls les champs changés des logiciels connus");
+const mig = calc.editsDepuisListe([Object.assign({}, d0[0], { mode: "mensuelle", nom: "Renommé", vendus: 99 }), d0[1]], d0); ok(Object.keys(mig).join() === "x" && mig.x.mode === "mensuelle" && !("nom" in mig.x) && !("vendus" in mig.x), "migration de l'ancien format : seules les vraies modifications sont conservées");
+const ren = calc.produitsDefaut({ logiciels: [{ id: "x", nom: "Alpha Pro", typeLicence: "Perpetuelle", prixNum: 500000, prixMensuel: 50000 }], ventesLogiciel: [{ cle: calc.cle("alpha"), n: 2, ht: 1e6 }] });
+near(ren[0].part, 0, 1e-9, "renommage : les commandes à l'ancien nom ne sont plus rattachées (part 0, signalé dans l'écran)");
+
 console.log("\nTous les contrôles du modèle de financement sont passés.");
