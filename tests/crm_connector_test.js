@@ -30,6 +30,7 @@ function startBridge() {
   try {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     await ctx.route(/^https?:\/\/(?!localhost|127\.0\.0\.1)/, (r) => r.abort());                                      // pas de réseau externe
+    await require("./helpers/crm_fixture.js").installer(ctx);
     const now = new Date().toISOString();
     const seed = {
       sanix_crm_clients: [
@@ -82,8 +83,8 @@ function startBridge() {
     await page.evaluate(() => syncPull());                                                                              // ancienne réception : désactivée (elle remplaçait les données locales)
     await page.waitForTimeout(400);
     ok(legacyReq.length === reqBefore && await page.evaluate((n) => JSON.stringify(CLIENTS.map((x) => x.nom)) === n, names), "ancienne réception « remplace tout » : désactivée, aucune donnée touchée, aucune requête");
-    await page.evaluate(() => syncPush()); await wait(async () => legacyReq.some((q) => q.startsWith("POST /rest/v1/crm_clients")), 10000, "ancien envoi");
-    ok(true, "ancien envoi (tables crm_*) : toujours disponible tant que le connecteur n'est pas installé");
+    await page.evaluate(() => syncPush()); await page.waitForTimeout(500);
+    ok(legacyReq.length === reqBefore, "ancien envoi vers les tables crm_* : supprimé (aucune écriture avec la clé publique) ; le CRM reste en local tant que le connecteur est absent");
     await post("/__fault", { mode: "none", count: 0 });                                                                // la migration est appliquée
     await sync(page);                                                                                                  // « Synchroniser maintenant » : nouvelle détection immédiate
 

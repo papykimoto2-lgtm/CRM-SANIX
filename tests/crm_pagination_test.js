@@ -9,6 +9,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
   try {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     await ctx.route(/^https?:\/\/(?!localhost)/, (r) => r.abort());                 // pas de réseau : Chart.js simulé
+    await require("./helpers/crm_fixture.js").installer(ctx);
     await ctx.addInitScript(() => { class Chart { constructor() {} update() {} destroy() {} resize() {} static register() {} } Chart.defaults = { font: {}, plugins: { legend: { labels: {} } }, scale: {} }; window.Chart = Chart; });
     const page = await ctx.newPage(), errors = [];
     page.on("pageerror", (e) => errors.push("pageerror: " + e.message));

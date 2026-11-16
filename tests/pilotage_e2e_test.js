@@ -28,6 +28,7 @@ function startBridge() {
     const mkDevice = async () => {
       const ctx = await browser.newContext({ viewport: { width: 1366, height: 900 } });
       await ctx.route(/^https?:\/\/(?!localhost|127\.0\.0\.1)/, (r) => r.abort());
+      await require("./helpers/crm_fixture.js").installer(ctx, { sansDonnees: true });
       await ctx.addInitScript(({ url, key }) => {
         class Chart { constructor() {} update() {} destroy() {} resize() {} static register() {} } Chart.defaults = { font: {}, plugins: { legend: { labels: {} } }, scale: {} }; window.Chart = Chart;
         if (!sessionStorage.getItem("__seeded")) { sessionStorage.setItem("__seeded", "1"); localStorage.setItem("sanix_crm_supabase_config", JSON.stringify({ url, key })); }   // pas de session opérateur tant que le CRM n'est pas réduit (voir ci-dessous)
