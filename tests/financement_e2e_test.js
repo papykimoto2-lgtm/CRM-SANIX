@@ -48,7 +48,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(await page.locator('[data-p][data-f="nom"]').count() === 5, "suppression d'un poste");
     await page.click('[data-tab="proj"]'); await page.waitForTimeout(200);
     const etats = await page.locator("#fin-body").innerText();
-    ok(await page.locator("#fin-body table").count() === 5, "états financiers : compte de résultat, flux, bilan, tour de table, plan sans financement");
+    ok(await page.locator("#fin-body table").count() === 7, "états financiers : revenus par logiciel, récurrents, compte de résultat, flux, bilan, tour de table, plan sans financement");
     ok(etats.includes("Total actif") && etats.includes("Total passif") && etats.includes("Écart actif − passif"), "bilan simplifié présent");
     const ecarts = await page.evaluate(() => [...document.querySelectorAll("#fin-body tr")].filter((tr) => tr.innerText.includes("Écart actif")).map((tr) => [...tr.querySelectorAll("td")].slice(1).map((td) => td.innerText.trim())).flat());
     ok(ecarts.length === 5 && ecarts.every((v) => v === "0"), "le bilan s'équilibre chaque année (écart nul affiché)");
@@ -86,7 +86,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.click('[data-tab="indic"]'); await page.waitForTimeout(250);
     const ind = await page.locator("#fin-body").innerText();
     ok(ind.includes("Valeur client / coût d'acquisition") && ind.includes("Délai de retour") && ind.includes("Revenu récurrent annualisé") && ind.includes("CA par salarié"), "onglet Indicateurs : économie unitaire");
-    ok(await page.locator("#fin-body thead th").count() === 12, "deux tableaux de cinq années + libellé");
+    ok(await page.locator("#fin-body thead th").count() === 21, "indicateurs (6) + contrat type par logiciel (9) + coûts techniques (6)");
     ok(ind.includes("Coûts techniques par année") && ind.includes("Supabase") && ind.includes("Vercel") && ind.includes("GitHub") && ind.includes("Anthropic") && ind.includes("Hébergement d'un client"), "coûts techniques : quatre services, hébergement par client");
     await page.click('[data-tab="hyp"]'); await page.waitForTimeout(200);
     ok(await page.locator('[data-a][data-f="part"]').count() === 1 && await page.locator('[data-p][data-f="acquisition"]').count() === 5 && await page.locator('[data-p][data-f="tech"]').count() === 5, "Hypothèses : capital actuel et cases « Acquisition » et « Technique » par poste");
@@ -102,6 +102,33 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.click('[data-tab="proj"]'); await page.waitForTimeout(250);
     const tour = await page.locator("#fin-body").innerText();
     ok(tour.includes("Associé B") && tour.includes("Pool d'intéressement") && tour.includes("Nouvel investisseur"), "tour de table : associés, pool et investisseur");
+
+    console.log("▶ Logiciels et contrats");
+    await page.click('[data-tab="hyp"]'); await page.waitForTimeout(250);
+    ok(await page.locator('select[data-prod][data-f="mode"]').count() === 18, "tableau des logiciels : les 18 logiciels du catalogue");
+    const parts = await page.evaluate(() => [...document.querySelectorAll('[data-prod][data-f="part"]')].map((i) => +i.value));
+    ok(parts.filter((x) => x > 0).length >= 5 && Math.abs(parts.reduce((a, b) => a + b, 0) - 100) < 0.6, "parts des ventes reprises des commandes réelles (total ≈ 100 %)");
+    ok((await page.locator("#fin-body").innerText()).includes("logiciel par logiciel"), "avertissement : le prix, la maintenance et les frais sont réglés par logiciel");
+    ok(await page.locator('select[data-prod="log_immo"][data-f="mode"]').inputValue() === "perpetuelle" && (await page.locator('[data-prod="log_immo"][data-f="maintPct"]').isDisabled()) === false, "ImmoSuite : licence perpétuelle avec maintenance, comme dans le CRM");
+    await page.selectOption('select[data-prod="log_immo"][data-f="mode"]', "annuelle"); await page.waitForTimeout(250);
+    ok(await page.locator('[data-prod="log_immo"][data-f="maintPct"]').isDisabled(), "abonnement : la maintenance est comprise dans la redevance (champ désactivé)");
+    await page.locator('[data-prod="log_immo"][data-f="prixAnnuel"]').fill("600000"); await page.locator('[data-prod="log_immo"][data-f="prixAnnuel"]').blur(); await page.waitForTimeout(250);
+    await page.locator('[data-prod="log_immo"][data-f="initial"]').fill("100000"); await page.locator('[data-prod="log_immo"][data-f="initial"]').blur(); await page.waitForTimeout(250);
+    const imm = await page.evaluate(() => JSON.parse(localStorage.getItem("sanix_crm_fin_config")).produits.filter((p) => p.id === "log_immo")[0]);
+    ok(imm.mode === "annuelle" && imm.prixAnnuel === 600000 && imm.initial === 100000 && imm.prixLicence > 0, "mode, redevance annuelle et frais initiaux enregistrés (le prix de licence est conservé)");
+    await page.click('[data-tab="proj"]'); await page.waitForTimeout(250);
+    const etat = await page.locator("#fin-body").innerText();
+    ok(etat.includes("Revenus par logiciel") && etat.includes("Dont revenus récurrents") && etat.includes("ImmoSuite ERP"), "états financiers : revenus par logiciel et part récurrente");
+    const aboAn1 = await page.evaluate(() => { const tr = [...document.querySelectorAll("#fin-body tr")].find((x) => x.querySelector("td") && x.querySelector("td").innerText.trim() === "Abonnements"); return tr ? tr.querySelectorAll("td")[1].innerText.trim() : null; });
+    ok(aboAn1 !== null && aboAn1 !== "0", "le compte de résultat montre des revenus d'abonnement (" + aboAn1 + ")");
+    await page.click('[data-tab="indic"]'); await page.waitForTimeout(250);
+    const indL = await page.locator("#fin-body").innerText();
+    ok(indL.includes("Contrat type par logiciel") && indL.includes("Abonnement annuel") && indL.includes("Marge récurrente nette"), "indicateurs : contrat type par logiciel (abonnement annuel pour ImmoSuite)");
+    await page.click('[data-tab="dossier"]'); await page.waitForTimeout(150);
+    const htmlL = await page.evaluate(() => { let h = ""; const w = { document: { write: (x) => { h += x; }, close() {} }, focus() {}, print() {} }; const o = window.open; window.open = () => w; document.querySelector('[data-act="pdf"]').click(); window.open = o; return h; });
+    ok(htmlL.includes("Revenus par logiciel") && htmlL.includes("ImmoSuite ERP") && htmlL.includes("abonnement annuel") && htmlL.includes("Ventes réparties entre"), "dossier PDF : revenus par logiciel et mode de vente");
+    const [dlL] = await Promise.all([page.waitForEvent("download"), page.click('[data-act="csv"]')]);
+    const csvL = require("fs").readFileSync(await dlL.path(), "utf8"); ok(csvL.includes("Revenus par logiciel") && csvL.includes('"ImmoSuite ERP";"annuelle"'), "export CSV : revenus par logiciel");
 
     console.log("▶ Optimisations et notes");
     await page.click('[data-tab="hyp"]'); await page.click('[data-act="reset"]'); await page.waitForTimeout(250);   // retour aux valeurs d'exemple (le test de simulation les avait modifiées)

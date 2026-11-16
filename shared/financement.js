@@ -24,12 +24,35 @@
   const clamp = (v, a, b) => Math.min(b, Math.max(a, num(v)));
   const sum = (a, f) => a.reduce((s, x) => s + f(x), 0);
 
+  /* ───────────── Logiciels : mode de vente, frais initiaux, maintenance ───────────── */
+  const MODES = { perpetuelle: 'Licence + maintenance', annuelle: 'Abonnement annuel', mensuelle: 'Abonnement mensuel' };
+  const MODE_CATALOGUE = { Perpetuelle: 'perpetuelle', Annuelle: 'annuelle', Mensuelle: 'mensuelle', SaaS: 'mensuelle' };
+  /** Un enregistrement par logiciel du catalogue. Part des ventes : ce qui a réellement été vendu. Prix : celui du catalogue (la maintenance se calcule sur le prix de la
+   *  licence, pas sur des factures qui peuvent inclure d'autres prestations) ; le prix moyen réellement facturé est conservé à titre de comparaison. */
+  function produitsDefaut(base) {
+    const cat = (base && base.logiciels) || [], ventes = {}; ((base && base.ventesLogiciel) || []).forEach((v) => { ventes[v.cle] = v; });
+    const vend = cat.map((l) => ventes[cle(l.nom)]), tot = sum(vend, (v) => v ? v.n : 0);
+    return cat.map((l, i) => {
+      const v = vend[i], observe = v && v.n > 0 ? Math.round(v.ht / v.n) : 0, prix = Math.round(pos(l.prixNum));
+      return { id: String(l.id || 'p' + i), nom: l.nom, mode: MODE_CATALOGUE[l.typeLicence] || 'perpetuelle', prixLicence: prix, prixMensuel: Math.round(pos(l.prixMensuel)), prixAnnuel: Math.round(pos(l.prixMensuel) * 10),
+        initial: Math.round(prix * 0.2), maintPct: 12, part: tot > 0 && v ? Math.round(v.n / tot * 1000) / 10 : 0, catalogue: prix, observe, vendus: v ? v.n : 0 };
+    });
+  }
+  /** Logiciels qui entrent dans le calcul (part des ventes > 0), parts ramenées à 1. Sans logiciel renseigné : un produit moyen reprenant les anciennes hypothèses. */
+  function produitsActifs(h) {
+    const L = (h.produits || []).filter((p) => pos(p.part) > 0), tot = sum(L, (p) => pos(p.part));
+    if (!L.length) return [{ id: 'moyen', nom: 'Licence moyenne', mode: 'perpetuelle', prixLicence: pos(h.prixLicence), prixAnnuel: 0, prixMensuel: 0, initial: pos(h.servicesPct) / 100 * pos(h.prixLicence), maintPct: pos(h.maintenancePct), part: 1, legacy: true }];
+    return L.map((p) => Object.assign({}, p, { part: pos(p.part) / tot }));
+  }
+  const valeurAnnuelle = (p) => p.mode === 'annuelle' ? pos(p.prixAnnuel) : 12 * pos(p.prixMensuel);   // redevance d'un abonné sur un an
+
   /* ───────────── Hypothèses ───────────── */
   /** Valeurs initiales : tirées du CRM quand il contient la donnée, sinon exemples indicatifs à adapter. */
   function defauts(base) {
     base = base || {};
     const nb = Math.round(pos(base.commandes12m));
     return {
+      produits: produitsDefaut(base),                                    // un enregistrement par logiciel (catalogue du CRM) ; vide = un « produit moyen » unique (ancien comportement)
       valide: false,                                                       // cochée par l'utilisateur : retire la mention « document de travail » des exports
       scenario: 'realiste', croiss: SCEN.realiste.slice(), croissSans: [10, 10, 10, 10],
       clientsAn1: nb > 0 ? nb : 12,                                         // nouveaux clients la 1re année (commandes des 12 derniers mois)
@@ -68,14 +91,23 @@
     const cs = 1 + pos(h.chargesSocialesPct) / 100;
 
     // 1. Ventes : nouveaux clients, licences, maintenance sur la base installée (qui s'érode), services
-    const m = []; let bi = pos(h.baseInstallee), parc = pos(h.clientsDepart);
+    const prods = produitsActifs(h), bi = prods.map((p) => pos(h.baseInstallee) * p.part), abon = prods.map(() => 0), m = []; let parc = pos(h.clientsDepart);
     for (let t = 0; t < N; t++) {
       const y = Math.floor(t / 12);
       let ny = pos(h.clientsAn1); for (let k = 0; k < y; k++) ny *= 1 + clamp(g[k], -100, 1000) / 100;
-      const n = ny / 12, prix = pos(h.prixLicence) * Math.pow(1 + num(h.hausseAn) / 100, y);
-      const lic = n * prix, maint = pos(h.maintenancePct) / 100 / 12 * bi, serv = pos(h.servicesPct) / 100 * lic;
-      bi = bi * rm + lic; parc = parc * rm + n;                      // clients hébergés en fin de mois (les clients perdus quittent le parc)
-      m.push({ t, y, clients: n, parc, lic, maint, serv, ca: lic + maint + serv });
+      const n = ny / 12, haus = Math.pow(1 + num(h.hausseAn) / 100, y);
+      let lic = 0, maint = 0, serv = 0, abo = 0, comm = 0; const pr = [];
+      prods.forEach((p, i) => {
+        const np = n * p.part, ini = np * pos(p.initial) * haus; let l = 0, mt = 0, ab = 0;
+        if (p.mode === 'perpetuelle') {                                  // licence payée une fois ; maintenance annuelle sur la base installée, qui s'érode
+          l = np * pos(p.prixLicence) * haus; mt = pos(p.maintPct) / 100 / 12 * bi[i]; bi[i] = bi[i] * rm + l; comm += l;
+        } else {                                                          // abonnement : dès la signature, tant que le client reste (rétention)
+          abon[i] = abon[i] * rm + np; ab = abon[i] * valeurAnnuelle(p) / 12 * haus; comm += np * valeurAnnuelle(p) * haus;   // commission sur la 1re année, à la signature
+        }
+        lic += l; maint += mt; serv += ini; abo += ab; pr.push({ id: p.id, clients: np, lic: l, serv: ini, maint: mt, abo: ab });
+      });
+      parc = parc * rm + n;                                              // clients hébergés en fin de mois (les clients perdus quittent le parc)
+      m.push({ t, y, clients: n, parc, lic, maint, serv, abo, comm, prod: pr, ca: lic + maint + serv + abo });
     }
 
     // 2. Coûts, impôt, financement, trésorerie
@@ -90,7 +122,7 @@
     for (let t = 0; t < N; t++) {
       const r = m[t], y = r.y;
       r.directs = pos(h.directsPct) / 100 * r.ca;
-      r.commissions = pos(h.commissionPct) / 100 * r.lic;
+      r.commissions = pos(h.commissionPct) / 100 * r.comm;
       // Coûts techniques en dollars → FCFA (taux + frais de paiement). Supabase : abonnement + un projet par client si c'est le choix d'architecture.
       r.sieges = 1 + sum(h.postes, (p) => p.tech && actif(p, t) ? pos(p.nb) : 0);
       const projets = pos(h.projetsBase) + (h.projetParClient ? r.parc : 0), kUsd = pos(h.usdFcfa) * (1 + pos(h.fraisPaiementPct) / 100);
@@ -128,11 +160,12 @@
     const annees = [];
     for (let y = 0; y < ANNEES; y++) {
       const s = m.slice(y * 12, y * 12 + 12), f = (k) => sum(s, (x) => x[k]);
-      const a = { an: y + 1, clients: f('clients'), lic: f('lic'), maint: f('maint'), serv: f('serv'), ca: f('ca'), directs: f('directs'), commissions: f('commissions'),
+      const a = { an: y + 1, clients: f('clients'), lic: f('lic'), maint: f('maint'), serv: f('serv'), abo: f('abo'), ca: f('ca'), directs: f('directs'), commissions: f('commissions'),
         ia: f('ia'), infra: f('infra'), supa: f('supa'), vercel: f('vercel'), github: f('github'), mkt: f('mkt'), sal: f('sal'), fixes: f('fixes'), opex: f('opex'), ebitda: f('ebitda'), interet: f('interet'), princ: f('princ'), impot: f('impot'),
         flux: f('flux'), fExpl: f('fExpl'), fFin: f('fFin'), salAcq: f('salAcq'), tresoFin: s[11].treso };
       a.resultatNet = a.ebitda - a.interet - a.impot; a.margeEbitda = a.ca > 0 ? a.ebitda / a.ca : 0;
-      const L = s[11]; a.parcFin = L.parc; a.effectif = L.effectif; a.arr = L.maint * 12; a.creances = L.creances;
+      const L = s[11]; a.parcFin = L.parc; a.effectif = L.effectif; a.arr = (L.maint + L.abo) * 12; a.creances = L.creances;
+      a.produits = prods.map((p, i) => { const q = (k) => sum(s, (x) => x.prod[i][k]), o = { id: p.id, nom: p.nom, mode: p.mode, clients: q('clients'), lic: q('lic'), serv: q('serv'), maint: q('maint'), abo: q('abo') }; o.recurrent = o.maint + o.abo; o.total = o.lic + o.serv + o.recurrent; return o; });
       a.bilan = { tresorerie: L.treso, creances: L.creances, actif: L.treso + L.creances, capitaux: L.cap, dette: L.detteFin, passif: L.cap + L.detteFin };
       annees.push(a);
     }
@@ -221,11 +254,12 @@
   function analyserTraction(cmds, o) {
     o = o || {}; const liens = o.liens || {}, now = o.now ? new Date(o.now) : new Date(), statuts = o.statuts || ['confirmee', 'en_cours', 'livree'];
     const depuis = new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString().slice(0, 7), jours = (d) => Math.floor((now - new Date(d)) / 864e5);
-    const rows = {}, ages = { j30: 0, j90: 0, plus: 0 };
+    const rows = {}, pls = {}, ages = { j30: 0, j90: 0, plus: 0 };
     (cmds || []).filter((c) => c && statuts.indexOf(c.statut) >= 0).forEach((c) => {
       const k = cle(c.client), lien = liens[k] || {};
       const r = rows[k] || (rows[k] = { cle: k, client: c.client || '—', n: 0, factureHT: 0, factureTTC: 0, encaisse: 0, creance: 0, ht12: 0, n12: 0, recurrent: 0, derniere: null, plusAncienne: null, lie: !!lien.lie, nature: !!lien.nature });
       const ht = pos(c.htNet), ttc = pos(c.ttc) || ht, verse = Math.min(ttc, pos(c.acompte)), reste = ttc - verse, d = String(c.date || '').slice(0, 10);
+      const pk = cle(c.logiciel); if (pk) { const pl = pls[pk] || (pls[pk] = { cle: pk, nom: c.logiciel, n: 0, ht: 0 }); pl.n++; pl.ht += ht; }
       r.n++; r.factureHT += ht; r.factureTTC += ttc; r.encaisse += verse; r.creance += reste;
       if (RECURRENT.test(c.typeLicence || '')) r.recurrent += ht;
       if (d && (!r.derniere || d > r.derniere)) r.derniere = d;
@@ -236,27 +270,40 @@
     const tot = (L) => { const t = { clients: L.length, commandes: sum(L, (r) => r.n), factureHT: sum(L, (r) => r.factureHT), factureTTC: sum(L, (r) => r.factureTTC), encaisse: sum(L, (r) => r.encaisse), creance: sum(L, (r) => r.creance), ht12: sum(L, (r) => r.ht12), n12: sum(L, (r) => r.n12), recurrent: sum(L, (r) => r.recurrent) };
       t.taux = t.factureTTC > 0 ? t.encaisse / t.factureTTC : 0; t.partRecurrent = t.factureHT > 0 ? t.recurrent / t.factureHT : 0; t.prixMoyen = t.n12 ? t.ht12 / t.n12 : (t.commandes ? t.factureHT / t.commandes : 0); return t; };
     const tous = tot(lignes), retraite = tot(lignes.filter((r) => !r.lie)), nature = lignes.filter((r) => r.nature);
-    return { lignes, tous, retraite, ages, depuis,
+    const parLogiciel = Object.keys(pls).map((k) => pls[k]).sort((a, b) => b.ht - a.ht);
+    return { lignes, tous, retraite, ages, depuis, parLogiciel, topLogiciel: tous.factureHT > 0 && parLogiciel[0] ? parLogiciel[0].ht / tous.factureHT : 0,
       top1: tous.factureHT > 0 && lignes[0] ? lignes[0].factureHT / tous.factureHT : 0, top2: tous.factureHT > 0 ? sum(lignes.slice(0, 2), (r) => r.factureHT) / tous.factureHT : 0,
       partLies: tous.factureHT > 0 ? sum(lignes.filter((r) => r.lie), (r) => r.factureHT) / tous.factureHT : 0, nbLies: lignes.filter((r) => r.lie).length,
       encaisseNature: sum(nature, (r) => r.encaisse), encaisseMonetaire: tous.encaisse - sum(nature, (r) => r.encaisse) };
   }
 
   /* ───────────── Économie unitaire et indicateurs par année ───────────── */
+  /** Marge d'un client d'un logiciel : 1re vente, revenu récurrent annuel, valeur sur 5 ans (avant coût d'acquisition). y : année de la vente (indexation des prix). */
+  function unitProduit(h, p, y) {
+    const d = pos(h.directsPct) / 100, c = pos(h.commissionPct) / 100, ret = clamp(h.retentionPct, 0, 100) / 100, haus = Math.pow(1 + num(h.hausseAn) / 100, y);
+    const heberg = (h.projetParClient ? pos(h.supabaseProjetUsd) : 0) * 12 * pos(h.usdFcfa) * (1 + pos(h.fraisPaiementPct) / 100);
+    const ini = pos(p.initial) * haus, sub = p.mode !== 'perpetuelle', prix = sub ? valeurAnnuelle(p) * haus : pos(p.prixLicence) * haus;
+    const recBrut = sub ? prix : prix * pos(p.maintPct) / 100;                      // revenu récurrent annuel d'un client (maintenance ou redevance)
+    const margeInit = sub ? ini * (1 - d) - c * prix : prix * (1 - d - c) + ini * (1 - d), net = recBrut * (1 - d) - heberg;
+    let ltv = margeInit; for (let k = sub ? 0 : 1; k < ANNEES; k++) ltv += net * Math.pow(ret, k);   // abonnement : payé dès la 1re année ; maintenance : à partir de la 2e
+    return { prix, initial: ini, recBrut, recNet: net, heberg, margeInit, ltv };
+  }
   /** Pour chaque année : marge brute, revenu récurrent, coût d'acquisition d'un client (marketing + équipe d'acquisition ; les commissions
-   *  sont déjà dans la marge), valeur d'un client sur 5 ans (marge de la 1re vente + maintenance avec rétention), rapport, délai de retour. */
+   *  sont déjà dans la marge), valeur d'un client sur 5 ans moyenne pondérée par logiciel, rapport, délai de retour. */
   function economieUnitaire(h, sim) {
-    const d = pos(h.directsPct) / 100, c = pos(h.commissionPct) / 100, ret = clamp(h.retentionPct, 0, 100) / 100, mp = pos(h.maintenancePct) / 100, sv = pos(h.servicesPct) / 100;
+    const prods = produitsActifs(h);
     return sim.annees.map((a, y) => {
-      const prix = pos(h.prixLicence) * Math.pow(1 + num(h.hausseAn) / 100, y), n = a.clients;
-      const heberg = (h.projetParClient ? pos(h.supabaseProjetUsd) : 0) * 12 * pos(h.usdFcfa) * (1 + pos(h.fraisPaiementPct) / 100);   // hébergement annuel d'un client
-      const margeInit = prix * (1 - d - c) + prix * sv * (1 - d), mAn = prix * mp * (1 - d), mNet = mAn - heberg;
-      let ltv = margeInit; for (let k = 1; k < ANNEES; k++) ltv += mNet * Math.pow(ret, k);
-      const cac = n > 0 ? (a.mkt + a.salAcq) / n : null, ltvCac = cac ? ltv / cac : null;
+      const n = a.clients; let margeInit = 0, rec = 0, mAn = 0, ltv = 0, heberg = 0;
+      prods.forEach((p) => { const u = unitProduit(h, p, y); margeInit += p.part * u.margeInit; rec += p.part * u.recBrut; mAn += p.part * (u.recNet + u.heberg); ltv += p.part * u.ltv; heberg = u.heberg; });
+      const mNet = mAn - heberg, cac = n > 0 ? (a.mkt + a.salAcq) / n : null, ltvCac = cac ? ltv / cac : null;
       const retour = cac === null ? null : (margeInit >= cac ? 0 : (mNet > 0 ? (cac - margeInit) / (mNet / 12) : null));
-      return { an: a.an, clients: n, ca: a.ca, margeBrute: a.ca > 0 ? (a.ca - a.directs - a.commissions - a.infra) / a.ca : 0, arr: a.arr, partRecurrente: a.ca > 0 ? a.maint / a.ca : 0,
-        margeInit, maintenance: mAn, heberg, maintNette: mNet, ltv, cac, ltvCac, retour, effectif: a.effectif, caParSalarie: a.effectif > 0 ? a.ca / a.effectif : null };
+      return { an: a.an, clients: n, ca: a.ca, margeBrute: a.ca > 0 ? (a.ca - a.directs - a.commissions - a.infra) / a.ca : 0, arr: a.arr, partRecurrente: a.ca > 0 ? (a.maint + a.abo) / a.ca : 0,
+        margeInit, maintenance: rec, heberg, maintNette: mNet, ltv, cac, ltvCac, retour, effectif: a.effectif, caParSalarie: a.effectif > 0 ? a.ca / a.effectif : null };
     });
+  }
+  /** Contrat type de chaque logiciel vendu (année 1) : prix, frais initiaux, revenu récurrent par client, hébergement, valeur sur 5 ans, part des ventes. */
+  function contratsParLogiciel(h) {
+    return produitsActifs(h).map((p) => Object.assign({ id: p.id, nom: p.nom, mode: p.mode, part: p.part, maintPct: p.maintPct, legacy: !!p.legacy }, unitProduit(h, p, 0)));
   }
 
   /** Tour de table avant / après un apport en capital (`part` : part de l'investisseur, 0 à 1). Le pool d'intéressement est prélevé sur l'ensemble. */
@@ -269,14 +316,17 @@
   }
 
   /* ───────────── Pistes d'optimisation ───────────── */
+  const parProduits = (h, fn) => Array.isArray(h.produits) ? h.produits.map((p) => Object.assign({}, p, fn(p))) : h.produits;
+  /** Tous les prix (licences, abonnements, frais initiaux) multipliés par f. */
+  const scalePrix = (h, f) => ({ prixLicence: pos(h.prixLicence) * f, produits: parProduits(h, (p) => ({ prixLicence: p.prixLicence * f, prixAnnuel: p.prixAnnuel * f, prixMensuel: p.prixMensuel * f, initial: p.initial * f })) });
   const reporte = (h, k) => h.postes.map((p) => p.finance ? Object.assign({}, p, { debut: Math.min(59, num(p.debut) + k) }) : p);
   /** Chaque levier renvoie les hypothèses modifiées (clés de premier niveau). `arbitrer` : le modèle ne baisse pas la croissance en contrepartie, à vérifier. */
   const LEVIERS = [
     { id: 'clients', cat: 'Ventes', lib: 'Gagner plus de clients', test: '+25 % de nouveaux clients la 1re année', f: (h) => ({ clientsAn1: h.clientsAn1 * 1.25 }), note: 'Dépend de votre capacité commerciale et de la demande : à confirmer avec votre pipeline.' },
-    { id: 'prix', cat: 'Ventes', lib: 'Augmenter le prix des licences', test: '+15 % du prix moyen', f: (h) => ({ prixLicence: h.prixLicence * 1.15 }), note: 'Vérifier ce que vos clients acceptent de payer et les prix de vos concurrents.' },
-    { id: 'maintenance', cat: 'Ventes', lib: 'Développer les contrats de maintenance', test: '+5 points de maintenance annuelle', f: (h) => ({ maintenancePct: h.maintenancePct + 5 }), note: 'Revenu récurrent : c\'est ce que les financeurs valorisent le plus.' },
+    { id: 'prix', cat: 'Ventes', lib: 'Augmenter le prix des licences', test: '+15 % du prix moyen', f: (h) => scalePrix(h, 1.15), note: 'Vérifier ce que vos clients acceptent de payer et les prix de vos concurrents.' },
+    { id: 'maintenance', cat: 'Ventes', lib: 'Développer les contrats de maintenance', test: '+5 points de maintenance annuelle', f: (h) => ({ maintenancePct: h.maintenancePct + 5, produits: parProduits(h, (p) => p.mode === 'perpetuelle' ? { maintPct: p.maintPct + 5 } : {}) }), note: 'Revenu récurrent : c\'est ce que les financeurs valorisent le plus.' },
     { id: 'retention', cat: 'Ventes', lib: 'Mieux fidéliser les clients', test: '+5 points de rétention', f: (h) => ({ retentionPct: Math.min(100, h.retentionPct + 5) }), note: 'Suivi après-vente, renouvellements : l\'onglet « Après-vente » du CRM sert à cela.' },
-    { id: 'services', cat: 'Ventes', lib: 'Facturer plus d\'installation et de formation', test: '+10 points des licences', f: (h) => ({ servicesPct: h.servicesPct + 10 }), note: 'Marge généralement bonne, mais mobilise du temps de l\'équipe.' },
+    { id: 'services', cat: 'Ventes', lib: 'Facturer plus d\'installation et de formation', test: '+10 points des licences', f: (h) => ({ servicesPct: h.servicesPct + 10, produits: parProduits(h, (p) => ({ initial: p.initial + 0.1 * (p.mode === 'perpetuelle' ? p.prixLicence : valeurAnnuelle(p)) })) }), note: 'Marge généralement bonne, mais mobilise du temps de l\'équipe.' },
     { id: 'embauches', cat: 'Coûts', lib: 'Recruter moins de monde', test: '−30 % de l\'effectif à recruter', f: (h) => ({ postes: h.postes.map((p) => p.finance ? Object.assign({}, p, { nb: p.nb * 0.7 }) : p) }), arbitrer: true, note: 'Le modèle ne réduit pas la croissance en contrepartie : vérifiez que vos objectifs de ventes restent tenables avec moins de monde.' },
     { id: 'etaler', cat: 'Coûts', lib: 'Étaler les recrutements', test: 'recruter 6 mois plus tard', f: (h) => ({ postes: reporte(h, 6) }), arbitrer: true, note: 'Le modèle ne retarde pas la croissance en contrepartie : à ajuster si les recrues conditionnent les ventes.' },
     { id: 'marketing', cat: 'Coûts', lib: 'Calibrer les campagnes financées', test: '−50 % du budget de campagnes', f: (h) => ({ marketingBoost: h.marketingBoost * 0.5 }), arbitrer: true, note: 'Moins de campagnes peut ralentir la prospection : le modèle ne le compense pas.' },
@@ -302,6 +352,15 @@
     let lo = v0; for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (ok(mid)) hi = mid; else lo = mid; }
     return { valeur: hi, facteur: hi / v0, deja: false };
   }
+  /** Facteur minimal sur tous les prix qui rend le plan durablement rentable (quand les logiciels sont renseignés, il n'y a plus un prix unique). */
+  function seuilPrix(h) {
+    const ok = (f) => simuler(Object.assign({}, h, scalePrix(h, f)), 'avec', {}).pointMort !== null;
+    if (ok(1)) return { valeur: null, facteur: 1, deja: true };
+    let hi = 2, i = 0; while (!ok(hi) && i < 8) { hi *= 2; i++; }
+    if (!ok(hi)) return null;
+    let lo = 1; for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (ok(mid)) hi = mid; else lo = mid; }
+    return { valeur: null, facteur: hi, deja: false };
+  }
   /** Teste chaque levier seul, cherche les seuils d'équilibre, puis enchaîne les leviers (le plus utile d'abord) jusqu'à la rentabilité et l'autofinancement. */
   function optimiser(h) {
     const base = evaluer(h);
@@ -325,10 +384,10 @@
         used[best.l.id] = 1; cur = best.h2; mcur = best.m; etapes.push({ id: best.l.id, lib: best.l.lib, test: best.l.test, arbitrer: !!best.l.arbitrer, m: best.m });
       }
     });
-    return { base, leviers, seuils: { clients: seuil(h, 'clientsAn1'), prix: seuil(h, 'prixLicence') }, combine: { etapes, final: mcur, h: cur, rentable: mcur.pointMort !== null, autofinance: mcur.besoin < 0.5 } };
+    return { base, leviers, seuils: { clients: seuil(h, 'clientsAn1'), prix: (h.produits || []).some((p) => pos(p.part) > 0) ? seuilPrix(h) : seuil(h, 'prixLicence') }, combine: { etapes, final: mcur, h: cur, rentable: mcur.pointMort !== null, autofinance: mcur.besoin < 0.5 } };
   }
 
-  const calc = { N, ANNEES, SCEN, SCEN_LABEL, OPT_LABEL, LEVIERS, cle, analyserTraction, economieUnitaire, tourDeTable, evaluer, optimiser, seuil, defauts, simuler, structure, dimensionner, indicateurs, comparer, emplois, preMoney };
+  const calc = { N, ANNEES, SCEN, SCEN_LABEL, OPT_LABEL, MODES, LEVIERS, produitsDefaut, produitsActifs, contratsParLogiciel, scalePrix, seuilPrix, cle, analyserTraction, economieUnitaire, tourDeTable, evaluer, optimiser, seuil, defauts, simuler, structure, dimensionner, indicateurs, comparer, emplois, preMoney };
   G.SanixFinancement = { calc };
   if (typeof module !== 'undefined' && module.exports) module.exports = { calc };
   if (!G.document) return;
@@ -355,7 +414,8 @@
     let pond = 0, brut = 0;
     if (P) { const p = P.pipeline(deals, nowKey); Object.keys(p).forEach((k) => { pond += p[k].pondere; brut += p[k].brut; }); }
     const taux = g(() => G.SanixPilotage.store.usdFcfa()) || 0;
-    return { traction: T, clientsFactures: T.tous.clients, usdFcfa: taux, caTotal: B.factureHT, ca12m: B.ht12, commandes12m: B.n12, commandesTotal: B.commandes, prixMoyen: B.prixMoyen,
+    const logiciels = (g(() => LOGICIELS) || []).filter((l) => l && l.actif !== false).map((l) => ({ id: l.id, nom: l.nom, typeLicence: l.type_licence, prixNum: l.prixNum, prixMensuel: l.prixMensuel }));
+    return { traction: T, logiciels, ventesLogiciel: T.parLogiciel, clientsFactures: T.tous.clients, usdFcfa: taux, caTotal: B.factureHT, ca12m: B.ht12, commandes12m: B.n12, commandesTotal: B.commandes, prixMoyen: B.prixMoyen,
       pipelinePondere: pond, pipelineBrut: brut, prospects: cl.filter((c) => c && c.statut === 'prospect').length, clients: cl.filter((c) => c && c.statut === 'client').length,
       produits: (g(() => LOGICIELS) || []).filter((l) => l && l.actif !== false).length,
       commissionDefaut: num(g(() => CONFIG.commissionDefaut)), societe: g(() => CONFIG.raisonSociale) || 'SANIX', devise: g(() => CONFIG.devise) || 'FCFA' };
@@ -376,6 +436,10 @@
     const p = ov.postes.filter((x) => x.id === id)[0]; if (!p) return; p[field] = val; persist(); recompute();
   }
 
+  function editProduit(id, field, val) {
+    if (!('produits' in ov)) ov.produits = clone(h.produits);
+    const p = ov.produits.filter((x) => x.id === id)[0]; if (!p) return; p[field] = val; persist(); recompute();
+  }
   function editLien(k, f, v) { ov.liens = ov.liens || {}; ov.liens[k] = Object.assign({}, ov.liens[k], { [f]: !!v }); persist(); recompute(); }
   function editAssocie(id, field, val) {
     if (!('associes' in ov)) ov.associes = clone(h.associes);
@@ -445,6 +509,7 @@
 
   /* — onglet Hypothèses — */
   function tabHyp() {
+    const prodsOn = (h.produits || []).some((p) => pos(p.part) > 0);
     const c = base, bloc = (titre, corps) => `<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">${titre}</span></div>${corps}</div>`;
     const grid = (x) => `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">${x}</div>`;
     const an = (k, lab) => [0, 1, 2, 3].map((i) => field(lab + ' — année ' + (i + 2) + ' (%)', k + '.' + i, h[k][i])).join('');
@@ -453,7 +518,8 @@
       <td style="text-align:center"><input type="checkbox" data-p="${esc(p.id)}" data-f="finance" ${p.finance ? 'checked' : ''}></td><td style="text-align:center"><input type="checkbox" data-p="${esc(p.id)}" data-f="acquisition" ${p.acquisition ? 'checked' : ''}></td><td style="text-align:center"><input type="checkbox" data-p="${esc(p.id)}" data-f="tech" ${p.tech ? 'checked' : ''}></td><td><button class="btn btn-outline btn-sm" data-act="poste-del" data-id="${esc(p.id)}" aria-label="Supprimer ce poste">🗑</button></td></tr>`;
     return `<div class="alert alert-warn" role="note">⚠️ Les valeurs initiales sont <b>indicatives</b> : seuls le nombre de clients, le prix moyen, la base installée et la commission viennent du CRM. Vérifiez chaque hypothèse avant de remettre le dossier à un financeur.</div>
       ${bloc('📊 Point de départ (lu dans le CRM)', `<div class="stats-grid" style="margin:0">${stat('CA HT réalisé, 12 mois', fmtM(c.ca12m), c.commandes12m + ' commandes', 'blue')}${stat('CA HT cumulé', fmtM(c.caTotal), c.commandesTotal + ' commandes', 'green')}${stat('Pipeline pondéré', fmtM(c.pipelinePondere), 'Brut : ' + fmtM(c.pipelineBrut), 'orange')}${stat('Clients actifs', c.clients, c.produits + ' produits au catalogue', 'purple')}</div>`)}
-      ${bloc('🚀 Ventes', grid(field('Nouveaux clients, année 1', 'clientsAn1', h.clientsAn1) + field('Prix moyen HT par licence', 'prixLicence', h.prixLicence) + field('Hausse annuelle des prix (%)', 'hausseAn', h.hausseAn) + field('Maintenance (% de la base installée / an)', 'maintenancePct', h.maintenancePct) + field('Rétention des clients (% / an)', 'retentionPct', h.retentionPct) + field('Services : installation, formation (% des licences)', 'servicesPct', h.servicesPct) + field('Base installée (CA HT déjà vendu)', 'baseInstallee', h.baseInstallee) + field('Délai d\'encaissement (mois)', 'delaiEncaissement', h.delaiEncaissement, { min: 0 })) + '<h4 style="margin:14px 0 8px;font-size:13px">Croissance du nombre de nouveaux clients — avec financement</h4>' + grid(an('croiss', 'Croissance')) + '<h4 style="margin:14px 0 8px;font-size:13px">Sans financement (l\'activité actuelle, limitée par les moyens)</h4>' + grid(an('croissSans', 'Croissance')))}
+      ${bloc('📦 Logiciels et contrats', tabLogiciels())}
+      ${bloc('🚀 Ventes', (prodsOn ? note('⚠️ Le prix, la maintenance et les frais initiaux sont réglés <b>logiciel par logiciel</b> (bloc ci-dessus) : les champs « Prix moyen », « Maintenance » et « Services » ci-dessous ne servent que si aucun logiciel n\'a de part des ventes.') : '') + grid(field('Nouveaux clients, année 1', 'clientsAn1', h.clientsAn1) + field('Prix moyen HT par licence', 'prixLicence', h.prixLicence) + field('Hausse annuelle des prix (%)', 'hausseAn', h.hausseAn) + field('Maintenance (% de la base installée / an)', 'maintenancePct', h.maintenancePct) + field('Rétention des clients (% / an)', 'retentionPct', h.retentionPct) + field('Services : installation, formation (% des licences)', 'servicesPct', h.servicesPct) + field('Base installée (CA HT déjà vendu)', 'baseInstallee', h.baseInstallee) + field('Délai d\'encaissement (mois)', 'delaiEncaissement', h.delaiEncaissement, { min: 0 })) + '<h4 style="margin:14px 0 8px;font-size:13px">Croissance du nombre de nouveaux clients — avec financement</h4>' + grid(an('croiss', 'Croissance')) + '<h4 style="margin:14px 0 8px;font-size:13px">Sans financement (l\'activité actuelle, limitée par les moyens)</h4>' + grid(an('croissSans', 'Croissance')))}
       ${bloc('💸 Coûts', grid(field('Autres coûts directs (% du CA) : outils tiers, paiement', 'directsPct', h.directsPct) + field('Commissions (% des licences)', 'commissionPct', h.commissionPct) + field('Marketing (% du CA)', 'marketingPct', h.marketingPct) + field('Marketing minimum (par mois)', 'marketingMin', h.marketingMin) + field('Campagnes financées (par mois)', 'marketingBoost', h.marketingBoost) + field('Charges fixes (par mois)', 'fixesMensuels', h.fixesMensuels) + field('Charges sociales (%)', 'chargesSocialesPct', h.chargesSocialesPct) + field('Augmentation annuelle des salaires (%)', 'augmentationSalairesPct', h.augmentationSalairesPct) + field('Impôt sur les sociétés (%)', 'impotPct', h.impotPct) + field('Trésorerie actuelle', 'tresoDepart', h.tresoDepart)))}
       ${bloc('☁️ Infrastructure technique et intelligence artificielle', note('Tarifs publics en dollars (consultés le 16/11/2026), convertis en FCFA avec le taux et les frais ci-dessous. Supabase : abonnement Pro avec le 1er projet, puis un tarif par projet supplémentaire. Vercel et GitHub : par poste technique.') + grid(field('Taux : 1 dollar en FCFA', 'usdFcfa', h.usdFcfa, { min: 0 }) + field('Frais de change et de carte (%)', 'fraisPaiementPct', h.fraisPaiementPct, { min: 0 }) + field('Supabase Pro : abonnement ($/mois)', 'supabaseFixeUsd', h.supabaseFixeUsd, { min: 0 }) + field('Supabase : par projet supplémentaire ($/mois)', 'supabaseProjetUsd', h.supabaseProjetUsd, { min: 0 }) + field('Projets internes (CRM, IA…)', 'projetsBase', h.projetsBase, { min: 0 }) + field('Clients déjà hébergés', 'clientsDepart', h.clientsDepart, { min: 0, hint: base.clientsFactures ? '(CRM : ' + base.clientsFactures + ')' : '' }) + field('Vercel Pro : par poste technique ($/mois)', 'vercelSiegeUsd', h.vercelSiegeUsd, { min: 0 }) + field('GitHub Team : par poste ($/mois)', 'githubSiegeUsd', h.githubSiegeUsd, { min: 0 }) + field('GitHub Team à partir de … postes', 'githubSeuil', h.githubSeuil, { min: 1 }) + field('Anthropic : consommation des agents ($/mois)', 'iaMensuelUsd', h.iaMensuelUsd, { min: 0 }) + field('Anthropic : hausse par an (%)', 'iaCroissanceAn', h.iaCroissanceAn, { min: 0 })) + `<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;font-size:13px;margin-top:12px"><input type="checkbox" data-k="projetParClient" ${h.projetParClient ? 'checked' : ''} style="margin-top:3px"><span><b>Un projet Supabase par client</b> (votre organisation actuelle fonctionne ainsi). Décochez si vous prévoyez d'héberger plusieurs clients ensemble : le coût d'hébergement ne grandit alors plus avec chaque client.</span></label>`)}
       ${bloc('👥 Équipe', note('Coût mensuel brut par personne. « Financé » : poste créé grâce au financement (absent du scénario sans financement). « Début » : mois de prise de poste (0 = déjà en place). « Acquisition » : poste commercial ou marketing, compté dans le coût d\'acquisition d\'un client. « Technique » : poste qui utilise Vercel et GitHub (vous comptez déjà pour un poste).') + `<div style="overflow-x:auto"><table class="client-table" style="min-width:560px"><thead><tr><th>Poste</th><th>Nombre</th><th>Coût mensuel</th><th>Début (mois)</th><th>Financé</th><th title="Compte dans le coût d'acquisition d'un client">Acquisition</th><th title="Poste technique : compte pour Vercel et GitHub">Technique</th><th></th></tr></thead><tbody>${h.postes.map(poste).join('')}</tbody></table></div><button class="btn btn-outline btn-sm" data-act="poste-add" style="margin-top:10px">+ Ajouter un poste</button>`)}
@@ -514,6 +580,9 @@
       <div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">📐 Indicateurs par année</span></div><div style="overflow-x:auto"><table class="client-table" style="min-width:560px"><thead><tr><th></th>${U.map((u) => `<th style="text-align:right">An ${u.an}</th>`).join('')}</tr></thead><tbody>
       ${rowI('Nouveaux clients', (u) => u.clients.toLocaleString('fr-FR', { maximumFractionDigits: 1 }))}${rowI('Chiffre d\'affaires', (u) => fmtM(u.ca), true)}${rowI('Marge brute', (u) => pct(u.margeBrute))}${rowI('Revenu récurrent annualisé', (u) => fmtM(u.arr))}${rowI('Part du revenu récurrent', (u) => pct(u.partRecurrente))}
       ${rowI('Coût d\'acquisition d\'un client', (u) => u.cac == null ? '–' : fmt(u.cac))}${rowI('Valeur d\'un client sur 5 ans', (u) => fmt(u.ltv))}${rowI('Valeur client / coût d\'acquisition', lc, true)}${rowI('Délai de retour', rt, true)}${rowI('Effectif', (u) => u.effectif.toLocaleString('fr-FR', { maximumFractionDigits: 1 }))}${rowI('CA par salarié', (u) => u.caParSalarie == null ? '–' : fmtM(u.caParSalarie))}</tbody></table></div></div>
+      <div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">📦 Contrat type par logiciel</span><span class="badge badge-muted">Par client, année 1</span></div><div style="overflow-x:auto"><table class="client-table" style="min-width:760px"><thead><tr><th>Logiciel</th><th>Mode</th><th style="text-align:right">Part</th><th style="text-align:right">Prix</th><th style="text-align:right">Frais initiaux</th><th style="text-align:right">Récurrent / an</th><th style="text-align:right">Hébergement / an</th><th style="text-align:right">Marge récurrente nette / an</th><th style="text-align:right">Valeur sur 5 ans</th></tr></thead><tbody>
+      ${calc.contratsParLogiciel(h).map((c) => `<tr><td><b>${esc(c.nom)}</b></td><td style="font-size:12px">${c.mode === 'perpetuelle' ? 'Licence + maintenance ' + fmt(c.maintPct) + ' %' : c.mode === 'annuelle' ? 'Abonnement annuel' : 'Abonnement mensuel'}</td><td style="text-align:right">${pct(c.part)}</td><td style="text-align:right;white-space:nowrap">${fmt(c.prix)}</td><td style="text-align:right;white-space:nowrap">${fmt(c.initial)}</td><td style="text-align:right;white-space:nowrap">${fmt(c.recBrut)}</td><td style="text-align:right;white-space:nowrap">${fmt(c.heberg)}</td><td style="text-align:right;white-space:nowrap;color:var(--${c.recNet > 0 ? 'success' : 'danger'})">${fmt(c.recNet)}</td><td style="text-align:right;white-space:nowrap"><b>${fmt(c.ltv)}</b></td></tr>`).join('')}</tbody></table></div>
+      ${note('Marge récurrente nette = revenu récurrent moins coûts directs et hébergement du client. Valeur sur 5 ans = marge de la 1re vente (frais initiaux et licence, moins commission) plus la marge récurrente ; elle se compare au coût d\'acquisition ci-dessus.')}</div>
       <div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">☁️ Coûts techniques par année</span><span class="badge badge-muted">${esc(base.devise)} · 1 $ = ${fmt(h.usdFcfa)}</span></div><div style="overflow-x:auto"><table class="client-table" style="min-width:560px"><thead><tr><th></th>${U.map((u) => `<th style="text-align:right">An ${u.an}</th>`).join('')}</tr></thead><tbody>
       ${cT('Supabase (bases de données)', 'supa')}${cT('Vercel (hébergement des applications)', 'vercel')}${cT('GitHub (code)', 'github')}${cT('Anthropic (intelligence artificielle)', 'ia')}${cT('Total technique', 'tech', true)}
       <tr><td>Part du chiffre d'affaires</td>${A5.map((a) => `<td style="text-align:right">${a.ca > 0 ? pct((a.infra + a.ia) / a.ca) : '–'}</td>`).join('')}</tr><tr><td>Clients hébergés en fin d'année</td>${A5.map((a) => `<td style="text-align:right">${a.parcFin.toLocaleString('fr-FR', { maximumFractionDigits: 0 })}</td>`).join('')}</tr>
@@ -522,14 +591,35 @@
       ${note('Coût d\'acquisition = marketing + salaires des postes cochés « Acquisition » (onglet Hypothèses), divisés par les nouveaux clients ; les commissions sont déjà déduites de la marge. Valeur d\'un client = marge de la 1re vente + maintenance des 4 années suivantes avec la rétention choisie.')}</div>`;
   }
 
+  /** Tableau des logiciels : mode de vente, prix, frais initiaux, maintenance, part des ventes. */
+  function tabLogiciels() {
+    const P = h.produits || [];
+    if (!P.length) return note('Aucun logiciel au catalogue du CRM : le modèle utilise un produit moyen (champs « Ventes » ci-dessous).');
+    const tot = sum(P, (p) => pos(p.part)), champ = { perpetuelle: 'prixLicence', annuelle: 'prixAnnuel', mensuelle: 'prixMensuel' };
+    const lignes = P.slice().sort((a, b) => (pos(b.part) - pos(a.part)) || (b.vendus - a.vendus)).map((p) => {
+      const f = champ[p.mode] || 'prixLicence', sub = p.mode !== 'perpetuelle';
+      return `<tr style="${pos(p.part) > 0 ? '' : 'opacity:.62'}"><td style="min-width:170px"><b>${esc(p.nom)}</b>${p.vendus ? `<div class="muted" style="font-size:11px">${p.vendus} vendu(s) · facturé en moyenne ${fmt(p.observe)}${p.catalogue > 0 && Math.abs(p.observe / p.catalogue - 1) > 0.5 ? ' <span class="badge badge-warning" title="Le prix moyen facturé s\'écarte de plus de 50 % du prix du catalogue : la facture contient-elle autre chose que la licence ?">⚠️ écart catalogue</span>' : ''}</div>` : ''}</td>
+        <td><select class="form-input" data-prod="${esc(p.id)}" data-f="mode" style="min-width:170px">${Object.keys(MODES).map((k) => `<option value="${k}" ${p.mode === k ? 'selected' : ''}>${MODES[k]}</option>`).join('')}</select></td>
+        <td><input class="form-input" type="number" min="0" style="width:120px" data-prod="${esc(p.id)}" data-f="${f}" value="${num(p[f])}" aria-label="Prix de ${esc(p.nom)}"></td>
+        <td><input class="form-input" type="number" min="0" style="width:110px" data-prod="${esc(p.id)}" data-f="initial" value="${num(p.initial)}" aria-label="Frais initiaux de ${esc(p.nom)}"></td>
+        <td><input class="form-input" type="number" min="0" max="100" style="width:70px" data-prod="${esc(p.id)}" data-f="maintPct" value="${num(p.maintPct)}" ${sub ? 'disabled title="Comprise dans la redevance"' : ''} aria-label="Maintenance de ${esc(p.nom)}"></td>
+        <td><input class="form-input" type="number" min="0" max="100" step="any" style="width:80px" data-prod="${esc(p.id)}" data-f="part" value="${num(p.part)}" aria-label="Part des ventes de ${esc(p.nom)}"></td></tr>`;
+    }).join('');
+    return note('Pour chaque logiciel : <b>comment il est vendu</b>, son <b>prix</b> (licence : une fois ; abonnement annuel : par an ; abonnement mensuel : par mois), les <b>frais initiaux de mise en exploitation</b> facturés au client, la <b>maintenance</b> annuelle (licence perpétuelle seulement) et la <b>part des nouveaux clients</b> qu\'il représente. Les valeurs de départ viennent de votre catalogue et de vos ventes réelles ; les prix d\'abonnement et les frais initiaux sont des <b>points de départ à fixer</b>.')
+      + `<div style="overflow-x:auto"><table class="client-table" style="min-width:780px"><thead><tr><th>Logiciel</th><th>Mode de vente</th><th>Prix (FCFA)</th><th>Frais initiaux</th><th>Maintenance %</th><th>Part des ventes %</th></tr></thead><tbody>${lignes}
+      <tr style="font-weight:700"><td colspan="5" style="text-align:right">Total des parts (ramené à 100 %)</td><td>${fmt(tot)} %</td></tr></tbody></table></div>${tot > 0 ? '' : note('⚠️ Aucune part de ventes : le modèle utilise un produit moyen. Indiquez la part de chaque logiciel.')}`;
+  }
+
   function tabProj() {
     const s = res.sans.annees, m = res.options[3].sim.annees;
     // colonne : [libellé, valeur, en gras, valeur brute (sans conversion en milliers)]
     const L = (lib, k, bold) => [lib, (x) => x[k], bold], neg = (lib, k) => [lib, (x) => -x[k]], B = (lib, k, bold) => [lib, (x) => x.bilan[k], bold];
     const clients = ['Nouveaux clients', (x) => x.clients.toLocaleString('fr-FR', { maximumFractionDigits: 1 }), false, true];
     const tab = (titre, A, cols) => `<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">${titre}</span></div><div style="overflow-x:auto"><table class="client-table" style="min-width:560px"><thead><tr><th></th>${A.map((x) => `<th style="text-align:right">An ${x.an}</th>`).join('')}</tr></thead><tbody>${cols.map((c) => `<tr style="${c[2] ? 'font-weight:700' : ''}"><td>${c[0]}</td>${A.map((x) => `<td style="text-align:right">${c[3] ? c[1](x) : fmt(c[1](x) / 1e3)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
-    return note('Montants en milliers de ' + esc(base.devise) + '. États financiers simplifiés du plan financé (mix).')
-      + tab('📈 Compte de résultat', m, [clients, L('Licences', 'lic'), L('Maintenance', 'maint'), L('Services', 'serv'), L('Chiffre d\'affaires', 'ca', true), neg('Coûts directs et commissions', 'directs'), neg('Salaires', 'sal'), neg('Marketing', 'mkt'), neg('Charges fixes', 'fixes'), neg('Infrastructure technique', 'infra'), neg('Intelligence artificielle (Anthropic)', 'ia'), L('EBITDA', 'ebitda', true), neg('Intérêts', 'interet'), neg('Impôts', 'impot'), L('Résultat net', 'resultatNet', true)])
+    const PA = m[0].produits, parts = (k) => PA.map((p, i) => [esc(p.nom) + ` <span class="badge badge-muted" style="font-weight:600">${p.mode === 'perpetuelle' ? 'perpétuelle' : p.mode === 'annuelle' ? 'annuel' : 'mensuel'}</span>`, (x) => x.produits[i][k]]);
+    const parProd = tab('📦 Revenus par logiciel', m, parts('total').concat([['Total', (x) => x.ca, true]])) + tab('🔁 Dont revenus récurrents (maintenance et abonnements)', m, parts('recurrent').concat([['Total récurrent', (x) => x.maint + x.abo, true], ['Part du chiffre d\'affaires', (x) => x.ca > 0 ? Math.round((x.maint + x.abo) / x.ca * 100) + ' %' : '–', false, true]]));
+    return note('Montants en milliers de ' + esc(base.devise) + '. États financiers simplifiés du plan financé (mix).') + parProd
+      + tab('📈 Compte de résultat', m, [clients, L('Licences perpétuelles', 'lic'), L('Frais initiaux et services', 'serv'), L('Maintenance', 'maint'), L('Abonnements', 'abo'), L('Chiffre d\'affaires', 'ca', true), neg('Coûts directs et commissions', 'directs'), neg('Salaires', 'sal'), neg('Marketing', 'mkt'), neg('Charges fixes', 'fixes'), neg('Infrastructure technique', 'infra'), neg('Intelligence artificielle (Anthropic)', 'ia'), L('EBITDA', 'ebitda', true), neg('Intérêts', 'interet'), neg('Impôts', 'impot'), L('Résultat net', 'resultatNet', true)])
       + tab('💧 Flux de trésorerie', m, [L('Flux d\'exploitation', 'fExpl'), L('Flux de financement (apports, intérêts, remboursements)', 'fFin'), L('Variation de trésorerie', 'flux', true), L('Trésorerie en fin d\'année', 'tresoFin', true)])
       + tab('🏛️ Bilan simplifié', m, [B('Trésorerie', 'tresorerie'), B('Créances clients (besoin en fonds de roulement)', 'creances'), B('Total actif', 'actif', true), B('Capitaux propres', 'capitaux'), B('Dettes financières', 'dette'), B('Total passif', 'passif', true), [ 'Écart actif − passif (doit être nul)', (x) => x.bilan.actif - x.bilan.passif ]])
       + note('Bilan simplifié : à l\'ouverture, la société n\'a que de la trésorerie et des créances clients ; pas d\'immobilisations, de stocks ni de dettes fournisseurs. À remplacer par votre bilan réel (module Comptabilité) avant de présenter le dossier.')
@@ -553,11 +643,13 @@
     ['Revenu récurrent', 'Revenu qui revient chaque année sans nouvelle vente (maintenance, abonnement). Les financeurs le valorisent bien plus que les ventes ponctuelles.'],
     ['Coût d\'acquisition', 'Ce que coûte la conquête d\'un nouveau client : marketing et équipe d\'acquisition, divisés par le nombre de nouveaux clients.'],
     ['Valeur d\'un client', 'Marge qu\'un client rapporte sur 5 ans : marge de sa 1re vente plus maintenance des années suivantes. Un rapport valeur / coût d\'au moins 3 est un repère usuel.'],
+    ['Frais initiaux de mise en exploitation', 'Somme facturée au client à la signature pour installer, paramétrer et former : elle s\'ajoute à la licence ou à l\'abonnement.'],
+    ['Abonnement annuel ou mensuel', 'Le client paie une redevance (par an ou par mois) tant qu\'il reste, maintenance comprise, au lieu d\'acheter la licence une fois. Le revenu est plus lent à venir mais récurrent.'],
     ['Infrastructure technique', 'Supabase (bases de données, un projet par client chez vous), Vercel (hébergement des applications) et GitHub (code), facturés en dollars. Convertis en FCFA avec le taux de change et des frais de paiement. L\'intelligence artificielle (Anthropic) est comptée à part.'],
     ['Partie liée', 'Client qui appartient à la société, à ses dirigeants ou à leurs proches. Les financeurs demandent de l\'isoler : ce chiffre d\'affaires est moins probant.']
   ];
   const LIMITES = ['Les valeurs initiales sont des exemples : seuls le nombre de clients, le prix moyen, la base installée et la commission viennent du CRM.', 'La croissance des ventes est une hypothèse : le modèle ne la relie pas automatiquement aux recrutements ou aux campagnes.',
-    'Modèle simplifié : pas d\'amortissements, de TVA ni de stocks ; bilan d\'ouverture réduit à la trésorerie et aux créances clients ; impôt calculé sur le résultat avec report des pertes.', 'Ces projections ne sont ni une garantie de résultat ni un conseil financier : à faire valider par un expert-comptable.'];
+    'Modèle simplifié : pas d\'amortissements, de TVA ni de stocks ; bilan d\'ouverture réduit à la trésorerie et aux créances clients ; impôt calculé sur le résultat avec report des pertes.', 'Les abonnements, même annuels, sont comptabilisés et encaissés mois par mois (prudent pour la trésorerie) ; la même rétention s\'applique à tous les logiciels.', 'Ces projections ne sont ni une garantie de résultat ni un conseil financier : à faire valider par un expert-comptable.'];
 
   function tabNotes() {
     const etape = (n, t, d) => `<div style="display:flex;gap:12px;margin-bottom:10px"><div class="badge badge-primary" style="height:24px;flex-shrink:0">${n}</div><div><b>${t}</b><div class="muted" style="font-size:12.5px">${d}</div></div></div>`;
@@ -575,7 +667,7 @@
     const o = calc.optimiser(h), b = o.base, c = o.combine, sc = o.seuils, rent = b.pointMort !== null, cat = { Ventes: 'badge-success', 'Coûts': 'badge-warning', 'Trésorerie': 'badge-primary' };
     let html = rent ? `<div class="alert alert-info" role="status">✅ <div>Le plan est rentable à partir du <b>mois ${b.pointMort + 1}</b>. Les pistes ci-dessous visent à <b>réduire le besoin de financement</b> (${fmtM(b.besoin)} ${esc(base.devise)}) et à avancer la rentabilité.</div></div>`
       : `<div class="alert alert-danger" role="alert">⛔ <div>Le plan n'est pas rentable à l'année 5 (EBITDA ${fmtM(b.ebitda5)} ${esc(base.devise)}). Voici, chiffré par le modèle, ce qui peut le corriger.</div></div>`;
-    const seuilTxt = (x, lib, fmtv, unite) => !x ? `<li>${lib} : hors de portée avec la structure de coûts actuelle.</li>` : x.deja ? `<li>${lib} : déjà atteint avec vos hypothèses.</li>` : `<li>${lib} : au moins <b>${fmtv(x.valeur)}</b> ${unite} (soit <b>+${pct(x.facteur - 1)}</b>).</li>`;
+    const seuilTxt = (x, lib, fmtv, unite) => !x ? `<li>${lib} : hors de portée avec la structure de coûts actuelle.</li>` : x.deja ? `<li>${lib} : déjà atteint avec vos hypothèses.</li>` : `${x.valeur == null ? `<li>${lib} : au moins <b>+${pct(x.facteur - 1)}</b> sur tous les prix (licences, abonnements, frais initiaux).</li>` : `<li>${lib} : au moins <b>${fmtv(x.valeur)}</b> ${unite} (soit <b>+${pct(x.facteur - 1)}</b>).</li>`}`;
     html += `<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">🎯 Seuils d'équilibre</span></div><p class="page-sub" style="margin:0 0 6px">Pour que le plan soit durablement rentable, une seule hypothèse changeant, tout le reste égal :</p><ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.8">
       ${seuilTxt(sc.clients, 'Nouveaux clients la 1re année', (v) => Math.ceil(v).toLocaleString('fr-FR'), 'clients (vous en avez prévu ' + fmt(h.clientsAn1) + ')')}${seuilTxt(sc.prix, 'Prix moyen d\'une licence', (v) => fmt(v), esc(base.devise) + ' HT (vous avez prévu ' + fmt(h.prixLicence) + ')')}</ul></div>`;
     html += `<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">🧪 Leviers testés un par un</span><span class="badge badge-muted">Effet sur le plan de croissance, sans apport</span></div><div style="overflow-x:auto"><table class="client-table" style="min-width:760px"><thead><tr><th>Levier</th><th>Test</th><th style="text-align:right">EBITDA an 5</th><th style="text-align:right">Point mort</th><th style="text-align:right">Besoin</th><th style="text-align:right">Trésorerie an 5</th><th></th></tr></thead><tbody>
@@ -602,10 +694,12 @@
   /* — exports — */
   function csv() {
     const q = (v) => '"' + String(v).replace(/"/g, '""') + '"', R = (a) => a.map((v) => typeof v === 'number' ? String(Math.round(v)).replace('.', ',') : q(v)).join(';');
-    const keys = [['Nouveaux clients', 'clients'], ['Licences', 'lic'], ['Maintenance', 'maint'], ['Services', 'serv'], ['CA', 'ca'], ['Couts directs', 'directs'], ['Commissions', 'commissions'], ['IA', 'ia'], ['Infrastructure technique', 'infra'], ['Marketing', 'mkt'], ['Salaires', 'sal'], ['Charges fixes', 'fixes'], ['EBITDA', 'ebitda'], ['Interets', 'interet'], ['Remboursement capital', 'princ'], ['Impots', 'impot'], ['Resultat net', 'resultatNet'], ['Flux de tresorerie', 'flux'], ['Tresorerie fin annee', 'tresoFin']];
+    const keys = [['Nouveaux clients', 'clients'], ['Licences', 'lic'], ['Maintenance', 'maint'], ['Frais initiaux et services', 'serv'], ['Abonnements', 'abo'], ['CA', 'ca'], ['Couts directs', 'directs'], ['Commissions', 'commissions'], ['IA', 'ia'], ['Infrastructure technique', 'infra'], ['Marketing', 'mkt'], ['Salaires', 'sal'], ['Charges fixes', 'fixes'], ['EBITDA', 'ebitda'], ['Interets', 'interet'], ['Remboursement capital', 'princ'], ['Impots', 'impot'], ['Resultat net', 'resultatNet'], ['Flux de tresorerie', 'flux'], ['Tresorerie fin annee', 'tresoFin']];
     const L = [];
     if (!h.valide) { L.push(R(['DOCUMENT DE TRAVAIL : hypotheses indicatives non validees, ne pas diffuser'])); L.push(''); }
     const bloc = (titre, A) => { L.push(R([titre])); L.push(R(['Poste'].concat(A.map((x) => 'An ' + x.an)))); keys.forEach((k) => L.push(R([k[0]].concat(A.map((x) => x[k[1]] == null ? 0 : x[k[1]]))))); L.push(''); };
+    L.push(R(['Revenus par logiciel (plan finance, mix)'])); L.push(R(['Logiciel', 'Mode'].concat(res.options[3].sim.annees.map((x) => 'An ' + x.an + ' total')).concat(res.options[3].sim.annees.map((x) => 'An ' + x.an + ' recurrent'))));
+    res.options[3].sim.annees[0].produits.forEach((p, i) => L.push(R([p.nom, p.mode].concat(res.options[3].sim.annees.map((x) => x.produits[i].total)).concat(res.options[3].sim.annees.map((x) => x.produits[i].recurrent))))); L.push('');
     bloc('Plan finance (mix)', res.options[3].sim.annees); bloc('Plan de croissance sans apport', res.avec0.annees); bloc('Sans financement', res.sans.annees);
     L.push(R(['Comparaison des options'])); L.push(R(['', 'Montant a lever', 'Tresorerie minimale', 'Tresorerie an 5', 'CA an 5', 'EBITDA an 5', 'Part cedee (%)', 'Multiple investisseur', 'TRI (%)', 'Interets payes', 'DSCR mini']));
     res.options.forEach((o) => L.push(R([o.label, o.montant, o.ind.tresoMin, o.ind.tresoFin, o.ind.ca5, o.ind.ebitda5, o.ind.equity ? Math.round(o.ind.equity.part * 1000) / 10 : '', o.ind.equity ? Math.round(o.ind.equity.moic * 10) / 10 : '', o.ind.equity ? Math.round(o.ind.equity.tri * 1000) / 10 : '', o.ind.dette ? o.ind.dette.totalInterets : '', o.ind.dette && o.ind.dette.dscrMin != null ? Math.round(o.ind.dette.dscrMin * 10) / 10 : ''])));
@@ -634,13 +728,14 @@
       ${r.emplois ? `<table><thead><tr><th>Utilisation des fonds (jusqu'au point bas, ${r.emplois.mois} mois)</th><th style="text-align:right">${esc(d)}</th><th style="text-align:right">Part</th></tr></thead><tbody>${lignes}<tr><td>Encaissements sur la période</td><td style="text-align:right">− ${fmt(r.emplois.recu)}</td><td></td></tr><tr><td><b>Besoin de financement</b></td><td style="text-align:right"><b>${fmt(r.emplois.besoin)}</b></td><td></td></tr></tbody></table>` : ''}
       <h2>4. Projections et états financiers (milliers de ${esc(d)})</h2><table>${head(a)}<tbody><tr><td>Chiffre d'affaires</td>${K(a, 'ca')}</tr><tr><td>EBITDA</td>${K(a, 'ebitda')}</tr><tr><td>Résultat net</td>${K(a, 'resultatNet')}</tr><tr><td>Flux d'exploitation</td>${K(a, 'fExpl')}</tr><tr><td>Flux de financement</td>${K(a, 'fFin')}</tr><tr><td><b>Trésorerie fin d'année</b></td>${K(a, 'tresoFin')}</tr></tbody></table>
       <table>${head(a)}<tbody><tr><td>Trésorerie</td>${KB(a, 'tresorerie')}</tr><tr><td>Créances clients</td>${KB(a, 'creances')}</tr><tr><td><b>Total actif</b></td>${KB(a, 'actif')}</tr><tr><td>Capitaux propres</td>${KB(a, 'capitaux')}</tr><tr><td>Dettes financières</td>${KB(a, 'dette')}</tr><tr><td><b>Total passif</b></td>${KB(a, 'passif')}</tr></tbody></table>
+      <p><b>Revenus par logiciel</b> (milliers de ${esc(d)}) :</p><table>${head(a)}<tbody>${a[0].produits.map((p, i) => `<tr><td>${esc(p.nom)} <span style="font-size:10px;color:#6b7390">(${p.mode === 'perpetuelle' ? 'licence perpétuelle, maintenance ' + fmt((h.produits || []).filter((x) => x.id === p.id)[0] ? (h.produits.filter((x) => x.id === p.id)[0].maintPct) : h.maintenancePct) + ' %' : p.mode === 'annuelle' ? 'abonnement annuel' : 'abonnement mensuel'})</span></td>${a.map((x) => `<td style="text-align:right">${fmt(x.produits[i].total / 1e3)}</td>`).join('')}</tr>`).join('')}<tr><td><b>Total</b></td>${K(a, 'ca')}</tr><tr><td>dont récurrent (maintenance et abonnements)</td>${a.map((x) => `<td style="text-align:right">${fmt((x.maint + x.abo) / 1e3)}</td>`).join('')}</tr></tbody></table>
       <p style="font-size:11px;color:#6b7390">Bilan simplifié : ouverture réduite à la trésorerie et aux créances clients, sans immobilisations ni stocks. Plan financé selon le mix choisi.</p>
       <p>Sans financement, le chiffre d'affaires de l'année 5 serait de ${fmtM(r.sans.annees[ANNEES - 1].ca)} ${esc(d)}, contre ${fmtM(a[ANNEES - 1].ca)} ${esc(d)} avec le plan de croissance.</p>
       <h2>5. Indicateurs et économie unitaire</h2><table><thead><tr><th></th>${U.map((u) => `<th style="text-align:right">An ${u.an}</th>`).join('')}</tr></thead><tbody>${ui2('Nouveaux clients', (u) => u.clients.toLocaleString('fr-FR', { maximumFractionDigits: 1 }))}${ui2('Marge brute', (u) => pct(u.margeBrute))}${ui2('Revenu récurrent annualisé', (u) => fmtM(u.arr))}${ui2('Part du revenu récurrent', (u) => pct(u.partRecurrente))}${ui2('Coût d\'acquisition d\'un client', (u) => u.cac == null ? '–' : fmt(u.cac))}${ui2('Valeur d\'un client sur 5 ans', (u) => fmt(u.ltv))}${ui2('Valeur client / coût d\'acquisition', (u) => u.ltvCac == null ? '–' : u.ltvCac.toFixed(1) + ' ×')}${ui2('Délai de retour', (u) => u.retour == null ? '–' : u.retour === 0 ? 'immédiat' : Math.round(u.retour) + ' mois')}${ui2('CA par salarié', (u) => u.caParSalarie == null ? '–' : fmtM(u.caParSalarie))}</tbody></table>
       <p><b>Coûts techniques</b> (${esc(d)}, tarifs publics en dollars au taux de ${fmt(h.usdFcfa)}) :</p><table><thead><tr><th></th>${U.map((u) => `<th style="text-align:right">An ${u.an}</th>`).join('')}</tr></thead><tbody>${[['Supabase', 'supa'], ['Vercel', 'vercel'], ['GitHub', 'github'], ['Anthropic (intelligence artificielle)', 'ia']].map((x) => `<tr><td>${x[0]}</td>${r.avec0.annees.map((a) => `<td style="text-align:right">${fmt(a[x[1]])}</td>`).join('')}</tr>`).join('')}<tr><td><b>Total</b></td>${r.avec0.annees.map((a) => `<td style="text-align:right"><b>${fmt(a.infra + a.ia)}</b></td>`).join('')}</tr></tbody></table>
       <h2>6. Options de financement</h2><table><thead><tr><th>Option</th><th style="text-align:right">Montant</th><th style="text-align:right">Part cédée</th><th style="text-align:right">Multiple investisseur</th><th style="text-align:right">Capacité de remboursement</th><th>Points d'attention</th></tr></thead><tbody>${r.options.map(opt).join('')}</tbody></table>
       <h2>7. Tour de table</h2>${tourHtml('')}
-      <h2>8. Hypothèses principales</h2><ul><li>Scénario de croissance « ${esc(SCEN_LABEL[h.scenario] || 'personnalisé')} » : nouveaux clients +${h.croiss.join(' %, +')} % par an (année 1 : ${fmt(h.clientsAn1)} clients).</li><li>Prix moyen d'une licence : ${fmt(h.prixLicence)} ${esc(d)} HT (hausse de ${h.hausseAn} % par an) ; maintenance ${h.maintenancePct} % de la base installée ; services ${h.servicesPct} % des licences.</li><li>Équipe : ${h.postes.filter((p) => p.finance).map((p) => `${p.nb} ${esc(p.nom)}`).join(', ') || 'aucune embauche'} financé(s) par l'apport.</li><li>Sortie investisseur supposée à l'année 5 à ${h.multSortie} × le chiffre d'affaires.</li>${h.baseRetraitee ? '<li>Base de départ calculée hors clients liés à la société.</li>' : ''}</ul>
+      <h2>8. Hypothèses principales</h2><ul><li>Scénario de croissance « ${esc(SCEN_LABEL[h.scenario] || 'personnalisé')} » : nouveaux clients +${h.croiss.join(' %, +')} % par an (année 1 : ${fmt(h.clientsAn1)} clients).</li><li>${(h.produits || []).some((p) => pos(p.part) > 0) ? `Ventes réparties entre ${produitsActifs(h).map((p) => esc(p.nom) + ' (' + Math.round(p.part * 100) + ' %)').join(', ')} ; prix indexés de ${h.hausseAn} % par an ; frais initiaux de mise en exploitation facturés à chaque nouveau client.` : `Prix moyen d'une licence : ${fmt(h.prixLicence)} ${esc(d)} HT (hausse de ${h.hausseAn} % par an) ; maintenance ${h.maintenancePct} % de la base installée ; services ${h.servicesPct} % des licences.`}</li><li>Équipe : ${h.postes.filter((p) => p.finance).map((p) => `${p.nb} ${esc(p.nom)}`).join(', ') || 'aucune embauche'} financé(s) par l'apport.</li><li>Sortie investisseur supposée à l'année 5 à ${h.multSortie} × le chiffre d'affaires.</li>${h.baseRetraitee ? '<li>Base de départ calculée hors clients liés à la société.</li>' : ''}</ul>
       <h2>9. Notes méthodologiques</h2><p>Le modèle simule l'activité mois par mois sur 5 ans, à partir des chiffres réels de la société, dans deux situations : sans financement et avec le plan de croissance. Le besoin de financement est le point bas de trésorerie du plan de croissance sans apport.</p>
       <table><tbody>${LEXIQUE.map((l) => `<tr><td style="width:170px;vertical-align:top"><b>${l[0]}</b></td><td style="font-size:12px">${l[1]}</td></tr>`).join('')}</tbody></table><p><b>Limites :</b></p><ul>${LIMITES.map((l) => `<li style="font-size:12px">${l}</li>`).join('')}</ul>
       <p class="n">Ces projections reposent sur des hypothèses de la direction ; elles ne constituent ni une garantie de résultat ni une offre de titres financiers. Les données de départ proviennent du CRM de la société.</p></body></html>`;
@@ -686,6 +781,7 @@
       const t = e.target;
       if (t.dataset.scen !== undefined) { edit('scenario', t.value); edit('croiss', SCEN[t.value].slice()); render(); }
       else if (t.dataset.p) { editPoste(t.dataset.p, t.dataset.f, t.dataset.f === 'nom' ? t.value : valeur(t)); render(); }
+      else if (t.dataset.prod !== undefined) { editProduit(t.dataset.prod, t.dataset.f, valeur(t)); render(); }
       else if (t.dataset.lien !== undefined) { editLien(t.dataset.lien, t.dataset.f, t.checked); render(); }
       else if (t.dataset.a) { editAssocie(t.dataset.a, t.dataset.f, t.dataset.f === 'nom' ? t.value : valeur(t)); render(); }
       else if (t.dataset.k && !t.closest('#fin-ctl')) { edit(t.dataset.k, valeur(t)); if (t.dataset.k.indexOf('croiss.') === 0) edit('scenario', 'perso'); render(); }
