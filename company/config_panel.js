@@ -134,7 +134,7 @@ function viewCells() {
       <button class="btn sm" type="button" data-act="cfg-cell-toggle" data-id="${c.id}">${c.actif ? "Désactiver" : "Activer"}</button></div></div>
       <div class="scroll"><table class="tbl"><thead><tr><th>Rôle</th><th>Agents</th><th>Ajouter</th></tr></thead><tbody>${rolesCommerciaux.map((r) => {
         const ms = D.members.filter((m) => m.cell_id === c.id && m.role_code === r.code);
-        return html`<tr><td>${r.libelle}</td><td>${ms.length ? ms.map((m) => html`<span class="pill" style="--c:#2563eb"><i></i>${agentName(m.agent_id)} <button class="btn sm" type="button" data-act="cfg-member-del" data-cell="${c.id}" data-role="${r.code}" data-agent="${m.agent_id}" aria-label="Retirer ${agentName(m.agent_id)}">✕</button></span> `) : html`<span class="muted small">poste vacant</span>`}</td>
+        return html`<tr><td>${r.libelle}</td><td>${ms.length ? ms.map((m) => html`<span class="pill" style="--c:var(--pri)"><i></i>${agentName(m.agent_id)} <button class="btn sm" type="button" data-act="cfg-member-del" data-cell="${c.id}" data-role="${r.code}" data-agent="${m.agent_id}" aria-label="Retirer ${agentName(m.agent_id)}">✕</button></span> `) : html`<span class="muted small">poste vacant</span>`}</td>
           <td><select data-act-change="cfg-member-add" data-cell="${c.id}" data-role="${r.code}"><option value="">＋</option>${agentsActifs().filter((a) => !ms.some((m) => m.agent_id === a.id)).map((a) => html`<option value="${a.id}">${a.nom}</option>`)}</select></td></tr>`;
       })}</tbody></table></div></div>`)}`;
 }
