@@ -7,7 +7,8 @@ const near = (a, b, tol, m) => ok(Math.abs(a - b) <= (tol == null ? 1e-6 : tol),
 const base = () => Object.assign(calc.defauts({}), {
   clientsAn1: 12, prixLicence: 1000000, hausseAn: 0, maintenancePct: 0, servicesPct: 0, baseInstallee: 0, delaiEncaissement: 0, retentionPct: 100,
   croiss: [0, 0, 0, 0], croissSans: [0, 0, 0, 0], directsPct: 0, commissionPct: 0, iaMensuel: 0, marketingPct: 0, marketingMin: 0, marketingBoost: 0,
-  fixesMensuels: 100000, chargesSocialesPct: 0, augmentationSalairesPct: 0, impotPct: 0, tresoDepart: 0, postes: [], margeSecuritePct: 0 });
+  fixesMensuels: 100000, chargesSocialesPct: 0, augmentationSalairesPct: 0, impotPct: 0, tresoDepart: 0, postes: [], margeSecuritePct: 0,
+  supabaseFixeUsd: 0, supabaseProjetUsd: 0, projetsBase: 0, clientsDepart: 0, vercelSiegeUsd: 0, githubSiegeUsd: 0, iaMensuelUsd: 0, fraisPaiementPct: 0 });   // coûts techniques neutralisés : les cas ci-dessous ne testent que le reste
 
 console.log("▶ Ventes et trésorerie");
 let h = base(), s = calc.simuler(h, "avec", {});
@@ -105,7 +106,7 @@ console.log("▶ Optimisation");
 const Dop = calc.defauts({ commandes12m: 10, prixMoyen: 1059543, caTotal: 12.5e6, commissionDefaut: 10 });
 const O = calc.optimiser(Dop), B = calc.evaluer(Dop);
 near(O.base.besoin, B.besoin, 1e-6, "situation de départ = évaluation du plan");
-ok(O.leviers.length === 11, "onze leviers applicables avec les valeurs par défaut");
+ok(O.leviers.length === 13, "treize leviers applicables avec les valeurs par défaut");
 ok(O.leviers.every((l, i) => i === 0 || O.leviers[i - 1].dTreso >= l.dTreso), "leviers classés du plus au moins utile (trésorerie an 5)");
 O.leviers.forEach((l) => { const lv = calc.LEVIERS.filter((x) => x.id === l.id)[0]; const m = calc.evaluer(Object.assign({}, Dop, lv.f(Dop))); near(l.m.tresoFin, m.tresoFin, 1e-6, "levier « " + l.id + " » : résultats = plan recalculé avec le levier"); });
 ok(O.leviers.filter((l) => l.cat === "Ventes").every((l) => l.dEbitda5 > 0), "chaque levier de ventes améliore l'EBITDA");
@@ -185,5 +186,39 @@ near(sum(R, "apres"), 1, 1e-12, "après l'apport, le total fait 100 %"); near(R[
 h.associes = [{ id: "1", nom: "A", part: 60 }, { id: "2", nom: "B", part: 40 }, { id: "3", nom: "Zéro", part: 0 }]; h.esopPct = 0; R = calc.tourDeTable(h, 0.25);
 near(R[0].apres, 0.45, 1e-12, "60 % → 45 % après dilution de 25 %"); ok(R.length === 3, "associé à 0 % ignoré (A, B, investisseur)"); near(sum(R, "avant"), 1, 1e-12, "avant l'apport : 100 %");
 h.associes = [{ id: "1", nom: "A", part: 30 }, { id: "2", nom: "B", part: 20 }]; near(calc.tourDeTable(h, 0)[0].avant, 0.6, 1e-12, "parts normalisées à 100 % (30 et 20 → 60 % et 40 %)");
+
+console.log("▶ Coûts techniques : Supabase, Vercel, GitHub, Anthropic");
+const tech = () => { const t = base(); Object.assign(t, { usdFcfa: 600, fraisPaiementPct: 0, supabaseFixeUsd: 25, supabaseProjetUsd: 10, projetsBase: 1, projetParClient: true, clientsDepart: 8, vercelSiegeUsd: 20, githubSiegeUsd: 4, githubSeuil: 3, iaMensuelUsd: 200, iaCroissanceAn: 25, clientsAn1: 0, retentionPct: 100, fixesMensuels: 0,
+  postes: [{ id: "f", nom: "Fondateur", nb: 1, cout: 0, debut: 0, finance: false }] }); return t; };
+h = tech(); s = calc.simuler(h, "avec", {});
+near(s.mois[0].supa, (25 + 8 * 10) * 600, 1e-6, "Supabase : abonnement 25 $ + 8 projets clients à 10 $ (le 1er projet est inclus) = 105 $ au taux de 600");
+near(s.mois[0].vercel, 20 * 600, 1e-6, "Vercel : 1 poste technique (le fondateur) à 20 $"); near(s.mois[0].github, 0, 1e-9, "GitHub : gratuit sous 3 postes");
+near(s.mois[0].ia, 200 * 600, 1e-6, "Anthropic : 200 $ par mois"); near(s.mois[12].ia, 250 * 600, 1e-6, "Anthropic : +25 % la 2e année");
+near(s.mois[0].infra, s.mois[0].supa + s.mois[0].vercel + s.mois[0].github, 1e-9, "infrastructure = Supabase + Vercel + GitHub");
+near(s.mois[0].ebitda, -(s.mois[0].infra + s.mois[0].ia), 1e-6, "sans vente ni autre charge, l'EBITDA est l'opposé des coûts techniques");
+near(s.annees[0].infra, sum(s.mois.slice(0, 12), "infra"), 1e-6, "cumul annuel de l'infrastructure");
+h = tech(); h.postes.push({ id: "d", nom: "Dév", nb: 2, cout: 0, debut: 0, finance: true, tech: true }); s = calc.simuler(h, "avec", {});
+near(s.mois[0].vercel, 3 * 20 * 600, 1e-6, "3 postes techniques (fondateur + 2 développeurs) : Vercel × 3"); near(s.mois[0].github, 3 * 4 * 600, 1e-6, "3 postes : GitHub Team à 4 $ par poste");
+near(calc.simuler(h, "sans", {}).mois[0].github, 0, 1e-9, "plan sans financement : les développeurs financés n'existent pas, GitHub reste gratuit");
+h = tech(); h.clientsAn1 = 12; s = calc.simuler(h, "avec", {});
+near(s.mois[0].parc, 9, 1e-9, "parc hébergé : 8 clients + 1 nouveau le 1er mois"); near(s.mois[11].parc, 20, 1e-9, "parc : 8 + 12 nouveaux clients");
+near(s.mois[11].supa, (25 + 20 * 10) * 600, 1e-6, "chaque nouveau client ajoute un projet Supabase à 10 $"); near(s.annees[0].parcFin, 20, 1e-9, "clients hébergés en fin d'année");
+h = tech(); h.retentionPct = 50; s = calc.simuler(h, "avec", {}); near(s.mois[11].parc, 4, 1e-9, "rétention 50 % : le parc hébergé est divisé par 2 en un an"); near(s.mois[11].supa, (25 + 4 * 10) * 600, 1e-6, "les clients perdus ne coûtent plus de projet");
+h = tech(); h.projetParClient = false; h.clientsAn1 = 12; s = calc.simuler(h, "avec", {}); near(s.mois[11].supa, 25 * 600, 1e-6, "clients regroupés (multi-locataire) : coût Supabase constant");
+h = tech(); h.fraisPaiementPct = 10; s = calc.simuler(h, "avec", {}); near(s.mois[0].supa, 105 * 600 * 1.1, 1e-6, "frais de change et de carte de 10 % appliqués"); near(s.mois[0].ia, 200 * 600 * 1.1, 1e-6, "… y compris sur Anthropic");
+h = tech(); h.supabaseFixeUsd = 0; h.supabaseProjetUsd = 0; h.projetsBase = 0; near(calc.simuler(h, "avec", {}).mois[0].supa, 0, 1e-9, "aucun projet : aucun coût Supabase");
+const bz = calc.simuler(tech(), "avec", { equity: 80e6 }), eqz = Math.max.apply(null, bz.annees.map((x) => Math.abs(x.bilan.actif - x.bilan.passif))); ok(eqz < 1, "le bilan reste équilibré avec les coûts techniques");
+h = tech(); h.prixLicence = 1e6; h.hausseAn = 0; h.directsPct = 10; h.commissionPct = 10; h.servicesPct = 20; h.maintenancePct = 12; h.clientsAn1 = 12; h.marketingMin = 0; h.marketingPct = 0;
+U = calc.economieUnitaire(h, calc.simuler(h, "avec", {}))[0];
+near(U.heberg, 10 * 12 * 600, 1e-6, "hébergement d'un client = 10 $ × 12 mois × taux"); near(U.maintNette, 108000 - 72000, 1e-6, "maintenance nette de l'hébergement : 108 000 − 72 000");
+near(U.ltv, 980000 + 4 * 36000, 1e-6, "valeur d'un client : la maintenance nette de l'hébergement"); h.projetParClient = false; near(calc.economieUnitaire(h, calc.simuler(h, "avec", {}))[0].heberg, 0, 1e-9, "clients regroupés : pas d'hébergement par client");
+h = tech(); h.clientsAn1 = 12; h.prixLicence = 1e6; const sx = calc.simuler(h, "avec", {}), ux = calc.economieUnitaire(h, sx)[0];
+near(ux.margeBrute, (sx.annees[0].ca - sx.annees[0].directs - sx.annees[0].commissions - sx.annees[0].infra) / sx.annees[0].ca, 1e-12, "marge brute : l'infrastructure est un coût de service");
+const Dh = calc.defauts({ commandes12m: 10, prixMoyen: 1059543, caTotal: 12.5e6, clientsFactures: 8, usdFcfa: 0 });
+ok(Dh.clientsDepart === 8 && Dh.usdFcfa === 595 && Dh.projetParClient === true, "valeurs initiales : 8 clients hébergés lus dans le CRM, taux de 595 par défaut");
+ok(calc.defauts({ usdFcfa: 580 }).usdFcfa === 580, "le taux saisi dans le Pilotage est repris");
+const Ch = calc.comparer(Dh); ok(!Ch.emplois || Ch.emplois.lignes.some((l) => l[0].indexOf("Infrastructure technique") === 0 && l[1] > 0) , "utilisation des fonds : ligne « Infrastructure technique »");
+const Oh = calc.optimiser(Dh); const lh = Oh.leviers.filter((l) => l.id === "hebergement")[0]; ok(lh && lh.dEbitda5 > 0 && !lh.arbitrer, "levier « regrouper les clients » : améliore l'EBITDA, sans contrepartie cachée");
+const li = Oh.leviers.filter((l) => l.id === "ia")[0]; ok(li && li.dEbitda5 > 0 && li.arbitrer, "levier « réduire l'IA » : améliore l'EBITDA mais à arbitrer (qualité)");
 
 console.log("\nTous les contrôles du modèle de financement sont passés.");

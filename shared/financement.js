@@ -36,12 +36,17 @@
       prixLicence: pos(base.prixMoyen) > 0 ? Math.round(base.prixMoyen) : 1500000,   // HT par nouveau client
       hausseAn: 3, maintenancePct: 12, retentionPct: 85, servicesPct: 20, delaiEncaissement: 1,
       baseInstallee: Math.round(pos(base.caTotal)),                          // CA HT cumulé déjà vendu : assiette de la maintenance
-      directsPct: 10, commissionPct: pos(base.commissionDefaut) > 0 ? pos(base.commissionDefaut) : 10,
-      iaMensuel: 150000, marketingPct: 8, marketingMin: 250000, marketingBoost: 400000,
+      directsPct: 4, commissionPct: pos(base.commissionDefaut) > 0 ? pos(base.commissionDefaut) : 10,
+      // Infrastructure technique (tarifs publics en dollars, convertis au taux ci-dessous) et intelligence artificielle
+      usdFcfa: pos(base.usdFcfa) > 0 ? pos(base.usdFcfa) : 595, fraisPaiementPct: 3,                     // taux du 13/11/2026 (BCEAO : 593,5) ; frais de change et de carte (estimation)
+      supabaseFixeUsd: 25, supabaseProjetUsd: 10, projetsBase: 1, projetParClient: true, clientsDepart: Math.round(pos(base.clientsFactures)),   // Pro : 25 $ avec le 1er projet, puis 10 $ par projet (compute Micro)
+      vercelSiegeUsd: 20, githubSiegeUsd: 4, githubSeuil: 3,                                              // Vercel Pro par poste technique ; GitHub Team à partir de 3 postes (gratuit en dessous)
+      iaMensuelUsd: 200, iaCroissanceAn: 25,                                                              // Anthropic : consommation mensuelle des agents (plafond de gouvernance : 400 $/mois)
+      marketingPct: 8, marketingMin: 250000, marketingBoost: 400000,
       fixesMensuels: 700000, chargesSocialesPct: 20, augmentationSalairesPct: 4, impotPct: 25, tresoDepart: 0,
       postes: [
         { id: 'p1', nom: 'Équipe actuelle (à renseigner)', nb: 1, cout: 500000, debut: 0, finance: false },
-        { id: 'p2', nom: 'Développeurs', nb: 3, cout: 450000, debut: 3, finance: true },
+        { id: 'p2', nom: 'Développeurs', nb: 3, cout: 450000, debut: 3, finance: true, tech: true },
         { id: 'p3', nom: 'Commerciaux', nb: 3, cout: 300000, debut: 3, finance: true, acquisition: true },
         { id: 'p4', nom: 'Responsable marketing', nb: 1, cout: 500000, debut: 4, finance: true, acquisition: true },
         { id: 'p5', nom: 'Support & déploiement', nb: 2, cout: 300000, debut: 6, finance: true }
@@ -63,14 +68,14 @@
     const cs = 1 + pos(h.chargesSocialesPct) / 100;
 
     // 1. Ventes : nouveaux clients, licences, maintenance sur la base installée (qui s'érode), services
-    const m = []; let bi = pos(h.baseInstallee);
+    const m = []; let bi = pos(h.baseInstallee), parc = pos(h.clientsDepart);
     for (let t = 0; t < N; t++) {
       const y = Math.floor(t / 12);
       let ny = pos(h.clientsAn1); for (let k = 0; k < y; k++) ny *= 1 + clamp(g[k], -100, 1000) / 100;
       const n = ny / 12, prix = pos(h.prixLicence) * Math.pow(1 + num(h.hausseAn) / 100, y);
       const lic = n * prix, maint = pos(h.maintenancePct) / 100 / 12 * bi, serv = pos(h.servicesPct) / 100 * lic;
-      bi = bi * rm + lic;
-      m.push({ t, y, clients: n, lic, maint, serv, ca: lic + maint + serv });
+      bi = bi * rm + lic; parc = parc * rm + n;                      // clients hébergés en fin de mois (les clients perdus quittent le parc)
+      m.push({ t, y, clients: n, parc, lic, maint, serv, ca: lic + maint + serv });
     }
 
     // 2. Coûts, impôt, financement, trésorerie
@@ -86,13 +91,20 @@
       const r = m[t], y = r.y;
       r.directs = pos(h.directsPct) / 100 * r.ca;
       r.commissions = pos(h.commissionPct) / 100 * r.lic;
-      r.ia = pos(h.iaMensuel);
+      // Coûts techniques en dollars → FCFA (taux + frais de paiement). Supabase : abonnement + un projet par client si c'est le choix d'architecture.
+      r.sieges = 1 + sum(h.postes, (p) => p.tech && actif(p, t) ? pos(p.nb) : 0);
+      const projets = pos(h.projetsBase) + (h.projetParClient ? r.parc : 0), kUsd = pos(h.usdFcfa) * (1 + pos(h.fraisPaiementPct) / 100);
+      r.supa = (projets > 0 ? pos(h.supabaseFixeUsd) + Math.max(0, projets - 1) * pos(h.supabaseProjetUsd) : 0) * kUsd;
+      r.vercel = r.sieges * pos(h.vercelSiegeUsd) * kUsd;
+      r.github = r.sieges >= pos(h.githubSeuil) ? r.sieges * pos(h.githubSiegeUsd) * kUsd : 0;
+      r.infra = r.supa + r.vercel + r.github;
+      r.ia = pos(h.iaMensuelUsd) * Math.pow(1 + num(h.iaCroissanceAn) / 100, y) * kUsd;
       r.mkt = Math.max(pos(h.marketingPct) / 100 * r.ca, pos(h.marketingMin)) + (avec ? pos(h.marketingBoost) : 0);
       r.sal = sum(h.postes, (p) => actif(p, t) ? coutPoste(p, y) : 0);
       r.salAcq = sum(h.postes, (p) => p.acquisition && actif(p, t) ? coutPoste(p, y) : 0);
       r.effectif = sum(h.postes, (p) => actif(p, t) ? pos(p.nb) : 0);
       r.fixes = pos(h.fixesMensuels);
-      r.opex = r.directs + r.commissions + r.ia + r.mkt + r.sal + r.fixes;
+      r.opex = r.directs + r.commissions + r.ia + r.infra + r.mkt + r.sal + r.fixes;
       r.ebitda = r.ca - r.opex;
       r.recu = m[Math.max(0, t - delai)].ca;                                // encaissement décalé ; avant le mois 0 : régime établi
       let inflow = 0;
@@ -117,10 +129,10 @@
     for (let y = 0; y < ANNEES; y++) {
       const s = m.slice(y * 12, y * 12 + 12), f = (k) => sum(s, (x) => x[k]);
       const a = { an: y + 1, clients: f('clients'), lic: f('lic'), maint: f('maint'), serv: f('serv'), ca: f('ca'), directs: f('directs'), commissions: f('commissions'),
-        ia: f('ia'), mkt: f('mkt'), sal: f('sal'), fixes: f('fixes'), opex: f('opex'), ebitda: f('ebitda'), interet: f('interet'), princ: f('princ'), impot: f('impot'),
+        ia: f('ia'), infra: f('infra'), supa: f('supa'), vercel: f('vercel'), github: f('github'), mkt: f('mkt'), sal: f('sal'), fixes: f('fixes'), opex: f('opex'), ebitda: f('ebitda'), interet: f('interet'), princ: f('princ'), impot: f('impot'),
         flux: f('flux'), fExpl: f('fExpl'), fFin: f('fFin'), salAcq: f('salAcq'), tresoFin: s[11].treso };
       a.resultatNet = a.ebitda - a.interet - a.impot; a.margeEbitda = a.ca > 0 ? a.ebitda / a.ca : 0;
-      const L = s[11]; a.effectif = L.effectif; a.arr = L.maint * 12; a.creances = L.creances;
+      const L = s[11]; a.parcFin = L.parc; a.effectif = L.effectif; a.arr = L.maint * 12; a.creances = L.creances;
       a.bilan = { tresorerie: L.treso, creances: L.creances, actif: L.treso + L.creances, capitaux: L.cap, dette: L.detteFin, passif: L.cap + L.detteFin };
       annees.push(a);
     }
@@ -195,7 +207,7 @@
     const salFin = sum(s, (x) => sum(h.postes, (p) => p.finance && x.t >= num(p.debut) ? pos(p.nb) * pos(p.cout) * (1 + pos(h.chargesSocialesPct) / 100) * Math.pow(1 + num(h.augmentationSalairesPct) / 100, x.y) : 0));
     const lignes = [
       ['Salaires des embauches financées', salFin], ['Salaires de l\'équipe actuelle', f('sal') - salFin], ['Marketing et campagnes', f('mkt')],
-      ['Charges fixes', f('fixes')], ['Intelligence artificielle', f('ia')], ['Coûts directs et commissions', f('directs') + f('commissions')], ['Impôts', f('impot')]
+      ['Charges fixes', f('fixes')], ['Infrastructure technique (Supabase, Vercel, GitHub)', f('infra')], ['Intelligence artificielle (Anthropic)', f('ia')], ['Coûts directs et commissions', f('directs') + f('commissions')], ['Impôts', f('impot')]
     ].filter((l) => l[1] > 0.5);
     const depenses = sum(lignes, (l) => l[1]), recu = f('recu');
     return { mois: avec0.moisMin + 1, lignes, depenses, recu, tresoDepart: num(h.tresoDepart), besoin };
@@ -237,12 +249,13 @@
     const d = pos(h.directsPct) / 100, c = pos(h.commissionPct) / 100, ret = clamp(h.retentionPct, 0, 100) / 100, mp = pos(h.maintenancePct) / 100, sv = pos(h.servicesPct) / 100;
     return sim.annees.map((a, y) => {
       const prix = pos(h.prixLicence) * Math.pow(1 + num(h.hausseAn) / 100, y), n = a.clients;
-      const margeInit = prix * (1 - d - c) + prix * sv * (1 - d), mAn = prix * mp * (1 - d);
-      let ltv = margeInit; for (let k = 1; k < ANNEES; k++) ltv += mAn * Math.pow(ret, k);
+      const heberg = (h.projetParClient ? pos(h.supabaseProjetUsd) : 0) * 12 * pos(h.usdFcfa) * (1 + pos(h.fraisPaiementPct) / 100);   // hébergement annuel d'un client
+      const margeInit = prix * (1 - d - c) + prix * sv * (1 - d), mAn = prix * mp * (1 - d), mNet = mAn - heberg;
+      let ltv = margeInit; for (let k = 1; k < ANNEES; k++) ltv += mNet * Math.pow(ret, k);
       const cac = n > 0 ? (a.mkt + a.salAcq) / n : null, ltvCac = cac ? ltv / cac : null;
-      const retour = cac === null ? null : (margeInit >= cac ? 0 : (mAn > 0 ? (cac - margeInit) / (mAn / 12) : null));
-      return { an: a.an, clients: n, ca: a.ca, margeBrute: a.ca > 0 ? (a.ca - a.directs - a.commissions) / a.ca : 0, arr: a.arr, partRecurrente: a.ca > 0 ? a.maint / a.ca : 0,
-        margeInit, ltv, cac, ltvCac, retour, effectif: a.effectif, caParSalarie: a.effectif > 0 ? a.ca / a.effectif : null };
+      const retour = cac === null ? null : (margeInit >= cac ? 0 : (mNet > 0 ? (cac - margeInit) / (mNet / 12) : null));
+      return { an: a.an, clients: n, ca: a.ca, margeBrute: a.ca > 0 ? (a.ca - a.directs - a.commissions - a.infra) / a.ca : 0, arr: a.arr, partRecurrente: a.ca > 0 ? a.maint / a.ca : 0,
+        margeInit, maintenance: mAn, heberg, maintNette: mNet, ltv, cac, ltvCac, retour, effectif: a.effectif, caParSalarie: a.effectif > 0 ? a.ca / a.effectif : null };
     });
   }
 
@@ -269,6 +282,8 @@
     { id: 'marketing', cat: 'Coûts', lib: 'Calibrer les campagnes financées', test: '−50 % du budget de campagnes', f: (h) => ({ marketingBoost: h.marketingBoost * 0.5 }), arbitrer: true, note: 'Moins de campagnes peut ralentir la prospection : le modèle ne le compense pas.' },
     { id: 'fixes', cat: 'Coûts', lib: 'Réduire les charges fixes', test: '−10 % des charges fixes', f: (h) => ({ fixesMensuels: h.fixesMensuels * 0.9 }), note: 'Loyer, abonnements, déplacements : le gain est immédiat et sans effet sur les ventes.' },
     { id: 'directs', cat: 'Coûts', lib: 'Réduire les coûts directs', test: '−3 points du chiffre d\'affaires', f: (h) => ({ directsPct: Math.max(0, h.directsPct - 3) }), note: 'Hébergement, outils tiers : renégocier ou mutualiser.' },
+    { id: 'hebergement', cat: 'Coûts', lib: 'Regrouper les clients sur moins de projets Supabase', test: '−50 % du coût d\'hébergement par client', f: (h) => ({ supabaseProjetUsd: h.supabaseProjetUsd * 0.5 }), note: 'Un projet par client coûte 10 $ par mois chacun ; héberger plusieurs clients ensemble (multi-locataire) divise ce coût, au prix d\'un travail technique.' },
+    { id: 'ia', cat: 'Coûts', lib: 'Réduire la consommation d\'intelligence artificielle', test: '−40 % de la consommation Anthropic', f: (h) => ({ iaMensuelUsd: h.iaMensuelUsd * 0.6 }), arbitrer: true, note: 'Modèle moins cher pour les agents d\'exécution, cache des instructions, plafonds : la qualité des réponses est à surveiller.' },
     { id: 'delai', cat: 'Trésorerie', lib: 'Encaisser plus vite', test: '1 mois de délai en moins', f: (h) => ({ delaiEncaissement: Math.max(0, h.delaiEncaissement - 1) }), note: 'Acomptes à la commande, facturation à la livraison : agit sur la trésorerie, pas sur la rentabilité.' }
   ];
   const patcher = (h, l) => Object.assign({}, h, l.f(h));
@@ -339,7 +354,8 @@
     const T = analyserTraction(g(() => COMMANDES) || [], { liens: (ov && ov.liens) || {} }), B = ov && ov.baseRetraitee ? T.retraite : T.tous;
     let pond = 0, brut = 0;
     if (P) { const p = P.pipeline(deals, nowKey); Object.keys(p).forEach((k) => { pond += p[k].pondere; brut += p[k].brut; }); }
-    return { traction: T, caTotal: B.factureHT, ca12m: B.ht12, commandes12m: B.n12, commandesTotal: B.commandes, prixMoyen: B.prixMoyen,
+    const taux = g(() => G.SanixPilotage.store.usdFcfa()) || 0;
+    return { traction: T, clientsFactures: T.tous.clients, usdFcfa: taux, caTotal: B.factureHT, ca12m: B.ht12, commandes12m: B.n12, commandesTotal: B.commandes, prixMoyen: B.prixMoyen,
       pipelinePondere: pond, pipelineBrut: brut, prospects: cl.filter((c) => c && c.statut === 'prospect').length, clients: cl.filter((c) => c && c.statut === 'client').length,
       produits: (g(() => LOGICIELS) || []).filter((l) => l && l.actif !== false).length,
       commissionDefaut: num(g(() => CONFIG.commissionDefaut)), societe: g(() => CONFIG.raisonSociale) || 'SANIX', devise: g(() => CONFIG.devise) || 'FCFA' };
@@ -434,12 +450,13 @@
     const an = (k, lab) => [0, 1, 2, 3].map((i) => field(lab + ' — année ' + (i + 2) + ' (%)', k + '.' + i, h[k][i])).join('');
     const poste = (p) => `<tr><td><input class="form-input" data-p="${esc(p.id)}" data-f="nom" value="${esc(p.nom)}"></td><td><input class="form-input" type="number" min="0" style="width:64px" data-p="${esc(p.id)}" data-f="nb" value="${num(p.nb)}"></td>
       <td><input class="form-input" type="number" min="0" style="width:110px" data-p="${esc(p.id)}" data-f="cout" value="${num(p.cout)}"></td><td><input class="form-input" type="number" min="0" max="59" style="width:64px" data-p="${esc(p.id)}" data-f="debut" value="${num(p.debut)}"></td>
-      <td style="text-align:center"><input type="checkbox" data-p="${esc(p.id)}" data-f="finance" ${p.finance ? 'checked' : ''}></td><td style="text-align:center"><input type="checkbox" data-p="${esc(p.id)}" data-f="acquisition" ${p.acquisition ? 'checked' : ''}></td><td><button class="btn btn-outline btn-sm" data-act="poste-del" data-id="${esc(p.id)}" aria-label="Supprimer ce poste">🗑</button></td></tr>`;
+      <td style="text-align:center"><input type="checkbox" data-p="${esc(p.id)}" data-f="finance" ${p.finance ? 'checked' : ''}></td><td style="text-align:center"><input type="checkbox" data-p="${esc(p.id)}" data-f="acquisition" ${p.acquisition ? 'checked' : ''}></td><td style="text-align:center"><input type="checkbox" data-p="${esc(p.id)}" data-f="tech" ${p.tech ? 'checked' : ''}></td><td><button class="btn btn-outline btn-sm" data-act="poste-del" data-id="${esc(p.id)}" aria-label="Supprimer ce poste">🗑</button></td></tr>`;
     return `<div class="alert alert-warn" role="note">⚠️ Les valeurs initiales sont <b>indicatives</b> : seuls le nombre de clients, le prix moyen, la base installée et la commission viennent du CRM. Vérifiez chaque hypothèse avant de remettre le dossier à un financeur.</div>
       ${bloc('📊 Point de départ (lu dans le CRM)', `<div class="stats-grid" style="margin:0">${stat('CA HT réalisé, 12 mois', fmtM(c.ca12m), c.commandes12m + ' commandes', 'blue')}${stat('CA HT cumulé', fmtM(c.caTotal), c.commandesTotal + ' commandes', 'green')}${stat('Pipeline pondéré', fmtM(c.pipelinePondere), 'Brut : ' + fmtM(c.pipelineBrut), 'orange')}${stat('Clients actifs', c.clients, c.produits + ' produits au catalogue', 'purple')}</div>`)}
       ${bloc('🚀 Ventes', grid(field('Nouveaux clients, année 1', 'clientsAn1', h.clientsAn1) + field('Prix moyen HT par licence', 'prixLicence', h.prixLicence) + field('Hausse annuelle des prix (%)', 'hausseAn', h.hausseAn) + field('Maintenance (% de la base installée / an)', 'maintenancePct', h.maintenancePct) + field('Rétention des clients (% / an)', 'retentionPct', h.retentionPct) + field('Services : installation, formation (% des licences)', 'servicesPct', h.servicesPct) + field('Base installée (CA HT déjà vendu)', 'baseInstallee', h.baseInstallee) + field('Délai d\'encaissement (mois)', 'delaiEncaissement', h.delaiEncaissement, { min: 0 })) + '<h4 style="margin:14px 0 8px;font-size:13px">Croissance du nombre de nouveaux clients — avec financement</h4>' + grid(an('croiss', 'Croissance')) + '<h4 style="margin:14px 0 8px;font-size:13px">Sans financement (l\'activité actuelle, limitée par les moyens)</h4>' + grid(an('croissSans', 'Croissance')))}
-      ${bloc('💸 Coûts', grid(field('Coûts directs (% du CA) : hébergement, outils', 'directsPct', h.directsPct) + field('Commissions (% des licences)', 'commissionPct', h.commissionPct) + field('Intelligence artificielle (par mois)', 'iaMensuel', h.iaMensuel) + field('Marketing (% du CA)', 'marketingPct', h.marketingPct) + field('Marketing minimum (par mois)', 'marketingMin', h.marketingMin) + field('Campagnes financées (par mois)', 'marketingBoost', h.marketingBoost) + field('Charges fixes (par mois)', 'fixesMensuels', h.fixesMensuels) + field('Charges sociales (%)', 'chargesSocialesPct', h.chargesSocialesPct) + field('Augmentation annuelle des salaires (%)', 'augmentationSalairesPct', h.augmentationSalairesPct) + field('Impôt sur les sociétés (%)', 'impotPct', h.impotPct) + field('Trésorerie actuelle', 'tresoDepart', h.tresoDepart)))}
-      ${bloc('👥 Équipe', note('Coût mensuel brut par personne. « Financé » : poste créé grâce au financement (absent du scénario sans financement). « Début » : mois de prise de poste (0 = déjà en place). « Acquisition » : poste commercial ou marketing, compté dans le coût d\'acquisition d\'un client.') + `<div style="overflow-x:auto"><table class="client-table" style="min-width:560px"><thead><tr><th>Poste</th><th>Nombre</th><th>Coût mensuel</th><th>Début (mois)</th><th>Financé</th><th title="Compte dans le coût d'acquisition d'un client">Acquisition</th><th></th></tr></thead><tbody>${h.postes.map(poste).join('')}</tbody></table></div><button class="btn btn-outline btn-sm" data-act="poste-add" style="margin-top:10px">+ Ajouter un poste</button>`)}
+      ${bloc('💸 Coûts', grid(field('Autres coûts directs (% du CA) : outils tiers, paiement', 'directsPct', h.directsPct) + field('Commissions (% des licences)', 'commissionPct', h.commissionPct) + field('Marketing (% du CA)', 'marketingPct', h.marketingPct) + field('Marketing minimum (par mois)', 'marketingMin', h.marketingMin) + field('Campagnes financées (par mois)', 'marketingBoost', h.marketingBoost) + field('Charges fixes (par mois)', 'fixesMensuels', h.fixesMensuels) + field('Charges sociales (%)', 'chargesSocialesPct', h.chargesSocialesPct) + field('Augmentation annuelle des salaires (%)', 'augmentationSalairesPct', h.augmentationSalairesPct) + field('Impôt sur les sociétés (%)', 'impotPct', h.impotPct) + field('Trésorerie actuelle', 'tresoDepart', h.tresoDepart)))}
+      ${bloc('☁️ Infrastructure technique et intelligence artificielle', note('Tarifs publics en dollars (consultés le 16/11/2026), convertis en FCFA avec le taux et les frais ci-dessous. Supabase : abonnement Pro avec le 1er projet, puis un tarif par projet supplémentaire. Vercel et GitHub : par poste technique.') + grid(field('Taux : 1 dollar en FCFA', 'usdFcfa', h.usdFcfa, { min: 0 }) + field('Frais de change et de carte (%)', 'fraisPaiementPct', h.fraisPaiementPct, { min: 0 }) + field('Supabase Pro : abonnement ($/mois)', 'supabaseFixeUsd', h.supabaseFixeUsd, { min: 0 }) + field('Supabase : par projet supplémentaire ($/mois)', 'supabaseProjetUsd', h.supabaseProjetUsd, { min: 0 }) + field('Projets internes (CRM, IA…)', 'projetsBase', h.projetsBase, { min: 0 }) + field('Clients déjà hébergés', 'clientsDepart', h.clientsDepart, { min: 0, hint: base.clientsFactures ? '(CRM : ' + base.clientsFactures + ')' : '' }) + field('Vercel Pro : par poste technique ($/mois)', 'vercelSiegeUsd', h.vercelSiegeUsd, { min: 0 }) + field('GitHub Team : par poste ($/mois)', 'githubSiegeUsd', h.githubSiegeUsd, { min: 0 }) + field('GitHub Team à partir de … postes', 'githubSeuil', h.githubSeuil, { min: 1 }) + field('Anthropic : consommation des agents ($/mois)', 'iaMensuelUsd', h.iaMensuelUsd, { min: 0 }) + field('Anthropic : hausse par an (%)', 'iaCroissanceAn', h.iaCroissanceAn, { min: 0 })) + `<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;font-size:13px;margin-top:12px"><input type="checkbox" data-k="projetParClient" ${h.projetParClient ? 'checked' : ''} style="margin-top:3px"><span><b>Un projet Supabase par client</b> (votre organisation actuelle fonctionne ainsi). Décochez si vous prévoyez d'héberger plusieurs clients ensemble : le coût d'hébergement ne grandit alors plus avec chaque client.</span></label>`)}
+      ${bloc('👥 Équipe', note('Coût mensuel brut par personne. « Financé » : poste créé grâce au financement (absent du scénario sans financement). « Début » : mois de prise de poste (0 = déjà en place). « Acquisition » : poste commercial ou marketing, compté dans le coût d\'acquisition d\'un client. « Technique » : poste qui utilise Vercel et GitHub (vous comptez déjà pour un poste).') + `<div style="overflow-x:auto"><table class="client-table" style="min-width:560px"><thead><tr><th>Poste</th><th>Nombre</th><th>Coût mensuel</th><th>Début (mois)</th><th>Financé</th><th title="Compte dans le coût d'acquisition d'un client">Acquisition</th><th title="Poste technique : compte pour Vercel et GitHub">Technique</th><th></th></tr></thead><tbody>${h.postes.map(poste).join('')}</tbody></table></div><button class="btn btn-outline btn-sm" data-act="poste-add" style="margin-top:10px">+ Ajouter un poste</button>`)}
       ${bloc('🧾 Capital actuel', note('Répartition du capital avant l\'apport, en %. Sert au tour de table : dilution des associés après l\'entrée d\'un investisseur.') + `<div style="overflow-x:auto"><table class="client-table" style="min-width:420px"><thead><tr><th>Associé</th><th>Part (%)</th><th></th></tr></thead><tbody>${h.associes.map((x) => `<tr><td><input class="form-input" data-a="${esc(x.id)}" data-f="nom" value="${esc(x.nom)}"></td><td><input class="form-input" type="number" min="0" max="100" style="width:90px" data-a="${esc(x.id)}" data-f="part" value="${num(x.part)}"></td><td><button class="btn btn-outline btn-sm" data-act="associe-del" data-id="${esc(x.id)}" aria-label="Supprimer cet associé">🗑</button></td></tr>`).join('')}</tbody></table></div><button class="btn btn-outline btn-sm" data-act="associe-add" style="margin:10px 0 12px">+ Ajouter un associé</button>` + grid(field('Pool d\'intéressement après l\'apport (% du capital)', 'esopPct', h.esopPct, { min: 0 })))}
       ${bloc('🏦 Conditions de financement', grid(field('Valorisation avant apport (vide = automatique)', 'preMoney', ov.preMoney, { min: 0 }) + field('Multiple d\'entrée (× CA année 1)', 'multEntree', h.multEntree) + field('Multiple de sortie (× CA année 5)', 'multSortie', h.multSortie) + field('Taux du prêt (% / an)', 'taux', h.taux) + field('Durée du prêt (mois)', 'dureeMois', h.dureeMois, { min: 1 }) + field('Différé de remboursement (mois)', 'differeMois', h.differeMois, { min: 0 })))}
       <button class="btn btn-outline btn-sm" data-act="reset">↺ Revenir aux valeurs initiales</button>`;
@@ -486,7 +503,9 @@
     const rowI = (lib, f, bold) => `<tr style="${bold ? 'font-weight:700' : ''}"><td>${lib}</td>${U.map((u) => `<td style="text-align:right;white-space:nowrap">${f(u)}</td>`).join('')}</tr>`;
     const lc = (u) => u.ltvCac == null ? '–' : `<span style="color:var(--${u.ltvCac >= 3 ? 'success' : u.ltvCac >= 1 ? 'warning' : 'danger'})">${u.ltvCac.toFixed(1)} ×</span>`;
     const rt = (u) => u.retour == null ? '–' : u.retour === 0 ? '<span style="color:var(--success)">immédiat</span>' : `<span style="color:var(--${u.retour <= 12 ? 'success' : u.retour <= 24 ? 'warning' : 'danger'})">${Math.round(u.retour)} mois</span>`;
+    const A5 = res.avec0.annees, cT = (lib, k, bold) => `<tr style="${bold ? 'font-weight:700' : ''}"><td>${lib}</td>${A5.map((a) => `<td style="text-align:right;white-space:nowrap">${fmt(k === 'tech' ? a.infra + a.ia : a[k])}</td>`).join('')}</tr>`;
     const u5 = U[ANNEES - 1], u1 = U[0], lect = [];
+    if (u1.heberg > 0 && u1.maintenance > 0 && u1.heberg > 0.4 * u1.maintenance) lect.push(`L'hébergement d'un client coûte <b>${fmt(u1.heberg)} ${esc(base.devise)} par an</b>, soit <b>${pct(u1.heberg / u1.maintenance)}</b> de la maintenance qu'il paie (${fmt(u1.maintenance)}). Un projet Supabase par client est le principal poste qui grandit avec votre clientèle : regrouper les clients le réduirait.`);
     if (u1.ltvCac != null && u1.ltvCac < 3) lect.push(`Valeur d'un client / coût d'acquisition de <b>${u1.ltvCac.toFixed(1)} ×</b> la 1re année : en dessous du repère de 3 ×, chaque client rapporte peu au regard de ce qu'il coûte à conquérir.`);
     if (u5.partRecurrente < 0.3) lect.push(`Le revenu récurrent ne pèse que <b>${pct(u5.partRecurrente)}</b> du chiffre d'affaires à l'année 5 : les financeurs valorisent surtout le récurrent.`);
     if (u1.retour != null && u1.retour > 12) lect.push(`Délai de retour sur le coût d'acquisition de <b>${Math.round(u1.retour)} mois</b> : au-delà de 12 mois, la croissance consomme beaucoup de trésorerie.`);
@@ -495,6 +514,10 @@
       <div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">📐 Indicateurs par année</span></div><div style="overflow-x:auto"><table class="client-table" style="min-width:560px"><thead><tr><th></th>${U.map((u) => `<th style="text-align:right">An ${u.an}</th>`).join('')}</tr></thead><tbody>
       ${rowI('Nouveaux clients', (u) => u.clients.toLocaleString('fr-FR', { maximumFractionDigits: 1 }))}${rowI('Chiffre d\'affaires', (u) => fmtM(u.ca), true)}${rowI('Marge brute', (u) => pct(u.margeBrute))}${rowI('Revenu récurrent annualisé', (u) => fmtM(u.arr))}${rowI('Part du revenu récurrent', (u) => pct(u.partRecurrente))}
       ${rowI('Coût d\'acquisition d\'un client', (u) => u.cac == null ? '–' : fmt(u.cac))}${rowI('Valeur d\'un client sur 5 ans', (u) => fmt(u.ltv))}${rowI('Valeur client / coût d\'acquisition', lc, true)}${rowI('Délai de retour', rt, true)}${rowI('Effectif', (u) => u.effectif.toLocaleString('fr-FR', { maximumFractionDigits: 1 }))}${rowI('CA par salarié', (u) => u.caParSalarie == null ? '–' : fmtM(u.caParSalarie))}</tbody></table></div></div>
+      <div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">☁️ Coûts techniques par année</span><span class="badge badge-muted">${esc(base.devise)} · 1 $ = ${fmt(h.usdFcfa)}</span></div><div style="overflow-x:auto"><table class="client-table" style="min-width:560px"><thead><tr><th></th>${U.map((u) => `<th style="text-align:right">An ${u.an}</th>`).join('')}</tr></thead><tbody>
+      ${cT('Supabase (bases de données)', 'supa')}${cT('Vercel (hébergement des applications)', 'vercel')}${cT('GitHub (code)', 'github')}${cT('Anthropic (intelligence artificielle)', 'ia')}${cT('Total technique', 'tech', true)}
+      <tr><td>Part du chiffre d'affaires</td>${A5.map((a) => `<td style="text-align:right">${a.ca > 0 ? pct((a.infra + a.ia) / a.ca) : '–'}</td>`).join('')}</tr><tr><td>Clients hébergés en fin d'année</td>${A5.map((a) => `<td style="text-align:right">${a.parcFin.toLocaleString('fr-FR', { maximumFractionDigits: 0 })}</td>`).join('')}</tr>
+      <tr><td>Hébergement d'un client, par an</td>${U.map((u) => `<td style="text-align:right">${fmt(u.heberg)}</td>`).join('')}</tr><tr><td>Maintenance facturée à un client, par an</td>${U.map((u) => `<td style="text-align:right">${fmt(u.maintenance)}</td>`).join('')}</tr></tbody></table></div></div>
       <div class="card"><div class="card-header"><span class="card-title">🔎 Lecture</span></div><ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.8">${lect.map((l) => '<li>' + l + '</li>').join('')}</ul>
       ${note('Coût d\'acquisition = marketing + salaires des postes cochés « Acquisition » (onglet Hypothèses), divisés par les nouveaux clients ; les commissions sont déjà déduites de la marge. Valeur d\'un client = marge de la 1re vente + maintenance des 4 années suivantes avec la rétention choisie.')}</div>`;
   }
@@ -506,7 +529,7 @@
     const clients = ['Nouveaux clients', (x) => x.clients.toLocaleString('fr-FR', { maximumFractionDigits: 1 }), false, true];
     const tab = (titre, A, cols) => `<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">${titre}</span></div><div style="overflow-x:auto"><table class="client-table" style="min-width:560px"><thead><tr><th></th>${A.map((x) => `<th style="text-align:right">An ${x.an}</th>`).join('')}</tr></thead><tbody>${cols.map((c) => `<tr style="${c[2] ? 'font-weight:700' : ''}"><td>${c[0]}</td>${A.map((x) => `<td style="text-align:right">${c[3] ? c[1](x) : fmt(c[1](x) / 1e3)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
     return note('Montants en milliers de ' + esc(base.devise) + '. États financiers simplifiés du plan financé (mix).')
-      + tab('📈 Compte de résultat', m, [clients, L('Licences', 'lic'), L('Maintenance', 'maint'), L('Services', 'serv'), L('Chiffre d\'affaires', 'ca', true), neg('Coûts directs et commissions', 'directs'), neg('Salaires', 'sal'), neg('Marketing', 'mkt'), neg('Fixes et IA', 'fixes'), L('EBITDA', 'ebitda', true), neg('Intérêts', 'interet'), neg('Impôts', 'impot'), L('Résultat net', 'resultatNet', true)])
+      + tab('📈 Compte de résultat', m, [clients, L('Licences', 'lic'), L('Maintenance', 'maint'), L('Services', 'serv'), L('Chiffre d\'affaires', 'ca', true), neg('Coûts directs et commissions', 'directs'), neg('Salaires', 'sal'), neg('Marketing', 'mkt'), neg('Charges fixes', 'fixes'), neg('Infrastructure technique', 'infra'), neg('Intelligence artificielle (Anthropic)', 'ia'), L('EBITDA', 'ebitda', true), neg('Intérêts', 'interet'), neg('Impôts', 'impot'), L('Résultat net', 'resultatNet', true)])
       + tab('💧 Flux de trésorerie', m, [L('Flux d\'exploitation', 'fExpl'), L('Flux de financement (apports, intérêts, remboursements)', 'fFin'), L('Variation de trésorerie', 'flux', true), L('Trésorerie en fin d\'année', 'tresoFin', true)])
       + tab('🏛️ Bilan simplifié', m, [B('Trésorerie', 'tresorerie'), B('Créances clients (besoin en fonds de roulement)', 'creances'), B('Total actif', 'actif', true), B('Capitaux propres', 'capitaux'), B('Dettes financières', 'dette'), B('Total passif', 'passif', true), [ 'Écart actif − passif (doit être nul)', (x) => x.bilan.actif - x.bilan.passif ]])
       + note('Bilan simplifié : à l\'ouverture, la société n\'a que de la trésorerie et des créances clients ; pas d\'immobilisations, de stocks ni de dettes fournisseurs. À remplacer par votre bilan réel (module Comptabilité) avant de présenter le dossier.')
@@ -530,6 +553,7 @@
     ['Revenu récurrent', 'Revenu qui revient chaque année sans nouvelle vente (maintenance, abonnement). Les financeurs le valorisent bien plus que les ventes ponctuelles.'],
     ['Coût d\'acquisition', 'Ce que coûte la conquête d\'un nouveau client : marketing et équipe d\'acquisition, divisés par le nombre de nouveaux clients.'],
     ['Valeur d\'un client', 'Marge qu\'un client rapporte sur 5 ans : marge de sa 1re vente plus maintenance des années suivantes. Un rapport valeur / coût d\'au moins 3 est un repère usuel.'],
+    ['Infrastructure technique', 'Supabase (bases de données, un projet par client chez vous), Vercel (hébergement des applications) et GitHub (code), facturés en dollars. Convertis en FCFA avec le taux de change et des frais de paiement. L\'intelligence artificielle (Anthropic) est comptée à part.'],
     ['Partie liée', 'Client qui appartient à la société, à ses dirigeants ou à leurs proches. Les financeurs demandent de l\'isoler : ce chiffre d\'affaires est moins probant.']
   ];
   const LIMITES = ['Les valeurs initiales sont des exemples : seuls le nombre de clients, le prix moyen, la base installée et la commission viennent du CRM.', 'La croissance des ventes est une hypothèse : le modèle ne la relie pas automatiquement aux recrutements ou aux campagnes.',
@@ -578,7 +602,7 @@
   /* — exports — */
   function csv() {
     const q = (v) => '"' + String(v).replace(/"/g, '""') + '"', R = (a) => a.map((v) => typeof v === 'number' ? String(Math.round(v)).replace('.', ',') : q(v)).join(';');
-    const keys = [['Nouveaux clients', 'clients'], ['Licences', 'lic'], ['Maintenance', 'maint'], ['Services', 'serv'], ['CA', 'ca'], ['Couts directs', 'directs'], ['Commissions', 'commissions'], ['IA', 'ia'], ['Marketing', 'mkt'], ['Salaires', 'sal'], ['Charges fixes', 'fixes'], ['EBITDA', 'ebitda'], ['Interets', 'interet'], ['Remboursement capital', 'princ'], ['Impots', 'impot'], ['Resultat net', 'resultatNet'], ['Flux de tresorerie', 'flux'], ['Tresorerie fin annee', 'tresoFin']];
+    const keys = [['Nouveaux clients', 'clients'], ['Licences', 'lic'], ['Maintenance', 'maint'], ['Services', 'serv'], ['CA', 'ca'], ['Couts directs', 'directs'], ['Commissions', 'commissions'], ['IA', 'ia'], ['Infrastructure technique', 'infra'], ['Marketing', 'mkt'], ['Salaires', 'sal'], ['Charges fixes', 'fixes'], ['EBITDA', 'ebitda'], ['Interets', 'interet'], ['Remboursement capital', 'princ'], ['Impots', 'impot'], ['Resultat net', 'resultatNet'], ['Flux de tresorerie', 'flux'], ['Tresorerie fin annee', 'tresoFin']];
     const L = [];
     if (!h.valide) { L.push(R(['DOCUMENT DE TRAVAIL : hypotheses indicatives non validees, ne pas diffuser'])); L.push(''); }
     const bloc = (titre, A) => { L.push(R([titre])); L.push(R(['Poste'].concat(A.map((x) => 'An ' + x.an)))); keys.forEach((k) => L.push(R([k[0]].concat(A.map((x) => x[k[1]] == null ? 0 : x[k[1]]))))); L.push(''); };
@@ -613,6 +637,7 @@
       <p style="font-size:11px;color:#6b7390">Bilan simplifié : ouverture réduite à la trésorerie et aux créances clients, sans immobilisations ni stocks. Plan financé selon le mix choisi.</p>
       <p>Sans financement, le chiffre d'affaires de l'année 5 serait de ${fmtM(r.sans.annees[ANNEES - 1].ca)} ${esc(d)}, contre ${fmtM(a[ANNEES - 1].ca)} ${esc(d)} avec le plan de croissance.</p>
       <h2>5. Indicateurs et économie unitaire</h2><table><thead><tr><th></th>${U.map((u) => `<th style="text-align:right">An ${u.an}</th>`).join('')}</tr></thead><tbody>${ui2('Nouveaux clients', (u) => u.clients.toLocaleString('fr-FR', { maximumFractionDigits: 1 }))}${ui2('Marge brute', (u) => pct(u.margeBrute))}${ui2('Revenu récurrent annualisé', (u) => fmtM(u.arr))}${ui2('Part du revenu récurrent', (u) => pct(u.partRecurrente))}${ui2('Coût d\'acquisition d\'un client', (u) => u.cac == null ? '–' : fmt(u.cac))}${ui2('Valeur d\'un client sur 5 ans', (u) => fmt(u.ltv))}${ui2('Valeur client / coût d\'acquisition', (u) => u.ltvCac == null ? '–' : u.ltvCac.toFixed(1) + ' ×')}${ui2('Délai de retour', (u) => u.retour == null ? '–' : u.retour === 0 ? 'immédiat' : Math.round(u.retour) + ' mois')}${ui2('CA par salarié', (u) => u.caParSalarie == null ? '–' : fmtM(u.caParSalarie))}</tbody></table>
+      <p><b>Coûts techniques</b> (${esc(d)}, tarifs publics en dollars au taux de ${fmt(h.usdFcfa)}) :</p><table><thead><tr><th></th>${U.map((u) => `<th style="text-align:right">An ${u.an}</th>`).join('')}</tr></thead><tbody>${[['Supabase', 'supa'], ['Vercel', 'vercel'], ['GitHub', 'github'], ['Anthropic (intelligence artificielle)', 'ia']].map((x) => `<tr><td>${x[0]}</td>${r.avec0.annees.map((a) => `<td style="text-align:right">${fmt(a[x[1]])}</td>`).join('')}</tr>`).join('')}<tr><td><b>Total</b></td>${r.avec0.annees.map((a) => `<td style="text-align:right"><b>${fmt(a.infra + a.ia)}</b></td>`).join('')}</tr></tbody></table>
       <h2>6. Options de financement</h2><table><thead><tr><th>Option</th><th style="text-align:right">Montant</th><th style="text-align:right">Part cédée</th><th style="text-align:right">Multiple investisseur</th><th style="text-align:right">Capacité de remboursement</th><th>Points d'attention</th></tr></thead><tbody>${r.options.map(opt).join('')}</tbody></table>
       <h2>7. Tour de table</h2>${tourHtml('')}
       <h2>8. Hypothèses principales</h2><ul><li>Scénario de croissance « ${esc(SCEN_LABEL[h.scenario] || 'personnalisé')} » : nouveaux clients +${h.croiss.join(' %, +')} % par an (année 1 : ${fmt(h.clientsAn1)} clients).</li><li>Prix moyen d'une licence : ${fmt(h.prixLicence)} ${esc(d)} HT (hausse de ${h.hausseAn} % par an) ; maintenance ${h.maintenancePct} % de la base installée ; services ${h.servicesPct} % des licences.</li><li>Équipe : ${h.postes.filter((p) => p.finance).map((p) => `${p.nb} ${esc(p.nom)}`).join(', ') || 'aucune embauche'} financé(s) par l'apport.</li><li>Sortie investisseur supposée à l'année 5 à ${h.multSortie} × le chiffre d'affaires.</li>${h.baseRetraitee ? '<li>Base de départ calculée hors clients liés à la société.</li>' : ''}</ul>

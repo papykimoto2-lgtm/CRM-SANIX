@@ -86,9 +86,13 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.click('[data-tab="indic"]'); await page.waitForTimeout(250);
     const ind = await page.locator("#fin-body").innerText();
     ok(ind.includes("Valeur client / coût d'acquisition") && ind.includes("Délai de retour") && ind.includes("Revenu récurrent annualisé") && ind.includes("CA par salarié"), "onglet Indicateurs : économie unitaire");
-    ok(await page.locator("#fin-body thead th").count() === 6, "cinq années + libellé");
+    ok(await page.locator("#fin-body thead th").count() === 12, "deux tableaux de cinq années + libellé");
+    ok(ind.includes("Coûts techniques par année") && ind.includes("Supabase") && ind.includes("Vercel") && ind.includes("GitHub") && ind.includes("Anthropic") && ind.includes("Hébergement d'un client"), "coûts techniques : quatre services, hébergement par client");
     await page.click('[data-tab="hyp"]'); await page.waitForTimeout(200);
-    ok(await page.locator('[data-a][data-f="part"]').count() === 1 && await page.locator('[data-p][data-f="acquisition"]').count() === 5, "Hypothèses : capital actuel et case « Acquisition » par poste");
+    ok(await page.locator('[data-a][data-f="part"]').count() === 1 && await page.locator('[data-p][data-f="acquisition"]').count() === 5 && await page.locator('[data-p][data-f="tech"]').count() === 5, "Hypothèses : capital actuel et cases « Acquisition » et « Technique » par poste");
+    ok(await page.locator('[data-k="supabaseProjetUsd"]').count() === 1 && await page.locator('[data-k="usdFcfa"]').count() === 1 && await page.locator('[data-k="iaMensuelUsd"]').count() === 1 && await page.locator('[data-k="projetParClient"]').count() === 1, "Hypothèses : bloc infrastructure technique et IA");
+    await page.locator('[data-k="usdFcfa"]').fill("500"); await page.locator('[data-k="usdFcfa"]').blur(); await page.waitForTimeout(250);
+    ok(await page.evaluate(() => JSON.parse(localStorage.getItem("sanix_crm_fin_config")).usdFcfa === 500), "taux de change modifiable et enregistré");
     await page.click('[data-act="associe-add"]'); await page.waitForTimeout(200);
     ok(await page.locator('[data-a][data-f="part"]').count() === 2, "ajout d'un associé");
     await page.locator('[data-a][data-f="nom"]').nth(1).fill("Associé B"); await page.locator('[data-a][data-f="nom"]').nth(1).blur();
@@ -106,7 +110,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.click('[data-tab="opti"]'); await page.waitForTimeout(300);
     ok(await page.locator("#fin-body .alert-danger").count() === 1, "optimisations : verdict « non rentable » avec les valeurs d'exemple");
     ok((await page.locator("#fin-body").innerText()).includes("Seuils d'équilibre"), "seuils d'équilibre affichés");
-    ok(await page.locator('[data-act="levier"]').count() === 11, "onze leviers testés");
+    ok(await page.locator('[data-act="levier"]').count() === 13, "treize leviers testés");
     ok(await page.locator("#fin-body .badge-warning", { hasText: "à arbitrer" }).count() >= 3, "leviers « à arbitrer » signalés");
     const clientsAvant = await page.evaluate(() => (JSON.parse(localStorage.getItem("sanix_crm_fin_config") || "{}").clientsAn1));
     await page.locator('[data-act="levier"][data-id="clients"]').click(); await page.waitForTimeout(300);
