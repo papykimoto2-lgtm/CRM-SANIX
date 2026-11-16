@@ -10,6 +10,7 @@ let fails = 0; const ok = (c, m) => { console.log((c ? "OK  " : "ÉCHEC ") + m);
   let promptVal = "";  page.on("dialog", (d) => d.type() === "prompt" ? d.accept(promptVal) : d.dismiss());
   await page.goto("http://localhost:4421/index.html"); await page.waitForTimeout(800);
   await page.evaluate(() => { currentUser = USERS.find((u) => u.role === "super_admin"); enterApp(currentUser); }); await page.waitForTimeout(1500);
+  await page.waitForFunction(() => CLIENTS.filter(c => c.statut === "prospect").length >= 500, null, { timeout: 15000 });   // les données de départ sont chargées de façon différée
   await page.evaluate(() => navigate("qualification", null)); await page.waitForTimeout(700);
   const kp = () => page.evaluate(() => document.getElementById("ql-kpis").innerText.replace(/\s+/g, " "));
   console.log(await kp());
