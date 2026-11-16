@@ -2938,6 +2938,37 @@ Seriez-vous disponible pour une démonstration {rdv} ?
       </div>
     </div>
 
+    <div id="view-qualification" class="hidden fade-in">
+      <h1 class="page-title">✅ Qualification des prospects</h1>
+      <p class="page-sub">Dites où en est chaque prospect : un clic le fait avancer dans le pipeline. Un montant ne compte qu'à partir du devis.</p>
+      <div class="stats-grid" id="ql-kpis" style="margin-bottom:14px"></div>
+      <div class="card" style="padding:12px 14px;margin-bottom:12px">
+        <div class="flex gap-2" style="flex-wrap:wrap;align-items:center">
+          <input id="ql-q" type="search" placeholder="Nom, téléphone, adresse…" oninput="qlRender()" style="flex:1;min-width:180px">
+          <select id="ql-etape" onchange="qlRender()" title="Étape">
+            <option value="new">À qualifier (jamais contactés)</option><option value="all">Toutes les étapes</option>
+            <option value="1">📞 Contactés</option><option value="2">🎬 Démo faite</option><option value="3">📄 Devis envoyé</option><option value="4">🤝 Négociation</option><option value="perdu">❌ Perdus</option>
+          </select>
+          <select id="ql-sect" onchange="qlRender()" title="Secteur"></select>
+          <select id="ql-log" onchange="qlRender()" title="Logiciel"></select>
+          <select id="ql-com" onchange="qlRender()" title="Commercial"></select>
+          <select id="ql-tri" onchange="qlRender()" title="Tri">
+            <option value="complet">Fiches les plus complètes d'abord</option><option value="nom">Nom A → Z</option><option value="secteur">Secteur</option>
+          </select>
+        </div>
+        <div id="ql-bulk" class="flex gap-2" style="flex-wrap:wrap;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <button class="btn btn-outline btn-sm" onclick="qlCheckPage()">☑️ Cocher la page</button>
+          <span id="ql-nsel" style="font-size:12px;color:var(--muted)">0 coché</span>
+          <button class="btn btn-outline btn-sm" onclick="qlBulkEtape(1)">📞 Marquer contactés</button>
+          <button class="btn btn-outline btn-sm" onclick="qlBulkEtape(2)">🎬 Marquer démo faite</button>
+          <select id="ql-bulk-com"></select>
+          <button class="btn btn-outline btn-sm" onclick="qlBulkCom()">👤 Attribuer aux cochés</button>
+          <span id="ql-count" style="margin-left:auto;font-size:12px;color:var(--muted)"></span>
+        </div>
+      </div>
+      <div id="ql-list" data-paginate="pages" data-pg-size="25" data-pg-sizes="10,25,50,100"></div>
+    </div>
+
     <div id="view-comptabilite" class="hidden fade-in">
       <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:8px;margin-bottom:6px">
         <div>
@@ -5354,7 +5385,7 @@ const NAV_GROUPS = {
   accueil:   {views:[['dashboard','🏠 Tableau de bord'],['agenda','📅 Agenda du jour']], badges:['sb-agenda-badge']},
   trouver:   {views:[['clients','👤 Clients & Prospects'],['carte','🗺️ Carte'],['rapports','📋 Rapports terrain'],['journal','📝 Journal & PV']], badges:['sb-prospects-badge','sb-rapports-badge']},
   convaincre:{views:[['marketing','🎯 Moteur Marketing'],['messagerie','💬 Messagerie'],['logiciels','💻 Catalogue'],['presentations','🎬 Démos']], badges:['sb-pres-badge']},
-  ventes:    {views:[['pipeline','🎯 Pipeline'],['conversion','🚀 Relances prioritaires'],['commandes','🛒 Commandes'],['contrats','📝 Contrats']], badges:['sb-conv-badge','sb-cmd-badge','sb-contrat-badge']},
+  ventes:    {views:[['pipeline','🎯 Pipeline'],['qualification','✅ Qualification'],['conversion','🚀 Relances prioritaires'],['commandes','🛒 Commandes'],['contrats','📝 Contrats']], badges:['sb-conv-badge','sb-cmd-badge','sb-contrat-badge']},
   livraison: {views:[['licences','🔑 Licences'],['planning','📅 Planning déploiement']], badges:['sb-lic-badge']},
   finance:   {views:[['comptabilite','📒 Comptabilité'],['commissions','💰 Commissions'],['financement','🏦 Financement']], badges:['sb-compta-badge','sb-comm-badge']},
   apres:     {views:[['apresvente','🔁 Renouvellements & fidélisation']], badges:[]},
@@ -5688,7 +5719,7 @@ function navigate(view, el) {
     dashboard:'Tableau de bord',budget:'Budget & plan d\'actions',pipeline:'Pipeline Commercial',clients:'Clients & Prospects',
     intel:'CRM Intelligence',agenda:'Agenda intelligent',marketing:'Moteur Marketing',journal:'Journal & PV de contact',direction:'Direction & Cockpit',cockpit:'Cockpit IA',aisales:'Directeur commercial IA',conversion:'Moteur de Conversion',logiciels:'Catalogue Logiciels',equipe:'Équipe & Apporteurs',apporteurs:'Apporteurs d\'affaires',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
     planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
-    parametrage:'Paramétrage',apresvente:'Après-vente & fidélisation',
+    parametrage:'Paramétrage',apresvente:'Après-vente & fidélisation',qualification:'Qualification des prospects',
     presentations:'Présentations & Démos',commandes:'Commandes Clients',contrats:'Contrats & Conventions',
     licences:'Licences Attribuées',documents:'Documents & Modèles',comptabilite:'Comptabilité SYSCOHADA',financement:'Financement'
   }[view] || view;
@@ -5700,6 +5731,7 @@ function navigate(view, el) {
   if(view === 'pipeline') setTimeout(initConversion, 70);
   if(view === 'rapports') setTimeout(initJournal, 70);
   if(view === 'apresvente') setTimeout(initApresVente, 50);
+  if(view === 'qualification') setTimeout(()=>{ try{ initQualification(); }catch(e){ console.error(e); } }, 30);
   if(view === 'cockpit') setTimeout(initCockpit, 50);
   if(view === 'aisales') setTimeout(initAiSales, 50);
   if(view === 'budget') setTimeout(()=>{ try{ initPilotage(); }catch(e){ console.error(e); } }, 30);
@@ -8383,9 +8415,9 @@ const ROLE_BG = {
   apporteur:'#FFFBEB'
 };
 const PERMISSIONS = {
-  super_admin:['budget','financement','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports','users','parametrage','parametres'],
-  manager:    ['budget','financement','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports'],
-  commercial: ['journal','dashboard','pipeline','clients','logiciels','messagerie','carte','rapports'],
+  super_admin:['qualification','budget','financement','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports','users','parametrage','parametres'],
+  manager:    ['qualification','budget','financement','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports'],
+  commercial: ['qualification','journal','dashboard','pipeline','clients','logiciels','messagerie','carte','rapports'],
   apporteur:  ['pipeline','clients','messagerie','rapports'],
 };
 const PERM_LABELS = {
@@ -10754,6 +10786,168 @@ function initApresVente(){
     return `<div class="flex justify-between items-center" style="padding:8px 0;border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap"><div><b>${E(c.nom)}</b> · ${E(c.logiciel||'')}<div style="font-size:11px;color:var(--muted)">${num(c.valeur)} FCFA</div></div>${wa(c.phone,msg)}</div>`;
   }).join(''):'<div style="color:var(--muted);font-size:13px">Tous les clients sont actifs.</div>';
 }
+
+// ═══════════════════════════════════════════════════════════
+//  QUALIFICATION RAPIDE DES PROSPECTS
+//  Un clic = une interaction datée (étape) → le pipeline suit via syncDealForClient.
+//  Le montant n'est demandé qu'au devis ; « Perdu » met le deal en Perdu sans effacer la fiche.
+// ═══════════════════════════════════════════════════════════
+const QL_STEPS=[null,['Contacté','📞','Contact établi'],['Démo faite','🎬','Démo réalisée'],['Devis envoyé','📄','Proposition envoyée'],['Négociation','🤝','En négociation']];
+function qlDeal(c){ return DEALS.find(d=>d.clientId===c.id); }
+function qlIsPerdu(c){ const d=qlDeal(c); return !!(d&&d.stage==='perdu'); }
+function qlEtape(c){ return Math.min(aiGetEtape(c),4); }
+function qlProspects(){ return CLIENTS.filter(c=>c.statut==='prospect'); }
+function qlCompletude(c){ return (c.phone?3:0)+(c.email?2:0)+(c.adresse?1:0)+(c.lat?1:0)+(c.logiciel?1:0); }
+function initQualification(){
+  syncProspectsToPipeline();
+  const P=qlProspects(), E=_dEsc;
+  const uniq=a=>[...new Set(a.filter(Boolean))].sort((x,y)=>x.localeCompare(y,'fr'));
+  const fill=(id,first,vals)=>{ const el=document.getElementById(id), cur=el.value; el.innerHTML='<option value="">'+first+'</option>'+vals.map(v=>`<option value="${E(v)}">${E(v)}</option>`).join(''); if(vals.includes(cur)) el.value=cur; };
+  fill('ql-sect','Tous les secteurs',uniq(P.map(c=>c.secteur)));
+  fill('ql-log','Tous les logiciels',uniq(P.map(c=>c.logiciel)));
+  const noms=uniqNoms();
+  const cs=document.getElementById('ql-com'), cur=cs.value;
+  cs.innerHTML='<option value="">Tous les commerciaux</option><option value="__none">Sans commercial</option>'+noms.map(v=>`<option value="${E(v)}">${E(v)}</option>`).join(''); cs.value=cur||'';
+  document.getElementById('ql-bulk-com').innerHTML='<option value="">— commercial —</option>'+noms.map(v=>`<option value="${E(v)}">${E(v)}</option>`).join('');
+  qlRender();
+}
+function qlKpis(){
+  const P=qlProspects(), vivant=P.filter(c=>!qlIsPerdu(c));
+  const n=e=>vivant.filter(c=>qlEtape(c)===e).length;
+  const devis=vivant.filter(c=>qlEtape(c)>=3).reduce((s,c)=>s+(c.valeur||0),0);
+  const sansCom=vivant.filter(c=>!c.commercial).length, perdus=P.length-vivant.length;
+  const qualifies=vivant.length-n(0);
+  const kp=(ico,lab,val,col,sub)=>`<div class="stat-card"><div class="stat-label">${ico} ${lab}</div><div class="stat-value" style="color:${col}">${val}</div>${sub?`<div style="font-size:11px;color:var(--muted)">${sub}</div>`:''}</div>`;
+  document.getElementById('ql-kpis').innerHTML=
+    kp('👤','À qualifier',n(0),n(0)?'var(--warning)':'var(--success)',(P.length?Math.round(qualifies/Math.max(1,vivant.length)*100):0)+' % qualifiés')+
+    kp('📞','Contactés',n(1),'var(--primary)')+kp('🎬','Démo faite',n(2),'var(--primary)')+
+    kp('📄','Devis / négo',n(3)+n(4),'var(--primary)',devis?devis.toLocaleString('fr-FR')+' FCFA chiffrés':'aucun montant chiffré')+
+    kp('❌','Perdus',perdus,'var(--muted)')+kp('👤','Sans commercial',sansCom,sansCom?'var(--warning)':'var(--success)');
+}
+function qlFiltered(){
+  const g=id=>document.getElementById(id).value;
+  const words=_nrm(g('ql-q')).split(/\s+/).filter(Boolean), et=g('ql-etape'), sect=g('ql-sect'), log=g('ql-log'), com=g('ql-com'), tri=g('ql-tri');
+  const rows=qlProspects().filter(c=>{
+    const perdu=qlIsPerdu(c), e=qlEtape(c);
+    if(et==='perdu'){ if(!perdu) return false; }
+    else { if(perdu) return false; if(et==='new'&&e!==0) return false; if(['1','2','3','4'].includes(et)&&e!==+et) return false; }
+    if(sect&&c.secteur!==sect) return false; if(log&&c.logiciel!==log) return false;
+    if(com==='__none'?!!c.commercial:(com&&c.commercial!==com)) return false;
+    return !words.length||words.every(w=>_nrm([c.nom,c.phone,c.email,c.adresse,c.secteur,c.logiciel,c.notes].join(' ')).includes(w));
+  });
+  if(tri==='nom') rows.sort((a,b)=>(a.nom||'').localeCompare(b.nom||'','fr'));
+  else if(tri==='secteur') rows.sort((a,b)=>(a.secteur||'').localeCompare(b.secteur||'','fr')||(a.nom||'').localeCompare(b.nom||'','fr'));
+  else rows.sort((a,b)=>qlCompletude(b)-qlCompletude(a)||(a.nom||'').localeCompare(b.nom||'','fr'));
+  return rows;
+}
+function qlRow(c){
+  const E=_dEsc, e=qlEtape(c), perdu=qlIsPerdu(c);
+  const noms=uniqNoms();
+  const wa=c.phone&&typeof waLink==='function'?waLink(c.phone,'Bonjour '+c.nom+', je me permets de vous contacter au sujet de '+(c.logiciel||'nos solutions SANIX')+'.'):'';
+  const steps=perdu?`<span style="font-size:12px;font-weight:700;color:var(--muted)">❌ Perdu</span> <button class="btn btn-outline btn-sm" onclick="qlReactiver(${c.id})">↩️ Réactiver</button>`
+    :[1,2,3,4].map(i=>{ const st=QL_STEPS[i], fait=e>=i, cur=e===i;
+      return `<button class="btn btn-sm ${cur?'btn-primary':'btn-outline'}" ${fait&&!cur?'style="opacity:.55"':''} ${fait?'disabled':''} onclick="qlSet(${c.id},${i})" title="${E(st[2])}">${fait?'✓ ':st[1]+' '}${st[0]}</button>`; }).join('')
+      +` <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="qlPerdre(${c.id})" title="Pas intéressé, injoignable, concurrent…">❌</button>`;
+  const montant=(e>=3&&c.valeur>0)?`<span style="font-size:11px;font-weight:700;color:var(--primary)">${(+c.valeur).toLocaleString('fr-FR')} FCFA</span>`:'';
+  return `<div class="ql-row" id="ql-r-${c.id}" data-id="${c.id}" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;margin-bottom:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm)">
+    <input type="checkbox" class="ql-ck" value="${c.id}" onchange="qlCount()">
+    <div style="flex:1;min-width:210px"><b>${E(c.nom)}</b> ${montant}
+      <div style="font-size:11px;color:var(--muted)">${E(c.secteur||'')}${c.logiciel?' · '+E(c.logiciel):''}${c.adresse?' · '+E((c.adresse||'').slice(0,48)):''}</div>
+      <div style="font-size:12px;margin-top:2px">${c.phone?`<a href="tel:${E(String(c.phone).replace(/\s/g,''))}">📞 ${E(c.phone)}</a>`:'<span style="color:var(--muted)">pas de téléphone</span>'}${wa?` · <a href="${wa}" target="_blank" rel="noopener">📱 WhatsApp</a>`:''}${c.email?` · <a href="mailto:${E(c.email)}">📧</a>`:''}</div></div>
+    <div class="flex gap-2" style="flex-wrap:wrap;align-items:center">${steps}</div>
+    <select onchange="qlCom(${c.id},this.value)" title="Commercial" style="min-width:130px"><option value="">— non attribué —</option>${noms.map(v=>`<option value="${E(v)}"${c.commercial===v?' selected':''}>${E(v)}</option>`).join('')}</select>
+  </div>`;
+}
+function uniqNoms(){
+  const moi=(typeof currentUser!=='undefined'&&currentUser&&currentUser.nom)?[currentUser.nom]:[];
+  const users=(typeof USERS!=='undefined'?USERS:[]).filter(u=>u.nom&&u.actif!==false&&u.role!=='apporteur').map(u=>u.nom);
+  return [...new Set([...moi,...users,...EQUIPE.map(m=>m.nom),...qlProspects().map(c=>c.commercial)].filter(Boolean))].sort((x,y)=>x.localeCompare(y,'fr'));
+}
+function qlRender(){
+  const rows=qlFiltered(), box=document.getElementById('ql-list');
+  box.innerHTML=rows.length?rows.map(qlRow).join(''):'<div class="card" style="padding:20px;text-align:center;color:var(--muted)">Aucun prospect pour ce filtre.</div>';
+  document.getElementById('ql-count').textContent=rows.length+' prospect'+(rows.length>1?'s':'');
+  qlKpis(); qlCount();
+}
+function qlRefresh(id){
+  const c=CLIENTS.find(x=>x.id===id), el=document.getElementById('ql-r-'+id); if(!c||!el) return;
+  const t=document.createElement('div'); t.innerHTML=qlRow(c);
+  const wasChecked=el.querySelector('.ql-ck')?.checked; el.replaceWith(t.firstElementChild);
+  const ck=document.querySelector('#ql-r-'+id+' .ql-ck'); if(ck&&wasChecked) ck.checked=true;
+  qlKpis(); qlCount();
+}
+function qlCount(){ const n=document.querySelectorAll('#ql-list .ql-ck:checked').length; const el=document.getElementById('ql-nsel'); if(el) el.textContent=n+' coché'+(n>1?'s':''); }
+function qlCheckPage(){ const cks=[...document.querySelectorAll('#ql-list .ql-row .ql-ck')].filter(k=>k.closest('.ql-row').offsetParent!==null); const tout=cks.length&&cks.every(k=>k.checked); cks.forEach(k=>k.checked=!tout); qlCount(); }
+function qlChecked(){ return [...document.querySelectorAll('#ql-list .ql-ck:checked')].map(k=>+k.value); }
+
+// Avance un prospect à l'étape demandée (jamais en arrière) ; renvoie vrai si modifié.
+function qlAvancer(c,etape,montant,quiet){
+  if(etape<=aiGetEtape(c)) return false;
+  if(!c.interactions) c.interactions=[];
+  const st=QL_STEPS[etape];
+  c.interactions.push({date:new Date().toISOString(),type:st[2],note:'Qualification rapide',etape,ico:st[1]});
+  if(montant>0){ c.valeur=montant; }
+  c.updated_at=new Date().toISOString();
+  syncDealForClient(c.id);
+  const d=qlDeal(c);
+  if(d){
+    if(montant>0){ d.valeur=montant; d.valeurSaisie=true; d.valeurEst=0; }
+    if(!d.history) d.history=[];
+    d.history.push({date:new Date().toISOString(),type:'stage_change',ico:st[1],label:'Qualification rapide',note:st[2]+(montant>0?' · '+montant.toLocaleString('fr-FR')+' FCFA':''),resultat:'',commercial:c.commercial||''});
+  }
+  return true;
+}
+function qlSet(id,etape){
+  const c=CLIENTS.find(x=>x.id===id); if(!c||etape<=aiGetEtape(c)) return;
+  let montant=0;
+  if(etape>=3 && aiGetEtape(c)<3){
+    const s=prompt('Montant du devis pour « '+c.nom+' » (FCFA) :', _dealPrixCatalogue(c.logiciel)||'');
+    if(s===null) return;
+    montant=parseInt(String(s).replace(/\D/g,''),10)||0;
+    if(!montant){ showToast('❌ Indiquez le montant du devis'); return; }
+  }
+  qlAvancer(c,etape,montant);
+  saveStore('clients'); saveStore('deals'); qlRefresh(id);
+  showToast('✅ '+c.nom+' → '+QL_STEPS[etape][0]);
+}
+function qlBulkEtape(etape){
+  const ids=qlChecked(); if(!ids.length){ showToast('☑️ Cochez d\'abord des prospects'); return; }
+  let n=0; ids.forEach(id=>{ const c=CLIENTS.find(x=>x.id===id); if(c&&!qlIsPerdu(c)&&qlAvancer(c,etape,0)) n++; });
+  saveStore('clients'); saveStore('deals'); ids.forEach(qlRefresh);
+  showToast('✅ '+n+' prospect'+(n>1?'s':'')+' → '+QL_STEPS[etape][0]);
+}
+function qlCom(id,nom){
+  const c=CLIENTS.find(x=>x.id===id); if(!c) return;
+  c.commercial=nom; c.updated_at=new Date().toISOString(); const d=qlDeal(c); if(d) d.commercial=nom;
+  saveStore('clients'); saveStore('deals'); qlKpis();
+}
+function qlBulkCom(){
+  const nom=document.getElementById('ql-bulk-com').value, ids=qlChecked();
+  if(!nom){ showToast('👤 Choisissez un commercial'); return; }
+  if(!ids.length){ showToast('☑️ Cochez d\'abord des prospects'); return; }
+  ids.forEach(id=>{ const c=CLIENTS.find(x=>x.id===id); if(!c) return; c.commercial=nom; c.updated_at=new Date().toISOString(); const d=qlDeal(c); if(d) d.commercial=nom; });
+  saveStore('clients'); saveStore('deals'); ids.forEach(qlRefresh);
+  showToast('✅ '+ids.length+' prospect'+(ids.length>1?'s':'')+' attribué'+(ids.length>1?'s':'')+' à '+nom);
+}
+function qlPerdre(id){
+  const c=CLIENTS.find(x=>x.id===id); if(!c) return;
+  const motif=prompt('Pourquoi « '+c.nom+' » est perdu ? (pas intéressé, injoignable, concurrent, budget…)','');
+  if(motif===null) return;
+  syncProspectsToPipeline(); const d=qlDeal(c); if(!d) return;
+  d.stage='perdu'; if(!d.history) d.history=[];
+  d.history.push({date:new Date().toISOString(),type:'stage_change',ico:'❌',label:'Perdu',note:motif||'Sans motif',resultat:'',commercial:c.commercial||''});
+  if(!c.interactions) c.interactions=[];
+  c.interactions.push({date:new Date().toISOString(),type:'Perdu',note:motif||'Sans motif',etape:0,ico:'❌'});
+  c.updated_at=new Date().toISOString();
+  saveStore('clients'); saveStore('deals'); qlRefresh(id); showToast('❌ '+c.nom+' marqué perdu');
+}
+function qlReactiver(id){
+  const c=CLIENTS.find(x=>x.id===id); if(!c) return; const d=qlDeal(c); if(!d) return;
+  d.stage=_stageFromEtape(aiGetEtape(c)); if(!d.history) d.history=[];
+  d.history.push({date:new Date().toISOString(),type:'stage_change',ico:'↩️',label:'Réactivé',note:'Prospect réactivé',resultat:'',commercial:c.commercial||''});
+  saveStore('deals'); qlRefresh(id); showToast('↩️ '+c.nom+' réactivé');
+}
+
 function initConversion(){ convRender(); }
 
 function convRender(){
