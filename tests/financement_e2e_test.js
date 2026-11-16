@@ -233,14 +233,53 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(clientsNoms.length > 0 && clientsNoms.every((n) => !htmlN.includes(n)), "dossier PDF : aucun nom de client (" + clientsNoms.length + " commandes vérifiées)");
     ok(!htmlN.includes("Leviers testés") && !htmlN.includes("à arbitrer"), "les pistes d'optimisation restent internes : absentes du dossier");
 
-    console.log("▶ Validation des hypothèses");
+    console.log("▶ Validation des hypothèses : contrôles avant diffusion");
+    const setK = async (k, v) => { await page.evaluate(([k, v]) => { const e = document.querySelector(`[data-k="${k}"]`); e.value = v; e.dispatchEvent(new Event("change", { bubbles: true })); }, [k, v]); await page.waitForTimeout(80); };
+    const setP = async (id, f, v) => { await page.evaluate(([id, f, v]) => { const e = document.querySelector(`[data-p="${id}"][data-f="${f}"]`); e.value = v; e.dispatchEvent(new Event("change", { bubbles: true })); }, [id, f, v]); await page.waitForTimeout(80); };
+    await page.click('[data-tab="hyp"]'); await page.click('[data-act="reset"]'); await page.waitForTimeout(250);      // valeurs initiales : plan d'exemple non rentable
+    await page.click('[data-tab="dossier"]'); await page.waitForTimeout(200);
+    ok((await page.locator("#fin-body").innerText()).includes("n'est pas prêt à être diffusé") && (await page.locator("#fin-body .alert-danger").innerText()).includes("rentabilité"), "plan par défaut (non rentable) : le dossier est déclaré « pas prêt à être diffusé »");
+    await page.locator('[data-k="valide"]').click(); await page.waitForTimeout(250);
+    ok(await page.evaluate(() => JSON.parse(localStorage.getItem("sanix_crm_fin_config")).valide !== true) && await page.locator('[data-k="valide"]').isChecked() === false, "validation refusée tant que le plan n'atteint pas la rentabilité");
+    const htmlNon = await pdfHtml();
+    ok(htmlNon.includes("NON PRÊT À DIFFUSER") && htmlNon.includes("DOCUMENT DE TRAVAIL"), "PDF : bandeau « non prêt à diffuser » en plus de « document de travail »");
+    // Un plan rentable et sans besoin : mêmes hypothèses de base, sans embauche financée ni campagne
+    await page.click('[data-tab="hyp"]'); await page.waitForTimeout(200);
+    for (const [k, v] of [["fixesMensuels", "100000"], ["marketingMin", "0"], ["marketingPct", "0"], ["marketingBoost", "0"], ["iaMensuelUsd", "0"], ["clientsAn1", "24"]]) await setK(k, v);
+    for (const id of ["p2", "p3", "p4", "p5"]) await setP(id, "nb", "0");
+    await setP("p1", "cout", "300000");
+    await page.click('[data-tab="dossier"]'); await page.waitForTimeout(250);
+    ok(await page.locator("#fin-body .alert-danger").count() === 0, "plan rentable sans besoin de financement : plus de contrôle bloquant");
     await page.check('[data-k="valide"]'); await page.waitForTimeout(200);
     ok(await page.locator("#fin-body .alert-success").count() === 1 && await page.locator("#fin-body .alert-warn").count() === 0, "validation : l'avertissement laisse place à la confirmation");
     ok(await page.evaluate(() => JSON.parse(localStorage.getItem("sanix_crm_fin_config")).valide === true), "validation enregistrée sur l'appareil");
-    const html2 = await page.evaluate(() => { let h = ""; const w = { document: { write: (x) => { h += x; }, close() {} }, focus() {}, print() {} }; const o = window.open; window.open = () => w; document.querySelector('[data-act="pdf"]').click(); window.open = o; return h; });
-    ok(html2.includes("Dossier de financement") && !html2.includes("DOCUMENT DE TRAVAIL"), "PDF validé : plus de mention « document de travail »");
+    const html2 = await pdfHtml();
+    ok(html2.includes("Dossier de financement") && !html2.includes("DOCUMENT DE TRAVAIL") && !html2.includes("NON PRÊT"), "PDF validé : plus de mention « document de travail » ni « non prêt »");
     const [dl2] = await Promise.all([page.waitForEvent("download"), page.click('[data-act="csv"]')]);
     ok(!require("fs").readFileSync(await dl2.path(), "utf8").includes("DOCUMENT DE TRAVAIL"), "CSV validé : plus de mention");
+    // Toute modification d'hypothèse retire la validation
+    await page.click('[data-tab="hyp"]'); await page.waitForTimeout(150); await setK("clientsAn1", "25"); await page.click('[data-tab="dossier"]'); await page.waitForTimeout(200);
+    ok(await page.evaluate(() => JSON.parse(localStorage.getItem("sanix_crm_fin_config")).valide === false) && await page.locator("#fin-body .alert-warn").count() === 1, "une hypothèse modifiée après validation retire la validation (document de travail de nouveau)");
+    const htmlRe = await pdfHtml(); ok(htmlRe.includes("DOCUMENT DE TRAVAIL"), "PDF : « document de travail » de retour après la modification");
+
+    console.log("▶ Corrections de la revue d'audit : écran, PDF et CSV");
+    await page.click('[data-tab="hyp"]'); await page.waitForTimeout(150);
+    ok(await page.locator('[data-k="maintDelaiMois"]').inputValue() === "12" && await page.locator('[data-k="imfOn"]').count() === 1 && await page.locator('[data-k="debutActivite"]').inputValue() === "2026-06", "hypothèses : délai de maintenance 12 mois, impôt minimum (option), début d'activité");
+    await page.click('[data-tab="traction"]'); await page.waitForTimeout(200);
+    const tr = (await page.locator("#fin-body").innerText()).replace(/\s+/g, " ");
+    ok(tr.includes("depuis le début d'activité") && !tr.includes("12 derniers mois"), "Traction : durée réelle de l'activité au lieu de « 12 derniers mois »");
+    await page.click('[data-tab="proj"]'); await page.waitForTimeout(250);
+    const ligne = (re) => page.evaluate((src) => { const r = [...document.querySelectorAll("#fin-body tr")].find((x) => new RegExp(src).test(x.innerText)); return r ? r.innerText.replace(/[\u202f\u00a0]/g, " ").replace(/\s+/g, " ") : ""; }, re.source);
+    const nombres = (t) => (t.match(/-?\d[\d ]*/g) || []).map((x) => +x.replace(/ /g, ""));
+    const pl = await page.evaluate(() => { const card = [...document.querySelectorAll("#fin-body .card")].find((c) => /Compte de résultat/.test(c.innerText) && !/12 premiers mois/.test(c.innerText)); const rows = [...card.querySelectorAll("tbody tr")].map((r) => [r.cells[0].innerText.trim(), [...r.cells].slice(1).map((c) => +c.innerText.replace(/[\u202f\u00a0\s]/g, "").replace("−", "-"))]); return rows; });
+    const L = (lib) => pl.filter((r) => r[0].indexOf(lib) === 0)[0][1];
+    const somme = L("Chiffre d'affaires").map((v, i) => v + ["Coûts directs et commissions", "Salaires", "Marketing", "Charges fixes", "Infrastructure", "Intelligence"].reduce((t, k) => t + L(k)[i], 0));
+    ok(somme.every((v, i) => Math.abs(v - L("EBITDA")[i]) <= 1), "compte de résultat annuel : chiffre d'affaires + charges = EBITDA chaque année (« Coûts directs et commissions » inclut les commissions) " + JSON.stringify(somme) + " / " + JSON.stringify(L("EBITDA")));
+    const [dlC] = await Promise.all([page.waitForEvent("download"), (async () => { await page.click('[data-tab="dossier"]'); await page.waitForTimeout(150); await page.click('[data-act="csv"]'); })()]);
+    const csvC = require("fs").readFileSync(await dlC.path(), "utf8");
+    const optLignes = csvC.split("\r\n").filter((l) => /^"(Levée en capital|Prêt \/ dette|Subvention|Mix)"/.test(l));
+    ok(optLignes.length === 4 && csvC.includes('"Viable"'), "CSV : quatre options avec la colonne « Viable »");
+    ok(await page.evaluate(() => { const c = SanixFinancement.calc, d = c.comparer(Object.assign(c.defauts({}), { tresoDepart: 20e6, investissements: [{ id: "a", nom: "A", mois: 2, montant: 6e6, duree: 3 }] })); return d.options.every((o) => !o.ind.equity || Number.isFinite(o.ind.equity.moic)); }), "ratios calculables avec trésorerie de départ et investissements");
 
     console.log("▶ Droits d'accès");
     ok(await page.evaluate(() => PERMISSIONS.commercial.indexOf("financement") < 0 && PERMISSIONS.apporteur.indexOf("financement") < 0 && PERMISSIONS.manager.indexOf("financement") >= 0), "réservé à la direction (super admin, manager)");
