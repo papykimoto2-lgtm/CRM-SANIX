@@ -361,4 +361,47 @@ ok(Array.isArray(calc.defauts({}).investissements) && calc.defauts({}).investiss
   near(Math.max.apply(null, calc.simuler(creux([I({ id: "a", mois: 1, montant: 3e6, duree: 2 }), I({ id: "b", mois: 10, montant: 5e6, duree: 5 })]), "avec", { equity: 80e6 }).annees.map((a) => Math.abs(a.bilan.actif - a.bilan.passif))), 0, 1e-3, "bilan équilibré avec plusieurs investissements et un apport");
 }
 
+// ───────────── Compte d'exploitation 12 mois, tableau des immobilisations, plan d'amortissement (calculés à la main) ─────────────
+console.log("▶ États prévisionnels : exploitation 12 mois, immobilisations, amortissements");
+{
+  const I = (id, mois, montant, duree, finance) => ({ id, nom: "Inv " + id, mois, montant, duree, finance: finance !== false });
+  const hh = Object.assign(base(), { investissements: [I("A", 3, 12e6, 3), I("B", 14, 6e6, 2), I("C", 0, 1e6, 0)] });
+  const sim = calc.simuler(hh, "avec", {}), ce = calc.compteExploitation(sim, 12), L = (lib) => ce.lignes.filter((l) => l.lib.indexOf(lib) === 0)[0];
+  ok(ce.n === 12 && ce.lignes.every((l) => l.v.length === 12), "12 colonnes mensuelles pour chaque ligne");
+  ok(L("Chiffre d'affaires").v.every((x) => Math.abs(x - 1e6) < 1e-6) && Math.abs(L("Chiffre d'affaires").total - 12e6) < 1e-3, "CA : 1 000 000 par mois, 12 000 000 sur 12 mois");
+  ok(L("Charges fixes").v.every((x) => Math.abs(x + 1e5) < 1e-6) && Math.abs(L("Total des charges").total + 1.2e6) < 1e-3, "charges d'exploitation : −100 000 par mois, −1 200 000 au total (en négatif)");
+  near(L("Excédent brut").total, 10.8e6, 1e-3, "EBITDA sur 12 mois = 10 800 000");
+  // Amortissement : A (12 M sur 36 mois) dès le mois 3 → 9 mois × 333 333,33 = 3 000 000 ; B (mois 14) et C (non amorti) : rien la 1re année
+  near(L("Dotations").v[2], 0, 1e-9, "aucune dotation avant le mois 3"); near(L("Dotations").v[3], -12e6 / 36, 1e-6, "dotation mensuelle de −333 333,33 à partir du mois 3"); near(L("Dotations").total, -3e6, 1e-3, "dotations sur 12 mois = −3 000 000");
+  near(L("Résultat d'exploitation").total, 7.8e6, 1e-3, "résultat d'exploitation = EBITDA − dotations = 7 800 000"); near(L("Résultat net").total, 7.8e6, 1e-3, "résultat net = 7 800 000 (sans intérêt ni impôt)");
+  // Cohérence avec l'état annuel : chaque ligne de l'exploitation 12 mois = année 1 du compte de résultat annuel
+  const a1 = sim.annees[0];
+  near(L("Chiffre d'affaires").total, a1.ca, 1e-3, "total 12 mois = CA de l'année 1"); near(L("Excédent brut").total, a1.ebitda, 1e-3, "total 12 mois = EBITDA de l'année 1"); near(-L("Dotations").total, a1.dotation, 1e-3, "total 12 mois = dotations de l'année 1"); near(L("Résultat net").total, a1.resultatNet, 1e-3, "total 12 mois = résultat net de l'année 1");
+  ["Salaires", "Marketing", "Infrastructure", "Intelligence", "Coûts directs", "Commissions"].forEach((k) => near(-L(k).total, { Salaires: a1.sal, Marketing: a1.mkt, Infrastructure: a1.infra, Intelligence: a1.ia, "Coûts directs": a1.directs, Commissions: a1.commissions }[k], 1e-3, "total 12 mois = « " + k + " » de l'année 1"));
+  ok(calc.compteExploitation(sim, 6).lignes[0].v.length === 6 && calc.compteExploitation(sim).lignes[0].v.length === 12 && calc.compteExploitation(sim, 99).lignes[0].v.length === 60, "nombre de mois : 6, 12 par défaut, plafonné à 60");
+  // Avec dette et impôt : intérêts et impôt présents, résultat net cohérent
+  const hd = Object.assign(base(), { impotPct: 25, tresoDepart: 0, investissements: [I("A", 3, 12e6, 3)] }), sd = calc.simuler(hd, "avec", { dette: { montant: 24e6, taux: 12, duree: 36, differe: 6 } }), cd = calc.compteExploitation(sd, 12), g = (lib) => cd.lignes.filter((l) => l.lib.indexOf(lib) === 0)[0];
+  near(-g("Charges financières").total, sd.annees[0].interet, 1e-3, "intérêts de la dette : total 12 mois = année 1"); near(-g("Impôt").total, sd.annees[0].impot, 1e-3, "impôt : total 12 mois = année 1"); near(g("Résultat net").total, sd.annees[0].resultatNet, 1e-3, "résultat net avec dette et impôt = année 1");
+  ok(g("Résultat avant impôt").total > g("Résultat net").total && Math.abs(g("Résultat avant impôt").total - (sd.annees[0].ebitda - sd.annees[0].dotation - sd.annees[0].interet)) < 1e-3, "résultat avant impôt = EBITDA − dotations − intérêts");
+
+  // Tableau des immobilisations : A 12 M / 36 mois (mois 3), B 6 M / 24 mois (mois 14), C 1 M non amorti (mois 0)
+  const T = calc.tableauImmobilisations(hh, "avec"), A = T.lignes[0], B = T.lignes[1], C = T.lignes[2];
+  ok(T.lignes.length === 3 && A.nom === "Inv A" && Math.abs(A.duree - 3) < 1e-9 && Math.abs(A.taux - 100 / 3) < 1e-9 && Math.abs(B.taux - 50) < 1e-9 && C.taux === 0 && C.duree === 0, "registre : durées 3 ans, 2 ans, non amorti ; taux 33,33 %, 50 %, 0");
+  [[A, [3e6, 4e6, 4e6, 1e6, 0], [3e6, 7e6, 11e6, 12e6, 12e6], [9e6, 5e6, 1e6, 0, 0]], [B, [0, 2.5e6, 3e6, 0.5e6, 0], [0, 2.5e6, 5.5e6, 6e6, 6e6], [0, 3.5e6, 0.5e6, 0, 0]], [C, [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [1e6, 1e6, 1e6, 1e6, 1e6]]].forEach(([l, dot, cum, vnc]) => {
+    dot.forEach((v, y) => near(l.annees[y].dotation, v, 1e-3, `${l.nom} : dotation année ${y + 1} = ${v}`)); cum.forEach((v, y) => near(l.annees[y].cumul, v, 1e-3, `${l.nom} : cumul des amortissements année ${y + 1} = ${v}`)); vnc.forEach((v, y) => near(l.annees[y].vnc, v, 1e-3, `${l.nom} : VNC fin d'année ${y + 1} = ${v}`));
+  });
+  ok(T.lignes.map((l) => l.annees.map((x) => x.acquisitions).join()).join("|") === "12000000,0,0,0,0|0,6000000,0,0,0|1000000,0,0,0,0", "acquisitions : l'année de l'achat seulement (A an 1, B an 2, C an 1)");
+  [3e6, 6.5e6, 7e6, 1.5e6, 0].forEach((v, y) => near(T.total[y].dotation, v, 1e-3, `total des dotations année ${y + 1} = ${v}`));
+  [10e6, 9.5e6, 2.5e6, 1e6, 1e6].forEach((v, y) => near(T.total[y].vnc, v, 1e-3, `total VNC fin d'année ${y + 1} = ${v}`));
+  [13e6, 19e6, 19e6, 19e6, 19e6].forEach((v, y) => near(T.total[y].brut, v, 1e-3, `valeur brute fin d'année ${y + 1} = ${v}`));
+  // Cohérence avec la simulation : dotations et immobilisations nettes du bilan
+  near(Math.max.apply(null, sim.annees.map((x, y) => Math.abs(x.dotation - T.total[y].dotation) + Math.abs(x.bilan.immo - T.total[y].vnc))), 0, 1e-3, "dotations et VNC du tableau = compte de résultat et bilan du modèle, chaque année");
+  near(sim.annees.reduce((t, x) => t + x.dotation, 0), 18e6, 1e-3, "total amorti = 12 000 000 + 6 000 000 (le non amorti reste à l'actif)");
+  // Plan sans financement : seuls les investissements déjà engagés
+  const hs = Object.assign(base(), { investissements: [I("A", 3, 12e6, 3, true), I("B", 14, 6e6, 2, false)] }), Ts = calc.tableauImmobilisations(hs, "sans");
+  ok(Ts.lignes.length === 1 && Ts.lignes[0].nom === "Inv B" && calc.tableauImmobilisations(hs, "avec").lignes.length === 2, "plan sans financement : uniquement l'investissement déjà engagé");
+  ok(calc.tableauImmobilisations(base(), "avec").lignes.length === 0 && calc.tableauImmobilisations(base(), "avec").total.every((x) => x.vnc === 0 && x.dotation === 0), "sans investissement : tableau vide, totaux nuls");
+  ok(calc.tableauImmobilisations(Object.assign(base(), { investissements: [I("Z", 70, 5e6, 2)] }), "avec").total.every((x) => x.brut === 0 && x.vnc === 0), "achat au-delà de 60 mois : jamais à l'actif");
+}
+
 console.log("\nTous les contrôles du modèle de financement sont passés.");

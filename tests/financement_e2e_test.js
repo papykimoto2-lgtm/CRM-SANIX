@@ -49,7 +49,8 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(await page.locator('[data-p][data-f="nom"]').count() === 5, "suppression d'un poste");
     await page.click('[data-tab="proj"]'); await page.waitForTimeout(200);
     const etats = await page.locator("#fin-body").innerText();
-    ok(await page.locator("#fin-body table").count() === 7, "états financiers : revenus par logiciel, récurrents, compte de résultat, flux, bilan, tour de table, plan sans financement");
+    ok(await page.locator("#fin-body table").count() === 8, "états financiers : revenus par logiciel, récurrents, exploitation 12 mois, compte de résultat, flux, bilan, tour de table, plan sans financement");
+    ok((await page.locator("#fin-body").innerText()).includes("Compte d'exploitation prévisionnel — 12 premiers mois") && await page.locator("#fin-body table", { hasText: "Compte d'exploitation prévisionnel" }).count() === 0 && await page.locator("#fin-body .card", { has: page.locator("table"), hasText: "12 premiers mois" }).locator("thead th").count() === 14, "compte d'exploitation prévisionnel : 12 mois + total (14 colonnes)");
     ok(etats.includes("Total actif") && etats.includes("Total passif") && etats.includes("Écart actif − passif"), "bilan simplifié présent");
     const ecarts = await page.evaluate(() => [...document.querySelectorAll("#fin-body tr")].filter((tr) => tr.innerText.includes("Écart actif")).map((tr) => [...tr.querySelectorAll("td")].slice(1).map((td) => td.innerText.trim())).flat());
     ok(ecarts.length === 5 && ecarts.every((v) => v === "0"), "le bilan s'équilibre chaque année (écart nul affiché)");
@@ -158,9 +159,11 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     const besoin0 = await page.evaluate(() => Math.round(SanixFinancement.calc.comparer(SanixFinancement.calc.defauts({})).besoin));
     await page.click('[data-tab="proj"]'); await page.waitForTimeout(200);
     const proj0 = await page.locator("#fin-body").innerText();
-    ok(!proj0.includes("Dotations aux amortissements") && !proj0.includes("Immobilisations nettes") && !proj0.includes("Flux d'investissement"), "sans investissement : états financiers inchangés (pas de lignes vides)");
+    ok(!proj0.includes("Dotations aux amortissements") && !proj0.includes("Immobilisations nettes") && !proj0.includes("Flux d'investissement") && !proj0.includes("Résultat d'exploitation"), "sans investissement : états financiers inchangés (pas de lignes vides)");
+    ok(proj0.includes("Tableau des immobilisations et plan d'amortissement") && proj0.includes("aucun investissement saisi") && !proj0.includes("Valeur nette comptable"), "sans investissement : note explicite à la place des tableaux d'immobilisations et d'amortissement");
     await page.click('[data-tab="dossier"]'); await page.waitForTimeout(150);
-    ok((await pdfHtml()).includes("Aucun investissement (matériel"), "dossier PDF : indique qu'aucun investissement n'est prévu");
+    const htmlVide = await pdfHtml();
+    ok(htmlVide.includes("Aucun investissement (matériel") && htmlVide.includes("Compte d'exploitation prévisionnel — 12 premiers mois") && !htmlVide.includes("Plan d'amortissement prévisionnel"), "dossier PDF : indique qu'aucun investissement n'est prévu, garde le compte d'exploitation 12 mois, sans tableau d'amortissement vide");
     await page.click('[data-tab="hyp"]'); await page.waitForTimeout(200);
     await page.click('[data-act="inv-add"]'); await page.waitForTimeout(250);
     ok(await page.locator("input[data-inv][data-f=\"nom\"]").count() === 1 && await page.locator('input[data-inv][data-f="montant"]').inputValue() === "0", "ajout : une ligne, montant à 0 (rien n'est inventé)");
@@ -180,6 +183,10 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.click('[data-tab="proj"]'); await page.waitForTimeout(250);
     const proj1 = await page.locator("#fin-body").innerText();
     ok(proj1.includes("Dotations aux amortissements") && proj1.includes("Flux d'investissement") && proj1.includes("Immobilisations nettes"), "états financiers : dotations, flux d'investissement, immobilisations nettes");
+    ok(await page.locator("#fin-body table").count() === 10 && proj1.includes("Tableau des immobilisations") && proj1.includes("Plan d'amortissement prévisionnel") && proj1.includes("Valeur nette comptable") && proj1.includes("Ordinateurs et serveur"), "états financiers : tableau des immobilisations et plan d'amortissement ajoutés (10 tableaux)");
+    ok(proj1.includes("Résultat d'exploitation") && /Dotations aux amortissements/.test(await page.locator("#fin-body .card", { hasText: "12 premiers mois" }).innerText()), "compte d'exploitation 12 mois : dotations et résultat d'exploitation apparaissent");
+    const vncTxt = (await page.locator("#fin-body tr", { hasText: "Valeur nette comptable" }).innerText()).replace(/[\u202f\u00a0]/g, " ").replace(/\s+/g, " ");
+    ok(/Valeur nette comptable \(VNC\) 4 333 2 333 333 0 0$/.test(vncTxt), "VNC (milliers) : 6 000 000 achetés au mois 2, amortis sur 36 mois (166 667 par mois, 10 mois la 1re année) → 4 333, 2 333, 333, 0, 0 : " + vncTxt);
     const ecartTxt = await page.locator("#fin-body tr", { hasText: "Écart actif − passif" }).innerText();
     ok(/^Écart actif − passif \(doit être nul\)(\s+-?0)+\s*$/.test(ecartTxt.replace(/[\u202f\u00a0]/g, " ")), "le bilan reste équilibré (écart nul chaque année) : " + ecartTxt.replace(/\s+/g, " "));
     await page.click('[data-tab="synthese"]'); await page.waitForTimeout(250);
@@ -187,9 +194,11 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.click('[data-tab="dossier"]'); await page.waitForTimeout(150);
     const htmlInv = await pdfHtml();
     ok(htmlInv.includes("Investissements prévus") && htmlInv.includes("Ordinateurs et serveur") && htmlInv.includes("Immobilisations nettes") && htmlInv.includes("Dotations aux amortissements") && htmlInv.includes("Flux d'investissement") && !htmlInv.includes("Aucun investissement (matériel"), "dossier PDF : tableau des investissements, amortissements, immobilisations");
+    ok(htmlInv.includes("Compte d'exploitation prévisionnel — 12 premiers mois") && htmlInv.includes("Tableau des immobilisations") && htmlInv.includes("Plan d'amortissement prévisionnel") && htmlInv.includes("Valeur nette comptable"), "dossier PDF : compte d'exploitation 12 mois, immobilisations, plan d'amortissement");
     const [dlI] = await Promise.all([page.waitForEvent("download"), page.click('[data-act="csv"]')]);
     const csvI = require("fs").readFileSync(await dlI.path(), "utf8");
     ok(csvI.includes("Investissements (decaissement)") && csvI.includes("Dotations amortissements") && csvI.includes('"Mois";"CA";"Charges";"EBITDA";"Investissements"'), "export CSV : investissements et dotations");
+    ok(csvI.includes("Compte d'exploitation previsionnel 12 mois") && csvI.includes("Tableau des immobilisations") && csvI.includes("Plan d'amortissement previsionnel") && csvI.includes('"Ordinateurs et serveur";') && csvI.includes('"Ordinateurs et serveur - dotation"') && csvI.includes('"Valeur nette comptable"'), "export CSV : les trois états");
     await page.click('[data-tab="hyp"]'); await page.waitForTimeout(150);
     await page.click(`[data-act="inv-del"][data-id="${idInv}"]`); await page.waitForTimeout(250);
     ok(await page.locator("input[data-inv]").count() === 0 && (await blocInv().innerText()).includes("Aucun investissement saisi"), "suppression : retour au tableau vide");
