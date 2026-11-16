@@ -112,7 +112,8 @@ near(O.base.besoin, B.besoin, 1e-6, "situation de départ = évaluation du plan"
 ok(O.leviers.length === 13, "treize leviers applicables avec les valeurs par défaut");
 ok(O.leviers.every((l, i) => i === 0 || O.leviers[i - 1].dTreso >= l.dTreso), "leviers classés du plus au moins utile (trésorerie an 5)");
 O.leviers.forEach((l) => { const lv = calc.LEVIERS.filter((x) => x.id === l.id)[0]; const m = calc.evaluer(Object.assign({}, Dop, lv.f(Dop))); near(l.m.tresoFin, m.tresoFin, 1e-6, "levier « " + l.id + " » : résultats = plan recalculé avec le levier"); });
-ok(O.leviers.filter((l) => l.cat === "Ventes").every((l) => l.dEbitda5 > 0), "chaque levier de ventes améliore l'EBITDA");
+ok(O.leviers.filter((l) => l.cat === "Ventes" && l.id !== "retention").every((l) => l.dEbitda5 > 0), "chaque levier de ventes améliore l'EBITDA (la fidélisation mise à part : sans maintenance facturée, garder un client ne rapporte rien et coûte son hébergement)");
+ok(calc.optimiser(Object.assign({}, Dop, { maintenancePct: 12 })).leviers.filter((l) => l.id === "retention")[0].dEbitda5 > 0, "avec une maintenance facturée (12 %), la fidélisation améliore l'EBITDA");
 const lv = (id) => O.leviers.filter((l) => l.id === id)[0];
 near(lv("delai").dEbitda5, 0, 1e-6, "encaisser plus vite : aucun effet sur l'EBITDA…"); ok(lv("delai").dTreso > 0, "…mais améliore la trésorerie");
 ok(lv("embauches").arbitrer && lv("etaler").arbitrer && lv("marketing").arbitrer && !lv("prix").arbitrer, "les leviers qui touchent la croissance sont marqués « à arbitrer »");
