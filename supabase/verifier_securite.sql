@@ -3,6 +3,8 @@
 --
 -- Question posée : « quelqu'un qui a la clé publique du CRM (visible dans le navigateur) peut-il lire ou écrire mes données ? »
 -- La réponse attendue est NON pour toutes les tables du schéma public. Seule une session d'opérateur connecté (Authentication) passe par les fonctions du connecteur.
+-- Périmètre : « SANIX » = tables crm_* (CRM) et ai_* (SANIX AI), qui doivent toutes être OK. Un projet Supabase peut aussi héberger d'autres applications
+-- (autres préfixes) : elles sont signalées à part (lignes 21, 31, 41) car les corriger demande de modifier ces applications, pas seulement la base.
 -- À relancer après chaque changement de migration, et après avoir exécuté supabase/lockdown_crm_legacy.sql si une ligne le demande.
 
 create or replace function pg_temp.verif_securite()
@@ -21,35 +23,59 @@ begin
        action := 'alter table public.<table> enable row level security; puis créer une politique réservée aux opérateurs. Pour les anciennes tables crm_* : exécuter supabase/lockdown_crm_legacy.sql.'; end if;
   return next;
 
-  -- 2. Droits directs du rôle anon (clé publique) sur les tables du schéma public.
-  select count(*), string_agg(distinct g.table_name, ', ' order by g.table_name) into n, liste
+  -- 2. Droits directs du rôle anon (clé publique) sur les tables : SANIX (crm_*, ai_*) puis autres applications.
+  select count(distinct g.table_name), string_agg(distinct g.table_name, ', ' order by g.table_name) into n, liste
     from information_schema.role_table_grants g
-   where g.table_schema = 'public' and g.grantee = 'anon' and g.privilege_type in ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE');
-  ord := 20; controle := 'Le rôle anon (clé publique) n''a aucun droit sur les tables';
+   where g.table_schema = 'public' and g.grantee = 'anon' and g.table_name ~ '^(crm|ai)_' and g.privilege_type in ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE');
+  ord := 20; controle := 'SANIX (crm_*, ai_*) : le rôle anon (clé publique) n''a aucun droit sur les tables';
   if n = 0 then statut := 'OK'; detail := 'aucun droit direct'; action := null;
-  else statut := 'À CORRIGER'; detail := 'droits accordés à anon sur : ' || coalesce(liste, '');
+  else statut := 'À CORRIGER'; detail := n || ' table(s) : ' || coalesce(liste, '');
        action := 'revoke all on public.<table> from anon;  (anciennes tables crm_* : supabase/lockdown_crm_legacy.sql)'; end if;
   return next;
+  select count(*), string_agg(x.p || ' (' || x.n || ')', ', ' order by x.n desc) into n, liste
+    from (select split_part(table_name, '_', 1) p, count(distinct table_name) n from information_schema.role_table_grants
+           where table_schema = 'public' and grantee = 'anon' and table_name !~ '^(crm|ai)_' and privilege_type in ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE') group by 1) x;
+  ord := 21; controle := 'Autres applications du projet : tables accessibles avec la clé publique';
+  if n = 0 then statut := 'OK'; detail := 'aucune'; action := null;
+  else statut := 'ATTENTION'; detail := 'préfixes (tables) : ' || liste;
+       action := 'Ne pas révoquer en bloc : ces applications utilisent probablement la clé publique pour travailler. À corriger application par application (connexion utilisateur Supabase + RLS), voir la réponse de Claude Code.'; end if;
+  return next;
 
-  -- 3. Politiques RLS ouvertes à tous (using true / with check true) accordées à anon ou public.
+  -- 3. Politiques RLS ouvertes à tous (using true / with check true) accordées à anon ou public : SANIX puis autres applications.
   select count(*), string_agg(p.tablename || '.' || p.policyname, ', ' order by p.tablename) into n, liste
     from pg_policies p
-   where p.schemaname = 'public' and (p.roles && array['anon', 'public']::name[])
+   where p.schemaname = 'public' and p.tablename ~ '^(crm|ai)_' and (p.roles && array['anon', 'public']::name[])
      and (coalesce(p.qual, 'true') in ('true', '(true)') or coalesce(p.with_check, '') in ('true', '(true)'));
-  ord := 30; controle := 'Aucune politique RLS ouverte à tous (anon_all, using true)';
+  ord := 30; controle := 'SANIX (crm_*, ai_*) : aucune politique RLS ouverte à tous (anon_all, using true)';
   if n = 0 then statut := 'OK'; detail := 'aucune politique ouverte'; action := null;
   else statut := 'À CORRIGER'; detail := n || ' politique(s) : ' || coalesce(liste, '');
        action := 'drop policy <nom> on public.<table>;  (anciennes tables crm_* : supabase/lockdown_crm_legacy.sql les supprime)'; end if;
+  return next;
+  select string_agg(x.p || ' (' || x.n || ')', ', ' order by x.n desc) into liste
+    from (select split_part(tablename, '_', 1) p, count(*) n from pg_policies
+           where schemaname = 'public' and tablename !~ '^(crm|ai)_' and (roles && array['anon', 'public']::name[])
+             and (coalesce(qual, 'true') in ('true', '(true)') or coalesce(with_check, '') in ('true', '(true)')) group by 1) x;
+  ord := 31; controle := 'Autres applications du projet : politiques ouvertes à tous';
+  if liste is null then statut := 'OK'; detail := 'aucune'; action := null;
+  else statut := 'ATTENTION'; detail := 'préfixes (politiques) : ' || liste; action := 'Mêmes précautions que la ligne 21 : application par application.'; end if;
   return next;
 
   -- 4. Fonctions SECURITY DEFINER exécutables par anon : elles contournent la RLS.
   select count(*), string_agg(distinct p.proname, ', ' order by p.proname) into n, liste
     from pg_proc p join pg_namespace s on s.oid = p.pronamespace
-   where s.nspname = 'public' and p.prosecdef and p.prorettype <> 'trigger'::regtype and has_function_privilege('anon', p.oid, 'execute');   -- les fonctions de déclencheur ne sont pas appelables à distance
-  ord := 40; controle := 'Aucune fonction SECURITY DEFINER appelable avec la clé publique';
+   where s.nspname = 'public' and p.prosecdef and p.prorettype <> 'trigger'::regtype and has_function_privilege('anon', p.oid, 'execute')
+     and p.proname ~ '^(crm|ai)_';   -- les fonctions de déclencheur ne sont pas appelables à distance
+  ord := 40; controle := 'SANIX (crm_*, ai_*) : aucune fonction SECURITY DEFINER appelable avec la clé publique';
   if n = 0 then statut := 'OK'; detail := 'aucune fonction exposée'; action := null;
   else statut := 'À CORRIGER'; detail := n || ' fonction(s) : ' || coalesce(liste, '');
        action := 'revoke execute on function public.<fonction>(...) from anon, public;  puis grant execute ... to authenticated.'; end if;
+  return next;
+  select count(*) into n
+    from pg_proc p join pg_namespace s on s.oid = p.pronamespace
+   where s.nspname = 'public' and p.prosecdef and p.prorettype <> 'trigger'::regtype and has_function_privilege('anon', p.oid, 'execute') and p.proname !~ '^(crm|ai)_';
+  ord := 41; controle := 'Autres applications du projet : fonctions SECURITY DEFINER appelables avec la clé publique';
+  if n = 0 then statut := 'OK'; detail := 'aucune'; action := null;
+  else statut := 'ATTENTION'; detail := n || ' fonction(s)'; action := 'Mêmes précautions que la ligne 21 : application par application.'; end if;
   return next;
 
   -- 5. Anciennes tables de synchronisation du CRM (crm_deals, crm_clients, crm_users_data…) : si elles existent, elles doivent être verrouillées.
