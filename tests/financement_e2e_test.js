@@ -61,6 +61,28 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     const noms = await page.evaluate(() => CLIENTS.map((c) => c.nom).filter(Boolean).slice(0, 20));
     ok(noms.length === 0 || noms.every((n) => !html.includes(n)), "aucun nom de client dans le dossier");
 
+    console.log("▶ Optimisations et notes");
+    await page.click('[data-tab="hyp"]'); await page.click('[data-act="reset"]'); await page.waitForTimeout(250);   // retour aux valeurs d'exemple (le test de simulation les avait modifiées)
+    await page.click('[data-tab="notes"]'); await page.waitForTimeout(200);
+    ok(await page.locator("#fin-body dl, #fin-body table").count() >= 1 && (await page.locator("#fin-body").innerText()).includes("Besoin de financement") && (await page.locator("#fin-body").innerText()).includes("Limites à connaître"), "onglet Notes : fonctionnement, lexique et limites");
+    await page.click('[data-tab="opti"]'); await page.waitForTimeout(300);
+    ok(await page.locator("#fin-body .alert-danger").count() === 1, "optimisations : verdict « non rentable » avec les valeurs d'exemple");
+    ok((await page.locator("#fin-body").innerText()).includes("Seuils d'équilibre"), "seuils d'équilibre affichés");
+    ok(await page.locator('[data-act="levier"]').count() === 11, "onze leviers testés");
+    ok(await page.locator("#fin-body .badge-warning", { hasText: "à arbitrer" }).count() >= 3, "leviers « à arbitrer » signalés");
+    const clientsAvant = await page.evaluate(() => (JSON.parse(localStorage.getItem("sanix_crm_fin_config") || "{}").clientsAn1));
+    await page.locator('[data-act="levier"][data-id="clients"]').click(); await page.waitForTimeout(300);
+    const apres = await page.evaluate(() => JSON.parse(localStorage.getItem("sanix_crm_fin_config")));
+    ok(apres.clientsAn1 > 0 && apres.clientsAn1 !== clientsAvant && apres.valide === false, "« Appliquer » modifie l'hypothèse et retire la validation");
+    await page.click('[data-act="plan"]'); await page.waitForTimeout(300);
+    const plan = await page.evaluate(() => JSON.parse(localStorage.getItem("sanix_crm_fin_config")));
+    ok(plan.prixLicence > 0 && plan.maintenancePct > 12, "« Appliquer ce plan » enchaîne plusieurs leviers");
+    ok(await page.locator("#fin-body .alert-danger").count() === 0 || (await page.locator("#fin-body").innerText()).includes("rentable"), "le plan appliqué est pris en compte dans le verdict");
+    await page.click('[data-tab="dossier"]'); await page.waitForTimeout(150);
+    const htmlN = await page.evaluate(() => { let h = ""; const w = { document: { write: (x) => { h += x; }, close() {} }, focus() {}, print() {} }; const o = window.open; window.open = () => w; document.querySelector('[data-act="pdf"]').click(); window.open = o; return h; });
+    ok(htmlN.includes("Notes méthodologiques") && htmlN.includes("Capacité de remboursement") && htmlN.includes("Limites"), "dossier PDF : annexe de notes méthodologiques");
+    ok(!htmlN.includes("Leviers testés") && !htmlN.includes("à arbitrer"), "les pistes d'optimisation restent internes : absentes du dossier");
+
     console.log("▶ Validation des hypothèses");
     await page.check('[data-k="valide"]'); await page.waitForTimeout(200);
     ok(await page.locator("#fin-body .alert-success").count() === 1 && await page.locator("#fin-body .alert-warn").count() === 0, "validation : l'avertissement laisse place à la confirmation");

@@ -19,6 +19,7 @@
   const OPT_LABEL = { capital: 'Levée en capital', dette: 'Prêt / dette', subvention: 'Subvention', mix: 'Mix' };
 
   const num = (v) => { v = Number(v); return isFinite(v) ? v : 0; };
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const pos = (v) => Math.max(0, num(v));
   const clamp = (v, a, b) => Math.min(b, Math.max(a, num(v)));
   const sum = (a, f) => a.reduce((s, x) => s + f(x), 0);
@@ -186,7 +187,65 @@
     return { mois: avec0.moisMin + 1, lignes, depenses, recu, tresoDepart: num(h.tresoDepart), besoin };
   }
 
-  const calc = { N, ANNEES, SCEN, SCEN_LABEL, OPT_LABEL, defauts, simuler, structure, dimensionner, indicateurs, comparer, emplois, preMoney };
+  /* ───────────── Pistes d'optimisation ───────────── */
+  const reporte = (h, k) => h.postes.map((p) => p.finance ? Object.assign({}, p, { debut: Math.min(59, num(p.debut) + k) }) : p);
+  /** Chaque levier renvoie les hypothèses modifiées (clés de premier niveau). `arbitrer` : le modèle ne baisse pas la croissance en contrepartie, à vérifier. */
+  const LEVIERS = [
+    { id: 'clients', cat: 'Ventes', lib: 'Gagner plus de clients', test: '+25 % de nouveaux clients la 1re année', f: (h) => ({ clientsAn1: h.clientsAn1 * 1.25 }), note: 'Dépend de votre capacité commerciale et de la demande : à confirmer avec votre pipeline.' },
+    { id: 'prix', cat: 'Ventes', lib: 'Augmenter le prix des licences', test: '+15 % du prix moyen', f: (h) => ({ prixLicence: h.prixLicence * 1.15 }), note: 'Vérifier ce que vos clients acceptent de payer et les prix de vos concurrents.' },
+    { id: 'maintenance', cat: 'Ventes', lib: 'Développer les contrats de maintenance', test: '+5 points de maintenance annuelle', f: (h) => ({ maintenancePct: h.maintenancePct + 5 }), note: 'Revenu récurrent : c\'est ce que les financeurs valorisent le plus.' },
+    { id: 'retention', cat: 'Ventes', lib: 'Mieux fidéliser les clients', test: '+5 points de rétention', f: (h) => ({ retentionPct: Math.min(100, h.retentionPct + 5) }), note: 'Suivi après-vente, renouvellements : l\'onglet « Après-vente » du CRM sert à cela.' },
+    { id: 'services', cat: 'Ventes', lib: 'Facturer plus d\'installation et de formation', test: '+10 points des licences', f: (h) => ({ servicesPct: h.servicesPct + 10 }), note: 'Marge généralement bonne, mais mobilise du temps de l\'équipe.' },
+    { id: 'embauches', cat: 'Coûts', lib: 'Recruter moins de monde', test: '−30 % de l\'effectif à recruter', f: (h) => ({ postes: h.postes.map((p) => p.finance ? Object.assign({}, p, { nb: p.nb * 0.7 }) : p) }), arbitrer: true, note: 'Le modèle ne réduit pas la croissance en contrepartie : vérifiez que vos objectifs de ventes restent tenables avec moins de monde.' },
+    { id: 'etaler', cat: 'Coûts', lib: 'Étaler les recrutements', test: 'recruter 6 mois plus tard', f: (h) => ({ postes: reporte(h, 6) }), arbitrer: true, note: 'Le modèle ne retarde pas la croissance en contrepartie : à ajuster si les recrues conditionnent les ventes.' },
+    { id: 'marketing', cat: 'Coûts', lib: 'Calibrer les campagnes financées', test: '−50 % du budget de campagnes', f: (h) => ({ marketingBoost: h.marketingBoost * 0.5 }), arbitrer: true, note: 'Moins de campagnes peut ralentir la prospection : le modèle ne le compense pas.' },
+    { id: 'fixes', cat: 'Coûts', lib: 'Réduire les charges fixes', test: '−10 % des charges fixes', f: (h) => ({ fixesMensuels: h.fixesMensuels * 0.9 }), note: 'Loyer, abonnements, déplacements : le gain est immédiat et sans effet sur les ventes.' },
+    { id: 'directs', cat: 'Coûts', lib: 'Réduire les coûts directs', test: '−3 points du chiffre d\'affaires', f: (h) => ({ directsPct: Math.max(0, h.directsPct - 3) }), note: 'Hébergement, outils tiers : renégocier ou mutualiser.' },
+    { id: 'delai', cat: 'Trésorerie', lib: 'Encaisser plus vite', test: '1 mois de délai en moins', f: (h) => ({ delaiEncaissement: Math.max(0, h.delaiEncaissement - 1) }), note: 'Acomptes à la commande, facturation à la livraison : agit sur la trésorerie, pas sur la rentabilité.' }
+  ];
+  const patcher = (h, l) => Object.assign({}, h, l.f(h));
+  /** Résultats clés du plan de croissance sans apport (ce qu'il faut améliorer). */
+  function evaluer(h) {
+    const s = simuler(h, 'avec', {}), a5 = s.annees[ANNEES - 1];
+    return { ebitda5: a5.ebitda, ca5: a5.ca, pointMort: s.pointMort, besoin: Math.max(0, -s.tresoMin), tresoFin: s.tresoFin, resultatCumule: sum(s.annees, (x) => x.resultatNet) };
+  }
+  /** Plus petite valeur de `cle` (clientsAn1, prixLicence) qui rend le plan durablement rentable ; null si hors de portée. */
+  function seuil(h, cle) {
+    const v0 = pos(h[cle]), ok = (v) => simuler(Object.assign({}, h, { [cle]: v }), 'avec', {}).pointMort !== null;
+    if (!(v0 > 0)) return null;
+    if (ok(v0)) return { valeur: v0, facteur: 1, deja: true };
+    let hi = v0 * 2, i = 0; while (!ok(hi) && i < 8) { hi *= 2; i++; }
+    if (!ok(hi)) return null;
+    let lo = v0; for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (ok(mid)) hi = mid; else lo = mid; }
+    return { valeur: hi, facteur: hi / v0, deja: false };
+  }
+  /** Teste chaque levier seul, cherche les seuils d'équilibre, puis enchaîne les leviers (le plus utile d'abord) jusqu'à la rentabilité et l'autofinancement. */
+  function optimiser(h) {
+    const base = evaluer(h);
+    const leviers = LEVIERS.filter((l) => !same(l.f(h), Object.keys(l.f(h)).reduce((o, k) => { o[k] = h[k]; return o; }, {}))).map((l) => {
+      const m = evaluer(patcher(h, l));
+      return { id: l.id, cat: l.cat, lib: l.lib, test: l.test, note: l.note, arbitrer: !!l.arbitrer, m, dEbitda5: m.ebitda5 - base.ebitda5, dBesoin: m.besoin - base.besoin, dTreso: m.tresoFin - base.tresoFin, rentable: m.pointMort !== null };
+    }).sort((a, b) => b.dTreso - a.dTreso);
+    // Enchaînement : d'abord les leviers sans contrepartie cachée (ventes, charges, encaissements) ; ceux « à arbitrer » (recrutements, campagnes)
+    // seulement si cela ne suffit pas, car le modèle ne réduit pas la croissance en retour.
+    let cur = h, mcur = base; const etapes = [], used = {};
+    const fini = () => mcur.pointMort !== null && mcur.besoin < 0.5;
+    [false, true].forEach((phase) => {
+      for (let i = 0; i < 8 && !fini(); i++) {
+        let best = null;
+        LEVIERS.forEach((l) => {
+          if (used[l.id] || !!l.arbitrer !== phase || !leviers.some((x) => x.id === l.id)) return;
+          const h2 = patcher(cur, l), m = evaluer(h2), gain = m.tresoFin - mcur.tresoFin;
+          if (!best || gain > best.gain) best = { l, h2, m, gain };
+        });
+        if (!best || best.gain <= 0) break;
+        used[best.l.id] = 1; cur = best.h2; mcur = best.m; etapes.push({ id: best.l.id, lib: best.l.lib, test: best.l.test, arbitrer: !!best.l.arbitrer, m: best.m });
+      }
+    });
+    return { base, leviers, seuils: { clients: seuil(h, 'clientsAn1'), prix: seuil(h, 'prixLicence') }, combine: { etapes, final: mcur, h: cur, rentable: mcur.pointMort !== null, autofinance: mcur.besoin < 0.5 } };
+  }
+
+  const calc = { N, ANNEES, SCEN, SCEN_LABEL, OPT_LABEL, LEVIERS, evaluer, optimiser, seuil, defauts, simuler, structure, dimensionner, indicateurs, comparer, emplois, preMoney };
   G.SanixFinancement = { calc };
   if (typeof module !== 'undefined' && module.exports) module.exports = { calc };
   if (!G.document) return;
@@ -195,7 +254,7 @@
   const MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n) => Math.round(num(n)).toLocaleString('fr-FR');
-  const fmtM = (n) => (num(n) / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' M';
+  const fmtM = (n) => { const r = Math.round(num(n) / 1e5) / 10; return (r === 0 ? 0 : r).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' M'; };
   const pct = (x, d) => (num(x) * 100).toLocaleString('fr-FR', { maximumFractionDigits: d == null ? 0 : d }) + ' %';
   const pad = (n) => (n < 10 ? '0' : '') + n;
   const monthKey = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1);
@@ -325,6 +384,53 @@
       + tab('🅰️ Sans financement (activité actuelle)', s, [L('Chiffre d\'affaires', 'ca', true), L('EBITDA', 'ebitda'), L('Résultat net', 'resultatNet'), L('Trésorerie en fin d\'année', 'tresoFin', true)]);
   }
 
+  /* — notes explicatives (aussi reprises en annexe du dossier) — */
+  const LEXIQUE = [
+    ['Chiffre d\'affaires', 'Trois sources : les <b>licences</b> (vente des logiciels à de nouveaux clients), la <b>maintenance</b> (abonnement annuel calculé sur l\'ensemble des clients déjà équipés, qui s\'érode selon la rétention) et les <b>services</b> (installation, formation).'],
+    ['EBITDA', 'Chiffre d\'affaires moins les charges d\'exploitation (salaires, marketing, charges fixes, intelligence artificielle, coûts directs, commissions), avant intérêts, impôts et amortissements. Il dit si l\'activité gagne de l\'argent <b>avant</b> tout financement.'],
+    ['Point mort', 'Premier mois à partir duquel l\'EBITDA reste positif jusqu\'à la fin du plan. S\'il n\'existe pas, le plan n\'est pas rentable sur 5 ans.'],
+    ['Trésorerie', 'L\'argent réellement disponible : les ventes sont encaissées avec un délai, les charges sont payées au fil du temps, les impôts et remboursements de prêt s\'y ajoutent.'],
+    ['Besoin de financement', 'Le niveau le plus bas atteint par la trésorerie du plan de croissance <b>sans apport</b> : c\'est la somme à financer pour ne jamais être à court. Le montant recommandé y ajoute une marge de sécurité.'],
+    ['Plan sans financement', 'L\'activité actuelle, sans recrutement ni campagne financés et avec une croissance limitée par les moyens : il montre ce que le financement change.'],
+    ['Valorisation avant apport', 'Ce que vaut la société avant l\'entrée d\'un investisseur. La <b>part cédée</b> vaut l\'apport divisé par (valorisation + apport).'],
+    ['Multiple investisseur', 'Ce que rapporte 1 FCFA investi à la sortie, supposée à l\'année 5 à un multiple du chiffre d\'affaires. Le <b>TRI</b> est le rendement annuel équivalent.'],
+    ['Capacité de remboursement', 'EBITDA divisé par le service de la dette (intérêts + capital remboursé). Un prêteur attend généralement au moins 1,2.'],
+    ['Mix', 'Un montage qui combine capital, prêt et subvention selon les parts choisies.']
+  ];
+  const LIMITES = ['Les valeurs initiales sont des exemples : seuls le nombre de clients, le prix moyen, la base installée et la commission viennent du CRM.', 'La croissance des ventes est une hypothèse : le modèle ne la relie pas automatiquement aux recrutements ou aux campagnes.',
+    'Modèle simplifié : pas d\'amortissements, de TVA ni de besoin en fonds de roulement détaillé ; impôt calculé sur le résultat avec report des pertes.', 'Ces projections ne sont ni une garantie de résultat ni un conseil financier : à faire valider par un expert-comptable.'];
+
+  function tabNotes() {
+    const etape = (n, t, d) => `<div style="display:flex;gap:12px;margin-bottom:10px"><div class="badge badge-primary" style="height:24px;flex-shrink:0">${n}</div><div><b>${t}</b><div class="muted" style="font-size:12.5px">${d}</div></div></div>`;
+    return `<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">🧭 Comment fonctionne ce modèle</span></div>
+      <p style="font-size:13px;margin:0 0 12px">Le modèle part de vos chiffres réels du CRM (commandes, prix moyen, base de clients), puis simule votre activité <b>mois par mois sur 5 ans</b>, dans deux situations : <b>sans financement</b> (l'activité actuelle) et <b>avec le plan de croissance</b> (recrutements, campagnes). Le point bas de trésorerie du plan de croissance donne le <b>besoin de financement</b>. Ce besoin est ensuite couvert de quatre façons (capital, prêt, subvention, mix) pour comparer ce que chacune coûte et rapporte.</p>
+      ${etape(1, 'Hypothèses', 'Remplacez les valeurs d\'exemple par vos vraies données : équipe, charges, prix, croissance, conditions de financement.')}${etape(2, 'Synthèse', 'Lisez le verdict de rentabilité, le besoin de financement et la comparaison des options. Modifiez les champs du haut pour simuler en direct.')}
+      ${etape(3, 'Optimisations', 'Si le plan n\'est pas assez rentable, l\'onglet teste des leviers un par un et propose un enchaînement chiffré.')}${etape(4, 'Validation', 'Quand chaque hypothèse reflète votre réalité, cochez la case de validation dans « Dossier » : la mention « document de travail » disparaît.')}${etape(5, 'Dossier', 'Imprimez le PDF ou exportez le tableur pour vos rendez-vous.')}</div>
+      <div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">📖 Lexique</span></div><table class="client-table"><tbody>${LEXIQUE.map((l) => `<tr><td style="width:190px;font-weight:700;vertical-align:top">${l[0]}</td><td style="font-size:13px">${l[1]}</td></tr>`).join('')}</tbody></table></div>
+      <div class="card"><div class="card-header"><span class="card-title">⚠️ Limites à connaître</span></div><ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.7">${LIMITES.map((l) => `<li>${l}</li>`).join('')}</ul></div>`;
+  }
+
+  const dlt = (v, bon) => Math.abs(v) < 5e3 ? '<span class="muted">—</span>' : `<span style="white-space:nowrap;color:var(--${(v > 0) === bon ? 'success' : 'danger'})">${v > 0 ? '+' : '−'}${fmtM(Math.abs(v))}</span>`;
+  const pmTxt = (pm) => pm === null ? '<span style="color:var(--danger)">jamais</span>' : 'mois ' + (pm + 1);
+  function tabOpti() {
+    const o = calc.optimiser(h), b = o.base, c = o.combine, sc = o.seuils, rent = b.pointMort !== null, cat = { Ventes: 'badge-success', 'Coûts': 'badge-warning', 'Trésorerie': 'badge-primary' };
+    let html = rent ? `<div class="alert alert-info" role="status">✅ <div>Le plan est rentable à partir du <b>mois ${b.pointMort + 1}</b>. Les pistes ci-dessous visent à <b>réduire le besoin de financement</b> (${fmtM(b.besoin)} ${esc(base.devise)}) et à avancer la rentabilité.</div></div>`
+      : `<div class="alert alert-danger" role="alert">⛔ <div>Le plan n'est pas rentable à l'année 5 (EBITDA ${fmtM(b.ebitda5)} ${esc(base.devise)}). Voici, chiffré par le modèle, ce qui peut le corriger.</div></div>`;
+    const seuilTxt = (x, lib, fmtv, unite) => !x ? `<li>${lib} : hors de portée avec la structure de coûts actuelle.</li>` : x.deja ? `<li>${lib} : déjà atteint avec vos hypothèses.</li>` : `<li>${lib} : au moins <b>${fmtv(x.valeur)}</b> ${unite} (soit <b>+${pct(x.facteur - 1)}</b>).</li>`;
+    html += `<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">🎯 Seuils d'équilibre</span></div><p class="page-sub" style="margin:0 0 6px">Pour que le plan soit durablement rentable, une seule hypothèse changeant, tout le reste égal :</p><ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.8">
+      ${seuilTxt(sc.clients, 'Nouveaux clients la 1re année', (v) => Math.ceil(v).toLocaleString('fr-FR'), 'clients (vous en avez prévu ' + fmt(h.clientsAn1) + ')')}${seuilTxt(sc.prix, 'Prix moyen d\'une licence', (v) => fmt(v), esc(base.devise) + ' HT (vous avez prévu ' + fmt(h.prixLicence) + ')')}</ul></div>`;
+    html += `<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">🧪 Leviers testés un par un</span><span class="badge badge-muted">Effet sur le plan de croissance, sans apport</span></div><div style="overflow-x:auto"><table class="client-table" style="min-width:760px"><thead><tr><th>Levier</th><th>Test</th><th style="text-align:right">EBITDA an 5</th><th style="text-align:right">Point mort</th><th style="text-align:right">Besoin</th><th style="text-align:right">Trésorerie an 5</th><th></th></tr></thead><tbody>
+      ${o.leviers.map((l) => `<tr><td style="min-width:230px"><span class="badge ${cat[l.cat] || 'badge-muted'}">${l.cat}</span> <b>${esc(l.lib)}</b>${l.arbitrer ? ' <span class="badge badge-warning" title="Le modèle ne réduit pas la croissance en contrepartie">⚠️ à arbitrer</span>' : ''}<div class="muted" style="font-size:11.5px;margin-top:2px">${esc(l.note)}</div></td><td style="font-size:12px">${esc(l.test)}</td><td style="text-align:right">${dlt(l.dEbitda5, true)}</td><td style="text-align:right">${l.rentable ? '<span style="color:var(--success)">' + pmTxt(l.m.pointMort) + '</span>' : pmTxt(null)}</td><td style="text-align:right">${dlt(l.dBesoin, false)}</td><td style="text-align:right">${dlt(l.dTreso, true)}</td><td><button class="btn btn-outline btn-sm" data-act="levier" data-id="${l.id}">Appliquer</button></td></tr>`).join('')}</tbody></table></div>
+      <p class="page-sub" style="margin:10px 0 0">Situation de départ : EBITDA an 5 ${fmtM(b.ebitda5)}, point mort ${pmTxt(b.pointMort)}, besoin ${fmtM(b.besoin)}. Les variations sont mesurées par rapport à elle.</p></div>`;
+    html += `<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">🚀 Plan combiné</span>${c.etapes.length ? '<button class="btn btn-primary btn-sm" data-act="plan">Appliquer ce plan</button>' : ''}</div>`;
+    if (!c.etapes.length) html += '<p class="page-sub" style="margin:0">Aucun levier supplémentaire n\'améliore le plan : il est déjà rentable et autofinancé.</p>';
+    else html += `<p class="page-sub" style="margin:0 0 8px">Les leviers de ventes et de charges d'abord ; les recrutements et campagnes réduits seulement si cela ne suffit pas. ${c.rentable ? `Résultat : rentable à partir du <b>mois ${c.final.pointMort + 1}</b>, besoin ramené de ${fmtM(b.besoin)} à <b>${fmtM(c.final.besoin)}</b> ${esc(base.devise)}${c.autofinance ? ' (le plan s\'autofinance)' : ''}.` : '<b>Même en enchaînant tous les leviers, le plan reste non rentable : il faut revoir le modèle économique (prix, volumes).</b>'}</p>
+      <div style="overflow-x:auto"><table class="client-table" style="min-width:560px"><thead><tr><th>#</th><th>Levier (cumulé)</th><th style="text-align:right">EBITDA an 5</th><th style="text-align:right">Point mort</th><th style="text-align:right">Besoin</th></tr></thead><tbody>
+      ${c.etapes.map((e, i) => `<tr><td>${i + 1}</td><td>${esc(e.lib)} <span class="muted" style="font-size:11.5px">(${esc(e.test)})</span>${e.arbitrer ? ' <span class="badge badge-warning">⚠️ à arbitrer</span>' : ''}</td><td style="text-align:right;white-space:nowrap">${fmtM(e.m.ebitda5)}</td><td style="text-align:right;white-space:nowrap">${pmTxt(e.m.pointMort)}</td><td style="text-align:right;white-space:nowrap">${fmtM(e.m.besoin)}</td></tr>`).join('')}</tbody></table></div>`;
+    html += '</div>' + note('💡 Ces pistes sont des <b>tests chiffrés par le modèle</b>, pas des promesses : chaque levier doit être jugé réaliste par vous. « Appliquer » modifie vos hypothèses (la mention « document de travail » revient) ; « Réinitialiser » dans l\'onglet Hypothèses remet les valeurs initiales.');
+    return html;
+  }
+
   /* — onglet Dossier — */
   function tabDossier() {
     const alerte = h.valide ? '<div class="alert alert-success" role="status">✅ Hypothèses validées : les exports ne portent plus la mention « document de travail ».</div>'
@@ -364,6 +470,8 @@
       <p>Sans financement, le chiffre d'affaires de l'année 5 serait de ${fmtM(r.sans.annees[ANNEES - 1].ca)} ${esc(d)}, contre ${fmtM(a[ANNEES - 1].ca)} ${esc(d)} avec le plan de croissance.</p>
       <h2>4. Options de financement</h2><table><thead><tr><th>Option</th><th style="text-align:right">Montant</th><th style="text-align:right">Part cédée</th><th style="text-align:right">Multiple investisseur</th><th style="text-align:right">Capacité de remboursement</th><th>Points d'attention</th></tr></thead><tbody>${r.options.map(opt).join('')}</tbody></table>
       <h2>5. Hypothèses principales</h2><ul><li>Scénario de croissance « ${esc(SCEN_LABEL[h.scenario] || 'personnalisé')} » : nouveaux clients +${h.croiss.join(' %, +')} % par an (année 1 : ${fmt(h.clientsAn1)} clients).</li><li>Prix moyen d'une licence : ${fmt(h.prixLicence)} ${esc(d)} HT (hausse de ${h.hausseAn} % par an) ; maintenance ${h.maintenancePct} % de la base installée ; services ${h.servicesPct} % des licences.</li><li>Équipe : ${h.postes.filter((p) => p.finance).map((p) => `${p.nb} ${esc(p.nom)}`).join(', ') || 'aucune embauche'} financé(s) par l'apport.</li><li>Sortie investisseur supposée à l'année 5 à ${h.multSortie} × le chiffre d'affaires.</li></ul>
+      <h2>6. Notes méthodologiques</h2><p>Le modèle simule l'activité mois par mois sur 5 ans, à partir des chiffres réels de la société, dans deux situations : sans financement et avec le plan de croissance. Le besoin de financement est le point bas de trésorerie du plan de croissance sans apport.</p>
+      <table><tbody>${LEXIQUE.map((l) => `<tr><td style="width:170px;vertical-align:top"><b>${l[0]}</b></td><td style="font-size:12px">${l[1]}</td></tr>`).join('')}</tbody></table><p><b>Limites :</b></p><ul>${LIMITES.map((l) => `<li style="font-size:12px">${l}</li>`).join('')}</ul>
       <p class="n">Ces projections reposent sur des hypothèses de la direction ; elles ne constituent ni une garantie de résultat ni une offre de titres financiers. Les données de départ proviennent du CRM de la société.</p></body></html>`;
   }
   function pdf() { const w = window.open('', '_blank'); if (!w) { toast('⚠️ Autorisez les fenêtres pop-up pour ouvrir le dossier'); return; } w.document.write(dossierHtml()); w.document.close(); setTimeout(() => { try { w.focus(); w.print(); } catch (e) { /* impression manuelle */ } }, 400); }
@@ -372,17 +480,24 @@
   function render() {
     const host = root(); if (!host) return;
     let el = host.querySelector(':scope > #fin-body'); if (!el) { el = document.createElement('div'); el.id = 'fin-body'; host.appendChild(el); }
-    const tabs = [['synthese', '📊 Synthèse'], ['hyp', '🧮 Hypothèses'], ['proj', '📈 Projections'], ['dossier', '📄 Dossier']];
+    const tabs = [['synthese', '📊 Synthèse'], ['hyp', '🧮 Hypothèses'], ['proj', '📈 Projections'], ['opti', '💡 Optimisations'], ['notes', '📖 Notes'], ['dossier', '📄 Dossier']];
     el.innerHTML = `<div class="ban"><div class="ban-deco"></div><h1 class="page-title">🏦 Financement</h1><p class="page-sub">Modèle financier sur 5 ans : besoin de financement, options et dossier pour les financeurs — départ : vos chiffres réels du CRM</p></div>
       <div class="tabs" role="tablist" style="margin-bottom:16px">${tabs.map((t) => `<div class="tab ${ui.tab === t[0] ? 'active' : ''}" role="tab" tabindex="0" aria-selected="${ui.tab === t[0]}" data-tab="${t[0]}">${t[1]}</div>`).join('')}</div>` +
-      (ui.tab === 'hyp' ? tabHyp() : ui.tab === 'proj' ? tabProj() : ui.tab === 'dossier' ? tabDossier() : tabSynthese());
+      (ui.tab === 'hyp' ? tabHyp() : ui.tab === 'proj' ? tabProj() : ui.tab === 'opti' ? tabOpti() : ui.tab === 'notes' ? tabNotes() : ui.tab === 'dossier' ? tabDossier() : tabSynthese());
   }
   function bind() {
     const el = root(); if (!el || el.dataset.bound) return; el.dataset.bound = '1';
     const act = (t) => {
       if (t.dataset.tab) { ui.tab = t.dataset.tab; render(); return; }
       const a = t.dataset.act; if (!a) return;
-      if (a === 'csv') csv(); else if (a === 'pdf') pdf();
+      const appliquer = (h2, qui) => {
+        if (!confirm(qui + '\n\nVos hypothèses seront modifiées et la mention « document de travail » reviendra. « Réinitialiser » (onglet Hypothèses) remet les valeurs initiales. Continuer ?')) return;
+        Object.keys(h2).forEach((k) => { if (JSON.stringify(h2[k]) !== JSON.stringify(h[k])) edit(k, clone(h2[k])); });
+        edit('valide', false); render();
+      };
+      if (a === 'levier') { const l = LEVIERS.filter((x) => x.id === t.dataset.id)[0]; if (l) appliquer(Object.assign({}, h, l.f(h)), 'Appliquer : ' + l.lib + ' (' + l.test + ')'); }
+      else if (a === 'plan') { const c = calc.optimiser(h).combine; if (c.etapes.length) appliquer(c.h, 'Appliquer le plan combiné (' + c.etapes.length + ' leviers)'); }
+      else if (a === 'csv') csv(); else if (a === 'pdf') pdf();
       else if (a === 'reset') { if (confirm('Revenir aux valeurs initiales ? Vos hypothèses modifiées seront effacées.')) { ov = {}; persist(); recompute(); render(); } }
       else if (a === 'poste-add') { if (!('postes' in ov)) ov.postes = clone(h.postes); ov.postes.push({ id: 'p' + Date.now().toString(36), nom: 'Nouveau poste', nb: 1, cout: 300000, debut: 6, finance: true }); persist(); recompute(); render(); }
       else if (a === 'poste-del') { if (!('postes' in ov)) ov.postes = clone(h.postes); ov.postes = ov.postes.filter((p) => p.id !== t.dataset.id); persist(); recompute(); render(); }
