@@ -39,7 +39,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
 
     console.log("▶ Hypothèses, projections, dossier");
     await page.click('[data-tab="hyp"]'); await page.waitForTimeout(200);
-    ok(await page.locator("#fin-body .alert-warn").count() === 1, "avertissement sur les valeurs indicatives");
+    ok((await page.locator("#fin-body .alert-warn").allInnerTexts()).some((t) => t.includes("indicatives")), "avertissement sur les valeurs indicatives");
     await page.click('[data-act="poste-add"]'); await page.waitForTimeout(200);
     const nPostes = await page.locator('[data-p][data-f="nom"]').count();
     ok(nPostes === 6, "ajout d'un poste (6 postes)");
@@ -114,8 +114,8 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(await page.locator('[data-prod="log_immo"][data-f="maintPct"]').isDisabled(), "abonnement : la maintenance est comprise dans la redevance (champ désactivé)");
     await page.locator('[data-prod="log_immo"][data-f="prixAnnuel"]').fill("600000"); await page.locator('[data-prod="log_immo"][data-f="prixAnnuel"]').blur(); await page.waitForTimeout(250);
     await page.locator('[data-prod="log_immo"][data-f="initial"]').fill("100000"); await page.locator('[data-prod="log_immo"][data-f="initial"]').blur(); await page.waitForTimeout(250);
-    const imm = await page.evaluate(() => JSON.parse(localStorage.getItem("sanix_crm_fin_config")).produits.filter((p) => p.id === "log_immo")[0]);
-    ok(imm.mode === "annuelle" && imm.prixAnnuel === 600000 && imm.initial === 100000 && imm.prixLicence > 0, "mode, redevance annuelle et frais initiaux enregistrés (le prix de licence est conservé)");
+    const imm = await page.evaluate(() => { const c = JSON.parse(localStorage.getItem("sanix_crm_fin_config")); return { edits: c.produitsEdits.log_immo, ancien: c.produits }; });
+    ok(imm.edits.mode === "annuelle" && imm.edits.prixAnnuel === 600000 && imm.edits.initial === 100000 && !("prixLicence" in imm.edits) && imm.ancien === undefined, "seules les modifications sont enregistrées (mode, redevance, frais initiaux), pas la liste entière");
     await page.click('[data-tab="proj"]'); await page.waitForTimeout(250);
     const etat = await page.locator("#fin-body").innerText();
     ok(etat.includes("Revenus par logiciel") && etat.includes("Dont revenus récurrents") && etat.includes("ImmoSuite ERP"), "états financiers : revenus par logiciel et part récurrente");
@@ -129,6 +129,24 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(htmlL.includes("Revenus par logiciel") && htmlL.includes("ImmoSuite ERP") && htmlL.includes("abonnement annuel") && htmlL.includes("Ventes réparties entre"), "dossier PDF : revenus par logiciel et mode de vente");
     const [dlL] = await Promise.all([page.waitForEvent("download"), page.click('[data-act="csv"]')]);
     const csvL = require("fs").readFileSync(await dlL.path(), "utf8"); ok(csvL.includes("Revenus par logiciel") && csvL.includes('"ImmoSuite ERP";"annuelle"'), "export CSV : revenus par logiciel");
+
+    console.log("▶ Logiciels : le modèle suit le CRM après vos modifications");
+    const ouvrirHyp = async () => { await page.evaluate(() => navigate("pipeline", null)); await page.waitForTimeout(150); await page.evaluate(() => navigate("financement", null)); await page.waitForTimeout(450); await page.click('[data-tab="hyp"]'); await page.waitForTimeout(250); };
+    await page.evaluate(() => { LOGICIELS.push({ id: "log_nouveau", nom: "Nouveau Logiciel", type_licence: "Perpetuelle", prixNum: 900000, prixMensuel: 90000, actif: true }); COMMANDES.push({ id: "c_sync", client: "Client Sync", date: "2026-11-16", logiciel: "Nouveau Logiciel", typeLicence: "Perpetuelle", htNet: 900000, ttc: 900000, acompte: 0, statut: "confirmee" }); LOGICIELS.find((l) => l.id === "log_distripro").prixNum = 777000; });
+    await ouvrirHyp();
+    ok(await page.locator('select[data-prod][data-f="mode"]').count() === 19, "logiciel ajouté au CRM : il apparaît dans le modèle (19), alors que vous avez déjà modifié ImmoSuite");
+    ok(+(await page.locator('[data-prod="log_nouveau"][data-f="part"]').inputValue()) > 0 && +(await page.locator('[data-prod="log_nouveau"][data-f="prixLicence"]').inputValue()) === 900000, "sa part de ventes vient de ses commandes, son prix du catalogue");
+    ok(+(await page.locator('[data-prod="log_distripro"][data-f="prixLicence"]').inputValue()) === 777000, "prix modifié au catalogue : repris dans le modèle");
+    ok(await page.locator('select[data-prod="log_immo"][data-f="mode"]').inputValue() === "annuelle" && +(await page.locator('[data-prod="log_immo"][data-f="prixAnnuel"]').inputValue()) === 600000, "vos modifications sur ImmoSuite sont conservées");
+    ok(await page.evaluate(() => (document.querySelector("#fin-body").innerText.indexOf("ne correspondent à aucun logiciel") >= 0)), "commandes sans logiciel du catalogue (AviNest Pro) : avertissement affiché");
+    await page.evaluate(() => { LOGICIELS.find((l) => l.id === "log_aluexpert").nom = "AluExpert Pro"; });
+    await ouvrirHyp();
+    ok(+(await page.locator('[data-prod="log_aluexpert"][data-f="part"]').inputValue()) === 0 && (await page.locator("#fin-body").innerText()).includes("Sanix AluExpert ERP"), "logiciel renommé : ses anciennes commandes sont signalées (nom d'origine cité) au lieu d'être perdues en silence");
+    await page.click('[data-tab="traction"]'); await page.waitForTimeout(200);
+    ok((await page.locator("#fin-body").innerText()).includes("absent du catalogue"), "l'onglet Traction le signale aussi");
+    await page.evaluate(() => { LOGICIELS.find((l) => l.id === "log_aluexpert").nom = "Sanix AluExpert ERP"; LOGICIELS.find((l) => l.id === "log_distripro").prixNum = 600000; const i = LOGICIELS.findIndex((l) => l.id === "log_nouveau"); LOGICIELS.splice(i, 1); const j = COMMANDES.findIndex((c) => c.id === "c_sync"); COMMANDES.splice(j, 1); });
+    await ouvrirHyp();
+    ok(await page.locator('select[data-prod][data-f="mode"]').count() === 18, "retour au catalogue d'origine : 18 logiciels, la modification d'ImmoSuite est toujours là");
 
     console.log("▶ Optimisations et notes");
     await page.click('[data-tab="hyp"]'); await page.click('[data-act="reset"]'); await page.waitForTimeout(250);   // retour aux valeurs d'exemple (le test de simulation les avait modifiées)

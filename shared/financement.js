@@ -38,6 +38,23 @@
         initial: Math.round(prix * 0.2), maintPct: 12, part: tot > 0 && v ? Math.round(v.n / tot * 1000) / 10 : 0, catalogue: prix, observe, vendus: v ? v.n : 0 };
     });
   }
+  /** Liste des logiciels du CRM, sur laquelle on applique les seules modifications faites dans le modèle (champ par champ, par identifiant).
+   *  Un logiciel ajouté ou un prix changé au catalogue est donc repris ; un champ que vous avez modifié garde votre valeur ; une modification
+   *  sur un logiciel supprimé du catalogue est ignorée. */
+  function fusionProduits(defauts, edits) {
+    edits = edits || {};
+    return (defauts || []).map((p) => Object.assign({}, p, edits[p.id] || {}));
+  }
+  /** Modifications (champ par champ) qui font passer de `avant` à `apres` : [{ id, champ, valeur }]. */
+  function diffProduits(avant, apres) {
+    const out = []; (apres || []).forEach((p) => { const q = (avant || []).filter((x) => x.id === p.id)[0]; if (!q) return; Object.keys(p).forEach((k) => { if (JSON.stringify(p[k]) !== JSON.stringify(q[k])) out.push({ id: p.id, champ: k, valeur: p[k] }); }); });
+    return out;
+  }
+  /** Ancien format (liste complète figée) → modifications par champ, par différence avec le catalogue actuel. */
+  function editsDepuisListe(liste, defauts) {
+    const edits = {}; diffProduits(defauts, liste).forEach((d) => { if (['catalogue', 'observe', 'vendus', 'nom'].indexOf(d.champ) >= 0) return; (edits[d.id] = edits[d.id] || {})[d.champ] = d.valeur; });
+    return edits;
+  }
   /** Logiciels qui entrent dans le calcul (part des ventes > 0), parts ramenées à 1. Sans logiciel renseigné : un produit moyen reprenant les anciennes hypothèses. */
   function produitsActifs(h) {
     const L = (h.produits || []).filter((p) => pos(p.part) > 0), tot = sum(L, (p) => pos(p.part));
@@ -387,7 +404,7 @@
     return { base, leviers, seuils: { clients: seuil(h, 'clientsAn1'), prix: (h.produits || []).some((p) => pos(p.part) > 0) ? seuilPrix(h) : seuil(h, 'prixLicence') }, combine: { etapes, final: mcur, h: cur, rentable: mcur.pointMort !== null, autofinance: mcur.besoin < 0.5 } };
   }
 
-  const calc = { N, ANNEES, SCEN, SCEN_LABEL, OPT_LABEL, MODES, LEVIERS, produitsDefaut, produitsActifs, contratsParLogiciel, scalePrix, seuilPrix, cle, analyserTraction, economieUnitaire, tourDeTable, evaluer, optimiser, seuil, defauts, simuler, structure, dimensionner, indicateurs, comparer, emplois, preMoney };
+  const calc = { N, ANNEES, SCEN, SCEN_LABEL, OPT_LABEL, MODES, LEVIERS, produitsDefaut, fusionProduits, diffProduits, editsDepuisListe, produitsActifs, contratsParLogiciel, scalePrix, seuilPrix, cle, analyserTraction, economieUnitaire, tourDeTable, evaluer, optimiser, seuil, defauts, simuler, structure, dimensionner, indicateurs, comparer, emplois, preMoney };
   G.SanixFinancement = { calc };
   if (typeof module !== 'undefined' && module.exports) module.exports = { calc };
   if (!G.document) return;
@@ -415,7 +432,9 @@
     if (P) { const p = P.pipeline(deals, nowKey); Object.keys(p).forEach((k) => { pond += p[k].pondere; brut += p[k].brut; }); }
     const taux = g(() => G.SanixPilotage.store.usdFcfa()) || 0;
     const logiciels = (g(() => LOGICIELS) || []).filter((l) => l && l.actif !== false).map((l) => ({ id: l.id, nom: l.nom, typeLicence: l.type_licence, prixNum: l.prixNum, prixMensuel: l.prixMensuel }));
-    return { traction: T, logiciels, ventesLogiciel: T.parLogiciel, clientsFactures: T.tous.clients, usdFcfa: taux, caTotal: B.factureHT, ca12m: B.ht12, commandes12m: B.n12, commandesTotal: B.commandes, prixMoyen: B.prixMoyen,
+    const cles = {}; logiciels.forEach((l) => { cles[cle(l.nom)] = 1; });
+    const sansLogiciel = T.parLogiciel.filter((v) => !cles[v.cle]);                 // ventes dont le nom ne correspond à aucun logiciel du catalogue
+    return { traction: T, logiciels, ventesLogiciel: T.parLogiciel, sansLogiciel, clientsFactures: T.tous.clients, usdFcfa: taux, caTotal: B.factureHT, ca12m: B.ht12, commandes12m: B.n12, commandesTotal: B.commandes, prixMoyen: B.prixMoyen,
       pipelinePondere: pond, pipelineBrut: brut, prospects: cl.filter((c) => c && c.statut === 'prospect').length, clients: cl.filter((c) => c && c.statut === 'client').length,
       produits: (g(() => LOGICIELS) || []).filter((l) => l && l.actif !== false).length,
       commissionDefaut: num(g(() => CONFIG.commissionDefaut)), societe: g(() => CONFIG.raisonSociale) || 'SANIX', devise: g(() => CONFIG.devise) || 'FCFA' };
@@ -423,7 +442,11 @@
   const clone = (o) => JSON.parse(JSON.stringify(o));
   function load() { try { const r = localStorage.getItem('sanix_crm_' + LSK); ov = r ? JSON.parse(r) : {}; } catch (e) { ov = {}; } if (!ov || typeof ov !== 'object') ov = {}; }
   function persist() { try { if (typeof window.lsSave === 'function') window.lsSave(LSK, ov); else localStorage.setItem('sanix_crm_' + LSK, JSON.stringify(ov)); } catch (e) { toast('⚠️ Enregistrement local impossible'); } }
-  function recompute() { base = crm(); h = Object.assign(defauts(base), clone(ov)); res = comparer(h); }
+  function recompute() {
+    base = crm(); const d = defauts(base);
+    if (Array.isArray(ov.produits)) { ov.produitsEdits = editsDepuisListe(ov.produits, d.produits); delete ov.produits; persist(); }   // ancien format : liste complète figée
+    h = Object.assign(d, clone(ov)); h.produits = fusionProduits(d.produits, ov.produitsEdits); res = comparer(h);
+  }
   /** Modifie une hypothèse (chemin « croiss.0 », « clientsAn1 »…) et ne mémorise que ce que l'utilisateur a touché. */
   function edit(path, val) {
     const parts = path.split('.'), top = parts[0];
@@ -436,9 +459,9 @@
     const p = ov.postes.filter((x) => x.id === id)[0]; if (!p) return; p[field] = val; persist(); recompute();
   }
 
+  /** On ne mémorise que ce que vous avez changé, logiciel par logiciel et champ par champ : le reste suit le catalogue et les ventes du CRM. */
   function editProduit(id, field, val) {
-    if (!('produits' in ov)) ov.produits = clone(h.produits);
-    const p = ov.produits.filter((x) => x.id === id)[0]; if (!p) return; p[field] = val; persist(); recompute();
+    ov.produitsEdits = ov.produitsEdits || {}; ov.produitsEdits[id] = Object.assign({}, ov.produitsEdits[id], { [field]: val }); persist(); recompute();
   }
   function editLien(k, f, v) { ov.liens = ov.liens || {}; ov.liens[k] = Object.assign({}, ov.liens[k], { [f]: !!v }); persist(); recompute(); }
   function editAssocie(id, field, val) {
@@ -549,6 +572,8 @@
     if (A.recurrent === 0) flags.push('<b>Aucun revenu récurrent</b> enregistré : toutes les commandes sont des licences ponctuelles, la maintenance n\'est pas facturée dans le CRM.');
     if (T.nbLies > 0) flags.push(`<b>${pct(T.partLies)}</b> du facturé vient de clients marqués « partie liée » : à présenter séparément.`);
     if (T.encaisseNature > 0) flags.push(`${fmt(T.encaisseNature)} ${d} de règlements marqués « en nature » : non monétaires.`);
+    if (T.topLogiciel > 0.5 && T.parLogiciel[0]) flags.push(`Un seul logiciel, <b>${esc(T.parLogiciel[0].nom)}</b>, représente <b>${pct(T.topLogiciel)}</b> du facturé : forte dépendance à un produit.`);
+    if ((base.sansLogiciel || []).length) flags.push(`<b>${base.sansLogiciel.reduce((t, v) => t + v.n, 0)} commande(s)</b> portent un nom de logiciel absent du catalogue (${base.sansLogiciel.map((v) => '« ' + esc(v.nom) + ' »').join(', ')}) : elles ne comptent pas dans la répartition des ventes du modèle.`);
     if (A.clients < 10) flags.push(`Seulement <b>${A.clients} clients</b> facturés : la traction reste faible pour un fonds.`);
     const lignes = T.lignes.map((r) => `<tr><td>${esc(r.client)}${r.lie ? ' <span class="badge badge-warning">liée</span>' : ''}${r.nature ? ' <span class="badge badge-muted">en nature</span>' : ''}</td><td style="text-align:right">${r.n}</td><td style="text-align:right">${fmt(r.factureHT)}</td><td style="text-align:right">${fmt(r.encaisse)}</td><td style="text-align:right;${r.creance > 0 ? 'color:var(--danger)' : ''}">${fmt(r.creance)}</td><td style="text-align:right">${r.factureTTC > 0 ? pct(r.encaisse / r.factureTTC) : '–'}</td>
       <td style="text-align:center"><input type="checkbox" data-lien="${esc(r.cle)}" data-f="lie" ${r.lie ? 'checked' : ''} aria-label="Partie liée : ${esc(r.client)}"></td><td style="text-align:center"><input type="checkbox" data-lien="${esc(r.cle)}" data-f="nature" ${r.nature ? 'checked' : ''} aria-label="Règlement en nature : ${esc(r.client)}"></td></tr>`).join('');
@@ -605,7 +630,8 @@
         <td><input class="form-input" type="number" min="0" max="100" style="width:70px" data-prod="${esc(p.id)}" data-f="maintPct" value="${num(p.maintPct)}" ${sub ? 'disabled title="Comprise dans la redevance"' : ''} aria-label="Maintenance de ${esc(p.nom)}"></td>
         <td><input class="form-input" type="number" min="0" max="100" step="any" style="width:80px" data-prod="${esc(p.id)}" data-f="part" value="${num(p.part)}" aria-label="Part des ventes de ${esc(p.nom)}"></td></tr>`;
     }).join('');
-    return note('Pour chaque logiciel : <b>comment il est vendu</b>, son <b>prix</b> (licence : une fois ; abonnement annuel : par an ; abonnement mensuel : par mois), les <b>frais initiaux de mise en exploitation</b> facturés au client, la <b>maintenance</b> annuelle (licence perpétuelle seulement) et la <b>part des nouveaux clients</b> qu\'il représente. Les valeurs de départ viennent de votre catalogue et de vos ventes réelles ; les prix d\'abonnement et les frais initiaux sont des <b>points de départ à fixer</b>.')
+    const sans = base.sansLogiciel || [], alerte = sans.length ? `<div class="alert alert-warn" role="note">⚠️ <div><b>${sans.reduce((t, v) => t + v.n, 0)} commande(s) (${fmtM(sum(sans, (v) => v.ht))} ${esc(base.devise)}) ne correspondent à aucun logiciel du catalogue</b> : ${sans.map((v) => '« ' + esc(v.nom) + ' »').join(', ')}. Elles ne comptent pas dans la répartition des ventes ci-dessous. Si vous avez renommé un logiciel, le nom des anciennes commandes ne suit pas : corrigez-le dans les commandes ou dans le catalogue.</div></div>` : '';
+    return alerte + note('Pour chaque logiciel : <b>comment il est vendu</b>, son <b>prix</b> (licence : une fois ; abonnement annuel : par an ; abonnement mensuel : par mois), les <b>frais initiaux de mise en exploitation</b> facturés au client, la <b>maintenance</b> annuelle (licence perpétuelle seulement) et la <b>part des nouveaux clients</b> qu\'il représente. Les valeurs de départ viennent de votre catalogue et de vos ventes réelles ; les prix d\'abonnement et les frais initiaux sont des <b>points de départ à fixer</b>.')
       + `<div style="overflow-x:auto"><table class="client-table" style="min-width:780px"><thead><tr><th>Logiciel</th><th>Mode de vente</th><th>Prix (FCFA)</th><th>Frais initiaux</th><th>Maintenance %</th><th>Part des ventes %</th></tr></thead><tbody>${lignes}
       <tr style="font-weight:700"><td colspan="5" style="text-align:right">Total des parts (ramené à 100 %)</td><td>${fmt(tot)} %</td></tr></tbody></table></div>${tot > 0 ? '' : note('⚠️ Aucune part de ventes : le modèle utilise un produit moyen. Indiquez la part de chaque logiciel.')}`;
   }
@@ -758,7 +784,7 @@
       const a = t.dataset.act; if (!a) return;
       const appliquer = (h2, qui) => {
         if (!confirm(qui + '\n\nVos hypothèses seront modifiées et la mention « document de travail » reviendra. « Réinitialiser » (onglet Hypothèses) remet les valeurs initiales. Continuer ?')) return;
-        Object.keys(h2).forEach((k) => { if (JSON.stringify(h2[k]) !== JSON.stringify(h[k])) edit(k, clone(h2[k])); });
+        Object.keys(h2).forEach((k) => { if (k === 'produits') diffProduits(h.produits, h2.produits).forEach((d) => editProduit(d.id, d.champ, d.valeur)); else if (JSON.stringify(h2[k]) !== JSON.stringify(h[k])) edit(k, clone(h2[k])); });
         edit('valide', false); render();
       };
       if (a === 'levier') { const l = LEVIERS.filter((x) => x.id === t.dataset.id)[0]; if (l) appliquer(Object.assign({}, h, l.f(h)), 'Appliquer : ' + l.lib + ' (' + l.test + ')'); }
