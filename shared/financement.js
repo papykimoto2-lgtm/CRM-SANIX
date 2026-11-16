@@ -329,24 +329,25 @@
     (cmds || []).filter((c) => c && c.renouvellement && statuts.indexOf(c.statut) >= 0).forEach((c) => { const ttc = pos(c.ttc) || pos(c.htNet), verse = Math.min(ttc, pos(c.acompte)); renouv.n++; renouv.ht += pos(c.htNet); renouv.ttc += ttc; renouv.encaisse += verse; renouv.creance += ttc - verse; });
     (cmds || []).filter((c) => c && !c.renouvellement && statuts.indexOf(c.statut) >= 0).forEach((c) => {
       const k = cle(c.client), lien = liens[k] || {};
-      const r = rows[k] || (rows[k] = { cle: k, client: c.client || '—', n: 0, factureHT: 0, factureTTC: 0, encaisse: 0, creance: 0, ht12: 0, n12: 0, recurrent: 0, derniere: null, plusAncienne: null, lie: !!lien.lie, nature: !!lien.nature });
+      const r = rows[k] || (rows[k] = { cle: k, client: c.client || '—', n: 0, factureHT: 0, factureTTC: 0, encaisse: 0, creance: 0, ht12: 0, n12: 0, recurrent: 0, derniere: null, plusAncienne: null, natPay: 0, lie: !!lien.lie, nature: !!lien.nature });
       const ht = pos(c.htNet), ttc = pos(c.ttc) || ht, verse = Math.min(ttc, pos(c.acompte)), reste = ttc - verse, d = String(c.date || '').slice(0, 10);
       const pk = cle(c.logiciel); if (pk) { const pl = pls[pk] || (pls[pk] = { cle: pk, nom: c.logiciel, n: 0, ht: 0 }); pl.n++; pl.ht += ht; }
       r.n++; r.factureHT += ht; r.factureTTC += ttc; r.encaisse += verse; r.creance += reste;
+      if (Array.isArray(c.paiements)) r.natPay += Math.min(verse, c.paiements.filter((q) => q && q.mode === 'nature').reduce((t, q) => t + pos(q.montant), 0));     // règlements en nature saisis dans le journal des paiements
       if (RECURRENT.test(c.typeLicence || '')) r.recurrent += ht;
       if (d && (!r.derniere || d > r.derniere)) r.derniere = d;
       if (d.slice(0, 7) >= depuis) { r.ht12 += ht; r.n12++; }
       if (reste > 0 && d) { if (!r.plusAncienne || d < r.plusAncienne) r.plusAncienne = d; const j = jours(d); if (j <= 30) ages.j30 += reste; else if (j <= 90) ages.j90 += reste; else ages.plus += reste; }
     });
     const lignes = Object.keys(rows).map((k) => rows[k]).sort((a, b) => b.factureHT - a.factureHT);
-    const tot = (L) => { const t = { clients: L.length, commandes: sum(L, (r) => r.n), factureHT: sum(L, (r) => r.factureHT), factureTTC: sum(L, (r) => r.factureTTC), encaisse: sum(L, (r) => r.encaisse), encaisseMon: sum(L, (r) => r.nature ? 0 : r.encaisse), creance: sum(L, (r) => r.creance), ht12: sum(L, (r) => r.ht12), n12: sum(L, (r) => r.n12), recurrent: sum(L, (r) => r.recurrent) };
+    const tot = (L) => { const t = { clients: L.length, commandes: sum(L, (r) => r.n), factureHT: sum(L, (r) => r.factureHT), factureTTC: sum(L, (r) => r.factureTTC), encaisse: sum(L, (r) => r.encaisse), encaisseMon: sum(L, (r) => r.nature ? 0 : r.encaisse - r.natPay), creance: sum(L, (r) => r.creance), ht12: sum(L, (r) => r.ht12), n12: sum(L, (r) => r.n12), recurrent: sum(L, (r) => r.recurrent) };
       t.taux = t.factureTTC > 0 ? t.encaisseMon / t.factureTTC : 0; /* part du facturé encaissée EN ARGENT */ t.partRecurrent = t.factureHT > 0 ? t.recurrent / t.factureHT : 0; t.prixMoyen = t.n12 ? t.ht12 / t.n12 : (t.commandes ? t.factureHT / t.commandes : 0); return t; };
     const tous = tot(lignes), retraite = tot(lignes.filter((r) => !r.lie)), nature = lignes.filter((r) => r.nature);
     const parLogiciel = Object.keys(pls).map((k) => pls[k]).sort((a, b) => b.ht - a.ht);
     return { lignes, tous, retraite, ages, depuis, parLogiciel, renouv, topLogiciel: tous.factureHT > 0 && parLogiciel[0] ? parLogiciel[0].ht / tous.factureHT : 0,
       top1: tous.factureHT > 0 && lignes[0] ? lignes[0].factureHT / tous.factureHT : 0, top2: tous.factureHT > 0 ? sum(lignes.slice(0, 2), (r) => r.factureHT) / tous.factureHT : 0,
       partLies: tous.factureHT > 0 ? sum(lignes.filter((r) => r.lie), (r) => r.factureHT) / tous.factureHT : 0, nbLies: lignes.filter((r) => r.lie).length,
-      encaisseNature: sum(nature, (r) => r.encaisse), encaisseMonetaire: tous.encaisse - sum(nature, (r) => r.encaisse) };
+      encaisseNature: sum(nature, (r) => r.encaisse) + sum(lignes.filter((r) => !r.nature), (r) => r.natPay), encaisseMonetaire: tous.encaisse - sum(nature, (r) => r.encaisse) - sum(lignes.filter((r) => !r.nature), (r) => r.natPay) };
   }
 
   /* ───────────── Économie unitaire et indicateurs par année ───────────── */
@@ -655,7 +656,7 @@
     if (T.top1 > 0.4) flags.push(`Le premier client pèse <b>${pct(T.top1)}</b> du facturé et les deux premiers ${pct(T.top2)} : forte dépendance.`);
     if (A.recurrent === 0 && !(T.renouv && T.renouv.ht > 0)) flags.push('<b>Aucun revenu récurrent</b> enregistré : toutes les commandes sont des licences ponctuelles, la maintenance n\'est pas facturée dans le CRM (onglet Après-vente : factures de renouvellement).');
     if (T.nbLies > 0) flags.push(`<b>${pct(T.partLies)}</b> du facturé vient de clients marqués « partie liée » : à présenter séparément.`);
-    if (T.encaisseNature > 0) flags.push(`${fmt(T.encaisseNature)} ${d} de règlements marqués « en nature » : non monétaires.`);
+    if (T.encaisseNature > 0) flags.push(`${fmt(T.encaisseNature)} ${d} de règlements « en nature » (marqués ou enregistrés comme tels dans le journal des paiements) : non monétaires.`);
     if (T.topLogiciel > 0.5 && T.parLogiciel[0]) flags.push(`Un seul logiciel, <b>${esc(T.parLogiciel[0].nom)}</b>, représente <b>${pct(T.topLogiciel)}</b> du facturé : forte dépendance à un produit.`);
     if ((base.sansLogiciel || []).length) flags.push(`<b>${base.sansLogiciel.reduce((t, v) => t + v.n, 0)} commande(s)</b> portent un nom de logiciel absent du catalogue (${base.sansLogiciel.map((v) => '« ' + esc(v.nom) + ' »').join(', ')}) : elles ne comptent pas dans la répartition des ventes du modèle.`);
     if (A.clients < 10) flags.push(`Seulement <b>${A.clients} clients</b> facturés : la traction reste faible pour un fonds.`);
@@ -667,7 +668,7 @@
       <div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">🚩 Points qu'un financeur va relever</span></div>${flags.length ? '<ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.8">' + flags.map((f) => '<li>' + f + '</li>').join('') + '</ul>' : '<p class="page-sub" style="margin:0">✅ Aucun point d\'alerte sur ces critères.</p>'}</div>
       <div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">👥 Détail par client</span><span class="badge badge-muted">Montants en ${d}</span></div><div style="overflow-x:auto"><table class="client-table" style="min-width:720px"><thead><tr><th>Client</th><th style="text-align:right">Commandes</th><th style="text-align:right">Facturé HT</th><th style="text-align:right">Encaissé</th><th style="text-align:right">Créance</th><th style="text-align:right">Taux</th><th style="text-align:center">Partie liée</th><th style="text-align:center">En nature</th></tr></thead><tbody>${lignes}
         <tr style="font-weight:700"><td>Total</td><td style="text-align:right">${A.commandes}</td><td style="text-align:right">${fmt(A.factureHT)}</td><td style="text-align:right">${fmt(A.encaisse)}</td><td style="text-align:right">${fmt(A.creance)}</td><td style="text-align:right">${pct(A.taux)}</td><td></td><td></td></tr></tbody></table></div>
-        ${note('Montants encaissés = acomptes saisis sur les commandes. Les commandes en brouillon ou annulées sont exclues. « En nature » : règlement qui n\'est pas en argent (terrain, matériel…).')}</div>
+        ${note('Montants encaissés = paiements enregistrés dans le journal des paiements des commandes. Les commandes en brouillon ou annulées sont exclues. « En nature » : règlement qui n\'est pas en argent (terrain, matériel…).')}</div>
       <div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">⚖️ Tous les clients ou hors parties liées</span></div><table class="client-table"><thead><tr><th></th><th style="text-align:right">Tous</th><th style="text-align:right">Hors parties liées</th></tr></thead><tbody>${cmp('Clients', (x) => x.clients)}${cmp('Facturé HT', (x) => fmtM(x.factureHT))}${cmp('Facturé HT, ' + lib12(), (x) => fmtM(x.ht12))}${cmp('Commandes, ' + lib12(), (x) => x.n12)}${cmp('Prix moyen HT', (x) => fmtM(x.prixMoyen))}${cmp('Créances', (x) => fmtM(x.creance))}${cmp('Part récurrente', (x) => pct(x.partRecurrent))}</tbody></table>
         ${T.renouv && T.renouv.n ? `<div style="font-size:12px;margin-top:8px">🔁 <b>Renouvellements et maintenance facturés</b> : ${T.renouv.n} facture${T.renouv.n > 1 ? 's' : ''}, ${fmtM(T.renouv.ht)} ${d} HT, dont ${fmtM(T.renouv.encaisse)} encaissés et ${fmtM(T.renouv.creance)} à encaisser (TTC). Ils ne sont pas comptés comme de nouvelles ventes.</div>` : ''}
         <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;font-size:13px;margin-top:12px"><input type="checkbox" data-k="baseRetraitee" ${h.baseRetraitee ? 'checked' : ''} style="margin-top:3px"><span><b>Partir de la base hors parties liées</b> pour le modèle (nombre de clients, prix moyen, base installée). Plus prudent, et plus crédible pour un financeur.</span></label></div>

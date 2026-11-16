@@ -81,10 +81,12 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     const ap2 = await cnt(); ok(ap2.lic === avant.lic && ap2.ctr === avant.ctr, "toujours aucune licence ni contrat créés");
     await page.evaluate(() => { renouvAuto(); }); ok((await cnt()).ren === ap2.ren, "pas de nouvelle facture après le renouvellement");
 
-    console.log("▶ Encaissement");
+    console.log("▶ Encaissement (journal des paiements)");
     await page.locator("#av-encaisser > div", { hasText: "TEST MAINT SA" }).locator('button:has-text("Payé")').click(); await page.waitForTimeout(300);
+    ok(await page.locator("#pay-ov").count() === 1 && await page.locator("#pay-montant").inputValue() === String(await page.evaluate(() => COMMANDES.find((c) => c.licId === "t_maint30").ttc)), "« Payé » ouvre la fenêtre de paiement : montant proposé = reste dû");
+    await page.selectOption("#pay-mode", "mobile_money"); await page.fill("#pay-ref", "WAVE-123"); await page.click("#pay-ok"); await page.waitForTimeout(300);
     const o2 = await page.evaluate(() => COMMANDES.find((c) => c.licId === "t_maint30"));
-    ok(o2.acompte === o2.ttc && o2.solde === 0, "paiement enregistré");
+    ok(o2.acompte === o2.ttc && o2.solde === 0 && o2.paiements.length === 1 && o2.paiements[0].mode === "mobile_money" && o2.paiements[0].ref === "WAVE-123" && o2.paiements[0].date === await page.evaluate(() => _ajd()), "paiement enregistré avec sa date, son mode et sa référence");
     ok(!(await page.locator("#av-encaisser").innerText()).includes("TEST MAINT SA"), "il quitte la liste « à encaisser »");
 
     console.log("▶ Modèle financier");
