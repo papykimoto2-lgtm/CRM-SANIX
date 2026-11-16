@@ -43,10 +43,10 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok((await page.locator("#fin-body .alert-warn").allInnerTexts()).some((t) => t.includes("indicatives")), "avertissement sur les valeurs indicatives");
     await page.click('[data-act="poste-add"]'); await page.waitForTimeout(200);
     const nPostes = await page.locator('[data-p][data-f="nom"]').count();
-    ok(nPostes === 6, "ajout d'un poste (6 postes)");
+    ok(nPostes === 5, "ajout d'un poste (5 postes)");
     await page.locator('[data-p] [data-f]').first();
-    await page.click('[data-act="poste-del"] >> nth=5'); await page.waitForTimeout(200);
-    ok(await page.locator('[data-p][data-f="nom"]').count() === 5, "suppression d'un poste");
+    await page.click('[data-act="poste-del"] >> nth=4'); await page.waitForTimeout(200);
+    ok(await page.locator('[data-p][data-f="nom"]').count() === 4, "suppression d'un poste");
     await page.click('[data-tab="proj"]'); await page.waitForTimeout(200);
     const etats = await page.locator("#fin-body").innerText();
     ok(await page.locator("#fin-body table").count() === 8, "états financiers : revenus par logiciel, récurrents, exploitation 12 mois, compte de résultat, flux, bilan, tour de table, plan sans financement");
@@ -91,7 +91,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(await page.locator("#fin-body thead th").count() === 21, "indicateurs (6) + contrat type par logiciel (9) + coûts techniques (6)");
     ok(ind.includes("Coûts techniques par année") && ind.includes("Supabase") && ind.includes("Vercel") && ind.includes("GitHub") && ind.includes("Anthropic") && ind.includes("Hébergement d'un client"), "coûts techniques : quatre services, hébergement par client");
     await page.click('[data-tab="hyp"]'); await page.waitForTimeout(200);
-    ok(await page.locator('[data-a][data-f="part"]').count() === 1 && await page.locator('[data-p][data-f="acquisition"]').count() === 5 && await page.locator('[data-p][data-f="tech"]').count() === 5, "Hypothèses : capital actuel et cases « Acquisition » et « Technique » par poste");
+    ok(await page.locator('[data-a][data-f="part"]').count() === 1 && await page.locator('[data-p][data-f="acquisition"]').count() === 4 && await page.locator('[data-p][data-f="tech"]').count() === 4, "Hypothèses : capital actuel et cases « Acquisition » et « Technique » par poste");
     ok(await page.locator('[data-k="supabaseProjetUsd"]').count() === 1 && await page.locator('[data-k="usdFcfa"]').count() === 1 && await page.locator('[data-k="iaMensuelUsd"]').count() === 1 && await page.locator('[data-k="projetParClient"]').count() === 1, "Hypothèses : bloc infrastructure technique et IA");
     await page.locator('[data-k="usdFcfa"]').fill("500"); await page.locator('[data-k="usdFcfa"]').blur(); await page.waitForTimeout(250);
     ok(await page.evaluate(() => JSON.parse(localStorage.getItem("sanix_crm_fin_config")).usdFcfa === 500), "taux de change modifiable et enregistré");
@@ -246,7 +246,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     // Un plan rentable et sans besoin : mêmes hypothèses de base, sans embauche financée ni campagne
     await page.click('[data-tab="hyp"]'); await page.waitForTimeout(200);
     for (const [k, v] of [["fixesMensuels", "100000"], ["marketingMin", "0"], ["marketingPct", "0"], ["marketingBoost", "0"], ["iaMensuelUsd", "0"], ["clientsAn1", "24"]]) await setK(k, v);
-    for (const id of ["p2", "p3", "p4", "p5"]) await setP(id, "nb", "0");
+    for (const id of ["p2", "p3", "p4"]) await setP(id, "nb", "0");
     await setP("p1", "cout", "300000");
     await page.click('[data-tab="dossier"]'); await page.waitForTimeout(250);
     ok(await page.locator("#fin-body .alert-danger").count() === 1 && (await page.locator("#fin-body .alert-danger").innerText()).includes("régime d'imposition"), "plan rentable mais régime d'imposition non confirmé : dossier bloqué pour ce seul motif");

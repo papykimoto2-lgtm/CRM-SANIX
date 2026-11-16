@@ -103,7 +103,10 @@ if (C.emplois) near(C.emplois.depenses - C.emplois.recu - C.emplois.tresoDepart,
 const nan = JSON.stringify(C).includes("null") ? (JSON.stringify(C).match(/NaN|Infinity/g) || []) : [];
 ok(!/NaN|Infinity/.test(JSON.stringify(C.options.map((o) => o.ind))) , "aucun résultat invalide (NaN) dans les indicateurs");
 console.log("▶ Optimisation");
-const Dop = calc.defauts({ commandes12m: 10, prixMoyen: 1059543, caTotal: 12.5e6, commissionDefaut: 10 });
+const Dop = Object.assign(calc.defauts({ commandes12m: 10, prixMoyen: 1059543, caTotal: 12.5e6, commissionDefaut: 10 }), { postes: [   // cas d'optimisation : l'ancien plan à 9 embauches immédiates (le plan par défaut, échelonné, est déjà rentable)
+  { id: "p1", nom: "Équipe actuelle", nb: 1, cout: 500000, debut: 0, finance: false }, { id: "p2", nom: "Développeurs", nb: 3, cout: 450000, debut: 3, finance: true, tech: true },
+  { id: "p3", nom: "Commerciaux", nb: 3, cout: 300000, debut: 3, finance: true, acquisition: true }, { id: "p4", nom: "Responsable marketing", nb: 1, cout: 500000, debut: 4, finance: true, acquisition: true },
+  { id: "p5", nom: "Support & déploiement", nb: 2, cout: 300000, debut: 6, finance: true }] });
 const O = calc.optimiser(Dop), B = calc.evaluer(Dop);
 near(O.base.besoin, B.besoin, 1e-6, "situation de départ = évaluation du plan");
 ok(O.leviers.length === 13, "treize leviers applicables avec les valeurs par défaut");
