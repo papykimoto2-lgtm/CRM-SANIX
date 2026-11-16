@@ -1,5 +1,7 @@
 // Faux SDK Anthropic scripté : les tests décrivent, agent par agent, les appels d'outils du « modèle ».
-export type Params = { system: string; messages: any[]; tools?: any[]; model: string; [k: string]: unknown };
+export type Params = { system: string | { type: string; text: string }[]; messages: any[]; tools?: any[]; model: string; [k: string]: unknown };
+/** Texte des instructions système, qu'elles soient envoyées en chaîne ou en blocs (forme utilisée pour le point de cache). */
+export const sysText = (p: Params): string => typeof p.system === "string" ? p.system : p.system.map((b) => b.text).join("\n");
 type Handler = (p: Params, n: number) => any | Promise<any>;
 export const llm = { handler: null as Handler | null, calls: [] as Params[] };
 export function resetLlm(): void { llm.handler = null; llm.calls = []; }
@@ -39,7 +41,7 @@ export function results(p: Params): any[] {
     try { return { ...b, data: JSON.parse(b.content) }; } catch { return { ...b, data: b.content }; }
   }) : [];
 }
-export const who = (p: Params): string => /^Tu es ([^,\n]+?)(,|\.|\n)/.exec(String(p.system))?.[1] ?? "?";
+export const who = (p: Params): string => /^Tu es ([^,\n]+?)(,|\.|\n)/.exec(sysText(p))?.[1] ?? "?";
 
 /** Scénario : file de réponses par agent (clé = nom ou début du nom). */
 export function script(queues: Record<string, ((p: Params) => any)[]>): void {

@@ -35,7 +35,7 @@ function neutralize(v, max = 4e3) {
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 var PRICES = {
   "claude-opus-5-5": { in: 4, out: 20, cacheRead: 0.2, cacheWrite: 5 },
-  "claude-sonnet-5-5": { in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5 },
+  "claude-sonnet-5-5": { in: 2, out: 10, cacheRead: 0.1, cacheWrite: 2.5 },
   "claude-haiku-5-5": { in: 0.1, out: 0.5, cacheRead: 0.01, cacheWrite: 0.125 }
 };
 var WEB_SEARCH_USD = 0.01;
@@ -82,10 +82,14 @@ async function callClaude(o) {
     max_tokens: o.maxTokens ?? 16e3,
     thinking: { type: "adaptive" },
     output_config: { effort: o.effort ?? "medium", ...o.format ? { format: { type: "json_schema", schema: o.format } } : {} },
-    cache_control: { type: "ephemeral" },
-    system: o.system,
+    // Cache du prompt, deux points de reprise :
+    //  1. fin des instructions (outils + système, identiques d'une mission à l'autre pour un même agent) : la mission suivante
+    //     de l'agent les relit au tarif cache au lieu du plein tarif ;
+    //  2. fin de la conversation (placement automatique) : chaque tour d'une boucle d'outils relit les tours précédents.
+    system: [{ type: "text", text: o.system, cache_control: { type: "ephemeral" } }],
     messages: o.messages
   };
+  if (!o.format) params.cache_control = { type: "ephemeral" };
   if (o.tools?.length) params.tools = o.tools;
   if (model !== "claude-haiku-5-5") {
     params.betas = ["server-side-fallback-2026-07-01"];
@@ -117,7 +121,14 @@ async function callClaude(o) {
     task_id: o.taskId ?? null,
     prospect_id: o.prospectId ?? null,
     mission_id: o.missionId ?? null,
-    payload: { stop: message.stop_reason, model: message.model, effort: o.effort ?? "medium" },
+    // cache_lu / cache_ecrit : tokens d'entrée servis par le cache (tarif réduit) ou écrits dans le cache ; tokens_in ne compte que le plein tarif
+    payload: {
+      stop: message.stop_reason,
+      model: message.model,
+      effort: o.effort ?? "medium",
+      cache_lu: message.usage.cache_read_input_tokens ?? 0,
+      cache_ecrit: message.usage.cache_creation_input_tokens ?? 0
+    },
     tokens_in: message.usage.input_tokens,
     tokens_out: message.usage.output_tokens,
     cout_usd: Number(cost.toFixed(6))

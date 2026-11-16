@@ -2,7 +2,7 @@
 import pg from "npm:pg@8.13.1";
 import { assert, dropAll, eq, freshDb, mkAgent, mkTask, president, PRESIDENT, rows, val } from "./testkit.ts";
 import { sql } from "./fake_supabase.ts";
-import { done, llm, script } from "./fake_anthropic.ts";
+import { done, llm, script, sysText } from "./fake_anthropic.ts";
 import { runTask } from "../_shared/company/engine.ts";
 import { resetPortfolioCache } from "../_shared/catalogue.ts";
 import { runCrmTool, type CrmCtx } from "../_shared/crm_tools.ts";
@@ -71,7 +71,7 @@ T("PA2 · le portefeuille présenté aux agents est le catalogue ACTIF : activer
     const t = await mkTask("ia_t", `Mission ${Math.random().toString(36).slice(2, 8)}`, { donneur: "sanix_ai_sales_director" });
     script({ "IA Testeur": [() => done("Mission traitée avec succès sur les données du CRM.", ["Mission traitée : résultat enregistré"])] });
     await runTask(t, { deadline: Date.now() + 60000 });
-    return String(llm.calls[0].system);
+    return sysText(llm.calls[0]);
   };
   let s = await prompt();
   assert(s.includes("PORTEFEUILLE") && s.includes("ImmoSuite ERP") && s.includes("MedicorERP"), "tous les logiciels actifs du catalogue sont présentés");
@@ -96,7 +96,7 @@ T("PA3 · références clients : jamais nommées par les agents sans feu vert de
     const t = await mkTask("ia_t", `Mission ${Math.random().toString(36).slice(2, 8)}`, { donneur: "sanix_ai_sales_director" });
     script({ "IA Testeur": [() => done("Mission traitée avec succès sur les données du CRM.", ["Mission traitée : résultat enregistré"])] });
     await runTask(t, { deadline: Date.now() + 60000 });
-    return String(llm.calls[0].system);
+    return sysText(llm.calls[0]);
   };
   const ref = await cfg("ai_cfg_save_reference($1::jsonb)", [JSON.stringify({ product_id: "immosuite", client: "Client Pilote Test", note: "Client réel de test" })]) as { id: string; citable: boolean };
   eq(ref.citable, false, "une référence est interne par défaut");
