@@ -851,14 +851,14 @@ input[type=checkbox],input[type=radio]{accent-color:var(--primary)}
         <label class="login-label">Identifiant ou email</label>
         <div class="login-input-wrap">
           <span class="login-input-icon">👤</span>
-          <input id="login-email" type="text" class="login-input" placeholder="Identifiant ou email" autocapitalize="off" value="kessie" onkeydown="if(event.key==='Enter')doLogin()">
+          <input id="login-email" type="text" class="login-input" placeholder="Identifiant ou email" autocapitalize="off" autocomplete="username" value="" onkeydown="if(event.key==='Enter')doLogin()">
         </div>
       </div>
       <div class="login-field">
         <label class="login-label">Mot de passe</label>
         <div class="login-input-wrap">
           <span class="login-input-icon">🔒</span>
-          <input id="login-password" type="password" class="login-input" placeholder="••••••••" value="Azerty@2026" onkeydown="if(event.key==='Enter')doLogin()">
+          <input id="login-password" type="password" class="login-input" placeholder="••••••••" autocomplete="current-password" value="" onkeydown="if(event.key==='Enter')doLogin()">
           <span class="login-pass-toggle" onclick="togglePass()">👁</span>
         </div>
       </div>
@@ -8508,9 +8508,9 @@ function doLogout() {
   if(sessionTimer) clearInterval(sessionTimer);
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('session-banner').classList.remove('show');
-  // Reset form (pré-remplissage conservé — utilisateur unique)
-  document.getElementById('login-email').value = 'kessie';
-  document.getElementById('login-password').value = 'Azerty@2026';
+  // Reset form : aucun identifiant n'est conservé dans la page
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-password').value = '';
   document.getElementById('login-remember').checked = true;
   document.getElementById('login-error').classList.remove('show');
   navigate('dashboard', document.querySelector('.sb-item'));
