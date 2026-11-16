@@ -7,7 +7,8 @@ const near = (a, b, tol, m) => ok(Math.abs(a - b) <= (tol == null ? 1e-6 : tol),
 const base = () => Object.assign(calc.defauts({}), {
   clientsAn1: 12, prixLicence: 1000000, hausseAn: 0, maintenancePct: 0, servicesPct: 0, baseInstallee: 0, delaiEncaissement: 0, retentionPct: 100,
   croiss: [0, 0, 0, 0], croissSans: [0, 0, 0, 0], directsPct: 0, commissionPct: 0, iaMensuel: 0, marketingPct: 0, marketingMin: 0, marketingBoost: 0,
-  fixesMensuels: 100000, chargesSocialesPct: 0, augmentationSalairesPct: 0, impotPct: 0, tresoDepart: 0, postes: [], margeSecuritePct: 0 });
+  fixesMensuels: 100000, chargesSocialesPct: 0, augmentationSalairesPct: 0, impotPct: 0, tresoDepart: 0, postes: [], margeSecuritePct: 0,
+  supabaseFixeUsd: 0, supabaseProjetUsd: 0, projetsBase: 0, clientsDepart: 0, vercelSiegeUsd: 0, githubSiegeUsd: 0, iaMensuelUsd: 0, fraisPaiementPct: 0 });   // coûts techniques neutralisés : les cas ci-dessous ne testent que le reste
 
 console.log("▶ Ventes et trésorerie");
 let h = base(), s = calc.simuler(h, "avec", {});
@@ -105,7 +106,7 @@ console.log("▶ Optimisation");
 const Dop = calc.defauts({ commandes12m: 10, prixMoyen: 1059543, caTotal: 12.5e6, commissionDefaut: 10 });
 const O = calc.optimiser(Dop), B = calc.evaluer(Dop);
 near(O.base.besoin, B.besoin, 1e-6, "situation de départ = évaluation du plan");
-ok(O.leviers.length === 11, "onze leviers applicables avec les valeurs par défaut");
+ok(O.leviers.length === 13, "treize leviers applicables avec les valeurs par défaut");
 ok(O.leviers.every((l, i) => i === 0 || O.leviers[i - 1].dTreso >= l.dTreso), "leviers classés du plus au moins utile (trésorerie an 5)");
 O.leviers.forEach((l) => { const lv = calc.LEVIERS.filter((x) => x.id === l.id)[0]; const m = calc.evaluer(Object.assign({}, Dop, lv.f(Dop))); near(l.m.tresoFin, m.tresoFin, 1e-6, "levier « " + l.id + " » : résultats = plan recalculé avec le levier"); });
 ok(O.leviers.filter((l) => l.cat === "Ventes").every((l) => l.dEbitda5 > 0), "chaque levier de ventes améliore l'EBITDA");
@@ -185,5 +186,100 @@ near(sum(R, "apres"), 1, 1e-12, "après l'apport, le total fait 100 %"); near(R[
 h.associes = [{ id: "1", nom: "A", part: 60 }, { id: "2", nom: "B", part: 40 }, { id: "3", nom: "Zéro", part: 0 }]; h.esopPct = 0; R = calc.tourDeTable(h, 0.25);
 near(R[0].apres, 0.45, 1e-12, "60 % → 45 % après dilution de 25 %"); ok(R.length === 3, "associé à 0 % ignoré (A, B, investisseur)"); near(sum(R, "avant"), 1, 1e-12, "avant l'apport : 100 %");
 h.associes = [{ id: "1", nom: "A", part: 30 }, { id: "2", nom: "B", part: 20 }]; near(calc.tourDeTable(h, 0)[0].avant, 0.6, 1e-12, "parts normalisées à 100 % (30 et 20 → 60 % et 40 %)");
+
+console.log("▶ Coûts techniques : Supabase, Vercel, GitHub, Anthropic");
+const tech = () => { const t = base(); Object.assign(t, { usdFcfa: 600, fraisPaiementPct: 0, supabaseFixeUsd: 25, supabaseProjetUsd: 10, projetsBase: 1, projetParClient: true, clientsDepart: 8, vercelSiegeUsd: 20, githubSiegeUsd: 4, githubSeuil: 3, iaMensuelUsd: 200, iaCroissanceAn: 25, clientsAn1: 0, retentionPct: 100, fixesMensuels: 0,
+  postes: [{ id: "f", nom: "Fondateur", nb: 1, cout: 0, debut: 0, finance: false }] }); return t; };
+h = tech(); s = calc.simuler(h, "avec", {});
+near(s.mois[0].supa, (25 + 8 * 10) * 600, 1e-6, "Supabase : abonnement 25 $ + 8 projets clients à 10 $ (le 1er projet est inclus) = 105 $ au taux de 600");
+near(s.mois[0].vercel, 20 * 600, 1e-6, "Vercel : 1 poste technique (le fondateur) à 20 $"); near(s.mois[0].github, 0, 1e-9, "GitHub : gratuit sous 3 postes");
+near(s.mois[0].ia, 200 * 600, 1e-6, "Anthropic : 200 $ par mois"); near(s.mois[12].ia, 250 * 600, 1e-6, "Anthropic : +25 % la 2e année");
+near(s.mois[0].infra, s.mois[0].supa + s.mois[0].vercel + s.mois[0].github, 1e-9, "infrastructure = Supabase + Vercel + GitHub");
+near(s.mois[0].ebitda, -(s.mois[0].infra + s.mois[0].ia), 1e-6, "sans vente ni autre charge, l'EBITDA est l'opposé des coûts techniques");
+near(s.annees[0].infra, sum(s.mois.slice(0, 12), "infra"), 1e-6, "cumul annuel de l'infrastructure");
+h = tech(); h.postes.push({ id: "d", nom: "Dév", nb: 2, cout: 0, debut: 0, finance: true, tech: true }); s = calc.simuler(h, "avec", {});
+near(s.mois[0].vercel, 3 * 20 * 600, 1e-6, "3 postes techniques (fondateur + 2 développeurs) : Vercel × 3"); near(s.mois[0].github, 3 * 4 * 600, 1e-6, "3 postes : GitHub Team à 4 $ par poste");
+near(calc.simuler(h, "sans", {}).mois[0].github, 0, 1e-9, "plan sans financement : les développeurs financés n'existent pas, GitHub reste gratuit");
+h = tech(); h.clientsAn1 = 12; s = calc.simuler(h, "avec", {});
+near(s.mois[0].parc, 9, 1e-9, "parc hébergé : 8 clients + 1 nouveau le 1er mois"); near(s.mois[11].parc, 20, 1e-9, "parc : 8 + 12 nouveaux clients");
+near(s.mois[11].supa, (25 + 20 * 10) * 600, 1e-6, "chaque nouveau client ajoute un projet Supabase à 10 $"); near(s.annees[0].parcFin, 20, 1e-9, "clients hébergés en fin d'année");
+h = tech(); h.retentionPct = 50; s = calc.simuler(h, "avec", {}); near(s.mois[11].parc, 4, 1e-9, "rétention 50 % : le parc hébergé est divisé par 2 en un an"); near(s.mois[11].supa, (25 + 4 * 10) * 600, 1e-6, "les clients perdus ne coûtent plus de projet");
+h = tech(); h.projetParClient = false; h.clientsAn1 = 12; s = calc.simuler(h, "avec", {}); near(s.mois[11].supa, 25 * 600, 1e-6, "clients regroupés (multi-locataire) : coût Supabase constant");
+h = tech(); h.fraisPaiementPct = 10; s = calc.simuler(h, "avec", {}); near(s.mois[0].supa, 105 * 600 * 1.1, 1e-6, "frais de change et de carte de 10 % appliqués"); near(s.mois[0].ia, 200 * 600 * 1.1, 1e-6, "… y compris sur Anthropic");
+h = tech(); h.supabaseFixeUsd = 0; h.supabaseProjetUsd = 0; h.projetsBase = 0; near(calc.simuler(h, "avec", {}).mois[0].supa, 0, 1e-9, "aucun projet : aucun coût Supabase");
+const bz = calc.simuler(tech(), "avec", { equity: 80e6 }), eqz = Math.max.apply(null, bz.annees.map((x) => Math.abs(x.bilan.actif - x.bilan.passif))); ok(eqz < 1, "le bilan reste équilibré avec les coûts techniques");
+h = tech(); h.prixLicence = 1e6; h.hausseAn = 0; h.directsPct = 10; h.commissionPct = 10; h.servicesPct = 20; h.maintenancePct = 12; h.clientsAn1 = 12; h.marketingMin = 0; h.marketingPct = 0;
+U = calc.economieUnitaire(h, calc.simuler(h, "avec", {}))[0];
+near(U.heberg, 10 * 12 * 600, 1e-6, "hébergement d'un client = 10 $ × 12 mois × taux"); near(U.maintNette, 108000 - 72000, 1e-6, "maintenance nette de l'hébergement : 108 000 − 72 000");
+near(U.ltv, 980000 + 4 * 36000, 1e-6, "valeur d'un client : la maintenance nette de l'hébergement"); h.projetParClient = false; near(calc.economieUnitaire(h, calc.simuler(h, "avec", {}))[0].heberg, 0, 1e-9, "clients regroupés : pas d'hébergement par client");
+h = tech(); h.clientsAn1 = 12; h.prixLicence = 1e6; const sx = calc.simuler(h, "avec", {}), ux = calc.economieUnitaire(h, sx)[0];
+near(ux.margeBrute, (sx.annees[0].ca - sx.annees[0].directs - sx.annees[0].commissions - sx.annees[0].infra) / sx.annees[0].ca, 1e-12, "marge brute : l'infrastructure est un coût de service");
+const Dh = calc.defauts({ commandes12m: 10, prixMoyen: 1059543, caTotal: 12.5e6, clientsFactures: 8, usdFcfa: 0 });
+ok(Dh.clientsDepart === 8 && Dh.usdFcfa === 595 && Dh.projetParClient === true, "valeurs initiales : 8 clients hébergés lus dans le CRM, taux de 595 par défaut");
+ok(calc.defauts({ usdFcfa: 580 }).usdFcfa === 580, "le taux saisi dans le Pilotage est repris");
+const Ch = calc.comparer(Dh); ok(!Ch.emplois || Ch.emplois.lignes.some((l) => l[0].indexOf("Infrastructure technique") === 0 && l[1] > 0) , "utilisation des fonds : ligne « Infrastructure technique »");
+const Oh = calc.optimiser(Dh); const lh = Oh.leviers.filter((l) => l.id === "hebergement")[0]; ok(lh && lh.dEbitda5 > 0 && !lh.arbitrer, "levier « regrouper les clients » : améliore l'EBITDA, sans contrepartie cachée");
+const li = Oh.leviers.filter((l) => l.id === "ia")[0]; ok(li && li.dEbitda5 > 0 && li.arbitrer, "levier « réduire l'IA » : améliore l'EBITDA mais à arbitrer (qualité)");
+
+console.log("▶ Logiciels : licence perpétuelle, abonnement annuel, abonnement mensuel");
+const prod = (o) => Object.assign({ id: "a", nom: "A", mode: "perpetuelle", prixLicence: 1e6, prixAnnuel: 120000, prixMensuel: 8000, initial: 200000, maintPct: 12, part: 100 }, o);
+const bp = (produits, extra) => { const t = base(); Object.assign(t, { clientsAn1: 12, hausseAn: 0, retentionPct: 100, commissionPct: 10, baseInstallee: 0, produits }, extra || {}); return t; };
+h = bp([prod({})]); s = calc.simuler(h, "avec", {});
+near(s.mois[0].lic, 1e6, 1e-6, "perpétuelle : 1 licence par mois à 1 000 000"); near(s.mois[0].serv, 200000, 1e-6, "perpétuelle : frais initiaux de 200 000 par client");
+near(s.mois[0].maint, 0, 1e-9, "perpétuelle : pas de maintenance le mois de la vente"); near(s.mois[1].maint, 1e6 * 0.12 / 12, 1e-6, "perpétuelle : maintenance 12 %/an sur la licence vendue le mois précédent");
+near(s.mois[0].commissions, 1e5, 1e-6, "perpétuelle : commission de 10 % sur la licence"); near(s.mois[0].ca, 1.2e6, 1e-6, "perpétuelle : CA = licence + frais initiaux");
+h = bp([prod({ mode: "annuelle", initial: 50000 })]); s = calc.simuler(h, "avec", {});
+near(s.mois[0].abo, 10000, 1e-6, "annuel : 120 000 par an = 10 000 par mois dès la signature"); near(s.mois[5].abo, 6 * 10000, 1e-6, "annuel : 6 abonnés au 6e mois");
+near(s.mois[0].lic, 0, 1e-9, "annuel : pas de licence perpétuelle"); near(s.mois[3].serv, 50000, 1e-6, "annuel : frais initiaux de mise en exploitation à chaque nouveau client");
+near(s.mois[0].commissions, 12000, 1e-6, "annuel : commission de 10 % sur la 1re année d'abonnement (120 000), à la signature"); near(s.mois[0].maint, 0, 1e-9, "annuel : la maintenance est comprise dans la redevance");
+h = bp([prod({ mode: "mensuelle", initial: 30000 })]); s = calc.simuler(h, "avec", {});
+near(s.mois[0].abo, 8000, 1e-6, "mensuel : 8 000 par mois et par abonné"); near(s.mois[11].abo, 12 * 8000, 1e-6, "mensuel : 12 abonnés à la fin de la 1re année");
+near(s.mois[0].commissions, 9600, 1e-6, "mensuel : commission sur 12 mois de redevance (96 000)"); near(s.mois[4].serv, 30000, 1e-6, "mensuel : frais initiaux");
+near(s.annees[0].abo, 8000 * 78, 1e-6, "mensuel : somme des abonnements de l'année (1+2+…+12 abonnés)");
+h = bp([prod({ mode: "annuelle", initial: 0 })], { retentionPct: 50 }); s = calc.simuler(h, "avec", {});
+const rm = Math.pow(0.5, 1 / 12); let ab = 0; for (let t = 0; t < 24; t++) { ab = ab * rm + 1; if (t === 23) near(s.mois[23].abo, ab * 10000, 1e-6, "rétention 50 % : les abonnés s'érodent mois après mois"); }
+h = bp([prod({ id: "a", mode: "perpetuelle", initial: 200000 }), prod({ id: "b", nom: "B", mode: "annuelle", initial: 50000 })].map((x) => Object.assign(x, { part: 50 }))); s = calc.simuler(h, "avec", {});
+near(s.mois[0].lic, 0.5e6, 1e-6, "mix 50/50 : la moitié des clients achète la licence"); near(s.mois[0].serv, 0.5 * 200000 + 0.5 * 50000, 1e-6, "mix : frais initiaux pondérés"); near(s.mois[0].abo, 0.5 * 10000, 1e-6, "mix : abonnement de la moitié des clients");
+near(s.mois[0].commissions, 0.1 * (0.5e6 + 0.5 * 120000), 1e-6, "mix : commissions sur licence et sur 1re année d'abonnement");
+h = bp([prod({ id: "a", part: 30 }), prod({ id: "b", nom: "B", part: 20 }), prod({ id: "c", nom: "C", part: 0 })]); s = calc.simuler(h, "avec", {});
+near(s.mois[0].lic, 1e6, 1e-6, "parts 30 et 20 ramenées à 100 % (le logiciel à 0 % est ignoré) : 12 clients × 1 M / 12"); ok(calc.produitsActifs(h).length === 2 && Math.abs(calc.produitsActifs(h)[0].part - 0.6) < 1e-12, "parts normalisées (60 % et 40 %)");
+near(s.annees[0].produits[0].clients + s.annees[0].produits[1].clients, 12, 1e-9, "clients répartis entre les logiciels");
+console.log("▶ Logiciels : cohérence avec l'ancien modèle et avec les totaux");
+const hl = base(); Object.assign(hl, { clientsAn1: 12, retentionPct: 80, hausseAn: 5, commissionPct: 10, prixLicence: 1e6, servicesPct: 20, maintenancePct: 12, baseInstallee: 5e6, produits: [] });
+const he = JSON.parse(JSON.stringify(hl)); he.produits = [{ id: "m", nom: "M", mode: "perpetuelle", prixLicence: 1e6, prixAnnuel: 0, prixMensuel: 0, initial: 200000, maintPct: 12, part: 100 }];
+const sl = calc.simuler(hl, "avec", {}), se = calc.simuler(he, "avec", {});
+ok(sl.mois.every((x, i) => Math.abs(x.ca - se.mois[i].ca) < 1e-6 && Math.abs(x.serv - se.mois[i].serv) < 1e-6 && Math.abs(x.maint - se.mois[i].maint) < 1e-6 && Math.abs(x.comm - se.mois[i].comm) < 1e-6), "sans logiciel renseigné = un logiciel unique équivalent : mêmes chiffres sur 60 mois");
+ok(calc.produitsActifs(Object.assign({}, hl, { produits: [prod({ part: 0 })] }))[0].legacy === true, "tous les logiciels à 0 % : retour au produit moyen");
+h = bp([prod({ id: "a", part: 50 }), prod({ id: "b", nom: "B", mode: "annuelle", part: 30 }), prod({ id: "c", nom: "C", mode: "mensuelle", part: 20 })], { retentionPct: 85, hausseAn: 4, clientsDepart: 3 });
+s = calc.simuler(h, "avec", {});
+ok(s.annees.every((a) => Math.abs(a.produits.reduce((t, x) => t + x.total, 0) - a.ca) < 1e-6 && Math.abs(a.produits.reduce((t, x) => t + x.clients, 0) - a.clients) < 1e-9), "chaque année : la somme des logiciels = chiffre d'affaires et clients");
+ok(s.annees.every((a) => Math.abs(a.lic + a.serv + a.maint + a.abo - a.ca) < 1e-6), "CA = licences + frais initiaux + maintenance + abonnements");
+near(s.annees[1].arr, (s.mois[23].maint + s.mois[23].abo) * 12, 1e-6, "revenu récurrent annualisé : maintenance + abonnements");
+const eqp = Math.max.apply(null, [{}, { equity: 30e6 }, { dette: { montant: 20e6, taux: 10, duree: 36, differe: 6 } }].map((f) => Math.max.apply(null, calc.simuler(h, "avec", f).annees.map((x) => Math.abs(x.bilan.actif - x.bilan.passif))))); ok(eqp < 1, "le bilan reste équilibré avec des abonnements (délai d'encaissement, dette, apport)");
+console.log("▶ Logiciels : valeur d'un client par contrat");
+h = bp([prod({ id: "a", initial: 200000, part: 50 }), prod({ id: "b", nom: "B", mode: "annuelle", initial: 50000, part: 50 })], { directsPct: 10, commissionPct: 10 });
+const ct = calc.contratsParLogiciel(h), ca = ct[0], cb = ct[1];
+near(ca.margeInit, 1e6 * 0.8 + 200000 * 0.9, 1e-6, "perpétuelle : marge de la 1re vente"); near(ca.recBrut, 120000, 1e-6, "perpétuelle : maintenance annuelle brute"); near(ca.ltv, 980000 + 4 * 108000, 1e-6, "perpétuelle : valeur sur 5 ans (maintenance dès la 2e année)");
+near(cb.margeInit, 50000 * 0.9 - 0.1 * 120000, 1e-6, "annuel : marge initiale = frais initiaux − commission sur la 1re année"); near(cb.recBrut, 120000, 1e-6, "annuel : redevance annuelle"); near(cb.ltv, 33000 + 5 * 108000, 1e-6, "annuel : valeur sur 5 ans (redevance dès la 1re année)");
+const um = calc.economieUnitaire(h, calc.simuler(h, "avec", {}))[0]; near(um.ltv, 0.5 * ca.ltv + 0.5 * cb.ltv, 1e-6, "valeur d'un client = moyenne pondérée des logiciels");
+const cm = calc.contratsParLogiciel(bp([prod({ mode: "mensuelle", initial: 0 })], { directsPct: 0, commissionPct: 0 }))[0]; near(cm.recBrut, 96000, 1e-6, "mensuel : 8 000 × 12 = 96 000 par an"); near(cm.ltv, 5 * 96000, 1e-6, "mensuel : 5 ans de redevance sans coût");
+console.log("▶ Logiciels : valeurs initiales issues du catalogue et des ventes");
+const cat = [{ id: "x", nom: "ImmoSuite ERP", typeLicence: "Perpetuelle", prixNum: 750000, prixMensuel: 75000 }, { id: "y", nom: "Le Grenier", typeLicence: "SaaS", prixNum: 400000, prixMensuel: 40000 }, { id: "z", nom: "Zed Pro", typeLicence: "Annuelle", prixNum: 500000, prixMensuel: 50000 }];
+const pd = calc.produitsDefaut({ logiciels: cat, ventesLogiciel: [{ cle: calc.cle("immosuite erp"), n: 2, ht: 7.6e6 }, { cle: calc.cle("zed pro"), n: 1, ht: 500000 }, { cle: "inconnu", n: 5, ht: 1 }] });
+ok(pd.length === 3 && pd[0].mode === "perpetuelle" && pd[1].mode === "mensuelle" && pd[2].mode === "annuelle", "mode de vente repris du catalogue (SaaS = mensuel)");
+near(pd[0].prixLicence, 750000, 1e-6, "prix = prix du catalogue (la maintenance se calcule sur la licence, pas sur des factures qui peuvent contenir autre chose)"); near(pd[0].observe, 3.8e6, 1e-6, "prix moyen réellement facturé conservé pour comparaison"); near(pd[1].observe, 0, 1e-9, "logiciel jamais vendu : pas de prix observé");
+near(pd[0].part + pd[2].part, 100, 0.11, "parts des ventes : 2/3 et 1/3 (les ventes d'un logiciel inconnu sont ignorées)"); near(pd[1].part, 0, 1e-9, "logiciel jamais vendu : 0 %");
+near(pd[0].prixMensuel, 75000, 1e-6, "prix mensuel du catalogue"); near(pd[0].prixAnnuel, 750000, 1e-6, "prix annuel de départ = 10 mois de redevance (à fixer)"); near(pd[0].initial, 150000, 1e-6, "frais initiaux de départ = 20 % du prix du catalogue (à fixer)");
+ok(calc.produitsDefaut({}).length === 0 && calc.defauts({}).produits.length === 0, "sans catalogue : aucun logiciel, ancien comportement");
+const tl = calc.analyserTraction([{ client: "A", logiciel: "ImmoSuite ERP", date: "2026-11-01", statut: "livree", htNet: 3e6, ttc: 3e6, acompte: 3e6 }, { client: "B", logiciel: "immosuite erp", date: "2026-11-02", statut: "livree", htNet: 1e6, ttc: 1e6, acompte: 0 }, { client: "C", logiciel: "Zed Pro", date: "2026-11-03", statut: "livree", htNet: 1e6, ttc: 1e6, acompte: 0 }], { now: "2026-11-16" });
+ok(tl.parLogiciel.length === 2 && tl.parLogiciel[0].n === 2 && tl.parLogiciel[0].ht === 4e6, "ventes par logiciel : casse ignorée, tri par chiffre d'affaires"); near(tl.topLogiciel, 4 / 5, 1e-9, "concentration par logiciel : 80 %");
+console.log("▶ Logiciels : leviers et seuils avec plusieurs logiciels");
+const hp = bp([prod({ id: "a", initial: 200000, part: 70 }), prod({ id: "b", nom: "B", mode: "annuelle", initial: 50000, part: 30 })], { fixesMensuels: 2000000, commissionPct: 10, directsPct: 4 });
+const x2 = calc.scalePrix(hp, 2); near(x2.produits[0].prixLicence, 2e6, 1e-6, "doubler les prix : licence"); near(x2.produits[1].prixAnnuel, 240000, 1e-6, "… abonnement annuel"); near(x2.produits[1].prixMensuel, 16000, 1e-6, "… abonnement mensuel"); near(x2.produits[0].initial, 400000, 1e-6, "… frais initiaux");
+const lp = calc.LEVIERS.filter((l) => l.id === "prix")[0].f(hp); ok(Object.keys(lp).join() === "prixLicence,produits" && lp.produits[1].prixAnnuel > hp.produits[1].prixAnnuel, "levier prix : modifie les logiciels");
+const lm = calc.LEVIERS.filter((l) => l.id === "maintenance")[0].f(hp); near(lm.produits[0].maintPct, 17, 1e-9, "levier maintenance : +5 points sur les licences perpétuelles"); near(lm.produits[1].maintPct, 12, 1e-9, "… pas sur les abonnements");
+const Op = calc.optimiser(hp), spx = Op.seuils.prix; ok(spx && spx.valeur === null && spx.facteur > 1 && !spx.deja, "seuil de prix avec plusieurs logiciels : un facteur sur tous les prix");
+ok(calc.simuler(Object.assign({}, hp, calc.scalePrix(hp, spx.facteur)), "avec", {}).pointMort !== null && calc.simuler(Object.assign({}, hp, calc.scalePrix(hp, spx.facteur * 0.98)), "avec", {}).pointMort === null, "seuil de prix : rentable au seuil, pas 2 % en dessous");
+ok(Op.leviers.filter((l) => l.id === "prix")[0].dEbitda5 > 0, "levier prix : améliore l'EBITDA avec les logiciels");
 
 console.log("\nTous les contrôles du modèle de financement sont passés.");
