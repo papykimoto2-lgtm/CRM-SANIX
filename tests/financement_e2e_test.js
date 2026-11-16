@@ -41,13 +41,18 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.click('[data-tab="hyp"]'); await page.waitForTimeout(200);
     ok(await page.locator("#fin-body .alert-warn").count() === 1, "avertissement sur les valeurs indicatives");
     await page.click('[data-act="poste-add"]'); await page.waitForTimeout(200);
-    const nPostes = await page.locator('[data-f="nom"]').count();
+    const nPostes = await page.locator('[data-p][data-f="nom"]').count();
     ok(nPostes === 6, "ajout d'un poste (6 postes)");
     await page.locator('[data-p] [data-f]').first();
     await page.click('[data-act="poste-del"] >> nth=5'); await page.waitForTimeout(200);
-    ok(await page.locator('[data-f="nom"]').count() === 5, "suppression d'un poste");
+    ok(await page.locator('[data-p][data-f="nom"]').count() === 5, "suppression d'un poste");
     await page.click('[data-tab="proj"]'); await page.waitForTimeout(200);
-    ok(await page.locator("#fin-body table").count() === 2, "deux tableaux de projections");
+    const etats = await page.locator("#fin-body").innerText();
+    ok(await page.locator("#fin-body table").count() === 5, "états financiers : compte de résultat, flux, bilan, tour de table, plan sans financement");
+    ok(etats.includes("Total actif") && etats.includes("Total passif") && etats.includes("Écart actif − passif"), "bilan simplifié présent");
+    const ecarts = await page.evaluate(() => [...document.querySelectorAll("#fin-body tr")].filter((tr) => tr.innerText.includes("Écart actif")).map((tr) => [...tr.querySelectorAll("td")].slice(1).map((td) => td.innerText.trim())).flat());
+    ok(ecarts.length === 5 && ecarts.every((v) => v === "0"), "le bilan s'équilibre chaque année (écart nul affiché)");
+    ok(etats.includes("Tour de table") && etats.includes("Valorisation après apport"), "tour de table affiché");
     await page.click('[data-tab="dossier"]'); await page.waitForTimeout(200);
     const [dl] = await Promise.all([page.waitForEvent("download"), page.click('[data-act="csv"]')]);
     const txt = require("fs").readFileSync(await dl.path(), "utf8");
@@ -60,6 +65,39 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(html.includes("Dossier de financement") && html.includes("Besoin de financement") && html.includes("Options de financement"), "dossier PDF généré");
     const noms = await page.evaluate(() => CLIENTS.map((c) => c.nom).filter(Boolean).slice(0, 20));
     ok(noms.length === 0 || noms.every((n) => !html.includes(n)), "aucun nom de client dans le dossier");
+
+    console.log("▶ Traction : chiffres réels");
+    await page.click('[data-tab="traction"]'); await page.waitForTimeout(300);
+    const trac = await page.locator("#fin-body").innerText();
+    ok(trac.includes("Ce qu'un financeur lit en premier") && trac.includes("Détail par client") && trac.includes("Ancienneté des créances"), "onglet Traction : lecture financeur, détail par client, ancienneté");
+    const nCl = await page.locator('[data-lien][data-f="lie"]').count(); ok(nCl >= 3, "une ligne par client facturé (" + nCl + ")");
+    const attendu = await page.evaluate(() => { const T = SanixFinancement && null; const st = ["confirmee", "en_cours", "livree"]; const o = COMMANDES.filter((c) => st.includes(c.statut)); return { ht: o.reduce((s, c) => s + (+c.htNet || 0), 0), n: new Set(o.map((c) => String(c.client).toLowerCase())).size }; });
+    ok(trac.includes(Math.round(attendu.ht).toLocaleString("fr-FR")), "le facturé total du tableau = somme des commandes du CRM (" + Math.round(attendu.ht).toLocaleString("fr-FR") + ")");
+    ok((await page.locator("#fin-body .stat-card").count()) === 7 /* 4 indicateurs + 3 tranches de créances */ && await page.locator("#fin-body .card").first().innerText().then((t) => t.includes("Points qu'un financeur")), "indicateurs et points d'alerte");
+    const avant = await page.locator("#fin-body").innerText();
+    await page.locator('[data-lien][data-f="lie"]').first().check(); await page.waitForTimeout(250);
+    ok(await page.locator("#fin-body .badge-warning", { hasText: "liée" }).count() === 1, "marquer une partie liée : badge sur la ligne");
+    ok(await page.evaluate(() => Object.values(JSON.parse(localStorage.getItem("sanix_crm_fin_config")).liens).some((x) => x.lie === true)), "marquage enregistré sur l'appareil");
+    ok((await page.locator("#fin-body").innerText()).includes("partie liée") && avant !== await page.locator("#fin-body").innerText(), "le chiffre retraité et les points d'alerte se mettent à jour");
+    await page.locator('[data-lien][data-f="nature"]').nth(1).check(); await page.waitForTimeout(200);
+    ok(await page.locator("#fin-body .badge-muted", { hasText: "en nature" }).count() === 1, "règlement en nature signalé");
+    await page.check('[data-k="baseRetraitee"]'); await page.waitForTimeout(250);
+    ok(await page.evaluate(() => JSON.parse(localStorage.getItem("sanix_crm_fin_config")).baseRetraitee === true), "base du modèle hors parties liées activée");
+    await page.click('[data-tab="indic"]'); await page.waitForTimeout(250);
+    const ind = await page.locator("#fin-body").innerText();
+    ok(ind.includes("Valeur client / coût d'acquisition") && ind.includes("Délai de retour") && ind.includes("Revenu récurrent annualisé") && ind.includes("CA par salarié"), "onglet Indicateurs : économie unitaire");
+    ok(await page.locator("#fin-body thead th").count() === 6, "cinq années + libellé");
+    await page.click('[data-tab="hyp"]'); await page.waitForTimeout(200);
+    ok(await page.locator('[data-a][data-f="part"]').count() === 1 && await page.locator('[data-p][data-f="acquisition"]').count() === 5, "Hypothèses : capital actuel et case « Acquisition » par poste");
+    await page.click('[data-act="associe-add"]'); await page.waitForTimeout(200);
+    ok(await page.locator('[data-a][data-f="part"]').count() === 2, "ajout d'un associé");
+    await page.locator('[data-a][data-f="nom"]').nth(1).fill("Associé B"); await page.locator('[data-a][data-f="nom"]').nth(1).blur();
+    await page.locator('[data-a][data-f="part"]').nth(0).fill("60"); await page.locator('[data-a][data-f="part"]').nth(0).blur();
+    await page.locator('[data-a][data-f="part"]').nth(1).fill("40"); await page.locator('[data-a][data-f="part"]').nth(1).blur(); await page.waitForTimeout(250);
+    await page.locator('[data-k="esopPct"]').fill("10"); await page.locator('[data-k="esopPct"]').blur(); await page.waitForTimeout(250);
+    await page.click('[data-tab="proj"]'); await page.waitForTimeout(250);
+    const tour = await page.locator("#fin-body").innerText();
+    ok(tour.includes("Associé B") && tour.includes("Pool d'intéressement") && tour.includes("Nouvel investisseur"), "tour de table : associés, pool et investisseur");
 
     console.log("▶ Optimisations et notes");
     await page.click('[data-tab="hyp"]'); await page.click('[data-act="reset"]'); await page.waitForTimeout(250);   // retour aux valeurs d'exemple (le test de simulation les avait modifiées)
@@ -81,6 +119,13 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.click('[data-tab="dossier"]'); await page.waitForTimeout(150);
     const htmlN = await page.evaluate(() => { let h = ""; const w = { document: { write: (x) => { h += x; }, close() {} }, focus() {}, print() {} }; const o = window.open; window.open = () => w; document.querySelector('[data-act="pdf"]').click(); window.open = o; return h; });
     ok(htmlN.includes("Notes méthodologiques") && htmlN.includes("Capacité de remboursement") && htmlN.includes("Limites"), "dossier PDF : annexe de notes méthodologiques");
+    ok(["Qualité des chiffres", "Bilan simplifié", "Tour de table", "Indicateurs et économie unitaire", "Total actif", "Hors parties liées"].every((x) => htmlN.includes(x)), "dossier PDF : qualité des chiffres, états financiers, indicateurs, tour de table");
+    ok(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("sanix_crm_fin_config")).liens || {}).length > 0), "« Réinitialiser » a conservé le marquage des parties liées");
+    await page.click('[data-tab="traction"]'); await page.check('[data-k="baseRetraitee"]'); await page.waitForTimeout(250); await page.click('[data-tab="dossier"]'); await page.waitForTimeout(150);
+    const htmlB = await page.evaluate(() => { let h = ""; const w = { document: { write: (x) => { h += x; }, close() {} }, focus() {}, print() {} }; const o = window.open; window.open = () => w; document.querySelector('[data-act="pdf"]').click(); window.open = o; return h; });
+    ok(htmlB.includes("hors clients liés à la société") && htmlB.includes("liés à la société ou à ses dirigeants représentent"), "dossier PDF : base hors parties liées et part des clients liés mentionnées");
+    const clientsNoms = await page.evaluate(() => COMMANDES.map((c) => c.client).filter(Boolean));
+    ok(clientsNoms.length > 0 && clientsNoms.every((n) => !htmlN.includes(n)), "dossier PDF : aucun nom de client (" + clientsNoms.length + " commandes vérifiées)");
     ok(!htmlN.includes("Leviers testés") && !htmlN.includes("à arbitrer"), "les pistes d'optimisation restent internes : absentes du dossier");
 
     console.log("▶ Validation des hypothèses");
@@ -97,7 +142,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
 
     console.log("▶ Réinitialisation");
     await page.click('[data-tab="hyp"]'); await page.click('[data-act="reset"]'); await page.waitForTimeout(250);
-    ok(await page.evaluate(() => localStorage.getItem("sanix_crm_fin_config") === "{}"), "retour aux valeurs initiales");
+    ok(await page.evaluate(() => { const o = JSON.parse(localStorage.getItem("sanix_crm_fin_config")); return Object.keys(o).join() === "liens"; }), "retour aux valeurs initiales (seul le marquage des clients reste)");
     await page.click('[data-tab="dossier"]'); await page.waitForTimeout(150);
     ok(await page.locator("#fin-body .alert-warn").count() === 1, "après réinitialisation, le document redevient « de travail »");
     ok(errors.length === 0, "aucune erreur JavaScript" + (errors.length ? " : " + errors.join(" | ") : ""));
