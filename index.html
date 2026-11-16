@@ -23,6 +23,7 @@ try{var _t=localStorage.getItem("sanix_theme");if(_t&&_t!=="turquoise")document.
 <script src="shared/crm-connector.js" defer></script>
 <script src="shared/pilotage.js" defer></script>
 <script src="shared/financement.js" defer></script>
+<script src="shared/renouvellements.js" defer></script>
 <style>
 :root{
   /* Charte ANGEL'S GROUP : turquoise profond, fonds clairs bleutés, police système */
@@ -2929,8 +2930,17 @@ Seriez-vous disponible pour une démonstration {rdv} ?
       <p class="page-sub">Renouveler les licences, relancer les clients silencieux, développer le portefeuille</p>
       <div class="stats-grid" id="av-kpis" style="margin-bottom:18px"></div>
       <div class="card" style="padding:16px;margin-bottom:18px">
-        <div style="font-weight:700;font-size:14px;margin-bottom:10px">🔑 Licences à renouveler (≤ 60 jours ou expirées)</div>
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px">🔔 Échéances à traiter (≤ 60 jours ou dépassées)</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Maintenance des licences perpétuelles et abonnements. La facture de renouvellement est préparée en brouillon 30 jours avant l'échéance ; la relance s'ouvre dans WhatsApp d'un clic et n'est proposée qu'une fois par palier.</div>
         <div id="av-renew" data-paginate data-pg-size="10" data-pg-sizes="10,25,50"></div>
+      </div>
+      <div class="card" style="padding:16px;margin-bottom:18px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:10px">💶 Renouvellements facturés à encaisser</div>
+        <div id="av-encaisser"></div>
+      </div>
+      <div class="card" style="padding:16px;margin-bottom:18px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:10px">📈 Revenu récurrent attendu (12 prochains mois)</div>
+        <div id="av-avenir"></div>
       </div>
       <div class="card" style="padding:16px">
         <div style="font-weight:700;font-size:14px;margin-bottom:10px">💤 Clients sans activité depuis 90 jours</div>
@@ -3524,6 +3534,18 @@ Seriez-vous disponible pour une démonstration {rdv} ?
       <div class="form-group">
         <label class="form-label">Date d'expiration</label>
         <input type="date" class="form-input" id="lic-fin">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Fin de maintenance (licence perpétuelle)</label>
+        <input type="date" class="form-input" id="lic-maintfin">
+        <label style="display:flex;gap:6px;align-items:center;margin-top:6px;font-size:12px"><input type="checkbox" id="lic-maintnon"> Sans contrat de maintenance</label>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Montant du renouvellement (HT, FCFA)</label>
+        <input type="number" class="form-input" id="lic-renouvmontant" min="0" placeholder="Vide = calculé (maintenance en % du prix, ou abonnement)">
       </div>
     </div>
 
@@ -5791,6 +5813,11 @@ function buildNotifications() {
     else if(days<=30) _notifications.push({type:'warn',ico:'🔑',msg:`Licence ${l.client} — Expire dans ${days}j`,module:'licences',urgence:2});
   });
 
+  // 2b. Maintenances et abonnements à renouveler (palier de relance non encore traité)
+  try{ if(window.SanixRenouv) renouvListe().filter(e=>e.kind==='maintenance'&&e.relanceDue).forEach(e=>{
+    _notifications.push({type:e.jours<=7?'danger':'warn',ico:'🔁',msg:`Maintenance ${e.client} (${e.logiciel}) — ${e.jours<0?'échue depuis '+(-e.jours)+' j':'échéance dans '+e.jours+' j'} · à relancer`,module:'apresvente',urgence:e.jours<=7?3:2});
+  }); }catch(err){}
+
   // 3. Contrats non signés > 14 jours
   CONTRATS.filter(c=>c.statut==='envoye'&&c.date).forEach(c=>{
     const days = Math.floor((now-new Date(c.date))/86400000);
@@ -5847,7 +5874,7 @@ function updateSidebarNotifications() {
   const sbPres = document.getElementById('sb-pres-badge');
   if(sbPres) { sbPres.textContent=presN; sbPres.style.display=presN>0?'':'none'; }
 
-  const cmdN = COMMANDES.filter(c=>c.statut==='brouillon'||c.statut==='confirmee').length;
+  const cmdN = COMMANDES.filter(c=>!c.renouvellement&&(c.statut==='brouillon'||c.statut==='confirmee')).length;
   const sbCmd = document.getElementById('sb-cmd-badge');
   if(sbCmd) { sbCmd.textContent=cmdN; sbCmd.style.display=cmdN>0?'':'none'; }
 
@@ -10314,6 +10341,7 @@ function imprimerBonCommande(id) {
 function deleteCommande(id) {
   const c = COMMANDES.find(x=>x.id===id);
   if(!c||!confirm(`Supprimer commande "${c.ref}" ?`)) return;
+  if(c.renouvellement){ const l=LICENCES.find(x=>x.id===c.licId); if(l){ l.renouvIgnore=(l.renouvIgnore||[]).concat([c.renouvDue]); lsSave('licences',LICENCES); } }
   COMMANDES = COMMANDES.filter(x=>x.id!==id);
   lsSave('commandes',COMMANDES);
   initCommandes();
@@ -10766,27 +10794,115 @@ function convProspects(){
 
 
 // ═══ APRÈS-VENTE : renouvellements & clients dormants ═══
+// ═══════════════════════════════════════════════════════════
+//  RENOUVELLEMENTS & MAINTENANCE (moteur : shared/renouvellements.js)
+//  Échéance → relance par palier (J-60/30/15/7/échue) → facture de renouvellement en brouillon (J-30) → « Renouvelé » prolonge la licence.
+// ═══════════════════════════════════════════════════════════
+function renouvCfg(){ return {maintenancePct:CONFIG.maintenancePct||12, tva:CONFIG.tva==null?18:CONFIG.tva, societe:CONFIG.raisonSociale||'SANIX', devise:CONFIG.devise||'FCFA'}; }
+function renouvListe(){ return window.SanixRenouv ? SanixRenouv.echeances(LICENCES,LOGICIELS,{cfg:renouvCfg()}) : []; }
+function renouvCmd(e){ return COMMANDES.find(c=>c.id===SanixRenouv.idCommande(e)); }
+function renouvRefSuivante(){ return 'REN-'+new Date().getFullYear()+'-'+String(COMMANDES.filter(c=>c.renouvellement).length+1).padStart(3,'0'); }
+// Prépare les factures de renouvellement (brouillons) des échéances à 30 jours ou moins : une seule par licence et par échéance.
+function renouvAuto(){
+  if(!window.SanixRenouv) return 0;
+  const cfg=renouvCfg(); let n=0, maj=0;
+  renouvListe().forEach(e=>{
+    if(e.jours>30||e.jours<-60||!(e.montantHT>0)) return;
+    const l=LICENCES.find(x=>x.id===e.licId); if(l&&(l.renouvIgnore||[]).includes(e.due)) return;
+    const ex=renouvCmd(e);
+    if(!ex){ COMMANDES.push(SanixRenouv.commande(e,{tva:cfg.tva,ref:renouvRefSuivante(),commercial:(l&&l.commercial)||''})); n++; }
+    else if(ex.statut==='brouillon'){ const f=SanixRenouv.commande(e,{tva:cfg.tva}); if(ex.htNet!==f.htNet){ Object.assign(ex,{htBrut:f.htBrut,htNet:f.htNet,tva:f.tva,ttc:f.ttc,solde:f.ttc-(ex.acompte||0),notes:f.notes,renouvJusqua:f.renouvJusqua}); maj++; } }
+  });
+  if(n||maj) saveStore('commandes');
+  return n;
+}
+function _renouvEcheance(licId){ return renouvListe().find(e=>e.licId===licId); }
+function _renouvClient(nom){ return CLIENTS.find(c=>c.nom===nom)||{}; }
+function _renouvTracer(l,e,canal,note){
+  l.relances=(l.relances||[]).concat([{date:new Date().toISOString(),palier:e.palier||'',due:e.due,canal}]);
+  const c=CLIENTS.find(x=>x.nom===l.client);
+  if(c){ if(!c.interactions) c.interactions=[]; c.interactions.push({date:new Date().toISOString(),type:'Relance renouvellement',note:note||('Relance '+(e.libelle||'')+' — '+e.logiciel),etape:Math.max(aiGetEtape(c),0),ico:'🔁',canal}); c.updated_at=new Date().toISOString(); saveStore('clients'); }
+  saveStore('licences');
+}
+function renouvRelancer(licId,canal){
+  const e=_renouvEcheance(licId), l=LICENCES.find(x=>x.id===licId); if(!e||!l) return;
+  const c=_renouvClient(l.client), msg=SanixRenouv.message(e,renouvCfg());
+  if(canal==='tel'){ _renouvTracer(l,e,'telephone','Relance par téléphone — '+e.logiciel); showToast('📞 Relance téléphonique enregistrée'); return initApresVente(); }
+  if(canal==='email'){ if(!c.email){ showToast('❌ Pas d\'adresse e-mail'); return; } _renouvTracer(l,e,'email'); window.location.href='mailto:'+c.email+'?subject='+encodeURIComponent('Renouvellement '+e.logiciel)+'&body='+encodeURIComponent(msg); return initApresVente(); }
+  if(!waOuvrir(c.phone,msg)) return;
+  _renouvTracer(l,e,'whatsapp'); showToast('📱 WhatsApp ouvert — relance '+(e.libelle||'')+' enregistrée'); initApresVente();
+}
+function renouvFacture(licId){
+  const e=_renouvEcheance(licId); if(!e) return; renouvAuto();
+  let o=renouvCmd(e);
+  if(!o){ if(!(e.montantHT>0)){ showToast('❌ Montant à renseigner : modifiez la licence (Montant du renouvellement)'); return; } const l=LICENCES.find(x=>x.id===licId); if(l&&l.renouvIgnore){ l.renouvIgnore=l.renouvIgnore.filter(d=>d!==e.due); } COMMANDES.push(SanixRenouv.commande(e,{tva:renouvCfg().tva,ref:renouvRefSuivante(),commercial:(l&&l.commercial)||''})); saveStore('commandes'); o=renouvCmd(e); }
+  choisirFacture(o.id);
+}
+// Renouvellement confirmé : la facture passe en « Confirmée » et la licence est prolongée.
+function renouvConfirmer(licId){
+  const e=_renouvEcheance(licId), l=LICENCES.find(x=>x.id===licId); if(!e||!l) return;
+  let o=renouvCmd(e);
+  if(!(e.montantHT>0)){
+    const s=prompt('Montant HT du renouvellement de « '+l.client+' » (FCFA) :',''); if(s===null) return;
+    const m=parseInt(String(s).replace(/\D/g,''),10)||0; if(!m){ showToast('❌ Montant requis'); return; }
+    l.renouvMontant=m; return renouvConfirmer(licId);
+  }
+  if(!confirm('Confirmer le renouvellement de '+l.client+' ('+l.logiciel+') ?\n\nNouvelle échéance : '+e.finPrevue.split('-').reverse().join('/')+'\nMontant : '+e.montantHT.toLocaleString('fr-FR')+' '+renouvCfg().devise+' HT')) return;
+  if(!o){ COMMANDES.push(SanixRenouv.commande(e,{tva:renouvCfg().tva,ref:renouvRefSuivante(),commercial:l.commercial||''})); o=renouvCmd(e); }
+  if(o.statut==='annulee') o.statut='brouillon';
+  o.statut='confirmee'; o.date=new Date().toISOString().slice(0,10);
+  Object.assign(l,SanixRenouv.prolonger(l,e,{cmdId:o.id}));
+  saveStore('commandes'); saveStore('licences');
+  showToast('✅ Renouvelé jusqu\'au '+e.finPrevue.split('-').reverse().join('/')+' — facture '+(o.ref||''));
+  initApresVente(); try{ updateSidebarNotifications(); }catch(x){}
+}
+function renouvEncaisser(cmdId){
+  const o=COMMANDES.find(x=>x.id===cmdId); if(!o) return;
+  if(!confirm('Marquer la facture '+(o.ref||'')+' de '+o.client+' comme payée ('+(o.ttc||0).toLocaleString('fr-FR')+' '+renouvCfg().devise+' TTC) ?')) return;
+  o.acompte=o.ttc||0; o.solde=0; saveStore('commandes'); showToast('💶 Encaissement enregistré'); initApresVente();
+}
 function initApresVente(){
-  const E=_dEsc, num=v=>Number(v||0).toLocaleString('fr-FR');
-  const lics=LICENCES.map(l=>({l,d:l.type==='Perpetuelle'?null:licDaysLeft(l.fin)})).filter(x=>x.d!==null&&x.d<=60).sort((a,b)=>a.d-b.d);
+  const E=_dEsc, num=v=>Number(v||0).toLocaleString('fr-FR'), dv=renouvCfg().devise;
+  renouvAuto();
+  const tous=renouvListe(), proches=tous.filter(e=>e.jours<=60), expirees=proches.filter(e=>e.jours<0);
   const lim=Date.now()-90*864e5;
   const dormants=CLIENTS.filter(c=>c.statut==='client'&&new Date(c.updated_at||c.created_at||0).getTime()<lim);
-  const expirees=lics.filter(x=>x.d<0).length;
   const clientsN=CLIENTS.filter(c=>c.statut==='client').length;
-  const kp=(ico,lab,val,col)=>`<div class="stat-card"><div class="stat-label">${ico} ${lab}</div><div class="stat-value" style="color:${col}">${val}</div></div>`;
-  document.getElementById('av-kpis').innerHTML=kp('🔑','À renouveler',lics.length,'var(--warning)')+kp('🔴','Expirées',expirees,'var(--danger)')+kp('💤','Clients dormants',dormants.length,'var(--muted)')+kp('✅','Clients actifs',clientsN,'var(--success)');
-  const wa=(ph,msg)=>{ const u=typeof waLink==='function'?waLink(ph,msg):''; return u?`<a class="btn btn-outline btn-sm" href="${u}" target="_blank" rel="noopener">📱 WhatsApp</a>`:'<span style="font-size:11px;color:var(--muted)">pas de n° WhatsApp</span>'; };
-  document.getElementById('av-renew').innerHTML=lics.length?lics.map(({l,d})=>{
-    const c=CLIENTS.find(x=>x.nom===l.client)||{};
-    const msg='Bonjour, votre licence '+l.logiciel+' '+(d<0?'est expirée':'expire dans '+d+' jour(s)')+'. Souhaitez-vous la renouveler ?';
-    return `<div class="flex justify-between items-center" style="padding:8px 0;border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap"><div><b>${E(l.client)}</b> · ${E(l.logiciel)}<div style="font-size:11px;color:var(--muted)">Fin : ${E(l.fin||'—')}</div></div><div class="flex gap-2 items-center">${licDaysLeftHtml(d,l.type)}${wa(c.phone,msg)}</div></div>`;
-  }).join(''):'<div style="color:var(--muted);font-size:13px">Aucune licence à renouveler.</div>';
+  const aRelancer=proches.filter(e=>e.relanceDue).length;
+  const montant60=proches.reduce((s,e)=>s+e.montantHT,0);
+  const bil=SanixRenouv.bilan(COMMANDES);
+  const kp=(ico,lab,val,col,sub)=>`<div class="stat-card"><div class="stat-label">${ico} ${lab}</div><div class="stat-value" style="color:${col}">${val}</div>${sub?`<div style="font-size:11px;color:var(--muted)">${sub}</div>`:''}</div>`;
+  document.getElementById('av-kpis').innerHTML=kp('🔔','À renouveler (60 j)',proches.length,proches.length?'var(--warning)':'var(--success)',montant60?num(montant60)+' '+dv+' HT':'')+kp('📣','À relancer',aRelancer,aRelancer?'var(--warning)':'var(--success)')+kp('🔴','Échues',expirees.length,expirees.length?'var(--danger)':'var(--success)')+kp('💶','À encaisser',num(bil.creance),bil.creance?'var(--warning)':'var(--success)',bil.n+' renouvellement'+(bil.n>1?'s':'')+' facturé'+(bil.n>1?'s':''))+kp('✅','Clients actifs',clientsN,'var(--success)')+kp('💤','Clients dormants',dormants.length,'var(--muted)');
+  const wa=(l,msg)=>{ const u=typeof waLink==='function'?waLink(_renouvClient(l.client).phone,msg):''; return u; };
+  const jTxt=e=>e.jours<0?`<b style="color:var(--danger)">échue depuis ${-e.jours} j</b>`:`<b style="color:${e.jours<=7?'var(--danger)':'var(--warning)'}">dans ${e.jours} j</b>`;
+  document.getElementById('av-renew').innerHTML=proches.length?proches.map(e=>{
+    const l=LICENCES.find(x=>x.id===e.licId), c=_renouvClient(e.client), o=renouvCmd(e), msg=SanixRenouv.message(e,renouvCfg());
+    const rel=e.derniere?`<span style="font-size:11px;color:var(--success)">✓ relancé${e.derniere.palier?' '+(SanixRenouv.LIB[e.derniere.palier]||''):''} le ${E(String(e.derniere.date).slice(0,10).split('-').reverse().join('/'))} (${E(e.derniere.canal||'')})</span>`:'';
+    const btn=(cls,oc,t,tt)=>`<button class="btn ${cls} btn-sm" onclick="${oc}" title="${E(tt||'')}">${t}</button>`;
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--border)"><div class="flex justify-between items-center" style="gap:8px;flex-wrap:wrap">
+      <div style="min-width:220px"><b>${E(e.client)}</b> · ${E(e.logiciel)} <span class="badge badge-muted" style="font-size:10px">${e.kind==='maintenance'?'🔧 Maintenance':'🔁 '+E(e.type)}</span>
+        <div style="font-size:12px;margin-top:2px">Échéance ${E(e.due.split('-').reverse().join('/'))} · ${jTxt(e)} · ${e.montantHT>0?'<b>'+num(e.montantHT)+' '+dv+' HT</b>':'<span style="color:var(--danger)">montant à renseigner</span>'}</div>
+        <div style="margin-top:2px">${rel}${o?` <span style="font-size:11px;color:var(--muted)">· facture ${E(o.ref||'')} (${E((CMD_STATUT[o.statut]||{}).lbl||o.statut)})</span>`:''}</div></div>
+      <div class="flex gap-2" style="flex-wrap:wrap;align-items:center">
+        ${c.phone?btn(e.relanceDue?'btn-primary':'btn-outline',`renouvRelancer('${l.id}')`,'📱 Relancer','Ouvre WhatsApp avec le message du palier '+(e.libelle||'')):''}
+        ${c.email?btn('btn-outline',`renouvRelancer('${l.id}','email')`,'📧','Relance par e-mail'):''}
+        ${btn('btn-outline',`renouvRelancer('${l.id}','tel')`,'📞 Fait','Noter une relance faite par téléphone')}
+        ${btn('btn-outline',`renouvFacture('${l.id}')`,'🧾 Facture','Imprimer la facture de renouvellement')}
+        ${btn('btn-primary',`renouvConfirmer('${l.id}')`,'✅ Renouvelé','Confirme la facture et prolonge la licence')}
+        ${btn('btn-outline',`editLicence('${l.id}')`,'✏️','Modifier la licence, la fin de maintenance ou le montant')}
+      </div></div></div>`; }).join(''):'<div style="color:var(--muted);font-size:13px">Aucune échéance dans les 60 jours.</div>';
+  const dus=COMMANDES.filter(c=>c.renouvellement&&c.statut!=='brouillon'&&c.statut!=='annulee'&&(c.ttc||0)>(c.acompte||0));
+  document.getElementById('av-encaisser').innerHTML=dus.length?dus.map(c=>`<div class="flex justify-between items-center" style="padding:8px 0;border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap"><div><b>${E(c.client)}</b> · ${E(c.logiciel)}<div style="font-size:11px;color:var(--muted)">${E(c.ref||'')} · ${E(String(c.date||'').split('-').reverse().join('/'))} · jusqu'au ${E(String(c.renouvJusqua||'').split('-').reverse().join('/'))}</div></div><div class="flex gap-2 items-center"><b>${num((c.ttc||0)-(c.acompte||0))} ${dv} TTC</b><button class="btn btn-primary btn-sm" onclick="renouvEncaisser('${c.id}')">💶 Payé</button></div></div>`).join(''):'<div style="color:var(--muted);font-size:13px">Aucun renouvellement en attente de paiement.</div>';
+  const mois=[]; const d0=new Date(); for(let i=0;i<12;i++){ const d=new Date(d0.getFullYear(),d0.getMonth()+i,1); mois.push({k:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),t:0,n:0}); }
+  tous.forEach(e=>{ const m=mois.find(x=>x.k===e.due.slice(0,7)); const mm=e.jours<0?mois[0]:m; if(mm&&e.jours<=365){ mm.t+=e.montantHT; mm.n++; } });
+  const tot12=mois.reduce((s,m)=>s+m.t,0), mx=Math.max(1,...mois.map(m=>m.t));
+  document.getElementById('av-avenir').innerHTML=tot12?`<div style="font-size:13px;margin-bottom:8px">Total à renouveler : <b>${num(tot12)} ${dv} HT</b> sur ${mois.reduce((s,m)=>s+m.n,0)} échéance(s)</div>`+mois.map(m=>`<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin:3px 0"><span style="width:64px;color:var(--muted)">${m.k.slice(5)}/${m.k.slice(0,4)}</span><div style="flex:1;background:var(--surface2);border-radius:6px;height:12px"><div style="width:${Math.round(m.t/mx*100)}%;height:12px;border-radius:6px;background:var(--primary)"></div></div><span style="width:140px;text-align:right">${m.t?num(m.t)+' ('+m.n+')':'—'}</span></div>`).join(''):'<div style="color:var(--muted);font-size:13px">Aucune échéance à venir : saisissez les dates de fin de maintenance dans les licences.</div>';
+  const waDorm=(ph,msg)=>{ const u=typeof waLink==='function'?waLink(ph,msg):''; return u?`<a class="btn btn-outline btn-sm" href="${u}" target="_blank" rel="noopener">📱 WhatsApp</a>`:'<span style="font-size:11px;color:var(--muted)">pas de n° WhatsApp</span>'; };
   document.getElementById('av-dormant').innerHTML=dormants.length?dormants.map(c=>{
     const msg='Bonjour '+c.nom+', comment se passe l\'utilisation de votre logiciel ? Nous sommes disponibles pour vous aider.';
-    return `<div class="flex justify-between items-center" style="padding:8px 0;border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap"><div><b>${E(c.nom)}</b> · ${E(c.logiciel||'')}<div style="font-size:11px;color:var(--muted)">${num(c.valeur)} FCFA</div></div>${wa(c.phone,msg)}</div>`;
+    return `<div class="flex justify-between items-center" style="padding:8px 0;border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap"><div><b>${E(c.nom)}</b> · ${E(c.logiciel||'')}<div style="font-size:11px;color:var(--muted)">${num(c.valeur)} FCFA</div></div>${waDorm(c.phone,msg)}</div>`;
   }).join(''):'<div style="color:var(--muted);font-size:13px">Tous les clients sont actifs.</div>';
 }
-
 // ═══════════════════════════════════════════════════════════
 //  QUALIFICATION RAPIDE DES PROSPECTS
 //  Un clic = une interaction datée (étape) → le pipeline suit via syncDealForClient.
@@ -13243,7 +13359,7 @@ function _licencesDepuisCommandes(){
   const norm=s=>(s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
   let n=0, marque=0;
   COMMANDES.forEach(o=>{
-    if(o.licAuto||o.statut==='annulee'||o.statut==='brouillon'||!o.client||!o.logiciel) return;
+    if(o.renouvellement||o.licAuto||o.statut==='annulee'||o.statut==='brouillon'||!o.client||!o.logiciel) return;
     const type=o.typeLicence||'Perpetuelle';
     if(type!=='Perpetuelle') return;                               // abonnements et essais : licence saisie à la main, avec sa date de fin
     const id='lic_cmd_'+String(o.id).replace(/[^A-Za-z0-9_.:-]/g,'_');
@@ -13269,7 +13385,7 @@ function _contratsDepuisCommandes(){
   const norm=s=>(s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
   let n=0, marque=0, lies=0;
   COMMANDES.forEach(o=>{
-    if(o.ctrAuto||o.statut==='annulee'||o.statut==='brouillon'||!o.client||!o.logiciel) return;
+    if(o.renouvellement||o.ctrAuto||o.statut==='annulee'||o.statut==='brouillon'||!o.client||!o.logiciel) return;
     const id='ctr_cmd_'+String(o.id).replace(/[^A-Za-z0-9_.:-]/g,'_');
     let ctr=CONTRATS.find(c=>c.id===id||c.cmdId===o.id||(c.type==='contrat'&&norm(c.client)===norm(o.client)&&c.logiciel===o.logiciel));
     if(!ctr){
@@ -13743,7 +13859,7 @@ function _seedProspectsCliniqueOnce(){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
-  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedClientsAngelsOnce(); _seedCommandesInitialesOnce(); _fixSoldesAluOnce(); _noteImmoOnce(); _paiementZahara20261111Once(); _paiementAngels20261112Once(); _dedoublonnerCommandes(); _licencesPerpetuellesOnce(); _seedProspectsLivraisonOnce(); _seedClientsNouveauxLogOnce(); _paiementFermeJolan20261112Once(); _numerosFacturesInitOnce(); _licencesDepuisCommandes(); _contratsDepuisCommandes(); _seedProspectsAluExpertOnce(); _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
+  setTimeout(()=>{ _extendLoadAll(); _seedPromoteursOnce(); _seedProspectsCliniqueOnce(); _seedClientsAluExpertOnce(); _seedDemoLinkAluExpertOnce(); _seedClientsImmoSuiteOnce(); _seedClientsAngelsOnce(); _seedCommandesInitialesOnce(); _fixSoldesAluOnce(); _noteImmoOnce(); _paiementZahara20261111Once(); _paiementAngels20261112Once(); _dedoublonnerCommandes(); _licencesPerpetuellesOnce(); _seedProspectsLivraisonOnce(); _seedClientsNouveauxLogOnce(); _paiementFermeJolan20261112Once(); _numerosFacturesInitOnce(); _licencesDepuisCommandes(); _contratsDepuisCommandes(); try{ renouvAuto(); }catch(e){ console.error(e); } _seedProspectsAluExpertOnce(); _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
   // Refresh notifications toutes les 2 minutes
   setInterval(updateSidebarNotifications, 120000);
 });
@@ -16301,6 +16417,7 @@ function openLicenceModal(id=null) {
     const sv=(elId,v)=>{ const e=document.getElementById(elId); if(e) e.value=v||''; };
     sv('lic-client',l.client); sv('lic-logiciel',l.logiciel); sv('lic-type',l.type||'Perpetuelle');
     sv('lic-postes',l.postes||1); sv('lic-debut',l.debut); sv('lic-fin',l.fin||'');
+    sv('lic-maintfin',l.maintFin||''); sv('lic-renouvmontant',l.renouvMontant||''); document.getElementById('lic-maintnon').checked=!!l.maintNon;
     sv('lic-statut',l.statut); sv('lic-env',l.env||'production');
     sv('lic-contrat-link',l.contratId||''); sv('lic-commercial',l.commercial||'');
     sv('lic-notes',l.notes||'');
@@ -16311,6 +16428,7 @@ function openLicenceModal(id=null) {
     genLicKey();
     document.getElementById('lic-debut').value=new Date().toISOString().split('T')[0];
     document.getElementById('lic-fin').value='';
+    ['lic-maintfin','lic-renouvmontant'].forEach(i=>{ document.getElementById(i).value=''; }); document.getElementById('lic-maintnon').checked=false;
     document.getElementById('lic-type').value='Perpetuelle';
     document.getElementById('lic-statut').value='active';
     document.getElementById('lic-env').value='production';
@@ -16338,6 +16456,7 @@ function saveLicence() {
     key, client, logiciel, type:gv('lic-type'),
     postes:parseInt(gv('lic-postes'))||1,
     debut:gv('lic-debut'), fin:gv('lic-fin')||null,
+    maintFin:gv('lic-maintfin')||null, maintNon:!!(document.getElementById('lic-maintnon')||{}).checked, renouvMontant:parseInt(gv('lic-renouvmontant'))||0,
     statut:gv('lic-statut'), env:gv('lic-env'),
     contratId:gv('lic-contrat-link')||null, commercial:gv('lic-commercial'),
     notes:gv('lic-notes').trim(),

@@ -302,4 +302,14 @@ const mig = calc.editsDepuisListe([Object.assign({}, d0[0], { mode: "mensuelle",
 const ren = calc.produitsDefaut({ logiciels: [{ id: "x", nom: "Alpha Pro", typeLicence: "Perpetuelle", prixNum: 500000, prixMensuel: 50000 }], ventesLogiciel: [{ cle: calc.cle("alpha"), n: 2, ht: 1e6 }] });
 near(ren[0].part, 0, 1e-9, "renommage : les commandes à l'ancien nom ne sont plus rattachées (part 0, signalé dans l'écran)");
 
+// Renouvellements : revenu récurrent, jamais de nouvelles ventes (ni clients, ni prix moyen, ni part par logiciel) ; les brouillons ne comptent pas
+const t0 = calc.analyserTraction([{ client: "Alpha", date: "2026-05-10", statut: "livree", htNet: 1e6, ttc: 1.18e6, acompte: 1.18e6, logiciel: "Soft", typeLicence: "Perpetuelle" }], { now: NOW });
+const t1 = calc.analyserTraction([{ client: "Alpha", date: "2026-05-10", statut: "livree", htNet: 1e6, ttc: 1.18e6, acompte: 1.18e6, logiciel: "Soft", typeLicence: "Perpetuelle" },
+  { client: "Alpha", date: "2026-11-01", statut: "confirmee", htNet: 120000, ttc: 141600, acompte: 0, logiciel: "Soft", typeLicence: "Maintenance", renouvellement: true },
+  { client: "Beta", date: "2026-11-02", statut: "livree", htNet: 120000, ttc: 141600, acompte: 141600, logiciel: "Soft", typeLicence: "Maintenance", renouvellement: true },
+  { client: "Alpha", date: "2026-11-03", statut: "brouillon", htNet: 999, ttc: 999, logiciel: "Soft", renouvellement: true }], { now: NOW });
+ok(t1.tous.commandes === t0.tous.commandes && t1.tous.clients === 1 && t1.tous.factureHT === 1e6 && t1.tous.prixMoyen === t0.tous.prixMoyen && t1.parLogiciel[0].n === 1, "renouvellements : pas comptés comme de nouvelles ventes");
+ok(t1.renouv.n === 2 && t1.renouv.ht === 240000 && t1.renouv.ttc === 283200 && t1.renouv.encaisse === 141600 && t1.renouv.creance === 141600, "renouvellements : bilan (brouillon exclu) " + JSON.stringify(t1.renouv));
+ok(calc.analyserTraction([], { now: NOW }).renouv.n === 0, "sans commande : aucun renouvellement");
+
 console.log("\nTous les contrôles du modèle de financement sont passés.");
