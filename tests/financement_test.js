@@ -312,4 +312,53 @@ ok(t1.tous.commandes === t0.tous.commandes && t1.tous.clients === 1 && t1.tous.f
 ok(t1.renouv.n === 2 && t1.renouv.ht === 240000 && t1.renouv.ttc === 283200 && t1.renouv.encaisse === 141600 && t1.renouv.creance === 141600, "renouvellements : bilan (brouillon exclu) " + JSON.stringify(t1.renouv));
 ok(calc.analyserTraction([], { now: NOW }).renouv.n === 0, "sans commande : aucun renouvellement");
 
+// ───────────── Investissements : décaissement, amortissement, impôt, bilan, montant à lever (calculés à la main sur le cas d'école) ─────────────
+console.log("▶ Investissements");
+ok(Array.isArray(calc.defauts({}).investissements) && calc.defauts({}).investissements.length === 0, "tableau d'investissements vide par défaut : rien n'est inventé");
+{
+  const sansInv = calc.simuler(base(), "avec", {}), vide = Object.assign(base(), { investissements: [] }), nul = Object.assign(base(), { investissements: [{ id: "x", nom: "Vide", mois: 2, montant: 0, duree: 3 }, { id: "y", nom: "Négatif", mois: 2, montant: -5e6, duree: 3 }] });
+  ok(JSON.stringify(calc.simuler(vide, "avec", {}).annees) === JSON.stringify(sansInv.annees) && JSON.stringify(calc.simuler(nul, "avec", {}).annees) === JSON.stringify(sansInv.annees), "aucun investissement, ou lignes sans montant positif : résultats strictement inchangés");
+  const I = (o) => Object.assign({ id: "i1", nom: "Matériel", mois: 3, montant: 12e6, duree: 3, finance: true }, o || {});
+  const avec = (inv, extra) => Object.assign(base(), extra || {}, { investissements: inv });
+  // 12 000 000 le mois 4 (indice 3), amortis sur 3 ans = 36 mois : 333 333,33 par mois du mois 3 au mois 38
+  let sI = calc.simuler(avec([I()]), "avec", {});
+  near(sI.mois[3].capex, 12e6, 1e-6, "décaissement de 12 000 000 au mois de l'achat"); near(sI.mois[2].capex + sI.mois[4].capex + sI.mois[59].capex, 0, 1e-9, "aucun décaissement les autres mois");
+  near(sI.tresoFin, 60 * 9e5 - 12e6, 1e-3, "trésorerie à 60 mois = 54 000 000 − 12 000 000");
+  near(sI.annees[0].tresoFin, 10.8e6 - 12e6, 1e-3, "fin d'année 1 : 10 800 000 de flux − 12 000 000 d'achat = −1 200 000");
+  near(sI.mois[2].dotation, 0, 1e-9, "pas d'amortissement avant l'achat"); near(sI.mois[3].dotation, 12e6 / 36, 1e-6, "amortissement dès le mois d'achat : 333 333,33"); near(sI.mois[38].dotation, 12e6 / 36, 1e-6, "dernier mois d'amortissement (mois 38)"); near(sI.mois[39].dotation, 0, 1e-9, "plus d'amortissement ensuite");
+  [3e6, 4e6, 4e6, 1e6, 0].forEach((v, k) => near(sI.annees[k].dotation, v, 1e-3, `dotation de l'année ${k + 1} = ${v}`));
+  near(sI.annees.reduce((t, a) => t + a.dotation, 0), 12e6, 1e-3, "le total amorti égale le prix d'achat");
+  near(sI.annees[0].resultatNet, 10.8e6 - 3e6, 1e-3, "résultat net année 1 = EBITDA − dotation (7 800 000), sans impôt");
+  near(sI.annees[0].ebitda, calc.simuler(base(), "avec", {}).annees[0].ebitda, 1e-9, "l'EBITDA n'est pas touché (avant amortissements)");
+  [9e6, 5e6, 1e6, 0, 0].forEach((v, k) => near(sI.annees[k].bilan.immo, v, 1e-3, `immobilisations nettes fin d'année ${k + 1} = ${v}`));
+  near(sI.annees[0].fInv, -12e6, 1e-9, "flux d'investissement année 1 = −12 000 000"); near(sI.annees[0].fExpl + sI.annees[0].fInv + sI.annees[0].fFin, sI.annees[0].flux, 1e-3, "exploitation + investissement + financement = variation de trésorerie");
+  near(Math.max.apply(null, sI.annees.map((a) => Math.abs(a.bilan.actif - a.bilan.passif))), 0, 1e-3, "bilan équilibré avec un investissement");
+  // Plan « sans financement » : un investissement financé en est absent ; un investissement déjà engagé y figure
+  near(calc.simuler(avec([I()]), "sans", {}).tresoFin, 60 * 9e5, 1e-3, "investissement « financé » : absent du plan sans financement");
+  near(calc.simuler(avec([I({ finance: false })]), "sans", {}).tresoFin, 60 * 9e5 - 12e6, 1e-3, "investissement déjà engagé : présent dans les deux plans");
+  // Non amorti (dépôt de garantie) : reste à l'actif
+  sI = calc.simuler(avec([I({ duree: 0 })]), "avec", {});
+  near(sI.annees.reduce((t, a) => t + a.dotation, 0), 0, 1e-9, "durée 0 : aucun amortissement"); near(sI.annees[4].bilan.immo, 12e6, 1e-3, "durée 0 : l'immobilisation reste entière à l'actif"); near(Math.max.apply(null, sI.annees.map((a) => Math.abs(a.bilan.actif - a.bilan.passif))), 0, 1e-3, "bilan équilibré (non amorti)");
+  // Normalisation
+  const n = calc.investissementsActifs({ investissements: [{ id: "a", nom: "A", mois: 2.6, montant: 1e6, duree: 0.04 }, { id: "b", nom: "B", mois: -4, montant: 2e6, duree: null }, { id: "c", nom: "C", mois: 1, montant: 0 }, { id: "d", nom: "D", mois: 1, montant: 5, duree: 2, finance: false }] });
+  ok(n.length === 3 && n[0].mois === 3 && n[0].mAmort === 1 && n[1].mois === 0 && n[1].mAmort === 0 && n[0].finance === true && n[2].finance === false && n[2].mAmort === 24, "normalisation : mois arrondi et borné, durée minimale 1 mois, 0 = non amorti, « financé » par défaut");
+  near(calc.simuler(avec([I({ mois: 70 })]), "avec", {}).tresoFin, 60 * 9e5, 1e-3, "achat après l'horizon de 60 mois : sans effet");
+  // Économie d'impôt : 25 % × 3 000 000 d'amortissement la 1re année
+  const imp = (inv) => calc.simuler(avec(inv, { impotPct: 25 }), "avec", {}), a0 = imp([]).annees[0], a1 = imp([I()]).annees[0];
+  near(a0.impot, 0.25 * 10.8e6, 1e-3, "impôt année 1 sans investissement = 25 % de 10 800 000"); near(a0.impot - a1.impot, 0.25 * 3e6, 1e-3, "l'amortissement réduit l'impôt : −750 000 la 1re année");
+  near(a1.resultatNet, 10.8e6 - 3e6 - 0.25 * 7.8e6, 1e-3, "résultat net après impôt = 7 800 000 − 1 950 000");
+  // Montant à lever : charges de 2 000 000 par mois pour 1 000 000 de ventes → creux de −60 000 000 au mois 60 ; l'investissement s'y ajoute à l'euro près
+  const creux = (inv) => Object.assign(avec(inv, { fixesMensuels: 2e6 }), {});
+  const b0 = calc.comparer(creux([])), b1 = calc.comparer(creux([I()]));
+  near(b0.besoin, 60e6, 1e-3, "besoin sans investissement = 60 × 1 000 000 de déficit mensuel"); near(b1.besoin, 72e6, 1e-3, "besoin avec un investissement de 12 000 000 : +12 000 000");
+  near(b1.options[0].xMin - b0.options[0].xMin, 12e6, 1, "montant minimal à lever en capital : +12 000 000");
+  const em = b1.emplois, ligne = em.lignes.filter((l) => /^Investissements/.test(l[0]))[0];
+  ok(ligne && Math.abs(ligne[1] - 12e6) < 1e-3 && Math.abs(em.depenses - em.recu - em.besoin) < 1, "utilisation des fonds : ligne « Investissements » = 12 000 000 et dépenses − encaissements = besoin");
+  ok(!b0.emplois.lignes.some((l) => /^Investissements/.test(l[0])), "sans investissement : pas de ligne « Investissements » dans l'utilisation des fonds");
+  // Plusieurs investissements, dont un après le creux : seul ce qui précède le creux compte dans l'utilisation des fonds
+  const mix = calc.comparer(creux([I({ id: "a", mois: 1, montant: 3e6, duree: 2 }), I({ id: "b", mois: 10, montant: 5e6, duree: 5 })]));
+  near(mix.besoin, 68e6, 1e-3, "deux investissements (3 000 000 + 5 000 000) : besoin 68 000 000");
+  near(Math.max.apply(null, calc.simuler(creux([I({ id: "a", mois: 1, montant: 3e6, duree: 2 }), I({ id: "b", mois: 10, montant: 5e6, duree: 5 })]), "avec", { equity: 80e6 }).annees.map((a) => Math.abs(a.bilan.actif - a.bilan.passif))), 0, 1e-3, "bilan équilibré avec plusieurs investissements et un apport");
+}
+
 console.log("\nTous les contrôles du modèle de financement sont passés.");
