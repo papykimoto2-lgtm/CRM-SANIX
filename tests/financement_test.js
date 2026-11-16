@@ -101,4 +101,89 @@ const mix = C.options[3]; near(mix.struct.equity + mix.struct.dette.montant + mi
 if (C.emplois) near(C.emplois.depenses - C.emplois.recu - C.emplois.tresoDepart, C.besoin, 1, "emplois : dépenses − encaissements = besoin");
 const nan = JSON.stringify(C).includes("null") ? (JSON.stringify(C).match(/NaN|Infinity/g) || []) : [];
 ok(!/NaN|Infinity/.test(JSON.stringify(C.options.map((o) => o.ind))) , "aucun résultat invalide (NaN) dans les indicateurs");
+console.log("▶ Optimisation");
+const Dop = calc.defauts({ commandes12m: 10, prixMoyen: 1059543, caTotal: 12.5e6, commissionDefaut: 10 });
+const O = calc.optimiser(Dop), B = calc.evaluer(Dop);
+near(O.base.besoin, B.besoin, 1e-6, "situation de départ = évaluation du plan");
+ok(O.leviers.length === 11, "onze leviers applicables avec les valeurs par défaut");
+ok(O.leviers.every((l, i) => i === 0 || O.leviers[i - 1].dTreso >= l.dTreso), "leviers classés du plus au moins utile (trésorerie an 5)");
+O.leviers.forEach((l) => { const lv = calc.LEVIERS.filter((x) => x.id === l.id)[0]; const m = calc.evaluer(Object.assign({}, Dop, lv.f(Dop))); near(l.m.tresoFin, m.tresoFin, 1e-6, "levier « " + l.id + " » : résultats = plan recalculé avec le levier"); });
+ok(O.leviers.filter((l) => l.cat === "Ventes").every((l) => l.dEbitda5 > 0), "chaque levier de ventes améliore l'EBITDA");
+const lv = (id) => O.leviers.filter((l) => l.id === id)[0];
+near(lv("delai").dEbitda5, 0, 1e-6, "encaisser plus vite : aucun effet sur l'EBITDA…"); ok(lv("delai").dTreso > 0, "…mais améliore la trésorerie");
+ok(lv("embauches").arbitrer && lv("etaler").arbitrer && lv("marketing").arbitrer && !lv("prix").arbitrer, "les leviers qui touchent la croissance sont marqués « à arbitrer »");
+const sc = O.seuils.clients, rentable = (hh) => calc.simuler(hh, "avec", {}).pointMort !== null;
+ok(!sc.deja && sc.valeur > Dop.clientsAn1, "seuil de clients au-dessus de la situation actuelle");
+ok(rentable(Object.assign({}, Dop, { clientsAn1: sc.valeur })) && !rentable(Object.assign({}, Dop, { clientsAn1: sc.valeur * 0.98 })), "seuil de clients : rentable au seuil, pas 2 % en dessous");
+const sp = O.seuils.prix; ok(rentable(Object.assign({}, Dop, { prixLicence: sp.valeur })) && !rentable(Object.assign({}, Dop, { prixLicence: sp.valeur * 0.98 })), "seuil de prix : rentable au seuil, pas 2 % en dessous");
+const E = O.combine.etapes; ok(E.length > 0, "un plan combiné est proposé");
+ok(E.every((e, i) => i === 0 || e.m.tresoFin > E[i - 1].m.tresoFin), "chaque étape améliore la trésorerie");
+const iArb = E.findIndex((e) => e.arbitrer); ok(iArb < 0 || E.slice(iArb).every((e) => e.arbitrer), "leviers sûrs d'abord, leviers « à arbitrer » ensuite");
+near(calc.evaluer(O.combine.h).tresoFin, O.combine.final.tresoFin, 1e-6, "les hypothèses finales redonnent le résultat annoncé");
+ok(O.combine.rentable === (O.combine.final.pointMort !== null), "plan combiné : indicateur de rentabilité cohérent");
+const sain = calc.optimiser(base()); ok(sain.combine.etapes.length === 0, "plan déjà rentable et autofinancé : aucun levier à enchaîner");
+const h0 = base(); h0.retentionPct = 100; h0.postes = []; h0.marketingBoost = 0; h0.fixesMensuels = 2000000;
+const O0 = calc.optimiser(h0); ok(!O0.leviers.some((l) => ["retention", "embauches", "etaler", "marketing"].includes(l.id)), "leviers sans effet possible : non proposés");
+const hz = base(); hz.directsPct = 60; hz.commissionPct = 60; hz.fixesMensuels = 2000000; ok(calc.seuil(hz, "clientsAn1") === null, "seuil hors de portée (coûts proportionnels > 100 %) : null, pas de boucle infinie");
+
+console.log("▶ Bilan et flux : l'équilibre comptable");
+const cas = [[{}, "sans apport"], [{ equity: 50e6 }, "capital"], [{ subvention: 30e6 }, "subvention"], [{ dette: { montant: 40e6, taux: 12, duree: 48, differe: 12 } }, "dette"],
+  [{ equity: 20e6, subvention: 10e6, dette: { montant: 30e6, taux: 10, duree: 36, differe: 6 } }, "mix"]];
+[0, 1, 3].forEach((delai) => cas.forEach(([fin, nom]) => ["avec", "sans"].forEach((plan) => {
+  const hb = calc.defauts({ commandes12m: 10, prixMoyen: 1059543, caTotal: 12.5e6 }); hb.delaiEncaissement = delai; hb.tresoDepart = 5e6; hb.postes[0].debut = 0;
+  const sm = calc.simuler(hb, plan, fin), ecart = Math.max.apply(null, sm.annees.map((x) => Math.abs(x.bilan.actif - x.bilan.passif)));
+  ok(ecart < 1, `bilan équilibré (délai ${delai} mois, ${nom}, plan ${plan}) : écart max ${ecart.toExponential(1)}`);
+  const f = Math.max.apply(null, sm.annees.map((x) => Math.abs(x.fExpl + x.fFin - x.flux))); ok(f < 1, `flux d'exploitation + de financement = flux total (${nom}, délai ${delai})`);
+})));
+h = base(); h.delaiEncaissement = 2; s = calc.simuler(h, "avec", {});
+near(s.annees[0].bilan.creances, s.mois[11].ca + s.mois[10].ca, 1e-6, "créances clients = ventes des 2 derniers mois (délai de 2 mois)");
+h = base(); h.delaiEncaissement = 0; s = calc.simuler(h, "avec", {}); near(s.annees[0].bilan.creances, 0, 1e-9, "encaissement immédiat : aucune créance");
+h = base(); h.tresoDepart = 7e6; s = calc.simuler(h, "avec", { equity: 10e6 });
+near(s.annees[0].bilan.capitaux, 7e6 + 10e6 + sum(s.mois.slice(0, 12), "ebitda") /* ouverture sans créance (délai 0), intérêts et impôts nuls */, 1e-3, "capitaux propres = ouverture + apport + résultat cumulé");
+near(s.annees[0].arr, s.mois[11].maint * 12, 1e-9, "revenu récurrent annuel = maintenance du dernier mois × 12");
+
+console.log("▶ Traction : chiffres réels");
+const NOW = "2026-11-16", day = (n) => new Date(Date.parse(NOW) - n * 864e5).toISOString().slice(0, 10);
+const cmds = [
+  { client: "Alpha SARL", date: day(10), statut: "livree", typeLicence: "Perpetuelle", htNet: 1e6, ttc: 1.18e6, acompte: 500000 },
+  { client: "ALPHA sarl", date: day(200), statut: "confirmee", typeLicence: "Mensuelle", htNet: 2e6, ttc: 2.36e6, acompte: 2.36e6 },
+  { client: "Bêta", date: day(120), statut: "en_cours", typeLicence: "Perpetuelle", htNet: 500000, ttc: 590000, acompte: 0 },
+  { client: "Gamma", date: day(5), statut: "brouillon", htNet: 9e6, ttc: 9e6, acompte: 0 }, { client: "Delta", date: day(5), statut: "annulee", htNet: 9e6, ttc: 9e6, acompte: 0 },
+  { client: "Epsilon", date: day(40), statut: "livree", typeLicence: "Perpetuelle", htNet: 100000, ttc: 100000, acompte: 150000 }];
+let T = calc.analyserTraction(cmds, { now: NOW });
+ok(T.lignes.length === 3 && T.tous.commandes === 4, "brouillons et commandes annulées exclus ; « Alpha SARL » et « ALPHA sarl » fusionnés (casse, accents)");
+near(T.tous.factureHT, 3.6e6, 1e-6, "facturé HT total"); near(T.tous.factureTTC, 4.23e6, 1e-6, "facturé TTC total");
+near(T.tous.encaisse, 500000 + 2.36e6 + 0 + 100000, 1e-6, "encaissé (versement supérieur au montant : plafonné au facturé)");
+near(T.tous.creance, 680000 + 590000, 1e-6, "créances = facturé TTC − encaissé"); near(T.tous.taux, 2.96e6 / 4.23e6, 1e-9, "taux d'encaissement");
+near(T.top1, 3e6 / 3.6e6, 1e-9, "concentration : 1er client"); near(T.tous.recurrent, 2e6, 1e-6, "revenu récurrent : seule la licence mensuelle est comptée");
+near(T.tous.partRecurrent, 2e6 / 3.6e6, 1e-9, "part récurrente du facturé");
+near(T.ages.j30, 680000, 1e-6, "créances de moins de 30 jours"); near(T.ages.j90, 0, 1e-6, "créances de 31 à 90 jours : aucune (Epsilon est soldé, Bêta a 120 jours)");
+near(T.ages.plus, 590000, 1e-6, "créances de plus de 90 jours");
+const cl = calc.cle("Alpha SARL"); T = calc.analyserTraction(cmds, { now: NOW, liens: { [cl]: { lie: true } } });
+near(T.retraite.factureHT, 600000, 1e-6, "vue retraitée : sans la partie liée"); near(T.partLies, 3e6 / 3.6e6, 1e-9, "part du facturé venant de parties liées"); ok(T.nbLies === 1, "une partie liée");
+T = calc.analyserTraction(cmds, { now: NOW, liens: { [calc.cle("Bêta")]: { nature: true }, [calc.cle("epsilon")]: { nature: true } } });
+near(T.encaisseNature, 100000, 1e-6, "règlement en nature : montant isolé"); near(T.encaisseMonetaire, 2.86e6, 1e-6, "encaissé monétaire = encaissé − règlements en nature");
+const a12 = calc.analyserTraction([{ client: "X", date: "2025-01-15", statut: "livree", htNet: 1e6, ttc: 1e6, acompte: 1e6 }, { client: "X", date: day(30), statut: "livree", htNet: 3e6, ttc: 3e6, acompte: 3e6 }], { now: NOW });
+near(a12.tous.ht12, 3e6, 1e-6, "12 derniers mois : la vente d'il y a plus d'un an est écartée"); near(a12.tous.prixMoyen, 3e6, 1e-6, "prix moyen sur 12 mois");
+ok(calc.analyserTraction([], { now: NOW }).tous.taux === 0 && calc.analyserTraction(null).lignes.length === 0, "aucune commande : aucun calcul invalide");
+
+console.log("▶ Économie unitaire");
+h = base(); h.hausseAn = 0; h.directsPct = 10; h.commissionPct = 10; h.servicesPct = 20; h.maintenancePct = 12; h.retentionPct = 100; h.prixLicence = 1e6; h.marketingMin = 500000; h.marketingPct = 0; h.clientsAn1 = 12; h.baseInstallee = 0;
+h.postes = [{ id: "c", nom: "Commercial", nb: 1, cout: 400000, debut: 0, finance: false, acquisition: true }, { id: "d", nom: "Dev", nb: 2, cout: 500000, debut: 0, finance: false }]; h.chargesSocialesPct = 0;
+s = calc.simuler(h, "avec", {}); let U = calc.economieUnitaire(h, s)[0];
+near(U.margeInit, 1e6 * 0.8 + 1e6 * 0.2 * 0.9, 1e-6, "marge de la 1re vente = prix × (1 − coûts directs − commission) + services");
+near(U.ltv, 980000 + 4 * 1e6 * 0.12 * 0.9, 1e-6, "valeur d'un client sur 5 ans = marge initiale + 4 ans de maintenance");
+near(U.cac, (12 * 500000 + 12 * 400000) / 12, 1e-6, "coût d'acquisition = (marketing + équipe d'acquisition) / nouveaux clients");
+near(U.ltvCac, U.ltv / U.cac, 1e-12, "rapport valeur client / coût d'acquisition"); ok(U.retour === 0, "marge de la 1re vente ≥ coût d'acquisition : retour immédiat");
+h.marketingMin = 5000000; U = calc.economieUnitaire(h, calc.simuler(h, "avec", {}))[0]; ok(U.retour > 0, "coût d'acquisition > marge initiale : délai de retour en mois"); near(U.retour, (U.cac - U.margeInit) / (1e6 * 0.12 * 0.9 / 12), 1e-6, "délai de retour = écart / maintenance mensuelle");
+h.clientsAn1 = 0; U = calc.economieUnitaire(h, calc.simuler(h, "avec", {}))[0]; ok(U.cac === null && U.ltvCac === null, "aucun nouveau client : indicateurs non calculés (null)");
+ok(calc.economieUnitaire(base(), calc.simuler(base(), "avec", {}))[0].caParSalarie === null, "sans salarié : productivité non calculée (null)");
+
+console.log("▶ Tour de table");
+h = base(); h.esopPct = 10; let R = calc.tourDeTable(h, 0.2);
+near(sum(R, "apres"), 1, 1e-12, "après l'apport, le total fait 100 %"); near(R[0].apres, 0.7, 1e-12, "un fondateur à 100 % passe à 70 % (20 % investisseur, 10 % pool)");
+h.associes = [{ id: "1", nom: "A", part: 60 }, { id: "2", nom: "B", part: 40 }, { id: "3", nom: "Zéro", part: 0 }]; h.esopPct = 0; R = calc.tourDeTable(h, 0.25);
+near(R[0].apres, 0.45, 1e-12, "60 % → 45 % après dilution de 25 %"); ok(R.length === 3, "associé à 0 % ignoré (A, B, investisseur)"); near(sum(R, "avant"), 1, 1e-12, "avant l'apport : 100 %");
+h.associes = [{ id: "1", nom: "A", part: 30 }, { id: "2", nom: "B", part: 20 }]; near(calc.tourDeTable(h, 0)[0].avant, 0.6, 1e-12, "parts normalisées à 100 % (30 et 20 → 60 % et 40 %)");
+
 console.log("\nTous les contrôles du modèle de financement sont passés.");
