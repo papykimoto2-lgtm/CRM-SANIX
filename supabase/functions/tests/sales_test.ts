@@ -135,9 +135,10 @@ T("S4 · relances : concurrence, verrou expiré, aucun double envoi après une r
   eq([...calls].sort(), ["c0", "c1", "c2", "c3", "c4", "c5"], "6 relances, 6 exécutions, aucune en double");
   eq(Number(await val("select count(*) from ai_followups where statut = 'faite'")), 6, "toutes faites");
 
-  // Verrou posé depuis plus de 10 minutes (fonction interrompue) : la relance est reprise, tentative comptée
-  const stuck = await mkFollowup(await mkProspect(), { scenario: "bloquee", locked: iso(11 * 60e3), attempts: 1 });
-  const young = await mkFollowup(await mkProspect(), { scenario: "verrou_recent", locked: iso(2 * 60e3), attempts: 1 });
+  // Verrou posé depuis plus de 30 minutes (fonction interrompue) : la relance est reprise, tentative comptée.
+  // En deçà, le verrou est respecté : un tick peut encore être en train de la traiter (jusqu'à 10 relances × 12 tours d'IA).
+  const stuck = await mkFollowup(await mkProspect(), { scenario: "bloquee", locked: iso(31 * 60e3), attempts: 1 });
+  const young = await mkFollowup(await mkProspect(), { scenario: "verrou_recent", locked: iso(11 * 60e3), attempts: 1 });
   const seen: string[] = [];
   await tickFollowups(runner(seen));
   eq(seen, ["bloquee"], "verrou expiré repris, verrou récent respecté");
