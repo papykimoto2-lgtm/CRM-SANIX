@@ -51,12 +51,24 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.click('[data-tab="dossier"]'); await page.waitForTimeout(200);
     const [dl] = await Promise.all([page.waitForEvent("download"), page.click('[data-act="csv"]')]);
     const txt = require("fs").readFileSync(await dl.path(), "utf8");
+    ok(txt.replace(/^\uFEFF/, "").startsWith("\"DOCUMENT DE TRAVAIL"), "CSV : mention « document de travail » en tête tant que non validé");
     ok(dl.suggestedFilename() === "modele_financement.csv" && txt.includes("Comparaison des options") && txt.includes("Detail mensuel"), "export CSV complet");
     ok(txt.split("\r\n").length > 100, "le CSV contient le détail mensuel (60 lignes)");
     const html = await page.evaluate(() => { let h = ""; const w = { document: { write: (x) => { h += x; }, close() {} }, focus() {}, print() {} }; const o = window.open; window.open = () => w; document.querySelector('[data-act="pdf"]').click(); window.open = o; return h; });
+    ok(html.includes("DOCUMENT DE TRAVAIL") && html.includes("Ne pas diffuser"), "PDF : bandeau et filigrane « document de travail » tant que non validé");
+    ok(await page.locator("#fin-body .alert-warn").count() === 1, "avertissement affiché dans l'onglet Dossier");
     ok(html.includes("Dossier de financement") && html.includes("Besoin de financement") && html.includes("Options de financement"), "dossier PDF généré");
     const noms = await page.evaluate(() => CLIENTS.map((c) => c.nom).filter(Boolean).slice(0, 20));
     ok(noms.length === 0 || noms.every((n) => !html.includes(n)), "aucun nom de client dans le dossier");
+
+    console.log("▶ Validation des hypothèses");
+    await page.check('[data-k="valide"]'); await page.waitForTimeout(200);
+    ok(await page.locator("#fin-body .alert-success").count() === 1 && await page.locator("#fin-body .alert-warn").count() === 0, "validation : l'avertissement laisse place à la confirmation");
+    ok(await page.evaluate(() => JSON.parse(localStorage.getItem("sanix_crm_fin_config")).valide === true), "validation enregistrée sur l'appareil");
+    const html2 = await page.evaluate(() => { let h = ""; const w = { document: { write: (x) => { h += x; }, close() {} }, focus() {}, print() {} }; const o = window.open; window.open = () => w; document.querySelector('[data-act="pdf"]').click(); window.open = o; return h; });
+    ok(html2.includes("Dossier de financement") && !html2.includes("DOCUMENT DE TRAVAIL"), "PDF validé : plus de mention « document de travail »");
+    const [dl2] = await Promise.all([page.waitForEvent("download"), page.click('[data-act="csv"]')]);
+    ok(!require("fs").readFileSync(await dl2.path(), "utf8").includes("DOCUMENT DE TRAVAIL"), "CSV validé : plus de mention");
 
     console.log("▶ Droits d'accès");
     ok(await page.evaluate(() => PERMISSIONS.commercial.indexOf("financement") < 0 && PERMISSIONS.apporteur.indexOf("financement") < 0 && PERMISSIONS.manager.indexOf("financement") >= 0), "réservé à la direction (super admin, manager)");
@@ -64,6 +76,8 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     console.log("▶ Réinitialisation");
     await page.click('[data-tab="hyp"]'); await page.click('[data-act="reset"]'); await page.waitForTimeout(250);
     ok(await page.evaluate(() => localStorage.getItem("sanix_crm_fin_config") === "{}"), "retour aux valeurs initiales");
+    await page.click('[data-tab="dossier"]'); await page.waitForTimeout(150);
+    ok(await page.locator("#fin-body .alert-warn").count() === 1, "après réinitialisation, le document redevient « de travail »");
     ok(errors.length === 0, "aucune erreur JavaScript" + (errors.length ? " : " + errors.join(" | ") : ""));
     console.log("\nL'écran Financement est conforme.");
   } finally { await browser.close(); server.close && server.close(); }
