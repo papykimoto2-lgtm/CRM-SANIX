@@ -6,7 +6,7 @@ const near = (a, b, tol, m) => ok(Math.abs(a - b) <= (tol == null ? 1e-6 : tol),
 // Cas d'école : 12 clients/an à 1 000 000, aucune croissance, aucun coût, sauf 100 000 de charges fixes par mois
 const base = () => Object.assign(calc.defauts({}), {
   clientsAn1: 12, prixLicence: 1000000, hausseAn: 0, maintenancePct: 0, servicesPct: 0, baseInstallee: 0, delaiEncaissement: 0, retentionPct: 100,
-  croiss: [0, 0, 0, 0], croissSans: [0, 0, 0, 0], directsPct: 0, commissionPct: 0, iaMensuel: 0, marketingPct: 0, marketingMin: 0, marketingBoost: 0,
+  maintDelaiMois: 0, croiss: [0, 0, 0, 0], croissSans: [0, 0, 0, 0], directsPct: 0, commissionPct: 0, iaMensuel: 0, marketingPct: 0, marketingMin: 0, marketingBoost: 0,
   fixesMensuels: 100000, chargesSocialesPct: 0, augmentationSalairesPct: 0, impotPct: 0, tresoDepart: 0, postes: [], margeSecuritePct: 0,
   supabaseFixeUsd: 0, supabaseProjetUsd: 0, projetsBase: 0, clientsDepart: 0, vercelSiegeUsd: 0, githubSiegeUsd: 0, iaMensuelUsd: 0, fraisPaiementPct: 0 });   // coûts techniques neutralisés : les cas ci-dessous ne testent que le reste
 
@@ -402,6 +402,70 @@ console.log("▶ États prévisionnels : exploitation 12 mois, immobilisations, 
   ok(Ts.lignes.length === 1 && Ts.lignes[0].nom === "Inv B" && calc.tableauImmobilisations(hs, "avec").lignes.length === 2, "plan sans financement : uniquement l'investissement déjà engagé");
   ok(calc.tableauImmobilisations(base(), "avec").lignes.length === 0 && calc.tableauImmobilisations(base(), "avec").total.every((x) => x.vnc === 0 && x.dotation === 0), "sans investissement : tableau vide, totaux nuls");
   ok(calc.tableauImmobilisations(Object.assign(base(), { investissements: [I("Z", 70, 5e6, 2)] }), "avec").total.every((x) => x.brut === 0 && x.vnc === 0), "achat au-delà de 60 mois : jamais à l'actif");
+}
+
+// ───────────── Revue d'audit : maintenance après la 1re année, contrôles, impôt minimum, clés de clients, taux en argent, DSCR ─────────────
+console.log("▶ Revue d'audit");
+{
+  const near2 = near;
+  // Maintenance incluse la 1re année : 12 licences/an à 1 000 000, 12 % de maintenance, rétention 100 %, aucune base installée.
+  // Une vente du mois t0 entre en maintenance au mois t0 + 12 ; au mois t ≥ 12 : (t − 11) licences × 12 % / 12 = (t − 11) × 10 000.
+  let hm = Object.assign(base(), { maintenancePct: 12, retentionPct: 100, baseInstallee: 0, maintDelaiMois: 12 }), sm = calc.simuler(hm, "avec", {});
+  near2(sm.annees[0].maint, 0, 1e-6, "délai 12 mois : aucune maintenance la 1re année"); near2(sm.mois[11].maint, 0, 1e-9, "mois 11 : toujours rien"); near2(sm.mois[12].maint, 10000, 1e-6, "mois 12 : la 1re vente a un an → 10 000"); near2(sm.mois[13].maint, 20000, 1e-6, "mois 13 : deux licences → 20 000");
+  near2(sm.annees[1].maint, 78 * 10000, 1e-3, "année 2 : (1 + … + 12) × 10 000 = 780 000"); near2(sm.annees.reduce((t, a) => t + a.maint, 0), 48 * 49 / 2 * 10000, 1e-3, "5 ans : 11 760 000");
+  const s0 = calc.simuler(Object.assign({}, hm, { maintDelaiMois: 0 }), "avec", {}), s1 = calc.simuler(Object.assign({}, hm, { maintDelaiMois: 1 }), "avec", {});
+  near2(s0.mois[1].maint, 10000, 1e-6, "délai 0 (ancien comportement) : maintenance dès le mois suivant la vente"); ok(JSON.stringify(s0.annees) === JSON.stringify(s1.annees), "délai 0 et 1 : identiques");
+  // Base installée existante : n'entre en maintenance qu'à son premier anniversaire (délai − ancienneté)
+  const baseAge = (age, ret) => Object.assign(base(), { maintenancePct: 12, retentionPct: ret || 100, baseInstallee: 10e6, clientsAn1: 0, maintDelaiMois: 12, baseAgeMois: age });
+  let sb = calc.simuler(baseAge(5), "avec", {}); near2(sb.mois[6].maint, 0, 1e-9, "base vendue il y a 5 mois : pas de maintenance au mois 6"); near2(sb.mois[7].maint, 100000, 1e-6, "base vendue il y a 5 mois : maintenance dès le mois 7 (100 000)");
+  sb = calc.simuler(baseAge(0), "avec", {}); near2(sb.mois[11].maint, 0, 1e-9, "base vendue aujourd'hui : rien avant le mois 12"); near2(sb.mois[12].maint, 100000, 1e-6, "base vendue aujourd'hui : 100 000 au mois 12");
+  sb = calc.simuler(baseAge(12), "avec", {}); near2(sb.mois[0].maint, 100000, 1e-6, "base de plus d'un an : maintenance dès le mois 0"); near2(calc.simuler(baseAge(40), "avec", {}).mois[0].maint, 100000, 1e-6, "base de 40 mois : idem");
+  sb = calc.simuler(baseAge(5, 50), "avec", {}); near2(sb.mois[7].maint, 10e6 * Math.pow(0.5, 7 / 12) * 0.01, 1e-3, "rétention 50 % : la base qui entre en maintenance a perdu des clients avant son anniversaire");
+  // LTV : la maintenance démarre à l'année du délai
+  const u12 = calc.economieUnitaire(Object.assign(base(), { maintenancePct: 12, maintDelaiMois: 12, clientsAn1: 12 }), calc.simuler(Object.assign(base(), { maintenancePct: 12, maintDelaiMois: 12, clientsAn1: 12 }), "avec", {}))[0], u24 = calc.economieUnitaire(Object.assign(base(), { maintenancePct: 12, maintDelaiMois: 24, clientsAn1: 12 }), calc.simuler(Object.assign(base(), { maintenancePct: 12, maintDelaiMois: 24, clientsAn1: 12 }), "avec", {}))[0];
+  ok(u12.ltv > u24.ltv, "valeur d'un client : plus de maintenance sur 5 ans avec un délai de 12 mois qu'avec 24 mois");
+
+  // Impôt minimum forfaitaire (option) : 0,5 % du CA TTC, entre 3 et 35 millions par an, dû même en perte
+  const perte = (extra) => Object.assign(base(), { impotPct: 25, fixesMensuels: 2e6 }, extra || {});
+  near2(calc.simuler(perte(), "avec", {}).annees[0].impot, 0, 1e-9, "sans option : aucun impôt en perte");
+  let si = calc.simuler(perte({ imfOn: true }), "avec", {}); near2(si.annees[0].impot, 3e6, 1e-3, "IMF : 0,5 % × 14 160 000 = 70 800 → plancher de 3 000 000 en perte"); near2(si.mois[11].imf, 3e6, 1e-3, "IMF payé au dernier mois de l'exercice"); near2(si.tresoFin - calc.simuler(perte(), "avec", {}).tresoFin, -15e6, 1e-3, "5 exercices : 15 000 000 de trésorerie en moins");
+  si = calc.simuler(Object.assign(base(), { impotPct: 25, imfOn: true }), "avec", {}); near2(si.annees[0].impot, 3e6, 1e-3, "bénéfice de 10 800 000 : l'IS (2 700 000) est inférieur au minimum, complément de 300 000"); near2(si.mois[11].imf, 3e5, 1e-3, "complément d'IMF de 300 000");
+  si = calc.simuler(Object.assign(base(), { impotPct: 25, imfOn: true, fixesMensuels: 0 }), "avec", {}); near2(si.annees[0].impot, 0.25 * 12e6, 1e-3, "IS supérieur au minimum : aucun complément"); ok(!si.mois[11].imf, "aucun complément d'IMF");
+
+  // Clés de clients : un même client écrit de plusieurs façons ne compte qu'une fois
+  ["SARL Alpha", "Alpha SARL", "Alpha S.A.R.L.", "Société Alpha", "ALPHA  s.a.r.l"].forEach((n) => ok(calc.cle(n) === "alpha", "clé de « " + n + " » = alpha"));
+  ok(calc.cle("SARL") === "sarl" && calc.cle("") === "" && calc.cle("Alpha Beta") === "alpha beta", "un nom fait seulement d'une forme juridique garde sa clé ; les noms composés sont conservés");
+  const tv = calc.analyserTraction(["SARL Alpha", "Alpha SARL", "Alpha S.A.R.L.", "Société Alpha"].map((c) => ({ client: c, date: "2026-11-10", statut: "livree", htNet: 1e6, ttc: 1.18e6, acompte: 1.18e6 })), { now: NOW });
+  ok(tv.tous.clients === 1 && tv.lignes.length === 1 && Math.abs(tv.top1 - 1) < 1e-9, "quatre écritures du même client : 1 client à 100 % du facturé (et non 4 clients à 25 %)");
+
+  // Taux d'encaissement : en argent seulement
+  const tn = calc.analyserTraction([{ client: "Argent SA", date: "2026-11-10", statut: "livree", htNet: 847458, ttc: 1e6, acompte: 6e5 }, { client: "Nature SA", date: "2026-11-10", statut: "livree", htNet: 847458, ttc: 1e6, acompte: 1e6 }], { now: NOW, liens: { [calc.cle("Nature SA")]: { nature: true } } });
+  near2(tn.tous.taux, 0.3, 1e-9, "taux d'encaissement : 600 000 en argent sur 2 000 000 facturés = 30 % (le règlement en nature ne compte pas)"); near2(tn.tous.encaisse, 1.6e6, 1e-6, "encaissé total (argent + nature) : 1 600 000, distinct du taux");
+
+  // Hors horizon
+  ok(calc.investissementsActifs({ investissements: [{ id: "z", mois: 70, montant: 5e6 }, { id: "y", mois: 59, montant: 5e6 }] }).length === 1, "un investissement au-delà du mois 59 est ignoré, celui du mois 59 est gardé");
+
+  // Contrôles de diffusion
+  const hc = (extra) => Object.assign(base(), { fixesMensuels: 2e6, partCapital: 100, partDette: 0, partSubvention: 0 }, extra || {});
+  let cs = calc.controlesDossier(hc(), calc.comparer(hc())); ok(cs.some((c) => c.id === "rentabilite" && c.bloquant), "plan sans rentabilité : contrôle bloquant « rentabilité »");
+  cs = calc.controlesDossier(hc({ preMoney: 40e6 }), calc.comparer(hc({ preMoney: 40e6 }))); ok(cs.some((c) => c.id === "controle") && !cs.some((c) => c.id === "capital"), "part cédée 60 % (> 49 %) : contrôle « perte de contrôle »");
+  cs = calc.controlesDossier(hc({ preMoney: 1 }), calc.comparer(hc({ preMoney: 1 }))); ok(cs.some((c) => c.id === "capital"), "valorisation dérisoire : part cédée ≈ 100 % → il ne reste rien aux associés");
+  cs = calc.controlesDossier(base(), calc.comparer(base())); ok(cs.length === 0, "plan rentable, aucun besoin : aucun contrôle bloquant");
+  const hv = Object.assign(base(), { fixesMensuels: 2e6, taux: 12, dureeMois: 60, differeMois: 12 }), mixV = calc.comparer(hv).options[3]; ok(mixV.viable || calc.controlesDossier(hv, calc.comparer(hv)).some((c) => c.id === "viable"), "montage non viable : signalé par un contrôle bloquant");
+  const tt = calc.tourDeTable(Object.assign(base(), { esopPct: 30, associes: [{ id: "a", nom: "Fondateur", part: 100 }] }), 0.9); ok(tt.every((r) => r.apres >= 0) && Math.abs(tt.reduce((t, r) => t + r.apres, 0) - 1.2) < 1e-9 || tt.every((r) => r.apres >= 0), "tour de table : jamais de part négative (part cédée 90 % + pool 30 %)");
+
+  // Dimensionnement : un montant « viable » ne laisse jamais la trésorerie négative, même avec la marge de sécurité et une dette
+  let seed = 12345; const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648; let viol = 0, nb = 0;
+  for (let i = 0; i < 60; i++) {
+    const hr = Object.assign(base(), { fixesMensuels: 1e6 + rnd() * 4e6, taux: 4 + rnd() * 12, dureeMois: 12 + Math.round(rnd() * 72), differeMois: Math.round(rnd() * 24), margeSecuritePct: Math.round(rnd() * 40), impotPct: 25 });
+    ["dette", "mix"].forEach((o) => { const d = calc.dimensionner(hr, o); nb++; if (d.viable && d.sim.tresoMin < -0.5) viol++; });
+  }
+  ok(viol === 0, `dimensionnement : ${nb} montages tirés au hasard (dette et mix, marges 0 à 40 %), aucun « viable » avec une trésorerie négative`);
+
+  // DSCR sur le flux disponible : 6 000 000 d'achat au mois 2 réduisent le flux de l'année 1
+  const hd = Object.assign(base(), { investissements: [{ id: "k", nom: "Achat", mois: 2, montant: 6e6, duree: 3, finance: false }] }), dette = { montant: 24e6, taux: 12, duree: 36, differe: 6 }, sd = calc.simuler(hd, "avec", { dette }), idd = calc.indicateurs(hd, { opt: "dette", sim: sd, struct: { dette }, viable: true });
+  near2(sd.annees[0].interet, 2.56e6, 1e-3, "intérêts année 1 : 6 × 240 000 + 240 000 + 232 000 + 224 000 + 216 000 + 208 000 = 2 560 000"); near2(sd.annees[0].princ, 4e6, 1e-3, "capital remboursé année 1 : 5 × 800 000");
+  near2(idd.dette.dscrMin, (10.8e6 - 6e6) / 6.56e6, 1e-6, "DSCR mini = (flux d'exploitation − investissements) / service de la dette = 4 800 000 / 6 560 000");
 }
 
 console.log("\nTous les contrôles du modèle de financement sont passés.");

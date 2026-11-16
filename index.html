@@ -5913,7 +5913,7 @@ function initDashboard360() {
   const setEl=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
 
   // ─── Calculs centraux ───────────────────────
-  const totalCA       = DEALS.filter(d=>d.stage==='gagne').reduce((s,d)=>s+(d.valeur||0),0);
+  const totalCA       = caCmd();      // HT des commandes confirmées, en cours ou livrées (même chiffre que Budget, Comptabilité, Direction)
   const nbProspects   = CLIENTS.filter(c=>c.statut==='prospect').length;
   const nbClients     = CLIENTS.filter(c=>c.statut==='client').length;
   const nbDealsActifs = DEALS.filter(d=>d.stage!=='gagne'&&d.stage!=='perdu').length;
@@ -5956,7 +5956,7 @@ function initDashboard360() {
 
   // ─── Chart CA par logiciel ───────────────
   const caParLog={};
-  DEALS.filter(d=>d.stage==='gagne').forEach(d=>{caParLog[d.logiciel]=(caParLog[d.logiciel]||0)+(d.valeur||0);});
+  cmdsRealisees().forEach(c=>{const k=c.logiciel||'—'; caParLog[k]=(caParLog[k]||0)+cmdHT(c);});
   const logLabels=Object.keys(caParLog);
   const ctxCA=document.getElementById('chart-ca');
   if(ctxCA){
@@ -6366,7 +6366,7 @@ function renderLogStats() {
   if(!el) return;
   const actifs = LOGICIELS.filter(l=>l.actif!==false);
   const totalVentes = LOGICIELS.reduce((s,l)=>s+(l.ventes||0),0);
-  const totalCA = LOGICIELS.reduce((s,l)=>s+(l.prixNum||0)*(l.ventes||0),0);
+  const totalCA = caCmd();      // même chiffre d'affaires que partout ailleurs (HT des commandes confirmées, en cours ou livrées), pas prix catalogue × compteur de ventes
   const totalProspects = LOGICIELS.reduce((s,l)=>s+(l.prospects||0),0);
   const cats = [...new Set(actifs.map(l=>l.cat))].length;
   el.innerHTML = [
@@ -6919,27 +6919,31 @@ function supprimerCommission(id) {
 }
 
 function recalcCommissions() {
-  // Générer des commissions depuis les deals gagnés non encore enregistrés
+  // Commission sur le HT des commandes confirmées du client (jamais sur la valeur d'une affaire, ni sur un brouillon, ni sans commande).
+  var norm = function(t){ return (t||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,''); };
   var existing = COMMISSIONS.map(function(c){return c.client+'|'+c.membreNom;});
-  var added = 0;
+  var added = 0, sansCmd = 0;
   DEALS.filter(function(d){return d.stage==='gagne';}).forEach(function(d){
     var key = d.client+'|'+d.commercial;
-    if(existing.indexOf(key) === -1) {
-      var eq = EQUIPE.find(function(e){return e.nom===d.commercial||('Apporteur — '+e.nom)===d.commercial;});
-      var type = eq ? eq.type : (d.commercial.indexOf('Apporteur')!==-1?'apporteur':'salarie');
-      var taux = type==='apporteur' ? 10 : 5;
-      var newId = COMMISSIONS.length ? Math.max.apply(null,COMMISSIONS.map(function(x){return x.id;}))+1 : 1;
-      COMMISSIONS.push({id:newId,membreNom:d.commercial,type:type,logiciel:d.logiciel,client:d.client,
-        montantVente:d.valeur,taux:taux,montant:Math.round(d.valeur*taux/100),
-        statut:'en_attente',dateVente:d.date,datePaiement:'',notes:'Auto-généré'});
-      existing.push(key); added++;
-    }
+    if(existing.indexOf(key) !== -1) return;
+    var base = caCmd(function(c){ return norm(c.client)===norm(d.client) && (!d.logiciel || c.logiciel===d.logiciel) && !c.renouvellement; });
+    if(!(base>0)){ sansCmd++; return; }
+    var comm = d.commercial||'';
+    var eq = EQUIPE.find(function(e){return e.nom===comm||('Apporteur — '+e.nom)===comm;});
+    var type = eq ? eq.type : (comm.indexOf('Apporteur')!==-1?'apporteur':'salarie');
+    var taux = type==='apporteur' ? 10 : 5;
+    var newId = COMMISSIONS.length ? Math.max.apply(null,COMMISSIONS.map(function(x){return x.id;}))+1 : 1;
+    COMMISSIONS.push({id:newId,membreNom:comm,type:type,logiciel:d.logiciel,client:d.client,
+      montantVente:base,taux:taux,montant:Math.round(base*taux/100),
+      statut:'en_attente',dateVente:d.date,datePaiement:'',notes:'Auto-généré sur le HT des commandes confirmées'});
+    existing.push(key); added++;
   });
-  showToast(added ? added+' nouvelle(s) commission(s) générée(s)' : 'Aucune nouvelle commission à générer');
+  showToast((added ? added+' nouvelle(s) commission(s) générée(s)' : 'Aucune nouvelle commission à générer')+(sansCmd?' · '+sansCmd+' affaire(s) gagnée(s) sans commande confirmée ignorée(s)':''));
   _refreshComm();
 }
 
 function _refreshComm() {
+  try{ saveStore('commissions'); }catch(e){}
   updateCommBadge();
   renderCommStats();
   renderCommRecap();
@@ -6970,7 +6974,7 @@ function openCommissionModal(id) {
     document.getElementById('comm-client').value = '';
     document.getElementById('comm-vente').value = '';
     document.getElementById('comm-taux').value = '10';
-    document.getElementById('comm-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('comm-date').value = _ajd();
     document.getElementById('comm-statut').value = 'en_attente';
     document.getElementById('comm-notes').value = '';
   }
@@ -7575,13 +7579,13 @@ function initRapports() {
   }
   // Date du jour par défaut
   const dateInput = document.getElementById('rapport-date');
-  if(dateInput && !dateInput.value) dateInput.value = new Date().toISOString().split('T')[0];
+  if(dateInput && !dateInput.value) dateInput.value = _ajd();
 
   // Rapport auto : stats du jour calculées
   const now = new Date();
-  const today = now.toISOString().split('T')[0];
+  const today = _ajd();
   const dealsAujourdhui = DEALS.filter(d=>d.date===today).length;
-  const caAujourdhui = DEALS.filter(d=>d.date===today&&d.stage==='gagne').reduce((s,d)=>s+(d.valeur||0),0);
+  const caAujourdhui = caCmd(c=>c.date===today);
   const moisNoms=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
   const dateLabel = now.getDate()+' '+moisNoms[now.getMonth()]+' '+now.getFullYear();
 
@@ -7621,7 +7625,7 @@ function initRapports() {
 }
 function submitRapport() {
   const comm  = (document.getElementById('rapport-commercial')||{}).value||'';
-  const date  = (document.getElementById('rapport-date')||{}).value||new Date().toISOString().split('T')[0];
+  const date  = (document.getElementById('rapport-date')||{}).value||_ajd();
   const zone  = document.querySelector('#view-rapports input[placeholder*="Zone"]')?.value||'';
   const demos = parseInt(document.querySelector('#view-rapports input[placeholder="0"]')?.value)||0;
   const deals = parseInt(document.querySelectorAll('#view-rapports input[placeholder="0"]')[1]?.value)||0;
@@ -8897,6 +8901,7 @@ const LS_STORES = {
   logiciels:     { get:()=>LOGICIELS,     set:v=>{ LOGICIELS=v; }     },
   presentations: { get:()=>PRESENTATIONS, set:v=>{ PRESENTATIONS=v; } },
   commandes:     { get:()=>COMMANDES,     set:v=>{ COMMANDES=v; }     },
+  commissions:   { get:()=>COMMISSIONS,   set:v=>{ COMMISSIONS=v; }   },
   contrats:      { get:()=>CONTRATS,      set:v=>{ CONTRATS=v; }      },
   licences:      { get:()=>LICENCES,      set:v=>{ LICENCES=v; }      },
   apporteurs:    { get:()=>APPORTEURS,    set:v=>{ APPORTEURS=v; }    },
@@ -9005,7 +9010,7 @@ function exportJson() {
   const blob = new Blob([JSON.stringify(snap)],{type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `sanix_crm_sauvegarde_${new Date().toISOString().slice(0,10)}.json`;
+  a.download = `sanix_crm_sauvegarde_${_ajd()}.json`;
   document.body.appendChild(a); a.click(); a.remove();
   const n = k=>Array.isArray(snap.stores[k])?snap.stores[k].length:0;
   syncLog('ok','📤 Sauvegarde téléchargée');
@@ -9837,7 +9842,7 @@ function renderPresentations() {
 function openPresModal(id=null) {
   document.getElementById('pres-edit-id').value = id||'';
   document.getElementById('pres-modal-title').textContent = id ? '✏️ Modifier présentation' : '🎬 Nouvelle présentation';
-  document.getElementById('pres-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('pres-date').value = _ajd();
   // Populate selects
   const logSel = document.getElementById('pres-logiciel');
   logSel.innerHTML = '<option value="">— Sélectionner —</option>' + LOGICIELS.map(l=>`<option value="${l.nom}">${l.icon||'💻'} ${l.nom}</option>`).join('');
@@ -9915,11 +9920,33 @@ const CMD_STATUT = {
   annulee:   {lbl:'Annulée',    cls:'badge-muted'},
 };
 
-function cmdNumero() {
-  const n = COMMANDES.length + 1;
-  const y = new Date().getFullYear();
-  return `CMD-${y}-${String(n).padStart(3,'0')}`;
+// Numéro suivant de l'année de la commande : plus grand numéro existant (ou déjà attribué : compteur mémorisé) + 1. Jamais COMMANDES.length + 1 : une suppression créait des doublons.
+// ═══ Helpers communs ═══
+// Date du jour au format AAAA-MM-JJ dans le fuseau de l'appareil (toISOString donne la date UTC : la veille entre minuit et 1 h à Paris).
+function _ajd(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+// Nombre écrit à la française ou à l'anglaise : « 1 250 000 », « 1.250.000 », « 5,35 », « 1,250,000.50 » (parseInt donnait 1, parseFloat 5).
+function _nombreFr(t){
+  let s=String(t==null?'':t).replace(/[\s\u00a0\u202f]/g,'').replace(/[^0-9.,\-]/g,''); if(!s) return NaN;
+  const neg=s[0]==='-'; s=s.replace(/-/g,'');
+  const pt=s.indexOf('.')>=0, vi=s.indexOf(',')>=0;
+  if(pt&&vi){ const dec=s.lastIndexOf(',')>s.lastIndexOf('.')?',':'.'; s=dec===','?s.replace(/\./g,'').replace(',','.'):s.replace(/,/g,''); }
+  else if(vi){ s=/^\d{1,3}(,\d{3})+$/.test(s)?s.replace(/,/g,''):s.replace(',','.'); }
+  else if(pt&&/^\d{1,3}(\.\d{3})+$/.test(s)) s=s.replace(/\./g,'');
+  const n=parseFloat(s); return isNaN(n)?NaN:(neg?-n:n);
 }
+// ═══ Chiffre d'affaires réalisé : UNE définition pour tous les écrans (celle du module Budget) ═══
+// = HT des commandes confirmées, en cours ou livrées. Une affaire « gagnée » du pipeline n'est pas du chiffre d'affaires (elle peut n'avoir ni commande ni montant).
+const CA_STATUTS_CMD = ['confirmee','en_cours','livree'];
+function cmdHT(c){ const ttc=Number(c.ttc)||0, ht=Number(c.htNet); return ht>0 ? ht : (c.sansTva ? ttc : Math.round(ttc/(1+(CONFIG.tva||18)/100))); }
+function cmdsRealisees(filtre){ return COMMANDES.filter(c=>CA_STATUTS_CMD.indexOf(c.statut)>=0&&(!filtre||filtre(c))); }
+function caCmd(filtre){ return cmdsRealisees(filtre).reduce((t,c)=>t+cmdHT(c),0); }
+function cmdNumero(date) {
+  const y = /^\d{4}/.test(date||'') ? String(date).slice(0,4) : String(new Date().getFullYear());
+  const re = new RegExp('^CMD-'+y+'-(\\d+)$'); let max = parseInt(lsLoad('cmd_compteur_'+y),10) || 0;
+  COMMANDES.forEach(c=>{ const m = re.exec(c.ref||''); if(m) max = Math.max(max, parseInt(m[1],10)); });
+  return `CMD-${y}-${String(max+1).padStart(3,'0')}`;
+}
+function cmdCompteurMemo(ref){ const m = /^CMD-(\d{4})-(\d+)$/.exec(ref||''); if(m) lsSave('cmd_compteur_'+m[1], Math.max(parseInt(lsLoad('cmd_compteur_'+m[1]),10)||0, parseInt(m[2],10))); }
 
 // Anciens noms commerciaux affichés dans la liste des logiciels d'une commande (même logiciel, nom changé).
 const CMD_ANCIENS_NOMS = { log_angels_agro:'ex-AviNest Pro · AvicoSuite' };
@@ -9956,7 +9983,7 @@ function initCommandes() {
 }
 
 // Reste à payer d'une commande : TTC moins le total versé (jamais négatif).
-function cmdReste(c){ return Math.max(0,(c.ttc||0)-(c.acompte||0)); }
+function cmdReste(c){ return Math.max(0,(Number(c.ttc)||0)-(Number(c.acompte)||0)); }
 
 function renderCmdStats() {
   const el = document.getElementById('cmd-stats');
@@ -9964,15 +9991,15 @@ function renderCmdStats() {
   const total    = COMMANDES.length;
   const enAttente= COMMANDES.filter(c=>c.statut==='confirmee'||c.statut==='brouillon').length;
   const livrees  = COMMANDES.filter(c=>c.statut==='livree').length;
-  const actives  = COMMANDES.filter(c=>c.statut!=='annulee');
-  const ca       = actives.reduce((s,c)=>s+(c.ttc||0),0);
-  const encaisse = actives.reduce((s,c)=>s+(c.acompte||0),0);
+  const actives  = COMMANDES.filter(c=>c.statut!=='annulee'&&c.statut!=='brouillon');      // un brouillon n'est pas une vente
+  const ca       = actives.reduce((s,c)=>s+(Number(c.ttc)||0),0);
+  const encaisse = actives.reduce((s,c)=>s+Math.min(Number(c.acompte)||0,Number(c.ttc)||0),0);     // jamais plus que le TTC
   const reste    = actives.reduce((s,c)=>s+cmdReste(c),0);
   el.innerHTML = [
     {ico:'🛒',v:total,     lbl:'Total commandes',    c:'var(--primary)', bg:'var(--primary-l)'},
     {ico:'⏳',v:enAttente, lbl:'En attente/Confirmées',c:'var(--warning)',bg:'var(--warning-l)'},
     {ico:'📦',v:livrees,   lbl:'Livrées',            c:'var(--success)', bg:'var(--success-l)'},
-    {ico:'💰',v:(ca/1000).toFixed(0)+'k',lbl:'CA commandes FCFA',c:'var(--purple)',bg:'var(--purple-l)'},
+    {ico:'💰',v:(ca/1000).toFixed(0)+'k',lbl:'CA commandes TTC (hors brouillons)',c:'var(--purple)',bg:'var(--purple-l)'},
     {ico:'✅',v:encaisse.toLocaleString('fr-FR'),lbl:'Encaissé FCFA',c:'var(--success)',bg:'var(--success-l)'},
     {ico:'⏰',v:reste.toLocaleString('fr-FR'),lbl:'Reste à encaisser FCFA',c:'var(--danger)',bg:'var(--danger-l)'},
   ].map(s=>`
@@ -10029,7 +10056,7 @@ function openCommandeModal(id=null, presId=null) {
   if(printBtn) printBtn.style.display = id ? '' : 'none';
   const ref = id ? (COMMANDES.find(x=>x.id===id)?.ref||'') : cmdNumero();
   document.getElementById('cmd-modal-ref').textContent = '📋 Réf : '+ref;
-  document.getElementById('cmd-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('cmd-date').value = _ajd();
   // Populate
   const logSel = document.getElementById('cmd-logiciel');
   logSel.innerHTML = '<option value="">— Sélectionner —</option>'+LOGICIELS.map(l=>`<option value="${l.nom}">${l.icon||'💻'} ${l.nom}${CMD_ANCIENS_NOMS[l.id]?' ('+CMD_ANCIENS_NOMS[l.id]+')':''}</option>`).join('');
@@ -10090,6 +10117,8 @@ function saveCommande() {
   const tva     = Math.round(htNet*cmdTauxTva());
   const ttc     = htNet+tva;
   const acompte = parseFloat(gv('cmd-acompte'))||0;
+  if(acompte<0){ showToast('❌ L\'acompte ne peut pas être négatif'); return; }
+  if(acompte>ttc){ showToast('❌ L\'acompte ('+acompte.toLocaleString('fr-FR')+') dépasse le montant TTC ('+ttc.toLocaleString('fr-FR')+')'); return; }
   const solde   = Math.max(0,ttc-acompte);
   const id = gv('cmd-edit-id');
   const data = {
@@ -10103,10 +10132,13 @@ function saveCommande() {
     if(c) Object.assign(c,data);
     showToast('✅ Commande mise à jour');
   } else {
-    COMMANDES.push({id:'cmd_'+Date.now(), ref:cmdNumero(), ...data});
-    showToast('✅ Commande créée — '+cmdNumero());
+    const refNew = cmdNumero(data.date);
+    COMMANDES.push({id:'cmd_'+Date.now(), ref:refNew, ...data});
+    cmdCompteurMemo(refNew);
+    showToast('✅ Commande créée — '+refNew);
   }
   lsSave('commandes', COMMANDES);
+  try{ _cmdClientGagne(); }catch(e){ console.error(e); }
   try{ _licencesDepuisCommandes(); }catch(e){}
   try{ _contratsDepuisCommandes(); }catch(e){}
   closeCommandeModal();
@@ -10114,6 +10146,19 @@ function saveCommande() {
   updateSidebarBadges();
 }
 
+// Une commande confirmée, en cours ou livrée fait du client un « client » et de son affaire une affaire gagnée, au montant HT de la commande
+// (sinon il restait compté dans le pipeline ET dans les ventes).
+function _cmdClientGagne(){
+  const norm=t=>(t||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+  let ch=false, dch=false;
+  cmdsRealisees(c=>!c.renouvellement).forEach(o=>{
+    const cl=CLIENTS.find(x=>norm(x.nom)===norm(o.client)); if(!cl||cl.statut!=='prospect') return;
+    cl.statut='client'; cl.updated_at=new Date().toISOString(); ch=true;
+    try{ syncDealForClient(cl.id); }catch(e){}
+    const d=DEALS.find(x=>x.clientId===cl.id); if(d){ d.valeur=cmdHT(o); d.valeurSaisie=true; d.valeurEst=0; dch=true; }
+  });
+  if(ch) saveStore('clients'); if(dch) saveStore('deals');
+}
 function editCommande(id) { openCommandeModal(id); }
 
 // ═══════════════════════════════════════
@@ -10185,36 +10230,48 @@ function _facNumeroSuivant(){
   const an=new Date().getFullYear(); let max=(an===2026?FAC_DERNIER_NUMERO_INITIAL:0);
   const lit=f=>{ const m=f&&new RegExp('^'+FAC_PREFIXE+'-'+an+'-(\\d+)$').exec(f.num||''); if(m) max=Math.max(max,parseInt(m[1],10)); };
   COMMANDES.forEach(o=>{ lit(o.fac); lit(o.facG); });
+  max=Math.max(max, parseInt(lsLoad('fac_compteur_'+an),10)||0);     // plus grand numéro déjà émis, même si la commande qui le portait a été supprimée
   return FAC_PREFIXE+'-'+an+'-'+String(max+1).padStart(3,'0');
 }
 function _facAttribuer(cmds, champ, total, verse){
   const f=cmds[0][champ];
   if(f && f.num && f.total===total && f.verse===verse && cmds.every(o=>o[champ]&&o[champ].num===f.num)) return f;
-  const nv={num:_facNumeroSuivant(), date:new Date().toISOString().slice(0,10), total, verse};
+  const nv={num:_facNumeroSuivant(), date:_ajd(), total, verse};
+  { const m=/-(\d{4})-(\d+)$/.exec(nv.num); if(m) lsSave('fac_compteur_'+m[1], parseInt(m[2],10)); }
   cmds.forEach(o=>{ o[champ]=Object.assign({},nv); });
   saveStore('commandes');
   return nv;
 }
 
+// Commandes regroupables sur une même facture : même client, ni annulées ni en brouillon, même régime de TVA que la commande choisie (jamais de facture mêlant avec et sans TVA).
+function _facGroupe(c){
+  if(c.statut==='brouillon') return [c];
+  return COMMANDES.filter(x=>_facNorm(x.client)===_facNorm(c.client)&&x.statut!=='annulee'&&x.statut!=='brouillon'&&!!x.sansTva===!!c.sansTva);
+}
 function choisirFacture(id){
   const c = COMMANDES.find(x=>x.id===id);
   if(!c) { showToast('❌ Commande introuvable'); return; }
   const old=document.getElementById('fac-choix'); if(old) old.remove();
-  const groupe=COMMANDES.filter(x=>_facNorm(x.client)===_facNorm(c.client)&&x.statut!=='annulee');
+  const groupe=_facGroupe(c);
   const ov=document.createElement('div'); ov.id='fac-choix';
   ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
   ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
   ov.innerHTML=`<div style="background:var(--surface,#fff);color:var(--text,#111);border-radius:14px;padding:22px;max-width:440px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3)">
     <div style="font-weight:800;font-size:16px;margin-bottom:4px">🧾 Générer la facture</div>
     <div style="font-size:12px;color:var(--muted,#64748b);margin-bottom:14px">${_facEsc(c.client)} · ${_facEsc(c.logiciel||'')} · ${_facMontant(c.ttc)} FCFA — versé ${_facMontant(c.acompte)}, reste ${_facMontant(cmdReste(c))}</div>
+    ${c.statut==='brouillon'?'<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px">ℹ️ Commande en <b>brouillon</b> : le document sera une <b>facture proforma</b> (sans numéro de facture, sans écriture comptable). Confirmez la commande pour émettre la facture.</div>':''}
+    ${(!CONFIG.rccm||!CONFIG.cc)?'<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px">⚠️ <b>Mentions obligatoires manquantes</b> : '+[!CONFIG.rccm?'RCCM':'',!CONFIG.cc?'n° de compte contribuable (CC)':''].filter(Boolean).join(' et ')+'. Renseignez-les dans Paramétrage → Entreprise : elles s\'impriment alors sur la facture.</div>':''}
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;font-size:11.5px;color:#475569;margin-bottom:12px">ℹ️ <b>Facture normalisée électronique (FNE)</b> : la DGI a rendu la FNE obligatoire pour les entreprises concernées (déploiement à partir de décembre 2025, selon les textes consultés). Si votre entreprise y est soumise, la facture fiscale doit être émise sur la plateforme FNE ; ce document est alors une pièce interne. À confirmer avec votre expert-comptable.</div>
     ${groupe.length>1?`<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:14px;cursor:pointer"><input type="checkbox" id="fac-groupe" style="margin-top:3px"> <span>Une seule facture pour les <b>${groupe.length} commandes</b> de ce client (${_facMontant(groupe.reduce((s,o)=>s+(o.ttc||0),0))} FCFA)</span></label>`:''}
     <div style="display:flex;flex-direction:column;gap:8px">
-      <button class="btn ${c.sansTva?'btn-outline':'btn-primary'}" id="fac-avec">Avec TVA (${CONFIG.tva||18} %)</button>
-      <button class="btn ${c.sansTva?'btn-primary':'btn-outline'}" id="fac-sans">Sans TVA (TVA non applicable)</button>
+      <button class="btn ${c.sansTva?'btn-outline':'btn-primary'}" id="fac-avec">Avec TVA (${CONFIG.tva||18} %)${c.sansTva?' — ≠ commande':''}</button>
+      <button class="btn ${c.sansTva?'btn-primary':'btn-outline'}" id="fac-sans">Sans TVA (TVA non applicable)${c.sansTva?'':' — ≠ commande'}</button>
       <button class="btn btn-outline" id="fac-annul" style="border:none;color:var(--muted,#64748b)">Annuler</button>
     </div></div>`;
   document.body.appendChild(ov);
-  const go=tva=>{ const g=!!(ov.querySelector('#fac-groupe')||{}).checked; ov.remove(); imprimerFacture(id,tva,g); };
+  const go=tva=>{
+    if(tva===!c.sansTva||c.statut==='brouillon'||confirm('⚠️ Cette commande est enregistrée '+(c.sansTva?'SANS':'AVEC')+' TVA : la comptabilité '+(c.sansTva?'ne comptabilise aucune TVA':'comptabilise la TVA')+'.\n\nUne facture '+(tva?'AVEC':'SANS')+' TVA ne correspondra pas à la comptabilité ni à la déclaration de TVA.\n\nPour changer le régime, modifiez d\'abord la commande. Continuer quand même ?')){ const g=!!(ov.querySelector('#fac-groupe')||{}).checked; ov.remove(); imprimerFacture(id,tva,g); }
+  };
   ov.querySelector('#fac-avec').onclick=()=>go(true);
   ov.querySelector('#fac-sans').onclick=()=>go(false);
   ov.querySelector('#fac-annul').onclick=()=>ov.remove();
@@ -10223,7 +10280,8 @@ function choisirFacture(id){
 // Données de la facture (une commande, ou toutes les commandes actives du client si « groupee »).
 function factureDonnees(id, avecTva, groupee){
   const c = COMMANDES.find(x=>x.id===id); if(!c) return null;
-  const cmds = groupee ? COMMANDES.filter(x=>_facNorm(x.client)===_facNorm(c.client)&&x.statut!=='annulee') : [c];
+  const cmds = groupee ? _facGroupe(c) : [c];
+  const proforma = c.statut==='brouillon';     // commande non confirmée : pas de numéro de facture, pas d'écriture comptable
   const taux = CONFIG.tva||18;
   let brut=0, net=0, tva=0, total=0, verse=0;
   const lignes = [], infos = [];
@@ -10253,7 +10311,7 @@ function factureDonnees(id, avecTva, groupee){
     for(let j=i-1;j>=0;j--){ const m=lignes[j]; if(m.titre===l.titre&&m.desc===l.desc&&m.pu===l.pu&&!m.remise&&!m.offert){ l.qte+=m.qte; l.net+=m.net; lignes.splice(j,1); i--; } } }
   const reste = Math.max(0,total-verse);
   const fc = (cmds.find(o=>o.facClient)||{}).facClient;
-  const f = _facAttribuer(cmds, groupee?'facG':'fac', total, verse);
+  const f = proforma ? {num:'PROFORMA', date:_ajd()} : _facAttribuer(cmds, groupee?'facG':'fac', total, verse);
   const cl = CLIENTS.find(x=>_facNorm(x.nom)===_facNorm(c.client)) || {};
   const clientLignes = fc&&fc.lignes ? fc.lignes : [cl.adresse||cl.secteur||'', cl.adresse?'':'Côte d\'Ivoire', cl.phone?'Tél : '+cl.phone:''].filter(Boolean);
   const clientNom = (fc&&fc.nom) || c.client;
@@ -10265,9 +10323,14 @@ function factureDonnees(id, avecTva, groupee){
     : verse>0 ? `Avance reçue : <b>${_facSomme(verse)}</b>. Solde restant dû : <b>${_facSomme(reste)}</b>.`
     : `Aucune avance reçue. Solde restant dû : <b>${_facSomme(reste)}</b>.`;
   const dfr = f.date.split('-').reverse().join('/');
-  const qr = [FAC_EMETTEUR.nom,'FACTURE '+f.num,dfr,(clientNom||'').toUpperCase(),'TOTAL '+total+' F','AVANCE '+verse+' F','RESTE '+reste+' F'];
-  return {num:f.num, date:f.date, client:clientNom, clientLignes, lignes, totaux, info:infos.join(' '), avecTva, taux, total, verse, reste, phrase,
-    tampon: reste<=0?'SOLDÉE':verse>0?'AVANCE PERÇUE':'À RÉGLER', qr, empreinte:SXHASH.sha256hex(qr.join('\n')).toUpperCase()};
+  const qr = [FAC_EMETTEUR.nom,proforma?'FACTURE PROFORMA (non comptabilisée)':'FACTURE '+f.num,dfr,(clientNom||'').toUpperCase(),'TOTAL '+total+' F','AVANCE '+verse+' F','RESTE '+reste+' F'];
+  return {proforma, num:f.num, date:f.date, client:clientNom, clientLignes, lignes, totaux, info:infos.join(' '), avecTva, taux, total, verse, reste, phrase,
+    tampon: proforma?'PROFORMA':reste<=0?'SOLDÉE':verse>0?'AVANCE PERÇUE':'À RÉGLER', qr, empreinte:SXHASH.sha256hex(qr.join('\n')).toUpperCase()};
+}
+// Mentions légales de l'émetteur, lues dans Paramétrage → Entreprise (forme, capital, RCCM, compte contribuable) : jamais inventées.
+function _facMentions(){
+  const c=CONFIG||{}, p=[(c.forme||'')+(c.capital?(c.forme?' au capital de ':'Capital ')+c.capital+' FCFA':''), c.rccm?'RCCM '+c.rccm:'', c.cc?'N° CC '+c.cc:''].filter(Boolean);
+  return p.length?'<br>'+_facEsc(p.join(' · ')):'';
 }
 function factureHtml(d){
   const E=FAC_EMETTEUR, img=`<img src="${FAC_LOGO}" alt="">`;
@@ -10278,8 +10341,8 @@ function factureHtml(d){
   const page=tag=>`<section class="page"><div class="wms">${wm}</div>
 <div class="tag">${tag}</div>
 <img class="logo" src="${FAC_LOGO}" alt="">
-<div class="co"><b>${E.nom}</b>${E.activite}<br>${E.lieu}, ${E.pays}<br>Tél / WhatsApp : ${E.tel}<br>Email : ${E.email}</div>
-<div class="ti"><h1>FACTURE</h1>N° ${_facEsc(d.num)}<br>Date : ${_facDateLongue(d.date)}<br>Échéance : ${_facDateLongue(_facAjouteJours(d.date,FAC_ECHEANCE_JOURS))}</div>
+<div class="co"><b>${E.nom}</b>${E.activite}<br>${E.lieu}, ${E.pays}<br>Tél / WhatsApp : ${E.tel}<br>Email : ${E.email}${_facMentions()}</div>
+<div class="ti"><h1>${d.proforma?'FACTURE PROFORMA':'FACTURE'}</h1>${d.proforma?'Devis valant facture — non comptabilisée':'N° '+_facEsc(d.num)}<br>Date : ${_facDateLongue(d.date)}<br>Échéance : ${_facDateLongue(_facAjouteJours(d.date,FAC_ECHEANCE_JOURS))}</div>
 <div class="rule"></div>
 <div class="box b1"><h3>ÉMETTEUR</h3><span class="n">${E.division}</span><br>${E.lieu}<br>${E.tel}<br>${E.email}</div>
 <div class="box b2"><h3>CLIENT</h3><b>${_facEsc((d.client||'').toUpperCase())}</b>${d.clientLignes.map(l=>'<br>'+_facEsc(l)).join('')}</div>
@@ -10298,7 +10361,7 @@ function factureHtml(d){
 <div class="qr">${qrSvg}<div><b>QR code de sécurité</b><br>Scannez pour lire les données de la facture (n°, date, client, total, avance, reste).<br><span class="mono">Empreinte SHA-256 : ${d.empreinte.slice(0,32)}<br>${d.empreinte.slice(32)}</span><br><i>Toute différence avec le document signale une altération.</i></div></div>
 <div class="sig s-l">Pour ${E.court}<br>(cachet et signature)</div><div class="sig s-r">Pour ${_facEsc((d.client||'').toUpperCase())}<br>(lu et approuvé)</div>
 </section>`;
-  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Facture ${_facEsc(d.num)} — ${_facEsc(d.client)}</title><style>${FAC_CSS}</style></head><body>${page('ORIGINAL')}${page('COPIE')}<div class="bar"><button onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button></div><script>document.querySelectorAll('.page').forEach(function(pg){var f=pg.querySelector('.flow'),q=pg.querySelector('.qr'),t=pg.querySelector('.paid'),m=pg.querySelector('.mode');if(!f||!q||!t||!m)return;var av=m.previousElementSibling;while(av&&!av.offsetHeight)av=av.previousElementSibling;var h1=av?av.offsetTop+av.offsetHeight:m.offsetTop,top=f.offsetTop,left=f.offsetLeft;var k=Math.min(1,(q.offsetTop-top)/h1,(t.offsetTop-top-2)/f.offsetHeight);if(k<0.999){f.style.zoom=k;f.style.top=(top/k)+'px';f.style.left=(left/k)+'px';}});<\/script></body></html>`;
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>${d.proforma?'Facture proforma':'Facture '+_facEsc(d.num)} — ${_facEsc(d.client)}</title><style>${FAC_CSS}</style></head><body>${page('ORIGINAL')}${page('COPIE')}<div class="bar"><button onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button></div><script>document.querySelectorAll('.page').forEach(function(pg){var f=pg.querySelector('.flow'),q=pg.querySelector('.qr'),t=pg.querySelector('.paid'),m=pg.querySelector('.mode');if(!f||!q||!t||!m)return;var av=m.previousElementSibling;while(av&&!av.offsetHeight)av=av.previousElementSibling;var h1=av?av.offsetTop+av.offsetHeight:m.offsetTop,top=f.offsetTop,left=f.offsetLeft;var k=Math.min(1,(q.offsetTop-top)/h1,(t.offsetTop-top-2)/f.offsetHeight);if(k<0.999){f.style.zoom=k;f.style.top=(top/k)+'px';f.style.left=(left/k)+'px';}});<\/script></body></html>`;
 }
 function imprimerFacture(id, avecTva, groupee) {
   const d = factureDonnees(id, avecTva, groupee);
@@ -10308,7 +10371,7 @@ function imprimerFacture(id, avecTva, groupee) {
   if(!w) { showToast('⚠️ Autorisez les popups pour imprimer'); return; }
   w.document.write(factureHtml(d));
   w.document.close();
-  showToast('🧾 Facture '+d.num+' générée');
+  showToast(d.proforma?'🧾 Facture proforma générée (commande en brouillon : ni numéro, ni écriture comptable)':'🧾 Facture '+d.num+' générée');
 }
 
 function imprimerBonCommandeFromModal() {
@@ -10528,7 +10591,7 @@ function openContratModal(typeDefault='contrat', cmdId=null) {
   const id = null; // toujours nouveau sauf si editContrat appelé
   document.getElementById('contrat-edit-id').value='';
   document.getElementById('contrat-modal-title').textContent = typeDefault==='convention' ? '📋 Nouvelle convention' : '📝 Nouveau contrat';
-  document.getElementById('contrat-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('contrat-date').value = _ajd();
   document.getElementById('contrat-ref').value = contratRef();
   document.getElementById('contrat-type').value = typeDefault==='convention' ? 'convention' : 'contrat';
   // Selects
@@ -10649,6 +10712,7 @@ const _extendLoadAll = () => {
   const apps = lsLoad('apporteurs');    if(apps&&Array.isArray(apps))  APPORTEURS=apps;
   const docs = lsLoad('documents');     if(docs&&Array.isArray(docs))  DOCUMENTS=docs;
   const ecr  = lsLoad('ecritures');     if(ecr&&Array.isArray(ecr))   ECRITURES=ecr;
+  const com  = lsLoad('commissions');   if(com&&Array.isArray(com))   COMMISSIONS=com;
 };
 
 // ─── Navigate extension pour nouveaux modules ─
@@ -10774,9 +10838,9 @@ function csvImpBuildObjects(){
     const nom=get(row,'nom'); const phone=get(row,'phone');
     const secteur=get(row,'secteur')||defSecteur;
     const logiciel=get(row,'logiciel')||defLog;
-    const valeur=parseInt(get(row,'valeur'))||defVal;
-    const lat=parseFloat(get(row,'lat'))||null;
-    const lng=parseFloat(get(row,'lng'))||null;
+    const valeur=Math.round(_nombreFr(get(row,'valeur')))||defVal;
+    const lat=_nombreFr(get(row,'lat'))||null;
+    const lng=_nombreFr(get(row,'lng'))||null;
     return {nom,phone,email:get(row,'email'),adresse:get(row,'adresse'),secteur,logiciel,valeur,lat,lng,notes:get(row,'notes'),statut:defStatut};
   }).filter(o=>o.nom||o.phone);
 }
@@ -10869,7 +10933,7 @@ function convProspects(){
 function renouvCfg(){ return {maintenancePct:CONFIG.maintenancePct||12, tva:CONFIG.tva==null?18:CONFIG.tva, societe:CONFIG.raisonSociale||'SANIX', devise:CONFIG.devise||'FCFA'}; }
 function renouvListe(){ return window.SanixRenouv ? SanixRenouv.echeances(LICENCES,LOGICIELS,{cfg:renouvCfg()}) : []; }
 function renouvCmd(e){ return COMMANDES.find(c=>c.id===SanixRenouv.idCommande(e)); }
-function renouvRefSuivante(){ return 'REN-'+new Date().getFullYear()+'-'+String(COMMANDES.filter(c=>c.renouvellement).length+1).padStart(3,'0'); }
+function renouvRefSuivante(){ const y=new Date().getFullYear(), re=new RegExp('^REN-'+y+'-(\\d+)$'); let max=parseInt(lsLoad('ren_compteur_'+y),10)||0; COMMANDES.forEach(c=>{ const m=re.exec(c.ref||''); if(m) max=Math.max(max,parseInt(m[1],10)); }); return 'REN-'+y+'-'+String(max+1).padStart(3,'0'); }
 // Prépare les factures de renouvellement (brouillons) des échéances à 30 jours ou moins : une seule par licence et par échéance.
 function renouvAuto(){
   if(!window.SanixRenouv) return 0;
@@ -10878,7 +10942,7 @@ function renouvAuto(){
     if(e.jours>30||e.jours<-60||!(e.montantHT>0)) return;
     const l=LICENCES.find(x=>x.id===e.licId); if(l&&(l.renouvIgnore||[]).includes(e.due)) return;
     const ex=renouvCmd(e);
-    if(!ex){ COMMANDES.push(SanixRenouv.commande(e,{tva:cfg.tva,ref:renouvRefSuivante(),commercial:(l&&l.commercial)||''})); n++; }
+    if(!ex){ { const ref=renouvRefSuivante(); lsSave('ren_compteur_'+ref.slice(4,8), parseInt(ref.slice(9),10)); COMMANDES.push(SanixRenouv.commande(e,{tva:cfg.tva,ref,commercial:(l&&l.commercial)||''})); n++; } }
     else if(ex.statut==='brouillon'){ const f=SanixRenouv.commande(e,{tva:cfg.tva}); if(ex.htNet!==f.htNet){ Object.assign(ex,{htBrut:f.htBrut,htNet:f.htNet,tva:f.tva,ttc:f.ttc,solde:f.ttc-(ex.acompte||0),notes:f.notes,renouvJusqua:f.renouvJusqua}); maj++; } }
   });
   if(n||maj) saveStore('commandes');
@@ -10918,7 +10982,7 @@ function renouvConfirmer(licId){
   if(!confirm('Confirmer le renouvellement de '+l.client+' ('+l.logiciel+') ?\n\nNouvelle échéance : '+e.finPrevue.split('-').reverse().join('/')+'\nMontant : '+e.montantHT.toLocaleString('fr-FR')+' '+renouvCfg().devise+' HT')) return;
   if(!o){ COMMANDES.push(SanixRenouv.commande(e,{tva:renouvCfg().tva,ref:renouvRefSuivante(),commercial:l.commercial||''})); o=renouvCmd(e); }
   if(o.statut==='annulee') o.statut='brouillon';
-  o.statut='confirmee'; o.date=new Date().toISOString().slice(0,10);
+  o.statut='confirmee'; o.date=_ajd();
   Object.assign(l,SanixRenouv.prolonger(l,e,{cmdId:o.id}));
   saveStore('commandes'); saveStore('licences');
   showToast('✅ Renouvelé jusqu\'au '+e.finPrevue.split('-').reverse().join('/')+' — facture '+(o.ref||''));
@@ -11690,7 +11754,7 @@ function cokRender(){
   syncProspectsToPipeline();
   const openDeals = DEALS.filter(d=>d.stage!=='gagne'&&d.stage!=='perdu');
   const weighted = openDeals.reduce((s,d)=>s+(d.valeur||0)*(COK_STAGE_PROB[d.stage]??.05),0);
-  const realized = DEALS.filter(d=>d.stage==='gagne').reduce((s,d)=>s+(d.valeur||0),0);
+  const realized = caCmd();
   const brut = openDeals.reduce((s,d)=>s+(d.valeur||0),0);
   const tosign = prospects.filter(c=>cokProba(c)>=55);
   const atrisk = prospects.filter(c=>cokRisk(c).pct>=50);
@@ -12050,8 +12114,9 @@ function dirRender(){
   const perdus=DEALS.filter(d=>d.stage==='perdu');
   const open=DEALS.filter(d=>d.stage!=='gagne'&&d.stage!=='perdu');
 
-  const caTotal=gagnes.reduce((s,d)=>s+(d.valeur||0),0);
-  const caMois=gagnesP.reduce((s,d)=>s+(d.valeur||0),0);
+  const cmdsP=cmdsRealisees(c=>{ const t=new Date(c.date); return !isNaN(t)&&t>=rg.start&&t<rg.end; });     // commandes de la période, sur leur date
+  const caTotal=caCmd();
+  const caMois=cmdsP.reduce((s,c)=>s+cmdHT(c),0);
   const prev=open.reduce((s,d)=>s+(d.valeur||0)*((typeof COK_STAGE_PROB!=='undefined'?COK_STAGE_PROB[d.stage]:0.2)??0.2),0);
   const pipeBrut=open.reduce((s,d)=>s+(d.valeur||0),0);
   const traites=gagnes.length+perdus.length;
@@ -12097,7 +12162,7 @@ function dirRender(){
 
   // Top logiciels vendus
   const parLog={};
-  gagnesP.forEach(d=>{const k=d.logiciel||'—'; if(!parLog[k])parLog[k]={n:0,ca:0}; parLog[k].n++; parLog[k].ca+=(d.valeur||0);});
+  cmdsP.forEach(c=>{const k=c.logiciel||'—'; if(!parLog[k])parLog[k]={n:0,ca:0}; parLog[k].n++; parLog[k].ca+=cmdHT(c);});
   const top=Object.entries(parLog).sort((a,b)=>b[1].ca-a[1].ca).slice(0,6);
   const maxCa=Math.max(1,...top.map(t=>t[1].ca));
   document.getElementById('dir-topsoft').innerHTML=top.length?top.map(([nom,x],i)=>{
@@ -12105,12 +12170,12 @@ function dirRender(){
     return `<div style="margin-bottom:9px">
       <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>${i+1}. ${nom} <span style="color:var(--muted)">×${x.n}</span></span><span style="font-weight:700">${_dirFmt(x.ca)} F</span></div>
       <div style="height:12px;background:var(--surface2);border-radius:6px;overflow:hidden"><div style="height:100%;width:${w}%;background:linear-gradient(90deg,#10B981,var(--primary-3));border-radius:6px"></div></div></div>`;
-  }).join(''):'<div style="color:var(--muted);font-size:13px">Aucune vente enregistrée. Le classement apparaîtra dès les premiers deals gagnés.</div>';
+  }).join(''):'<div style="color:var(--muted);font-size:13px">Aucune vente enregistrée. Le classement apparaîtra dès la première commande confirmée.</div>';
 
   // Commercial de la période
   const parCom={};
-  gagnesP
-    .forEach(d=>{const k=d.commercial||'Non attribué'; if(!parCom[k])parCom[k]={n:0,ca:0}; parCom[k].n++; parCom[k].ca+=(d.valeur||0);});
+  cmdsP
+    .forEach(c=>{const k=c.commercial||'Non attribué'; if(!parCom[k])parCom[k]={n:0,ca:0}; parCom[k].n++; parCom[k].ca+=cmdHT(c);});
   const clsmt=Object.entries(parCom).sort((a,b)=>b[1].ca-a[1].ca);
   const dc=document.getElementById('dir-commercial');
   if(clsmt.length){
@@ -12121,7 +12186,7 @@ function dirRender(){
       <div style="font-size:12px;color:var(--muted)">${cx.n} vente(s) · ${_dirFmt(cx.ca)} FCFA sur la période</div></div>`
       + clsmt.slice(1,4).map(([n,x],i)=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-top:1px solid var(--border)"><span>${i+2}. ${n}</span><span style="font-weight:700">${_dirFmt(x.ca)} F</span></div>`).join('');
   } else {
-    dc.innerHTML='<div style="color:var(--muted);font-size:13px;padding:10px 0">Aucune vente ce mois-ci. Le classement se remplit à chaque deal gagné.</div>';
+    dc.innerHTML='<div style="color:var(--muted);font-size:13px;padding:10px 0">Aucune vente sur la période. Le classement se remplit à chaque commande confirmée.</div>';
   }
 
   // Temps moyen de vente
@@ -12685,7 +12750,7 @@ function dossierAddVersion(){
   const notes=document.getElementById('doss-nv-notes').value.trim();
   if(!ver){ showToast('❌ Indiquez le numéro de version'); return; }
   const d=docGet(_dossLogId);
-  d.versions.unshift({ver,date:date||new Date().toISOString().slice(0,10),notes});
+  d.versions.unshift({ver,date:date||_ajd(),notes});
   // met à jour la version courante du logiciel
   const l=LOGICIELS.find(x=>x.id===_dossLogId); if(l){ l.version=ver; try{ saveStore('logiciels'); }catch(e){} }
   docsSave(); dossierRenderBody();
@@ -13017,7 +13082,7 @@ function genDocFromDossier(clientId, kind){
   ${tpl.trim()?`<div style="margin-top:20px">${corps}</div>`:''}
   <div class="sign"><div>Le client<br><span style="color:#94a3b8">(signature + cachet)</span></div><div>Pour ${r.societe||'SANIX Africa'}<br>${r.gerant}</div></div>
   <div class="foot">Document généré par SANIX CRM · ${today}${isDevis?' · Devis valable 30 jours':' · Contrat régi par le droit ivoirien / OHADA'}</div>
-  ${docSecurityFooter({type:isDevis?'devis':'contrat',ref:ref,client:c.nom,montant:ttc,date:new Date().toISOString().slice(0,10)},true)}
+  ${docSecurityFooter({type:isDevis?'devis':'contrat',ref:ref,client:c.nom,montant:ttc,date:_ajd()},true)}
   <div class="noprint" style="text-align:center;margin-top:24px"><button onclick="window.print()" style="padding:10px 24px;background:#2563EB;color:#fff;border:0;border-radius:8px;font-size:15px;cursor:pointer">🖨️ Imprimer / Enregistrer en PDF</button></div>
   </body></html>`;
 
@@ -13062,7 +13127,7 @@ function dirExportPDF(){
   <div class="grid2">${card('🏆 Logiciels les plus vendus',grab('dir-topsoft'))}${card('⭐ Commercial de la période',grab('dir-commercial'))}</div>
   <div class="grid2">${card('⏱️ Temps moyen de vente',grab('dir-cycle'))}${card('📊 Taux de transformation',grab('dir-taux'))}</div>
   <div class="foot">Généré par SANIX CRM · Confidentiel — usage interne direction</div>
-  ${docSecurityFooter({type:'rapport',ref:'RAPPORT-DIR-'+new Date().toISOString().slice(0,10),client:'Direction — '+(rg.label||''),montant:0,date:new Date().toISOString().slice(0,10)},true)}
+  ${docSecurityFooter({type:'rapport',ref:'RAPPORT-DIR-'+_ajd(),client:'Direction — '+(rg.label||''),montant:0,date:_ajd()},true)}
   <div class="noprint" style="text-align:center;margin-top:20px"><button onclick="window.print()" style="padding:10px 24px;background:#2563EB;color:#fff;border:0;border-radius:8px;font-size:15px;cursor:pointer">🖨️ Imprimer / Enregistrer en PDF</button></div>
   </body></html>`;
   const w=window.open('','_blank');
@@ -13233,8 +13298,8 @@ function _licencesDepuisCommandes(){
     const existe=LICENCES.some(l=>l.id===id||l.cmdId===o.id||(norm(l.client)===norm(o.client)&&l.logiciel===o.logiciel));
     if(!existe){
       LICENCES.push({id, cmdId:o.id, key:_licCleDepuis(norm(o.client)+'|'+norm(o.logiciel)+'|'+o.id), client:o.client, logiciel:o.logiciel, type:'Perpetuelle', postes:1,
-        debut:o.date||new Date().toISOString().slice(0,10), fin:null, statut:'active', env:'production', contratId:null, commercial:o.commercial||'',
-        notes:'Licence perpétuelle — commande '+(o.ref||''), alerte30:false, alerte7:false, alerte1:false, createdAt:(o.date||new Date().toISOString().slice(0,10))+'T12:00:00.000Z'});
+        debut:o.date||_ajd(), fin:null, statut:'active', env:'production', contratId:null, commercial:o.commercial||'',
+        notes:'Licence perpétuelle — commande '+(o.ref||''), alerte30:false, alerte7:false, alerte1:false, createdAt:(o.date||_ajd())+'T12:00:00.000Z'});
       n++;
     }
     o.licAuto=true; marque++;
@@ -13257,11 +13322,12 @@ function _contratsDepuisCommandes(){
     let ctr=CONTRATS.find(c=>c.id===id||c.cmdId===o.id||(c.type==='contrat'&&norm(c.client)===norm(o.client)&&c.logiciel===o.logiciel));
     if(!ctr){
       const perp=(o.typeLicence||'Perpetuelle')==='Perpetuelle';
-      ctr={id, ref:'CTR-'+String(o.ref||o.id).replace(/^CMD-/,''), type:'contrat', client:o.client, date:o.date||new Date().toISOString().slice(0,10), logiciel:o.logiciel,
+      ctr={id, ref:'CTR-'+String(o.ref||o.id).replace(/^CMD-/,''), type:'contrat', client:o.client, date:o.date||_ajd(), logiciel:o.logiciel,
         duree:perp?'indeterminee':'1an', montant:o.ttc||0, paiement:(o.acompte||0)>=(o.ttc||0)?'comptant':'acompte_solde', statut:'brouillon', cmdId:o.id,
         notes:'Contrat de licence'+(perp?' perpétuelle':'')+' — commande '+(o.ref||'')+'. À faire signer.'};
       CONTRATS.push(ctr); n++;
     }
+    if(!ctr.cmdId){ ctr.cmdId=o.id; n++; }          // contrat trouvé par le nom du client : on le rattache, la comptabilité ne le compte plus en plus de la commande
     const lic=LICENCES.find(l=>l.cmdId===o.id&&!l.contratId); if(lic){ lic.contratId=ctr.id; lies++; }
     o.ctrAuto=true; marque++;
   });
@@ -13290,7 +13356,7 @@ function _dedoublonnerCommandes(){
     Object.keys(g).forEach(k=>{ if(g[k].length<2) return; g[k].sort(mieux).slice(1).forEach(o=>suppr.add(o.id)); });
   };
   passe(COMMANDES.filter(auto), o=>norm(o.client)+'|'+norm(o.logiciel));
-  passe(COMMANDES, o=>[norm(o.client),norm(o.logiciel),o.date||'',o.ttc||0,o.acompte||0,o.statut||''].join('|'));
+  passe(COMMANDES.filter(auto), o=>[norm(o.client),norm(o.logiciel),o.date||'',o.ttc||0,o.acompte||0,o.statut||''].join('|'));     // seulement les commandes de départ automatiques : deux ventes identiques saisies à la main sont légitimes
   if(!suppr.size) return 0;
   COMMANDES = COMMANDES.filter(o=>!suppr.has(o.id));
   saveStore('commandes');
@@ -13472,7 +13538,7 @@ function jrPrintEtat(){
   const rows=jrRows(); if(!rows.length){ showToast('❌ Rien à imprimer'); return; }
   const log=document.getElementById('jr-logiciel').value||'Tous logiciels';
   const per=document.getElementById('jr-periode').selectedOptions[0].textContent;
-  const ref='ETAT-'+new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const ref='ETAT-'+_ajd().replace(/-/g,'');
   const tr=rows.map((r,i)=>{ const ok=waAnalyse(r.c.phone), l=r.last;
     return `<tr><td>${i+1}</td><td><b>${_dEsc(r.c.nom)}</b></td><td>${_dEsc(ok.ok?ok.affiche:(r.c.phone||'—'))}</td><td>${l?jrFmt(l.date):'—'}</td><td>${l?(JR_CANAUX[jrCanalOf(l)]||''):''}</td><td>${r.envois.length}</td><td>${r.lastPv?_dEsc(jrResLbl(r.lastPv.resultat).replace(/^[^A-Za-zÀ-ÿ]+/,''))+'<br><small>'+_dEsc(r.lastPv.pvRef)+'</small>':'<i>PV à saisir</i>'}</td><td>${r.lastPv?_dEsc(r.lastPv.prochaine||''):''}</td></tr>`; }).join('');
   const html=`${docHeader()}<h1>ÉTAT DES CONTACTS PROSPECTS</h1>
@@ -13487,7 +13553,7 @@ function jrExportCsv(){
   const lines=[['Prospect','Téléphone','E-mail','Logiciel','Dernier contact','Canal','Nb envois','Résultat','N° PV','Prochaine action','Date relance'].map(q).join(';')];
   rows.forEach(r=>{ const ok=waAnalyse(r.c.phone), l=r.last; lines.push([r.c.nom,ok.ok?ok.affiche:r.c.phone,r.c.email,r.c.logiciel,l?jrFmt(l.date):'',l?(JR_CANAUX[jrCanalOf(l)]||''):'',r.envois.length,r.lastPv?jrResLbl(r.lastPv.resultat).replace(/^[^A-Za-zÀ-ÿ]+/,''):'',r.lastPv?r.lastPv.pvRef:'',r.lastPv?r.lastPv.prochaine:'',r.lastPv?r.lastPv.relance:''].map(q).join(';')); });
   const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob); a.download='etat-contacts-'+new Date().toISOString().slice(0,10)+'.csv'; document.body.appendChild(a); a.click(); a.remove();
+  a.href=URL.createObjectURL(blob); a.download='etat-contacts-'+_ajd()+'.csv'; document.body.appendChild(a); a.click(); a.remove();
 }
 
 // Remet une fois les numéros déjà enregistrés au bon format (ancien 8 chiffres → 10 chiffres, champ à plusieurs numéros → 1er mobile)
@@ -13558,14 +13624,15 @@ const PLAN_COMPTABLE = {
   '4452':  'TVA récupérable sur achats',
   '4441':  'État, impôt sur les bénéfices',
   '521000':'Banque',
-  '531000':'Mobile Money (Wave/Orange/MTN)',
+  '552000':'Monnaie électronique — téléphone portable (Mobile Money : Wave, Orange, MTN, Moov)',
   '571000':'Caisse',
   '701000':'Ventes de marchandises',
   '706000':'Services vendus (licences, prestations)',
   '707000':'Ventes de logiciels / produits accessoires',
-  '622000':'Rémunérations d\'intermédiaires (commissions apporteurs)',
+  '632000':'Rémunérations d\'intermédiaires et de conseils (commissions apporteurs)',
   '634000':'Redevances pour logiciels et licences (API d\'IA)',
-  '627000':'Services bancaires',
+  '627000':'Publicité, publications, relations publiques',
+  '631000':'Frais bancaires',
   '6311':  'Frais sur effets / Mobile Money',
   '445':   'État, TVA',
 };
@@ -13584,9 +13651,10 @@ function comptaGenerateAuto() {
   // 1. COMMANDES confirmées/livrées → écriture de vente
   COMMANDES.filter(c=>c.statut==='confirmee'||c.statut==='livree'||c.statut==='en_cours').forEach(c=>{
     const ttc = c.ttc||0;
-    const ht  = c.htNet || Math.round(ttc/(1+tvaRate));
-    const tva = c.tva || (ttc - ht);
-    const date = c.date || new Date().toISOString().split('T')[0];
+    if(!(ttc>0)) return;                                                  // commande à 0 : aucune pièce
+    const ht  = c.htNet || (c.sansTva ? ttc : Math.round(ttc/(1+tvaRate)));   // ancienne commande sans HT : sans TVA, pas de TVA inventée
+    const tva = c.sansTva ? 0 : (c.tva || (ttc - ht));
+    const date = c.date || _ajd();
     const piece = c.ref || 'CMD';
     // Vente : Débit 411 Client / Crédit 706 Service + 4431 TVA
     auto.push({
@@ -13595,18 +13663,19 @@ function comptaGenerateAuto() {
       lignes:[
         {compte:'411000', libelle:c.client, debit:ttc, credit:0},
         {compte:'706000', libelle:'Licence/prestation '+(c.logiciel||''), debit:0, credit:ht},
-        {compte:'4431',   libelle:'TVA collectée 18%', debit:0, credit:tva},
-      ]
+        {compte:'4431',   libelle:'TVA collectée '+(tvaRate*100)+'%', debit:0, credit:tva},
+      ].filter(l=>l.debit||l.credit)
     });
-    // Encaissement acompte si présent
-    if(c.acompte && c.acompte>0){
-      const cpt = '531000'; // Mobile Money par défaut
+    // Encaissement : jamais plus que le TTC de la vente (le 411 ne peut pas devenir créditeur par un versement saisi en trop)
+    const encaisse = Math.min(c.acompte||0, ttc);
+    if(encaisse>0){
+      const cpt = '552000'; // Mobile Money par défaut (le mode de règlement n'est pas enregistré)
       auto.push({
         id:'auto_enc_'+c.id, auto:true, date, journal:'BQ', piece:piece+'-ENC',
         libelle:`Encaissement acompte — ${c.client}`,
         lignes:[
-          {compte:cpt,     libelle:'Encaissement '+c.client, debit:c.acompte, credit:0},
-          {compte:'411000',libelle:c.client, debit:0, credit:c.acompte},
+          {compte:cpt,     libelle:'Encaissement '+c.client, debit:encaisse, credit:0},
+          {compte:'411000',libelle:c.client, debit:0, credit:encaisse},
         ]
       });
     }
@@ -13615,9 +13684,10 @@ function comptaGenerateAuto() {
   // 2. CONTRATS signés non liés à une commande → vente
   CONTRATS.filter(c=>(c.statut==='signe'||c.statut==='en_cours')&&!c.cmdId).forEach(c=>{
     const ttc = c.montant||0;
+    if(!(ttc>0)) return;
     const ht  = Math.round(ttc/(1+tvaRate));
     const tva = ttc - ht;
-    const date = c.date || new Date().toISOString().split('T')[0];
+    const date = c.date || _ajd();
     auto.push({
       id:'auto_ctr_'+c.id, auto:true, date, journal:'VE', piece:c.ref||'CTR',
       libelle:`${c.type==='convention'?'Convention':'Contrat'} ${c.logiciel||''} — ${c.client}`,
@@ -13631,15 +13701,15 @@ function comptaGenerateAuto() {
 
   // 3. COMMISSIONS apporteurs → charge + dette
   if(typeof COMMISSIONS!=='undefined'){
-    COMMISSIONS.filter(cm=>cm.type==='apporteur').forEach(cm=>{
+    COMMISSIONS.filter(cm=>cm.type==='apporteur'&&(cm.statut==='validee'||cm.statut==='payee')).forEach(cm=>{     // une commission « en attente » n'est pas encore une dette
       const mt = cm.montant||0;
       if(mt<=0) return;
-      const date = cm.date || new Date().toISOString().split('T')[0];
+      const date = cm.date || _ajd();
       auto.push({
         id:'auto_com_'+(cm.id||Math.random()), auto:true, date, journal:'OD', piece:'COM-'+(cm.id||''),
         libelle:`Commission apporteur ${cm.apporteur||''}`,
         lignes:[
-          {compte:'622000', libelle:'Commission '+(cm.apporteur||''), debit:mt, credit:0},
+          {compte:'632000', libelle:'Commission '+(cm.apporteur||''), debit:mt, credit:0},
           {compte:'401000', libelle:'Apporteur '+(cm.apporteur||''), debit:0, credit:mt},
         ]
       });
@@ -13649,7 +13719,7 @@ function comptaGenerateAuto() {
   // 4. DÉPENSES DE L'API D'IA → charge du mois (consommation réelle) + règlements (recharges), au taux USD/FCFA du module Budget
   const taux = comptaIAUsdFcfa();
   if(taux>0){
-    const finMois = m => { const [y,mo]=m.split('-').map(Number); const d=new Date(y,mo,0).getDate(); const f=m+'-'+String(d).padStart(2,'0'); const auj=new Date().toISOString().split('T')[0]; return f>auj ? auj : f; };
+    const finMois = m => { const [y,mo]=m.split('-').map(Number); const d=new Date(y,mo,0).getDate(); const f=m+'-'+String(d).padStart(2,'0'); const auj=_ajd(); return f>auj ? auj : f; };
     AI_COMPTA.conso.forEach(c=>{
       const fcfa = Math.round((Number(c.cout_usd)||0)*taux); if(fcfa<=0) return;
       auto.push({
@@ -13861,7 +13931,7 @@ function comptaRenderSIG() {
   list.forEach(e=>e.lignes.forEach(l=>{
     if(l.compte.startsWith('70')) ventes += l.credit;
     if(l.compte.startsWith('60')) achats += l.debit;
-    if(l.compte==='622000') commissions += l.debit;
+    if(l.compte==='632000') commissions += l.debit;
     else if(l.compte.startsWith('6')&&!l.compte.startsWith('60')) autresCharges += l.debit;
   }));
   const margeBrute = ventes - achats;
@@ -13874,7 +13944,7 @@ function comptaRenderSIG() {
       ${row("Chiffre d'affaires (ventes 70x)", ventes, true, 'var(--primary)')}
       ${row("— Achats consommés (60x)", -achats, false)}
       ${row("= Marge brute", margeBrute, true)}
-      ${row("— Commissions apporteurs (622)", -commissions, false)}
+      ${row("— Commissions apporteurs (632)", -commissions, false)}
       ${row("— Autres charges (61x-68x)", -autresCharges, false)}
       ${row("= Valeur ajoutée", valeurAjoutee, true)}
       ${row("= RÉSULTAT NET de l'exercice", resultat, true, resultat>=0?'var(--success)':'var(--danger)')}
@@ -13999,7 +14069,7 @@ function comptaRegenerate() {
 // ─── ÉCRITURE MANUELLE ───────────────────
 function openEcritureModal(id=null) {
   document.getElementById('ec-edit-id').value = id||'';
-  document.getElementById('ec-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('ec-date').value = _ajd();
   document.getElementById('ec-journal').value = 'OD';
   document.getElementById('ec-piece').value = 'OD-'+_comptaExercice+'-'+String(ECRITURES.length+1).padStart(3,'0');
   document.getElementById('ec-libelle').value = '';
@@ -14193,7 +14263,7 @@ function renderDocuments() {
 
 function openDocGenModal(type=null) {
   if(type) document.getElementById('dg-type').value = type;
-  document.getElementById('dg-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('dg-date').value = _ajd();
   // Populate sources
   const ctrSel = document.getElementById('dg-source-contrat');
   ctrSel.innerHTML='<option value="">— Contrat existant —</option>'+CONTRATS.map(c=>`<option value="${c.id}">${c.ref} — ${c.client}</option>`).join('');
@@ -14622,10 +14692,10 @@ function docSecret(){
 const DOC_TYPE_LBL = {pv_contact:'Procès-verbal de contact',etat_contacts:'État des contacts',devis:'Devis',contrat:'Contrat de licence',bon_commande:'Bon de commande',rapport:'Rapport de direction',convention_apporteur:'Convention apporteur'};
 function _docTypeLabel(t){ return (typeof DOC_TYPES!=='undefined' && DOC_TYPES[t] && DOC_TYPES[t].label) || DOC_TYPE_LBL[t] || t || 'Document'; }
 function _docIso(d){
-  if(!d) return new Date().toISOString().slice(0,10);
+  if(!d) return _ajd();
   if(/^\d{4}-\d{2}-\d{2}/.test(d)) return String(d).slice(0,10);
   const m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(d); if(m) return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
-  const dt=new Date(d); return isNaN(dt)?new Date().toISOString().slice(0,10):dt.toISOString().slice(0,10);
+  const dt=new Date(d); return isNaN(dt)?_ajd():dt.toISOString().slice(0,10);
 }
 function docSignInfo(meta){
   const data={t:meta.type||'doc', r:String(meta.ref||'SANS-REF').trim().slice(0,40), c:String(meta.client||'').trim().slice(0,60), m:Math.round(meta.montant||0), d:_docIso(meta.date)};
@@ -15009,7 +15079,7 @@ function renderAppStats() {
   const attente = APPORTEURS.filter(a=>a.statut==='convention_attente').length;
   // CA généré par apporteurs (via commissions)
   const caApporte = COMMISSIONS.filter(c=>c.type==='apporteur').reduce((s,c)=>s+(c.montantVente||c.base||0),0);
-  const commsVersees = COMMISSIONS.filter(c=>c.type==='apporteur'&&c.statut==='paye').reduce((s,c)=>s+(c.montant||0),0);
+  const commsVersees = COMMISSIONS.filter(c=>c.type==='apporteur'&&c.statut==='payee').reduce((s,c)=>s+(c.montant||0),0);
   const fv = v=>v>=1000000?(v/1000000).toFixed(1)+'M':v>=1000?(v/1000).toFixed(0)+'k':v||'0';
   el.innerHTML = [
     {ico:'🤝',v:total,    lbl:'Apporteurs',          c:'var(--primary)', bg:'var(--primary-l)'},
@@ -15074,7 +15144,7 @@ function renderApporteurs() {
 function openApporteurModal(id=null) {
   document.getElementById('app-edit-id').value = id||'';
   document.getElementById('app-modal-title').textContent = id ? '✏️ Modifier apporteur' : '🤝 Nouvel apporteur d\'affaires';
-  document.getElementById('app-date-conv').value = new Date().toISOString().split('T')[0];
+  document.getElementById('app-date-conv').value = _ajd();
   if(id) {
     const a = APPORTEURS.find(x=>x.id===id);
     if(!a) return;
@@ -15218,7 +15288,7 @@ function printConventionApp() {
   const a = window._convApp || {};
   const w = window.open('','_blank','width=800,height=900');
   if(!w) return;
-  const meta = {type:'convention_apporteur', ref:'CONV-APP-'+(a.id||String(a.nom||'').replace(/\W+/g,'').toUpperCase().slice(0,12)||'000'), client:a.nom||'', montant:0, date:a.dateConv||new Date().toISOString().slice(0,10)};
+  const meta = {type:'convention_apporteur', ref:'CONV-APP-'+(a.id||String(a.nom||'').replace(/\W+/g,'').toUpperCase().slice(0,12)||'000'), client:a.nom||'', montant:0, date:a.dateConv||_ajd()};
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Convention Apporteur</title>
     <style>@page{margin:1.6cm}body{font-family:Georgia,serif;padding:20px 28px;line-height:1.8;font-size:13px;max-width:800px;margin:0 auto}.txt{white-space:pre-wrap}</style>
     </head><body>${docHeader()}<div class="txt">${content.replace(/</g,'&lt;')}</div>${docSecurityFooter(meta,true)}</body></html>`);
@@ -15911,8 +15981,8 @@ function licAutoFillDates() {
 function licDaysLeft(finDate) {
   if(!finDate) return null;
   const now  = new Date(); now.setHours(0,0,0,0);
-  const fin  = new Date(finDate); fin.setHours(0,0,0,0);
-  return Math.ceil((fin - now) / 86400000);
+  const fin  = /^\d{4}-\d{2}-\d{2}$/.test(finDate) ? new Date(finDate+'T00:00:00') : new Date(finDate); fin.setHours(0,0,0,0);     // AAAA-MM-JJ = minuit LOCAL (sinon un jour de moins à l'ouest de Greenwich)
+  return Math.round((fin - now) / 86400000);
 }
 
 function licDaysLeftHtml(days, type) {
@@ -16081,7 +16151,7 @@ function openLicenceModal(id=null) {
     document.getElementById('lic-alerte1').checked=l.alerte1!==false;
   } else {
     genLicKey();
-    document.getElementById('lic-debut').value=new Date().toISOString().split('T')[0];
+    document.getElementById('lic-debut').value=_ajd();
     document.getElementById('lic-fin').value='';
     ['lic-maintfin','lic-renouvmontant'].forEach(i=>{ document.getElementById(i).value=''; }); document.getElementById('lic-maintnon').checked=false;
     document.getElementById('lic-type').value='Perpetuelle';
@@ -16148,7 +16218,7 @@ function renewLicence(id) {
   setTimeout(()=>{
     // Nouvelle clé + dates repoussées
     genLicKey();
-    const debut=new Date().toISOString().split('T')[0];
+    const debut=_ajd();
     document.getElementById('lic-debut').value=debut;
     document.getElementById('lic-statut').value='active';
     document.getElementById('lic-modal-title').textContent='🔄 Renouvellement — '+l.client;
