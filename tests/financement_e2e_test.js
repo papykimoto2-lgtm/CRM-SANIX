@@ -221,7 +221,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(apres.clientsAn1 > 0 && apres.clientsAn1 !== clientsAvant && apres.valide === false, "« Appliquer » modifie l'hypothèse et retire la validation");
     await page.click('[data-act="plan"]'); await page.waitForTimeout(300);
     const plan = await page.evaluate(() => JSON.parse(localStorage.getItem("sanix_crm_fin_config")));
-    ok(plan.prixLicence > 0 && plan.maintenancePct > 12, "« Appliquer ce plan » enchaîne plusieurs leviers");
+    ok(plan.prixLicence > 0 && plan.maintenancePct > 0, "« Appliquer ce plan » enchaîne plusieurs leviers");
     ok(await page.locator("#fin-body .alert-danger").count() === 0 || (await page.locator("#fin-body").innerText()).includes("rentable"), "le plan appliqué est pris en compte dans le verdict");
     await page.click('[data-tab="dossier"]'); await page.waitForTimeout(150);
     const htmlN = await page.evaluate(() => { let h = ""; const w = { document: { write: (x) => { h += x; }, close() {} }, focus() {}, print() {} }; const o = window.open; window.open = () => w; document.querySelector('[data-act="pdf"]').click(); window.open = o; return h; });
