@@ -331,7 +331,7 @@
     return loop(Math.max(0, (state.cursor || 0) - PULL_OVERLAP), 0).then(function (v) { pulling = false; return v; }, function (e) { pulling = false; failed(e); return false; });
   }
   function refreshViews() {
-    ['initPipeline', 'initClients', 'initPlanning', 'initCommandes', 'initPresentations', 'initDocuments', 'initContrats', 'initLicences', 'initLogiciels', 'initDashboard360', 'updateSidebarBadges'].forEach(function (fn) {
+    ['initPipeline', 'initClients', 'initPlanning', 'initCommandes', 'initPresentations', 'initDocuments', 'initContrats', 'initLicences', 'initLogiciels', 'initDashboard360', 'updateSidebarBadges', 'rafraichirVueCourante'].forEach(function (fn) {
       try { if (typeof window[fn] === 'function') window[fn](); } catch (e) {}
     });
     try { if (window.SanixPilotage && window.SanixPilotage.refresh) window.SanixPilotage.refresh(); } catch (e) {}
