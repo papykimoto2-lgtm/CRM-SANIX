@@ -21,7 +21,9 @@ Refusées et effacées du navigateur : `sb_secret_…`, `service_role`, **« JWT
    ```
 3. Se connecter à SANIX AI avec `kessie` + ce mot de passe.
 
-> **Mot de passe du CRM** : le compte de démonstration du CRM a son mot de passe écrit en clair dans `index.html` (donc lisible par tous). Ne le réutilisez jamais pour SANIX AI, et remplacez-le dans le CRM avant toute exploitation réelle.
+> **Compte du CRM** : aucun compte ni mot de passe n'est livré dans le code. Au premier lancement (ou sur un appareil neuf), le CRM demande de créer le compte administrateur : 10 caractères minimum, enregistré en PBKDF2 avec un sel propre au compte, dans le navigateur de l'appareil. Ce compte verrouille l'accès à l'écran sur cet appareil ; la protection des données sur le serveur repose sur Supabase (sécurité par lignes + connexion opérateur). Contrôlez-la avec `supabase/verifier_securite.sql` (lecture seule, SQL Editor). Utilisez un mot de passe différent pour SANIX AI.
+>
+> **Données** : le CRM ne contient plus aucune donnée client dans son code. Pour retrouver ses données sur un nouvel appareil : synchronisation Supabase (Paramétrage → Synchronisation cloud) ou *Paramétrage → Restaurer une sauvegarde* avec le fichier produit par *Sauvegarde complète* (à garder privé : il contient les clients, commandes et licences).
 
 ## Mise en place du schéma
 Avant la première connexion, appliquer les migrations (`supabase db push`, ou *SQL Editor* avec le fichier `supabase/setup_all.sql` collé en une fois), puis déployer les fonctions (`ai-company`, `ai-sales-director`, `whatsapp-webhook`). Voir `supabase/README.md`, section *Mise en service*.

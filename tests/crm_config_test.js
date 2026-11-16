@@ -1,4 +1,5 @@
 // SANIX CRM Pro : configuration Supabase = clé PUBLIQUE uniquement ; identité publiée pour SANIX AI VIRTUAL COMPANY. node crm_config_test.js
+const { ADMIN } = require("./helpers/crm_fixture.js");
 const { chromium } = require("playwright");
 const { start } = require("../company/tests/server.js");
 const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  ✓ " + m); };
@@ -10,6 +11,7 @@ const jwt = (role) => `${b64u({ alg: "HS256", typ: "JWT" })}.${b64u({ iss: "supa
   try {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     await ctx.route(/^https?:\/\/(?!localhost)/, (r) => r.abort());
+    await require("./helpers/crm_fixture.js").installer(ctx);
     await ctx.addInitScript(() => { class Chart { constructor() {} update() {} destroy() {} resize() {} static register() {} } Chart.defaults = { font: {}, plugins: { legend: { labels: {} } }, scale: {} }; window.Chart = Chart; });
     const page = await ctx.newPage(), errors = [];
     page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
@@ -43,7 +45,7 @@ const jwt = (role) => `${b64u({ alg: "HS256", typ: "JWT" })}.${b64u({ iss: "supa
 
     console.log("▶ Accès commun avec SANIX AI VIRTUAL COMPANY");
     const who = await page.evaluate(() => ({ me: lsLoad("whoami"), dir: lsLoad("directory") }));
-    ok(who.me.login === "kessie" && !!who.me.email && who.dir.some((u) => u.login === "kessie"), "identité publique publiée (identifiant, e-mail, nom)");
+    ok(who.me.login === ADMIN.login && !!who.me.email && who.dir.some((u) => u.login === ADMIN.login), "identité publique publiée (identifiant, e-mail, nom)");
     ok(!JSON.stringify(who).match(/hash|pass/i), "aucun mot de passe ni empreinte dans l'identité publiée");
     ok(errors.length === 0, `aucune erreur (${errors.join(" | ")})`);
     console.log("\nTOUT EST OK");

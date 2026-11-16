@@ -5,6 +5,7 @@ let fails = 0; const ok = (c, m) => { console.log((c ? "OK  " : "ÉCHEC ") + m);
   const server = await start(4421), browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 1366, height: 1000 } });
   await ctx.route(/^https?:\/\/(?!localhost)/, (r) => r.abort());
+  await require("./helpers/crm_fixture.js").installer(ctx);
   await ctx.addInitScript(() => { class Chart { constructor() {} update() {} destroy() {} resize() {} static register() {} } Chart.defaults = { font: {}, plugins: { legend: { labels: {} } } }; window.Chart = Chart; });
   const page = await ctx.newPage(); const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   let promptVal = "";  page.on("dialog", (d) => d.type() === "prompt" ? d.accept(promptVal) : d.dismiss());
