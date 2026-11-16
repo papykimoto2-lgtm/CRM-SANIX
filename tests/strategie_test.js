@@ -3,7 +3,7 @@ const S = require("../shared/strategie.js");
 let n = 0; const ok = (c, m) => { n++; if (!c) throw new Error("ÉCHEC : " + m); };
 const near = (a, b, m) => ok(Math.abs(a - b) < 1e-6, m + " (obtenu " + a + ", attendu " + b + ")");
 
-ok(S.famille("Angel's Livraison") === "Hub Angel's" && S.famille("Angels Transport") === "Hub Angel's" && S.famille("Angel's Agro") === "Hub Angel's" && S.famille("ImmoSuite ERP") === "ImmoSuite ERP" && S.famille("") === "(sans logiciel)", "familles de logiciels");
+ok(S.famille("Angel's Livraison") === "Angel's Livraison" && S.famille("Angel's Transport") === "Angel's Transport" && S.famille("ImmoSuite ERP") === "ImmoSuite ERP" && S.famille("") === "(sans logiciel)", "un logiciel = une ligne (un client comme Angel's Group n'est pas une famille)");
 ok(S.lundi("2026-11-18") === "2026-11-16" && S.lundi("2026-11-16") === "2026-11-16" && S.lundi("2026-11-15") === "2026-11-09" && S.lundi("2026-11-22") === "2026-11-16", "lundi de la semaine (dimanche = fin de semaine)");
 
 // Commandes fictives
@@ -26,11 +26,11 @@ near(L("ImmoSuite ERP").ca, 7e6, "ImmoSuite : 3 M + 4 M"); ok(L("ImmoSuite ERP")
 ok(L("ImmoSuite ERP").fiches === 10 && L("ImmoSuite ERP").gagnes === 2, "ImmoSuite : 10 fiches (doublon et fiche perdue exclus), 2 gagnées");
 near(L("ImmoSuite ERP").caParFiche, 7e5, "CA par fiche ImmoSuite = 7 000 000 / 10"); near(L("ImmoSuite ERP").conversion, 0.2, "conversion ImmoSuite = 2 / 10"); near(L("ImmoSuite ERP").panier, 3.5e6, "panier moyen = 3 500 000");
 near(L("Sanix AluExpert ERP").caParFiche, 2e4, "CA par fiche AluExpert = 1 000 000 / 50"); near(L("Sanix AluExpert ERP").conversion, 0.04, "conversion AluExpert = 2 / 50");
-const H = L("Hub Angel's"); near(H.ca, 1e6, "Hub Angel's : Livraison + Transport = 1 000 000"); ok(H.ventes === 2 && H.nbClients === 1 && H.fiches === 5 && H.gagnes === 1, "Hub : 2 ventes, 1 client, 5 fiches, 1 gagnée"); near(H.caParFiche, 2e5, "CA par fiche Hub = 1 000 000 / 5"); near(H.prixCatalogue, 7e5, "prix catalogue = module le plus cher");
+const LV = L("Angel's Livraison"), TR = L("Angel's Transport"); near(LV.ca, 5e5, "Livraison : 500 000"); ok(LV.ventes === 1 && LV.fiches === 4 && LV.gagnes === 1, "Livraison : 1 vente, 4 fiches, 1 gagnée"); near(LV.caParFiche, 125000, "CA par fiche Livraison = 500 000 / 4"); near(TR.ca, 5e5, "Transport : 500 000"); ok(TR.fiches === 1 && TR.ventes === 1, "Transport : 1 fiche, 1 vente"); near(LV.prixCatalogue, 6e5, "prix catalogue Livraison 600 000"); near(TR.prixCatalogue, 7e5, "prix catalogue Transport 700 000");
 near(L("ImmoSuite ERP").prixCatalogue, 4e6, "prix catalogue ImmoSuite 4 000 000");
 ok(L("MediCore Suite").ca === 0 && L("MediCore Suite").fiches === 0, "famille de test présente même sans vente");
-ok(A.lignes.map((r) => r.famille).join("|") === "ImmoSuite ERP|Hub Angel's|Sanix AluExpert ERP|MediCore Suite", "classement par CA par fiche décroissant");
-ok(L("ImmoSuite ERP").indicatif && L("Hub Angel's").indicatif, "moins de 5 ventes : résultat « indicatif »");
+ok(A.lignes.map((r) => r.famille).join("|") === "ImmoSuite ERP|Angel's Transport|Angel's Livraison|Sanix AluExpert ERP|MediCore Suite", "classement par CA par fiche décroissant");
+ok(L("ImmoSuite ERP").indicatif && LV.indicatif, "moins de 5 ventes : résultat « indicatif »");
 near(L("ImmoSuite ERP").partCA, 7 / 9, "part du CA ImmoSuite = 7 / 9");
 ok(S.totalParts(A.reglages) === 100, "parts de temps par défaut : 100 %");
 ok(S.reglages({ "ImmoSuite ERP": { part: 40 } })["ImmoSuite ERP"].part === 40 && S.reglages({ "ImmoSuite ERP": { part: 40 } })["ImmoSuite ERP"].contacts === 15, "réglages saisis fusionnés avec les valeurs par défaut");
@@ -49,7 +49,7 @@ const D2 = [
 const W = S.semaine(C, D2, { now: "2026-11-18" }), WL = (f) => W.lignes.filter((r) => r.famille === f)[0];
 ok(W.debut === "2026-11-16" && W.fin === "2026-11-22", "semaine du 16 au 22 novembre");
 ok(WL("ImmoSuite ERP").contacts === 1 && WL("ImmoSuite ERP").demos === 1 && WL("ImmoSuite ERP").propositions === 1, "ImmoSuite : 1 contact, 1 démo, 1 proposition (étapes comptées une fois, hors semaine ignorées)");
-ok(WL("Hub Angel's").contacts === 1 && WL("Hub Angel's").ventes === 2, "Hub : 1 contact, 2 ventes dans la semaine");
+ok(WL("Angel's Livraison").contacts === 1 && WL("Angel's Livraison").ventes === 1 && WL("Angel's Transport").ventes === 1, "Livraison : 1 contact, 1 vente ; Transport : 1 vente dans la semaine");
 ok(WL("ImmoSuite ERP").ventes === 2 && Math.abs(WL("ImmoSuite ERP").ca - 7e6) < 1e-6, "ImmoSuite : 2 ventes datées de la semaine, 7 000 000 HT");
 near(WL("ImmoSuite ERP").avancement, (1 / 15 + 1 / 4 + 1 / 2) / 3, "avancement = moyenne de contacts/15, démos/4, propositions/2");
 ok(W.lignes.length >= 4, "toutes les familles suivies apparaissent, même sans activité");

@@ -6,7 +6,6 @@
   "use strict";
   var ACTIFS = { prospect: 1, contact: 1, demo: 1, proposition: 1, negociation: 1 };
   var num = function (v) { v = Number(v); return isFinite(v) ? v : 0; };
-  var HUB = "Hub Angel's";
   var ROLES = {
     prioritaire: "Prioritaire : appels et démos",
     groupe: "Offres groupées (modules)",
@@ -17,13 +16,13 @@
   /** Stratégie de départ (à ajuster dans l'écran) : fondée sur le CA par fiche observé, avec seulement quelques ventes : indicatif. */
   var DEFAUT = {
     "ImmoSuite ERP": { part: 50, role: "prioritaire", contacts: 15, demos: 4, propositions: 2 },
-    "Hub Angel's": { part: 20, role: "groupe", contacts: 6, demos: 2, propositions: 1 },
+    "Angel's Livraison": { part: 20, role: "groupe", contacts: 6, demos: 2, propositions: 1 },
     "Sanix AluExpert ERP": { part: 20, role: "automatise", contacts: 30, demos: 3, propositions: 2 },
     "MediCore Suite": { part: 10, role: "test", contacts: 10, demos: 3, propositions: 1 }
   };
 
-  /** Regroupe les modules d'un même client-type (Angel's Livraison, Transport, Agro) en une famille. */
-  function famille(nom) { nom = String(nom || "").trim(); return /^angel'?s\b/i.test(nom) ? HUB : (nom || "(sans logiciel)"); }
+  /** Un logiciel = une ligne (un client comme Angel's Group n'est pas une famille de produits). */
+  function famille(nom) { nom = String(nom || "").trim(); return nom || "(sans logiciel)"; }
   /** Réglages : valeurs par défaut fusionnées avec ceux saisis (cfg = CONFIG.strategie). */
   function reglages(cfg) {
     var out = {}, src = cfg && typeof cfg === "object" ? cfg : {};
@@ -100,6 +99,6 @@
   /** Les parts de temps font-elles 100 % ? */
   function totalParts(rg) { return Object.keys(rg).reduce(function (t, k) { return t + num(rg[k].part); }, 0); }
 
-  var API = { famille: famille, reglages: reglages, analyser: analyser, concentration: concentration, semaine: semaine, lundi: lundi, etapeAtteinte: etapeAtteinte, fichesUniques: fichesUniques, totalParts: totalParts, ROLES: ROLES, DEFAUT: DEFAUT, HUB: HUB };
+  var API = { famille: famille, reglages: reglages, analyser: analyser, concentration: concentration, semaine: semaine, lundi: lundi, etapeAtteinte: etapeAtteinte, fichesUniques: fichesUniques, totalParts: totalParts, ROLES: ROLES, DEFAUT: DEFAUT };
   G.SanixStrategie = API; if (typeof module !== "undefined" && module.exports) module.exports = API;
 })(typeof window !== "undefined" ? window : globalThis);

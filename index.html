@@ -2967,7 +2967,24 @@ Seriez-vous disponible pour une démonstration {rdv} ?
       <div id="str-alertes"></div>
       <div class="card" style="margin-bottom:16px;overflow:auto"><div class="card-header"><span class="card-title">💰 Rendement par logiciel (commandes confirmées, HT)</span></div><div id="str-rendement"></div></div>
       <div class="card" style="margin-bottom:16px;overflow:auto"><div class="card-header"><span class="card-title">📅 Cette semaine</span><span class="muted" id="str-semaine" style="font-size:12px"></span></div><div id="str-hebdo"></div></div>
-      <p class="page-sub" style="margin-top:0">Les contacts, démos et propositions se lisent dans l'historique du pipeline (changement d'étape) ; les ventes dans les commandes. Les objectifs sont réglables ; ils sont enregistrés avec les réglages du CRM.</p>
+      <details id="str-note" class="card" open style="margin-bottom:16px;padding:14px 18px">
+        <summary style="cursor:pointer;font-weight:800;font-size:14px">ℹ️ Note explicative : comment lire cet écran</summary>
+        <div style="font-size:13px;line-height:1.55;margin-top:10px">
+          <p style="margin:0 0 8px"><b>À quoi ça sert.</b> Décider où passer votre temps de prospection : sur les logiciels dont une fiche du pipeline rapporte le plus, et suivre chaque semaine si vous tenez vos objectifs.</p>
+          <ul style="margin:0 0 8px;padding-left:20px">
+            <li><b>Fiche</b> : une opportunité du pipeline (un client et un logiciel). Les doublons et les fiches perdues ne comptent pas.</li>
+            <li><b>CA HT</b> : chiffre d'affaires hors taxes des commandes confirmées, en cours ou livrées. Les brouillons, annulations et renouvellements sont exclus.</li>
+            <li><b>CA par fiche</b> = CA HT ÷ nombre de fiches du logiciel. C'est ce que rapporte en moyenne un prospect travaillé : plus il est élevé, plus le logiciel mérite de temps. C'est la colonne qui classe les lignes.</li>
+            <li><b>Conversion</b> = fiches gagnées ÷ fiches du logiciel.</li>
+            <li><b>Prix catalogue</b> : prix de la licence au catalogue. Un tiret signifie que le logiciel n'est pas (ou plus) dans le catalogue.</li>
+            <li><b>(indicatif)</b> : moins de 5 ventes. Le résultat peut beaucoup changer avec les prochaines ventes.</li>
+            <li><b>Stratégie</b> : prioritaire (appels et démos), offres groupées (plusieurs modules à un même client), automatisé (WhatsApp ou e-mail en série) ou test pilote.</li>
+            <li><b>Part du temps %</b> : comment répartir votre temps de prospection entre les logiciels. Le total doit faire 100 %, sinon une alerte s'affiche.</li>
+          </ul>
+          <p style="margin:0 0 8px"><b>Cette semaine</b> (du lundi au dimanche) : « réalisé / objectif ». Les contacts, démos et propositions se lisent dans l'historique du pipeline (changement d'étape, écran Qualification) ; les ventes, dans les commandes. L'avancement est la moyenne des trois objectifs, plafonnée à 100 %. Les objectifs et les parts se modifient directement ; ils sont enregistrés avec les réglages du CRM.</p>
+          <p style="margin:0"><b>À garder en tête.</b> Avec peu de ventes, ces chiffres sont des indications, pas des preuves. Beaucoup de ventes viennent de clients que vous connaissiez déjà : le taux sur des prospects inconnus se mesurera semaine après semaine. Un client (par exemple Angel's Group) n'est pas un logiciel : chaque logiciel a sa propre ligne.</p>
+        </div>
+      </details>
     </div>
     <div id="view-qualification" class="hidden fade-in">
       <h1 class="page-title">✅ Qualification des prospects</h1>
@@ -5163,6 +5180,28 @@ const LOGICIELS_SEED = [
     ventes:0,
     prospects:0,
     actif:true
+  },
+  {
+    id:'log_avinest',
+    nom:'AviNest Pro',
+    version:'v1.0',
+    cat:'Aviculture',
+    plateforme:'Web',
+    type_licence:'Perpetuelle',
+    support:'1an',
+    desc:'ERP avicole : lots et élevage, suivi quotidien (mortalité, aliment, eau, pesée, œufs), prophylaxie, stock, ventes et créances, trésorerie et rentabilité par lot, comptabilité SYSCOHADA. Des modules supplémentaires peuvent être ajoutés.',
+    modules:'Tableau de Bord,Lots & Élevage,Suivi Quotidien,Prophylaxie,Stock,Ventes & Créances,Trésorerie & Rentabilité,SYSCOHADA',
+    prixNum:400000,
+    prix:'400 000',
+    prixMensuel:40000,
+    icon:'🐔',
+    color:'#65A30D',
+    actif:true,
+    demo:'', video:'', doc:'',
+    remiseMax:10,
+    commission:10,
+    ventes:0,
+    prospects:0
   },
   {
     id:'log_angels_transport',
@@ -8953,7 +8992,7 @@ function loadAll() {
     else if(data && Array.isArray(data) && data.length > 0) {
       // Pour logiciels : merger le seed pour les IDs absents
       if(key === 'logiciels') {
-        const _dup = new Set(['log_avinest','log_menkoimmo']);
+        const _dup = new Set(['log_menkoimmo']);
         data = data.filter(l=>!_dup.has(l.id));
         const existingIds = new Set(data.map(l=>l.id));
         const missing = LOGICIELS_SEED.filter(l=>!existingIds.has(l.id));
@@ -9963,7 +10002,7 @@ function cmdNumero(date) {
 function cmdCompteurMemo(ref){ const m = /^CMD-(\d{4})-(\d+)$/.exec(ref||''); if(m) lsSave('cmd_compteur_'+m[1], Math.max(parseInt(lsLoad('cmd_compteur_'+m[1]),10)||0, parseInt(m[2],10))); }
 
 // Anciens noms commerciaux affichés dans la liste des logiciels d'une commande (même logiciel, nom changé).
-const CMD_ANCIENS_NOMS = { log_angels_agro:'ex-AviNest Pro · AvicoSuite' };
+const CMD_ANCIENS_NOMS = {};
 // Taux de TVA d'une commande : 18 % (paramétrable) ou 0 quand la commande est saisie « sans TVA ».
 function cmdTauxTva(){ return (document.getElementById('cmd-tva-mode')||{}).value==='sans' ? 0 : (CONFIG.tva||18)/100; }
 
