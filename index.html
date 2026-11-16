@@ -1220,7 +1220,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--primary)}
         </select>
         <button class="btn btn-primary btn-sm" onclick="openNewDeal()">+ Ajouter deal</button>
         <div style="margin-left:auto" class="flex gap-2">
-          <span class="chip">💰 Total visible: <strong id="pipeline-total">0 FCFA</strong></span>
+          <span class="chip">💰 Total chiffré : <strong id="pipeline-total">0 FCFA</strong></span>
         </div>
       </div>
 
@@ -1331,7 +1331,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--primary)}
     <div id="view-agenda" class="hidden fade-in">
       <div style="margin-bottom:16px">
         <h1 class="page-title">📅 Agenda intelligent</h1>
-        <p class="page-sub">RDV commerciaux, visio, synchronisation Google / Outlook / WhatsApp</p>
+        <p class="page-sub">RDV commerciaux et visio · export vers Google Agenda / Outlook (.ics) · rappel et invitation par WhatsApp ou e-mail</p>
       </div>
 
       <div class="flex" style="gap:16px;flex-wrap:wrap">
@@ -6160,7 +6160,7 @@ function renderKanban(list) {
   const board = document.getElementById('kanban-board');
   board.innerHTML = STAGES.map(s=>{
     const sDeals = list.filter(d=>d.stage===s.id);
-    const total = sDeals.reduce((a,d)=>a+d.valeur,0);
+    const total = sDeals.reduce((a,d)=>a+(d.valeur||0),0);
     return `
     <div class="kanban-col" id="col-${s.id}" 
       ondragover="event.preventDefault();this.classList.add('drag-active')"
@@ -6173,7 +6173,7 @@ function renderKanban(list) {
         </div>
         <span class="stage-count">${sDeals.length}</span>
       </div>
-      ${total>0?`<div style="padding:6px 10px 0;font-size:10px;color:var(--muted)">💰 ${(total/1000).toFixed(0)}k FCFA</div>`:''}
+      ${total>0?`<div style="padding:6px 10px 0;font-size:10px;color:var(--muted)">💰 ${(total/1000).toFixed(0)}k FCFA chiffrés</div>`:(sDeals.length?`<div style="padding:6px 10px 0;font-size:10px;color:var(--muted)">💰 aucun montant chiffré</div>`:'')}
       <div class="kanban-cards" id="cards-${s.id}" data-paginate="more" data-pg-item=".deal-card" data-pg-size="20">
         ${sDeals.map(d=>dealCard(d)).join('')}
         <div class="drop-zone">Déposer ici</div>
@@ -6196,8 +6196,8 @@ function dealCard(d) {
     <div class="deal-sub">📅 ${d.date||''}</div>
     <div style="display:flex;gap:4px;flex-wrap:wrap;margin:4px 0">${crmTag}${geoTag}</div>
     <div class="deal-footer">
-      <span class="deal-val">${((d.valeur||0)/1000).toFixed(0)}k FCFA</span>
-      <div class="deal-avatar" style="background:${d.color||'#0e7490'}" title="${d.commercial||''}">${ini}</div>
+      ${d.valeur>0?`<span class="deal-val">${(d.valeur/1000).toFixed(0)}k FCFA</span>`:`<span class="deal-val" style="color:var(--muted);font-weight:600" title="Montant non chiffré : à saisir (✏️ Modifier)">${d.valeurEst>0?`non chiffré <small>(cat. ${(d.valeurEst/1000).toFixed(0)}k)</small>`:'non chiffré'}</span>`}
+      ${d.commercial?`<div class="deal-avatar" style="background:${d.color||'#0e7490'}" title="${d.commercial}">${ini}</div>`:`<div class="deal-avatar" style="background:var(--muted)" title="Commercial non attribué">–</div>`}
     </div>
     <!-- Actions CRUD -->
     <div style="display:flex;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)" onclick="event.stopPropagation()">
@@ -7740,7 +7740,7 @@ function saveDeal() {
   var client     = document.getElementById('deal-client').value.trim();
   var clientId   = parseInt(document.getElementById('deal-client-id').value)||null;
   var logiciel   = document.getElementById('deal-logiciel').value;
-  var valeur     = parseInt(document.getElementById('deal-val').value)||500000;
+  var valeur     = parseInt(document.getElementById('deal-val').value)||0; // 0 = montant non chiffré (plus de valeur par défaut inventée)
   var commercial = document.getElementById('deal-commercial').value;
   var stage      = document.getElementById('deal-stage').value;
   var notes      = document.getElementById('deal-notes').value.trim();
@@ -7763,7 +7763,7 @@ function saveDeal() {
     var d = DEALS.find(function(x){ return x.id===parseInt(editId)||x.id===editId; });
     if(d) {
       const prevStage = d.stage;
-      d.client=client; d.clientId=clientId; d.logiciel=logiciel; d.valeur=valeur; d.commercial=commercial; d.stage=stage; d.notes=notes;
+      d.client=client; d.clientId=clientId; d.logiciel=logiciel; d.valeur=valeur; d.valeurSaisie=valeur>0; d.commercial=commercial; d.stage=stage; d.notes=notes;
       if(prevStage && prevStage !== stage) {
         if(!d.history) d.history=[];
         const stageLabels={prospect:'Prospect',contact:'Contact',demo:'Démo',proposition:'Proposition',negociation:'Négociation',gagne:'Gagné ✓',perdu:'Perdu ✗'};
@@ -7774,7 +7774,7 @@ function saveDeal() {
   } else {
     var newId = DEALS.length ? Math.max.apply(null, DEALS.map(function(x){return parseInt(x.id)||0;}))+1 : 1;
     const initHistory = [{date:new Date().toISOString(),type:'creation',ico:'🎯',label:'Deal créé',note:'Deal ajouté au pipeline — étape : '+(({prospect:'Prospect',contact:'Contact',demo:'Démo',proposition:'Proposition',negociation:'Négociation',gagne:'Gagné ✓',perdu:'Perdu ✗'})[stage]||stage),resultat:'',commercial:commercial}];
-    DEALS.push({id:newId, client:client, clientId:clientId, logiciel:logiciel, valeur:valeur, commercial:commercial, stage:stage, notes:notes, color:'#0e7490', date:new Date().toLocaleDateString('fr-FR'), history:initHistory});
+    DEALS.push({id:newId, client:client, clientId:clientId, logiciel:logiciel, valeur:valeur, valeurSaisie:valeur>0, commercial:commercial, stage:stage, notes:notes, color:'#0e7490', date:new Date().toLocaleDateString('fr-FR'), history:initHistory});
     showToast('✅ Deal créé — '+client);
   }
   closeDeal();
@@ -8316,8 +8316,9 @@ function filterPipeline(sel) { applyPipelineFilters(); }
 function filterByLogiciel(sel) { applyPipelineFilters(); }
 function updatePipelineTotal(deals) {
   const total = deals.reduce((s,d)=>s+(d.valeur||0),0);
+  const nonChiffres = deals.filter(d=>!(d.valeur>0) && d.stage!=='perdu').length;
   const el = document.getElementById('pipeline-total');
-  if(el) el.textContent = total.toLocaleString('fr-FR')+' FCFA';
+  if(el) el.textContent = total.toLocaleString('fr-FR')+' FCFA'+(nonChiffres?' · '+nonChiffres+' non chiffré'+(nonChiffres>1?'s':''):'');
 }
 function populatePipelineFilters() {
   const fComm = document.getElementById('filter-commercial');
@@ -11194,6 +11195,15 @@ function relanceSaveConfig(){
 // ═══════════════════════════════════════════════════════════
 function _stageFromEtape(e){ return ['prospect','contact','demo','proposition','negociation'][Math.min(e,4)] || 'prospect'; }
 
+function _dealPrixCatalogue(nom){ return (LOGICIELS.find(l=>l.nom===nom)||{}).prixNum || 0; }
+// Montant « réel » d'un prospect : la valeur de sa fiche ne compte que si un devis existe (étape Proposition ou Négociation).
+// Avant cela, la valeur de la fiche (souvent un montant de remplissage identique pour tous) n'est qu'un potentiel :
+// elle reste visible comme estimation mais n'entre ni dans le total du pipeline ni dans les prévisions.
+function _prospectMontantReel(c){
+  if(!(c.valeur>0)) return 0;
+  const st=_stageFromEtape((typeof aiGetEtape==='function')?aiGetEtape(c):0);
+  return (st==='proposition'||st==='negociation') ? c.valeur : 0;
+}
 function syncProspectsToPipeline(){
   let changed=false;
   let nextId = DEALS.length ? Math.max(...DEALS.map(d=>parseInt(d.id)||0))+1 : 1;
@@ -11204,7 +11214,7 @@ function syncProspectsToPipeline(){
     if(!deal){
       DEALS.push({
         id: nextId++, client:c.nom, clientId:c.id, logiciel:c.logiciel||'',
-        valeur: c.valeur>0?c.valeur:( (LOGICIELS.find(l=>l.nom===c.logiciel)||{}).prixNum || 0 ),
+        valeur: _prospectMontantReel(c), valeurEst: _prospectMontantReel(c)>0?0:(c.valeur>0?c.valeur:_dealPrixCatalogue(c.logiciel)),
         commercial:c.commercial||'', stage, notes:c.notes||'', color:'#0e7490',
         date:new Date().toLocaleDateString('fr-FR'), fromProspect:true,
         history:[{date:new Date().toISOString(),type:'creation',ico:'🎯',label:'Deal créé (prospect)',note:'Généré depuis le prospect',resultat:'',commercial:c.commercial||''}]
@@ -11212,6 +11222,12 @@ function syncProspectsToPipeline(){
       changed=true;
     } else if(deal.fromProspect && deal.stage!==stage && deal.stage!=='gagne' && deal.stage!=='perdu'){
       deal.stage=stage; changed=true;
+    }
+    // Montant : seule une valeur réelle (fiche client ou saisie) compte dans le pipeline ; le prix catalogue n'est qu'une estimation à part.
+    if(deal && deal.fromProspect && !deal.valeurSaisie && deal.stage!=='gagne'){
+      const reel=_prospectMontantReel(c);
+      if(reel>0){ if(deal.valeur!==reel){ deal.valeur=reel; deal.valeurEst=0; changed=true; } }
+      else if(deal.valeur>0 && (deal.valeur===_dealPrixCatalogue(deal.logiciel) || deal.valeur===c.valeur)){ deal.valeurEst=deal.valeur; deal.valeur=0; changed=true; }
     }
   });
   if(changed) saveStore('deals');
