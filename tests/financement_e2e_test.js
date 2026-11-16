@@ -14,6 +14,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     page.on("pageerror", (e) => errors.push("pageerror: " + e.message)); page.on("dialog", (d) => d.accept());
     await page.goto("http://localhost:4219/index.html"); await page.waitForTimeout(1200);
     await page.evaluate(() => { currentUser = USERS.find((u) => u.role === "super_admin"); enterApp(currentUser); }); await page.waitForTimeout(2000);
+    await page.evaluate(() => { const l = LOGICIELS.find((x) => x.nom === "ImmoSuite ERP"); l.prixNum = 750000; l.prix = "750 000"; });   // prix de référence du test : les attentes ci-dessous sont calculées sur un catalogue à 750 000 (le catalogue réel est à 4 000 000)
 
     console.log("▶ Navigation");
     await page.evaluate(() => navGroup("finance", null)); await page.waitForTimeout(300);
@@ -49,6 +50,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(await page.locator('[data-p][data-f="nom"]').count() === 4, "suppression d'un poste");
     await page.click('[data-tab="proj"]'); await page.waitForTimeout(200);
     const etats = await page.locator("#fin-body").innerText();
+
     ok(await page.locator("#fin-body table").count() === 8, "états financiers : revenus par logiciel, récurrents, exploitation 12 mois, compte de résultat, flux, bilan, tour de table, plan sans financement");
     ok((await page.locator("#fin-body").innerText()).includes("Compte d'exploitation prévisionnel — 12 premiers mois") && await page.locator("#fin-body table", { hasText: "Compte d'exploitation prévisionnel" }).count() === 0 && await page.locator("#fin-body .card", { has: page.locator("table"), hasText: "12 premiers mois" }).locator("thead th").count() === 14, "compte d'exploitation prévisionnel : 12 mois + total (14 colonnes)");
     ok(etats.includes("Total actif") && etats.includes("Total passif") && etats.includes("Écart actif − passif"), "bilan simplifié présent");
