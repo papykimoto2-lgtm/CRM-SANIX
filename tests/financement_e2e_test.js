@@ -249,6 +249,11 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     for (const id of ["p2", "p3", "p4", "p5"]) await setP(id, "nb", "0");
     await setP("p1", "cout", "300000");
     await page.click('[data-tab="dossier"]'); await page.waitForTimeout(250);
+    ok(await page.locator("#fin-body .alert-danger").count() === 1 && (await page.locator("#fin-body .alert-danger").innerText()).includes("régime d'imposition"), "plan rentable mais régime d'imposition non confirmé : dossier bloqué pour ce seul motif");
+    await page.click('[data-tab="hyp"]'); await page.waitForTimeout(200);
+    ok(await page.locator('[data-k="regime"]').inputValue() === "auto" && await page.locator('[data-k="ticOn"]').isChecked() && await page.locator('[data-k="cgaOn"]').count() === 1, "hypothèses : régime automatique, secteur TIC coché par défaut");
+    await page.check('[data-k="regimeConfirme"]'); await page.waitForTimeout(200);
+    await page.click('[data-tab="dossier"]'); await page.waitForTimeout(250);
     ok(await page.locator("#fin-body .alert-danger").count() === 0, "plan rentable sans besoin de financement : plus de contrôle bloquant");
     await page.check('[data-k="valide"]'); await page.waitForTimeout(200);
     ok(await page.locator("#fin-body .alert-success").count() === 1 && await page.locator("#fin-body .alert-warn").count() === 0, "validation : l'avertissement laisse place à la confirmation");

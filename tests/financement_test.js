@@ -7,7 +7,7 @@ const near = (a, b, tol, m) => ok(Math.abs(a - b) <= (tol == null ? 1e-6 : tol),
 const base = () => Object.assign(calc.defauts({}), {
   clientsAn1: 12, prixLicence: 1000000, hausseAn: 0, maintenancePct: 0, servicesPct: 0, baseInstallee: 0, delaiEncaissement: 0, retentionPct: 100,
   maintDelaiMois: 0, croiss: [0, 0, 0, 0], croissSans: [0, 0, 0, 0], directsPct: 0, commissionPct: 0, iaMensuel: 0, marketingPct: 0, marketingMin: 0, marketingBoost: 0,
-  fixesMensuels: 100000, chargesSocialesPct: 0, augmentationSalairesPct: 0, impotPct: 0, tresoDepart: 0, postes: [], margeSecuritePct: 0,
+  fixesMensuels: 100000, chargesSocialesPct: 0, augmentationSalairesPct: 0, impotPct: 0, regime: "is", ticOn: false, tresoDepart: 0, postes: [], margeSecuritePct: 0,
   supabaseFixeUsd: 0, supabaseProjetUsd: 0, projetsBase: 0, clientsDepart: 0, vercelSiegeUsd: 0, githubSiegeUsd: 0, iaMensuelUsd: 0, fraisPaiementPct: 0 });   // coûts techniques neutralisés : les cas ci-dessous ne testent que le reste
 
 console.log("▶ Ventes et trésorerie");
@@ -450,7 +450,8 @@ console.log("▶ Revue d'audit");
   let cs = calc.controlesDossier(hc(), calc.comparer(hc())); ok(cs.some((c) => c.id === "rentabilite" && c.bloquant), "plan sans rentabilité : contrôle bloquant « rentabilité »");
   cs = calc.controlesDossier(hc({ preMoney: 40e6 }), calc.comparer(hc({ preMoney: 40e6 }))); ok(cs.some((c) => c.id === "controle") && !cs.some((c) => c.id === "capital"), "part cédée 60 % (> 49 %) : contrôle « perte de contrôle »");
   cs = calc.controlesDossier(hc({ preMoney: 1 }), calc.comparer(hc({ preMoney: 1 }))); ok(cs.some((c) => c.id === "capital"), "valorisation dérisoire : part cédée ≈ 100 % → il ne reste rien aux associés");
-  cs = calc.controlesDossier(base(), calc.comparer(base())); ok(cs.length === 0, "plan rentable, aucun besoin : aucun contrôle bloquant");
+  cs = calc.controlesDossier(base(), calc.comparer(base())); ok(cs.length === 1 && cs[0].id === "regime" && cs[0].bloquant, "régime d'imposition non confirmé : seul contrôle bloquant d'un plan rentable");
+  cs = calc.controlesDossier(Object.assign(base(), { regimeConfirme: true }), calc.comparer(Object.assign(base(), { regimeConfirme: true }))); ok(cs.length === 0, "plan rentable, régime confirmé : aucun contrôle bloquant");
   const hv = Object.assign(base(), { fixesMensuels: 2e6, taux: 12, dureeMois: 60, differeMois: 12 }), mixV = calc.comparer(hv).options[3]; ok(mixV.viable || calc.controlesDossier(hv, calc.comparer(hv)).some((c) => c.id === "viable"), "montage non viable : signalé par un contrôle bloquant");
   const tt = calc.tourDeTable(Object.assign(base(), { esopPct: 30, associes: [{ id: "a", nom: "Fondateur", part: 100 }] }), 0.9); ok(tt.every((r) => r.apres >= 0) && Math.abs(tt.reduce((t, r) => t + r.apres, 0) - 1.2) < 1e-9 || tt.every((r) => r.apres >= 0), "tour de table : jamais de part négative (part cédée 90 % + pool 30 %)");
 
@@ -466,6 +467,31 @@ console.log("▶ Revue d'audit");
   const hd = Object.assign(base(), { investissements: [{ id: "k", nom: "Achat", mois: 2, montant: 6e6, duree: 3, finance: false }] }), dette = { montant: 24e6, taux: 12, duree: 36, differe: 6 }, sd = calc.simuler(hd, "avec", { dette }), idd = calc.indicateurs(hd, { opt: "dette", sim: sd, struct: { dette }, viable: true });
   near2(sd.annees[0].interet, 2.56e6, 1e-3, "intérêts année 1 : 6 × 240 000 + 240 000 + 232 000 + 224 000 + 216 000 + 208 000 = 2 560 000"); near2(sd.annees[0].princ, 4e6, 1e-3, "capital remboursé année 1 : 5 × 800 000");
   near2(idd.dette.dscrMin, (10.8e6 - 6e6) / 6.56e6, 1e-6, "DSCR mini = (flux d'exploitation − investissements) / service de la dette = 4 800 000 / 6 560 000");
+}
+
+console.log("▶ Régime d'imposition (DGI : TCU, TEE, RME, réel simplifié, réel normal)");
+{
+  const R = (extra) => calc.simuler(Object.assign(base(), extra), "avec", {}), imp = (r, y) => r.annees[y || 0].impot, near3 = near;
+  // CA = 12 × 1 000 000 HT = 14 160 000 TTC ; bénéfice avant impôt = 12 000 000 − 1 200 000 = 10 800 000
+  ok(calc.regimePourCA(5e6) === "tcu" && calc.regimePourCA(5e6 + 1) === "tee" && calc.regimePourCA(50e6) === "tee" && calc.regimePourCA(50e6 + 1) === "rme" && calc.regimePourCA(200e6) === "rme" && calc.regimePourCA(200e6 + 1) === "rsi" && calc.regimePourCA(500e6) === "rsi" && calc.regimePourCA(500e6 + 1) === "rni", "seuils : 5 M, 50 M, 200 M, 500 M (CA TTC)");
+  near3(imp(R({ regime: "tcu" })), 0.025 * 14.16e6, 1e-3, "TCU : 2,5 % × 14 160 000 = 354 000");
+  near3(imp(R({ regime: "tee" })), 0.05 * 14.16e6, 1e-3, "TEE : 5 % × 14 160 000 = 708 000");
+  near3(imp(R({ regime: "tee", cgaOn: true })), 0.04 * 14.16e6, 1e-3, "TEE avec centre de gestion agréé : 4 % = 566 400");
+  near3(imp(R({ regime: "rme" })), 0.06 * 14.16e6, 1e-3, "RME : 6 % = 849 600");
+  near3(imp(R({ regime: "rme", cgaOn: true })), 0.04 * 14.16e6, 1e-3, "RME avec expert-comptable conventionné : 4 % = 566 400");
+  near3(imp(R({ regime: "auto" })), 0.05 * 14.16e6, 1e-3, "automatique : 14,16 M TTC → TEE (708 000)");
+  near3(imp(R({ regime: "tee", fixesMensuels: 2e6 })), 0.05 * 14.16e6, 1e-3, "impôt sur le CA : dû même en perte");
+  near3(imp(R({ regime: "rsi", impotPct: 25 })), 3e6, 1e-3, "réel simplifié : IS 2 700 000 < minimum de 3 000 000 → 3 000 000");
+  near3(imp(R({ regime: "rsi", impotPct: 25, ticOn: true })), 3.24e6, 1e-3, "secteur TIC : IS 30 % × 10 800 000 = 3 240 000 > minimum");
+  near3(imp(R({ regime: "rni", impotPct: 25 })), 3e6, 1e-3, "réel normal : même minimum de 3 000 000");
+  near3(imp(R({ regime: "rni", impotPct: 25, fixesMensuels: 2e6 })), 3e6, 1e-3, "réel normal en perte : minimum de 3 000 000 dû");
+  near3(imp(R({ regime: "is", impotPct: 25 })), 2.7e6, 1e-3, "mode « IS sur le résultat » : 25 % × 10 800 000 = 2 700 000, sans minimum");
+  const gros = R({ regime: "auto", impotPct: 25, clientsAn1: 300 });      // 300 M HT = 354 M TTC → réel simplifié ; bénéfice 300 M − 1,2 M = 298,8 M
+  ok(gros.mois[0].regime === "rsi" && gros.mois[59].regime === "rsi", "300 M HT (354 M TTC) → réel simplifié sur les 5 ans");
+  near3(imp(gros), 0.25 * 298.8e6, 1e-3, "réel simplifié : IS 25 % × 298 800 000 = 74 700 000 (supérieur au minimum)");
+  const tresoTee = R({ regime: "tee" }).tresoFin, tresoRme = R({ regime: "rme" }).tresoFin;
+  near3(tresoTee - tresoRme, 5 * (0.06 - 0.05) * 14.16e6, 1e-3, "trésorerie 60 mois : écart TEE / RME = 5 ans × 141 600");
+  ok(calc.defauts({}).regime === "auto" && calc.defauts({}).ticOn === true && calc.defauts({}).regimeConfirme === false, "valeurs par défaut : régime automatique, secteur TIC (30 %), non confirmé");
 }
 
 console.log("\nTous les contrôles du modèle de financement sont passés.");
