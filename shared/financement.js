@@ -91,11 +91,18 @@
         { id: 'p4', nom: 'Responsable marketing', nb: 1, cout: 500000, debut: 4, finance: true, acquisition: true },
         { id: 'p5', nom: 'Support & déploiement', nb: 2, cout: 300000, debut: 6, finance: true }
       ],
+      investissements: [],                                                 // décaissements ponctuels : { id, nom, mois (0-59), montant HT, duree (années d'amortissement, 0 = non amorti), finance }. Vide tant que vous ne les saisissez pas.
       baseRetraitee: false,                                                // base du modèle : exclut les clients marqués « partie liée »
       associes: [{ id: 'a1', nom: 'Fondateur(s) et associés actuels', part: 100 }], esopPct: 0,   // tour de table actuel ; pool d'intéressement en % après l'apport
       margeSecuritePct: 20, partCapital: 50, partDette: 30, partSubvention: 20,
       preMoney: null, multEntree: 2, multSortie: 2.5, taux: 12, dureeMois: 60, differeMois: 12
     };
+  }
+
+  /** Investissements saisis, normalisés : montant positif, mois entier de 0 à 59, durée d'amortissement en mois (linéaire, au moins 1 mois ; 0 = non amorti). Les lignes sans montant sont ignorées. */
+  function investissementsActifs(h) {
+    return (h.investissements || []).map((i) => ({ id: i.id, nom: i.nom, montant: pos(i.montant), mois: clamp(Math.round(num(i.mois)), 0, 1e6), mAmort: pos(i.duree) > 0 ? Math.max(1, Math.round(pos(i.duree) * 12)) : 0, finance: i.finance !== false }))
+      .filter((i) => i.montant > 0);
   }
 
   /* ───────────── Simulation mensuelle ───────────── */
@@ -135,7 +142,8 @@
     const coutPoste = (p, y) => pos(p.nb) * pos(p.cout) * cs * Math.pow(1 + num(h.augmentationSalairesPct) / 100, y);
     // Ouverture du bilan simplifié : la société n'a que de la trésorerie et des créances clients (à remplacer par le bilan réel).
     const eq0 = num(h.tresoDepart) + delai * m[0].ca, apports = pos(fin.equity) + pos(fin.subvention);
-    let reste = 0, pool = 0, treso = num(h.tresoDepart), cumRes = 0;
+    const invs = investissementsActifs(h).filter((i) => avec || !i.finance);      // un investissement « financé » n'existe que dans le plan financé
+    let reste = 0, pool = 0, treso = num(h.tresoDepart), cumRes = 0, immo = 0;
     for (let t = 0; t < N; t++) {
       const r = m[t], y = r.y;
       r.directs = pos(h.directsPct) / 100 * r.ca;
@@ -155,6 +163,8 @@
       r.fixes = pos(h.fixesMensuels);
       r.opex = r.directs + r.commissions + r.ia + r.infra + r.mkt + r.sal + r.fixes;
       r.ebitda = r.ca - r.opex;
+      r.capex = sum(invs, (i) => i.mois === t ? i.montant : 0);                                         // décaissement du mois
+      r.dotation = sum(invs, (i) => i.mAmort > 0 && t >= i.mois && t < i.mois + i.mAmort ? i.montant / i.mAmort : 0);   // amortissement linéaire dès le mois d'achat
       r.recu = m[Math.max(0, t - delai)].ca;                                // encaissement décalé ; avant le mois 0 : régime établi
       let inflow = 0;
       if (t === 0) { inflow = pos(fin.equity) + pos(fin.subvention) + (d ? pos(d.montant) : 0); reste = d ? pos(d.montant) : 0; }
@@ -164,13 +174,14 @@
         if (t > dif && t <= dur) princ = t === dur ? reste : Math.min(reste, amort);
         reste -= princ;
       }
-      const ebt = r.ebitda - interet; let impot = 0;
+      const ebt = r.ebitda - r.dotation - interet; let impot = 0;                  // l'amortissement réduit le résultat imposable
       if (ebt < 0) pool += -ebt; else { const use = Math.min(pool, ebt); pool -= use; impot = pos(h.impotPct) / 100 * (ebt - use); }
       r.interet = interet; r.princ = princ; r.impot = impot; r.inflow = inflow;
-      r.flux = r.recu - r.opex - impot - interet - princ + inflow;
+      r.flux = r.recu - r.opex - impot - interet - princ + inflow - r.capex;
       treso += r.flux; r.treso = treso;
-      cumRes += r.ebitda - interet - impot;
-      r.fExpl = r.recu - r.opex - impot; r.fFin = inflow - interet - princ;
+      cumRes += r.ebitda - r.dotation - interet - impot;
+      immo += r.capex - r.dotation; r.immo = immo;                              // immobilisations nettes en fin de mois
+      r.fExpl = r.recu - r.opex - impot; r.fInv = -r.capex; r.fFin = inflow - interet - princ;
       let cre = 0; for (let j = t - delai + 1; j <= t; j++) cre += m[Math.max(j, 0)].ca;      // ventes pas encore encaissées en fin de mois
       r.creances = cre; r.detteFin = reste; r.cap = eq0 + apports + cumRes;
     }
@@ -178,18 +189,48 @@
     for (let y = 0; y < ANNEES; y++) {
       const s = m.slice(y * 12, y * 12 + 12), f = (k) => sum(s, (x) => x[k]);
       const a = { an: y + 1, clients: f('clients'), lic: f('lic'), maint: f('maint'), serv: f('serv'), abo: f('abo'), ca: f('ca'), directs: f('directs'), commissions: f('commissions'),
-        ia: f('ia'), infra: f('infra'), supa: f('supa'), vercel: f('vercel'), github: f('github'), mkt: f('mkt'), sal: f('sal'), fixes: f('fixes'), opex: f('opex'), ebitda: f('ebitda'), interet: f('interet'), princ: f('princ'), impot: f('impot'),
-        flux: f('flux'), fExpl: f('fExpl'), fFin: f('fFin'), salAcq: f('salAcq'), tresoFin: s[11].treso };
-      a.resultatNet = a.ebitda - a.interet - a.impot; a.margeEbitda = a.ca > 0 ? a.ebitda / a.ca : 0;
+        ia: f('ia'), infra: f('infra'), supa: f('supa'), vercel: f('vercel'), github: f('github'), mkt: f('mkt'), sal: f('sal'), fixes: f('fixes'), opex: f('opex'), ebitda: f('ebitda'), capex: f('capex'), dotation: f('dotation'), interet: f('interet'), princ: f('princ'), impot: f('impot'),
+        flux: f('flux'), fExpl: f('fExpl'), fInv: f('fInv'), fFin: f('fFin'), salAcq: f('salAcq'), tresoFin: s[11].treso };
+      a.resultatNet = a.ebitda - a.dotation - a.interet - a.impot; a.margeEbitda = a.ca > 0 ? a.ebitda / a.ca : 0;
       const L = s[11]; a.parcFin = L.parc; a.effectif = L.effectif; a.arr = (L.maint + L.abo) * 12; a.creances = L.creances;
       a.produits = prods.map((p, i) => { const q = (k) => sum(s, (x) => x.prod[i][k]), o = { id: p.id, nom: p.nom, mode: p.mode, clients: q('clients'), lic: q('lic'), serv: q('serv'), maint: q('maint'), abo: q('abo') }; o.recurrent = o.maint + o.abo; o.total = o.lic + o.serv + o.recurrent; return o; });
-      a.bilan = { tresorerie: L.treso, creances: L.creances, actif: L.treso + L.creances, capitaux: L.cap, dette: L.detteFin, passif: L.cap + L.detteFin };
+      a.bilan = { tresorerie: L.treso, creances: L.creances, immo: L.immo, actif: L.treso + L.creances + L.immo, capitaux: L.cap, dette: L.detteFin, passif: L.cap + L.detteFin };
       annees.push(a);
     }
     let min = Infinity, moisMin = 0; m.forEach((x) => { if (x.treso < min) { min = x.treso; moisMin = x.t; } });
     // Point mort : premier mois à partir duquel l'EBITDA reste positif jusqu'à la fin (null s'il n'est jamais atteint durablement)
     let pointMort = null; for (let t = N - 1; t >= 0 && m[t].ebitda > 0; t--) pointMort = t;
     return { plan, mois: m, annees, tresoMin: min, moisMin, tresoFin: m[N - 1].treso, detteRestante: reste, pointMort };
+  }
+
+  /** Compte d'exploitation prévisionnel des n premiers mois d'un plan simulé (12 par défaut). Charges en négatif ; chaque ligne : { lib, v: [n valeurs], total, gras }. */
+  function compteExploitation(sim, n) {
+    n = clamp(Math.round(num(n)) || 12, 1, N); const m = sim.mois.slice(0, n);
+    const L = (lib, f, gras) => { const v = m.map(f); return { lib, v, total: sum(v, (x) => x), gras: !!gras }; };
+    const k = (key) => (x) => x[key], neg = (key) => (x) => -x[key], avantImpot = (x) => x.ebitda - x.dotation - x.interet;
+    return { n, lignes: [
+      L('Licences perpétuelles', k('lic')), L('Frais initiaux et services', k('serv')), L('Maintenance', k('maint')), L('Abonnements', k('abo')), L('Chiffre d\'affaires', k('ca'), true),
+      L('Coûts directs', neg('directs')), L('Commissions', neg('commissions')), L('Salaires et charges sociales', neg('sal')), L('Marketing', neg('mkt')), L('Charges fixes', neg('fixes')),
+      L('Infrastructure technique', neg('infra')), L('Intelligence artificielle (Anthropic)', neg('ia')), L('Total des charges d\'exploitation', neg('opex'), true),
+      L('Excédent brut d\'exploitation (EBITDA)', k('ebitda'), true), L('Dotations aux amortissements', neg('dotation')), L('Résultat d\'exploitation', (x) => x.ebitda - x.dotation, true),
+      L('Charges financières (intérêts)', neg('interet')), L('Résultat avant impôt', avantImpot, true), L('Impôt sur les sociétés', neg('impot')), L('Résultat net', (x) => avantImpot(x) - x.impot, true)] };
+  }
+
+  /** Tableau des immobilisations et plan d'amortissement (linéaire) : par investissement et par année, acquisitions, dotation, cumul des amortissements, valeur brute et valeur nette comptable.
+   *  plan : 'avec' (tous les investissements) ou 'sans' (seulement ceux déjà engagés). */
+  function tableauImmobilisations(h, plan) {
+    const L = investissementsActifs(h).filter((i) => plan !== 'sans' || !i.finance);
+    const lignes = L.map((i) => {
+      const annees = []; let cumul = 0;
+      for (let y = 0; y < ANNEES; y++) {
+        let dot = 0; for (let t = y * 12; t < y * 12 + 12; t++) if (i.mAmort > 0 && t >= i.mois && t < i.mois + i.mAmort) dot += i.montant / i.mAmort;
+        cumul += dot; const acquis = i.mois <= y * 12 + 11, brut = acquis ? i.montant : 0;
+        annees.push({ an: y + 1, acquisitions: i.mois >= y * 12 && i.mois <= y * 12 + 11 ? i.montant : 0, dotation: dot, cumul: acquis ? cumul : 0, brut, vnc: brut - (acquis ? cumul : 0) });
+      }
+      return { id: i.id, nom: i.nom, mois: i.mois, montant: i.montant, duree: i.mAmort / 12, taux: i.mAmort > 0 ? 1200 / i.mAmort : 0, finance: i.finance, annees };
+    });
+    const total = []; for (let y = 0; y < ANNEES; y++) { const f = (k) => sum(lignes, (l) => l.annees[y][k]); total.push({ an: y + 1, acquisitions: f('acquisitions'), dotation: f('dotation'), cumul: f('cumul'), brut: f('brut'), vnc: f('vnc') }); }
+    return { lignes, total };
   }
 
   /* ───────────── Dimensionnement et indicateurs par option ───────────── */
@@ -257,7 +298,7 @@
     const salFin = sum(s, (x) => sum(h.postes, (p) => p.finance && x.t >= num(p.debut) ? pos(p.nb) * pos(p.cout) * (1 + pos(h.chargesSocialesPct) / 100) * Math.pow(1 + num(h.augmentationSalairesPct) / 100, x.y) : 0));
     const lignes = [
       ['Salaires des embauches financées', salFin], ['Salaires de l\'équipe actuelle', f('sal') - salFin], ['Marketing et campagnes', f('mkt')],
-      ['Charges fixes', f('fixes')], ['Infrastructure technique (Supabase, Vercel, GitHub)', f('infra')], ['Intelligence artificielle (Anthropic)', f('ia')], ['Coûts directs et commissions', f('directs') + f('commissions')], ['Impôts', f('impot')]
+      ['Charges fixes', f('fixes')], ['Investissements (matériel, développement, autres)', f('capex')], ['Infrastructure technique (Supabase, Vercel, GitHub)', f('infra')], ['Intelligence artificielle (Anthropic)', f('ia')], ['Coûts directs et commissions', f('directs') + f('commissions')], ['Impôts', f('impot')]
     ].filter((l) => l[1] > 0.5);
     const depenses = sum(lignes, (l) => l[1]), recu = f('recu');
     return { mois: avec0.moisMin + 1, lignes, depenses, recu, tresoDepart: num(h.tresoDepart), besoin };
@@ -406,7 +447,7 @@
     return { base, leviers, seuils: { clients: seuil(h, 'clientsAn1'), prix: (h.produits || []).some((p) => pos(p.part) > 0) ? seuilPrix(h) : seuil(h, 'prixLicence') }, combine: { etapes, final: mcur, h: cur, rentable: mcur.pointMort !== null, autofinance: mcur.besoin < 0.5 } };
   }
 
-  const calc = { N, ANNEES, SCEN, SCEN_LABEL, OPT_LABEL, MODES, LEVIERS, produitsDefaut, fusionProduits, diffProduits, editsDepuisListe, produitsActifs, contratsParLogiciel, scalePrix, seuilPrix, cle, analyserTraction, economieUnitaire, tourDeTable, evaluer, optimiser, seuil, defauts, simuler, structure, dimensionner, indicateurs, comparer, emplois, preMoney };
+  const calc = { compteExploitation, tableauImmobilisations, investissementsActifs, N, ANNEES, SCEN, SCEN_LABEL, OPT_LABEL, MODES, LEVIERS, produitsDefaut, fusionProduits, diffProduits, editsDepuisListe, produitsActifs, contratsParLogiciel, scalePrix, seuilPrix, cle, analyserTraction, economieUnitaire, tourDeTable, evaluer, optimiser, seuil, defauts, simuler, structure, dimensionner, indicateurs, comparer, emplois, preMoney };
   G.SanixFinancement = { calc };
   if (typeof module !== 'undefined' && module.exports) module.exports = { calc };
   if (!G.document) return;
@@ -455,6 +496,10 @@
     if (!(top in ov)) ov[top] = clone(h[top]);
     let o = ov; for (let i = 0; i < parts.length - 1; i++) o = o[parts[i]];
     o[parts[parts.length - 1]] = val; persist(); recompute();
+  }
+  function editInv(id, field, val) {
+    if (!('investissements' in ov)) ov.investissements = clone(h.investissements);
+    const i = ov.investissements.filter((x) => x.id === id)[0]; if (!i) return; i[field] = val; persist(); recompute();
   }
   function editPoste(id, field, val) {
     if (!('postes' in ov)) ov.postes = clone(h.postes);
@@ -548,6 +593,7 @@
       ${bloc('💸 Coûts', grid(field('Autres coûts directs (% du CA) : outils tiers, paiement', 'directsPct', h.directsPct) + field('Commissions (% des licences)', 'commissionPct', h.commissionPct) + field('Marketing (% du CA)', 'marketingPct', h.marketingPct) + field('Marketing minimum (par mois)', 'marketingMin', h.marketingMin) + field('Campagnes financées (par mois)', 'marketingBoost', h.marketingBoost) + field('Charges fixes (par mois)', 'fixesMensuels', h.fixesMensuels) + field('Charges sociales (%)', 'chargesSocialesPct', h.chargesSocialesPct) + field('Augmentation annuelle des salaires (%)', 'augmentationSalairesPct', h.augmentationSalairesPct) + field('Impôt sur les sociétés (%)', 'impotPct', h.impotPct) + field('Trésorerie actuelle', 'tresoDepart', h.tresoDepart)))}
       ${bloc('☁️ Infrastructure technique et intelligence artificielle', note('Tarifs publics en dollars (consultés le 16/11/2026), convertis en FCFA avec le taux et les frais ci-dessous. Supabase : abonnement Pro avec le 1er projet, puis un tarif par projet supplémentaire. Vercel et GitHub : par poste technique.') + grid(field('Taux : 1 dollar en FCFA', 'usdFcfa', h.usdFcfa, { min: 0 }) + field('Frais de change et de carte (%)', 'fraisPaiementPct', h.fraisPaiementPct, { min: 0 }) + field('Supabase Pro : abonnement ($/mois)', 'supabaseFixeUsd', h.supabaseFixeUsd, { min: 0 }) + field('Supabase : par projet supplémentaire ($/mois)', 'supabaseProjetUsd', h.supabaseProjetUsd, { min: 0 }) + field('Projets internes (CRM, IA…)', 'projetsBase', h.projetsBase, { min: 0 }) + field('Clients déjà hébergés', 'clientsDepart', h.clientsDepart, { min: 0, hint: base.clientsFactures ? '(CRM : ' + base.clientsFactures + ')' : '' }) + field('Vercel Pro : par poste technique ($/mois)', 'vercelSiegeUsd', h.vercelSiegeUsd, { min: 0 }) + field('GitHub Team : par poste ($/mois)', 'githubSiegeUsd', h.githubSiegeUsd, { min: 0 }) + field('GitHub Team à partir de … postes', 'githubSeuil', h.githubSeuil, { min: 1 }) + field('Anthropic : consommation des agents ($/mois)', 'iaMensuelUsd', h.iaMensuelUsd, { min: 0 }) + field('Anthropic : hausse par an (%)', 'iaCroissanceAn', h.iaCroissanceAn, { min: 0 })) + `<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;font-size:13px;margin-top:12px"><input type="checkbox" data-k="projetParClient" ${h.projetParClient ? 'checked' : ''} style="margin-top:3px"><span><b>Un projet Supabase par client</b> (votre organisation actuelle fonctionne ainsi). Décochez si vous prévoyez d'héberger plusieurs clients ensemble : le coût d'hébergement ne grandit alors plus avec chaque client.</span></label>`)}
       ${bloc('👥 Équipe', note('Coût mensuel brut par personne. « Financé » : poste créé grâce au financement (absent du scénario sans financement). « Début » : mois de prise de poste (0 = déjà en place). « Acquisition » : poste commercial ou marketing, compté dans le coût d\'acquisition d\'un client. « Technique » : poste qui utilise Vercel et GitHub (vous comptez déjà pour un poste).') + `<div style="overflow-x:auto"><table class="client-table" style="min-width:560px"><thead><tr><th>Poste</th><th>Nombre</th><th>Coût mensuel</th><th>Début (mois)</th><th>Financé</th><th title="Compte dans le coût d'acquisition d'un client">Acquisition</th><th title="Poste technique : compte pour Vercel et GitHub">Technique</th><th></th></tr></thead><tbody>${h.postes.map(poste).join('')}</tbody></table></div><button class="btn btn-outline btn-sm" data-act="poste-add" style="margin-top:10px">+ Ajouter un poste</button>`)}
+      ${bloc('🏗️ Investissements', blocInvestissements())}
       ${bloc('🧾 Capital actuel', note('Répartition du capital avant l\'apport, en %. Sert au tour de table : dilution des associés après l\'entrée d\'un investisseur.') + `<div style="overflow-x:auto"><table class="client-table" style="min-width:420px"><thead><tr><th>Associé</th><th>Part (%)</th><th></th></tr></thead><tbody>${h.associes.map((x) => `<tr><td><input class="form-input" data-a="${esc(x.id)}" data-f="nom" value="${esc(x.nom)}"></td><td><input class="form-input" type="number" min="0" max="100" style="width:90px" data-a="${esc(x.id)}" data-f="part" value="${num(x.part)}"></td><td><button class="btn btn-outline btn-sm" data-act="associe-del" data-id="${esc(x.id)}" aria-label="Supprimer cet associé">🗑</button></td></tr>`).join('')}</tbody></table></div><button class="btn btn-outline btn-sm" data-act="associe-add" style="margin:10px 0 12px">+ Ajouter un associé</button>` + grid(field('Pool d\'intéressement après l\'apport (% du capital)', 'esopPct', h.esopPct, { min: 0 })))}
       ${bloc('🏦 Conditions de financement', grid(field('Valorisation avant apport (vide = automatique)', 'preMoney', ov.preMoney, { min: 0 }) + field('Multiple d\'entrée (× CA année 1)', 'multEntree', h.multEntree) + field('Multiple de sortie (× CA année 5)', 'multSortie', h.multSortie) + field('Taux du prêt (% / an)', 'taux', h.taux) + field('Durée du prêt (mois)', 'dureeMois', h.dureeMois, { min: 1 }) + field('Différé de remboursement (mois)', 'differeMois', h.differeMois, { min: 0 })))}
       <button class="btn btn-outline btn-sm" data-act="reset">↺ Revenir aux valeurs initiales</button>`;
@@ -639,19 +685,43 @@
       <tr style="font-weight:700"><td colspan="5" style="text-align:right">Total des parts (ramené à 100 %)</td><td>${fmt(tot)} %</td></tr></tbody></table></div>${tot > 0 ? '' : note('⚠️ Aucune part de ventes : le modèle utilise un produit moyen. Indiquez la part de chaque logiciel.')}`;
   }
 
+  /** Tableau des investissements (matériel, développement capitalisé, juridique…). Vide par défaut : rien n'est inventé, à saisir. */
+  function blocInvestissements() {
+    const lignes = h.investissements || [], tot = sum(investissementsActifs(h), (i) => i.montant);
+    const row = (x) => `<tr><td><input class="form-input" data-inv="${esc(x.id)}" data-f="nom" value="${esc(x.nom)}" aria-label="Investissement"></td>
+      <td><input class="form-input" type="number" min="0" max="59" step="1" style="width:80px" data-inv="${esc(x.id)}" data-f="mois" value="${num(x.mois)}" aria-label="Mois de l'achat"></td>
+      <td><input class="form-input" type="number" min="0" style="width:140px" data-inv="${esc(x.id)}" data-f="montant" value="${x.montant == null ? '' : num(x.montant)}" aria-label="Montant"></td>
+      <td><input class="form-input" type="number" min="0" step="0.5" style="width:90px" data-inv="${esc(x.id)}" data-f="duree" value="${x.duree == null ? '' : num(x.duree)}" aria-label="Durée d'amortissement en années"></td>
+      <td style="text-align:center"><input type="checkbox" data-inv="${esc(x.id)}" data-f="finance" ${x.finance !== false ? 'checked' : ''} aria-label="Financé"></td>
+      <td><button class="btn btn-outline btn-sm" data-act="inv-del" data-id="${esc(x.id)}" aria-label="Supprimer cet investissement">🗑</button></td></tr>`;
+    return note('Achats ponctuels qui ne sont pas des charges courantes : <b>matériel</b> (ordinateurs, serveur), <b>développement</b> capitalisé, <b>marque et juridique</b>, <b>aménagement</b>, <b>véhicule</b>. « Mois » : mois de l\'achat (0 = maintenant, 59 = dernier mois). « Amortissement » : durée en années, linéaire (0 = non amorti, par exemple un dépôt de garantie). « Financé » : acheté grâce au financement (absent du scénario sans financement). Chaque investissement s\'ajoute au <b>montant à lever</b>, apparaît dans les flux de trésorerie, et son amortissement réduit le résultat et l\'impôt.')
+      + (lignes.length ? `<div style="overflow-x:auto"><table class="client-table" style="min-width:620px"><thead><tr><th>Investissement</th><th>Mois</th><th>Montant (${esc(base.devise)})</th><th title="Durée d'amortissement linéaire, en années (0 = non amorti)">Amortissement (ans)</th><th>Financé</th><th></th></tr></thead><tbody>${lignes.map(row).join('')}
+        <tr style="font-weight:700"><td colspan="2" style="text-align:right">Total</td><td>${fmt(tot)}</td><td colspan="3"></td></tr></tbody></table></div>${lignes.some((x) => !(pos(x.montant) > 0)) ? note('⚠️ Une ligne sans montant est ignorée par le calcul.') : ''}`
+        : `<p class="muted" style="margin:0 0 10px">Aucun investissement saisi : le plan ne contient que des charges de fonctionnement et le montant à lever ne couvre pas d'achats.</p>`)
+      + '<button class="btn btn-outline btn-sm" data-act="inv-add" style="margin-top:10px">+ Ajouter un investissement</button>';
+  }
+
   function tabProj() {
     const s = res.sans.annees, m = res.options[3].sim.annees;
     // colonne : [libellé, valeur, en gras, valeur brute (sans conversion en milliers)]
     const L = (lib, k, bold) => [lib, (x) => x[k], bold], neg = (lib, k) => [lib, (x) => -x[k]], B = (lib, k, bold) => [lib, (x) => x.bilan[k], bold];
     const clients = ['Nouveaux clients', (x) => x.clients.toLocaleString('fr-FR', { maximumFractionDigits: 1 }), false, true];
     const tab = (titre, A, cols) => `<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">${titre}</span></div><div style="overflow-x:auto"><table class="client-table" style="min-width:560px"><thead><tr><th></th>${A.map((x) => `<th style="text-align:right">An ${x.an}</th>`).join('')}</tr></thead><tbody>${cols.map((c) => `<tr style="${c[2] ? 'font-weight:700' : ''}"><td>${c[0]}</td>${A.map((x) => `<td style="text-align:right">${c[3] ? c[1](x) : fmt(c[1](x) / 1e3)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
+    const invOn = investissementsActifs(h).length > 0;
+    const ce = calc.compteExploitation(res.options[3].sim, 12), ceSkip = (l) => !invOn && /^(Dotations|Résultat d'exploitation)/.test(l.lib);
+    const exploitation12 = `<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">📅 Compte d'exploitation prévisionnel — 12 premiers mois</span></div><div style="overflow-x:auto"><table class="client-table" style="min-width:1100px;font-size:12px"><thead><tr><th></th>${ce.lignes[0].v.map((_, i) => `<th style="text-align:right">${esc(moisLabel(i))}</th>`).join('')}<th style="text-align:right">Total</th></tr></thead><tbody>${ce.lignes.filter((l) => !ceSkip(l)).map((l) => `<tr style="${l.gras ? 'font-weight:700' : ''}"><td style="min-width:230px;white-space:nowrap">${esc(l.lib)}</td>${l.v.map((x) => `<td style="text-align:right">${fmt(x / 1e3)}</td>`).join('')}<td style="text-align:right;font-weight:700">${fmt(l.total / 1e3)}</td></tr>`).join('')}</tbody></table></div></div>`;
+    const imm = calc.tableauImmobilisations(h, 'avec');
+    const immoTables = invOn ? `<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">🏗️ Tableau des immobilisations</span></div><div style="overflow-x:auto"><table class="client-table" style="min-width:640px"><thead><tr><th>Désignation</th><th>Acquisition</th><th style="text-align:right">Valeur d'origine</th><th style="text-align:right">Durée</th><th style="text-align:right">Taux</th><th>Financé</th></tr></thead><tbody>${imm.lignes.map((l) => `<tr><td>${esc(l.nom)}</td><td>${esc(moisLabel(l.mois))}</td><td style="text-align:right">${fmt(l.montant)}</td><td style="text-align:right">${l.duree ? (Math.round(l.duree * 10) / 10).toLocaleString('fr-FR') + ' an' + (l.duree > 1 ? 's' : '') : 'non amorti'}</td><td style="text-align:right">${l.taux ? pct(l.taux / 100, 1) : '–'}</td><td>${l.finance ? 'oui' : 'non (déjà engagé)'}</td></tr>`).join('')}<tr style="font-weight:700"><td colspan="2">Total</td><td style="text-align:right">${fmt(sum(imm.lignes, (l) => l.montant))}</td><td colspan="3"></td></tr></tbody></table></div></div>`
+      + tab('📉 Plan d\'amortissement prévisionnel (linéaire)', m, imm.lignes.map((l) => [esc(l.nom) + ' — dotation', (x) => l.annees[x.an - 1].dotation]).concat([['Valeur brute des immobilisations (fin d\'année)', (x) => imm.total[x.an - 1].brut, true], ['Dotation aux amortissements de l\'exercice', (x) => imm.total[x.an - 1].dotation, true], ['Cumul des amortissements', (x) => imm.total[x.an - 1].cumul], ['Valeur nette comptable (VNC)', (x) => imm.total[x.an - 1].vnc, true]]))
+      : note('🏗️ <b>Tableau des immobilisations et plan d\'amortissement :</b> aucun investissement saisi. Ajoutez-les dans « Hypothèses » → « Investissements » : les tableaux apparaîtront ici.');
     const PA = m[0].produits, parts = (k) => PA.map((p, i) => [esc(p.nom) + ` <span class="badge badge-muted" style="font-weight:600">${p.mode === 'perpetuelle' ? 'perpétuelle' : p.mode === 'annuelle' ? 'annuel' : 'mensuel'}</span>`, (x) => x.produits[i][k]]);
     const parProd = tab('📦 Revenus par logiciel', m, parts('total').concat([['Total', (x) => x.ca, true]])) + tab('🔁 Dont revenus récurrents (maintenance et abonnements)', m, parts('recurrent').concat([['Total récurrent', (x) => x.maint + x.abo, true], ['Part du chiffre d\'affaires', (x) => x.ca > 0 ? Math.round((x.maint + x.abo) / x.ca * 100) + ' %' : '–', false, true]]));
-    return note('Montants en milliers de ' + esc(base.devise) + '. États financiers simplifiés du plan financé (mix).') + parProd
-      + tab('📈 Compte de résultat', m, [clients, L('Licences perpétuelles', 'lic'), L('Frais initiaux et services', 'serv'), L('Maintenance', 'maint'), L('Abonnements', 'abo'), L('Chiffre d\'affaires', 'ca', true), neg('Coûts directs et commissions', 'directs'), neg('Salaires', 'sal'), neg('Marketing', 'mkt'), neg('Charges fixes', 'fixes'), neg('Infrastructure technique', 'infra'), neg('Intelligence artificielle (Anthropic)', 'ia'), L('EBITDA', 'ebitda', true), neg('Intérêts', 'interet'), neg('Impôts', 'impot'), L('Résultat net', 'resultatNet', true)])
-      + tab('💧 Flux de trésorerie', m, [L('Flux d\'exploitation', 'fExpl'), L('Flux de financement (apports, intérêts, remboursements)', 'fFin'), L('Variation de trésorerie', 'flux', true), L('Trésorerie en fin d\'année', 'tresoFin', true)])
-      + tab('🏛️ Bilan simplifié', m, [B('Trésorerie', 'tresorerie'), B('Créances clients (besoin en fonds de roulement)', 'creances'), B('Total actif', 'actif', true), B('Capitaux propres', 'capitaux'), B('Dettes financières', 'dette'), B('Total passif', 'passif', true), [ 'Écart actif − passif (doit être nul)', (x) => x.bilan.actif - x.bilan.passif ]])
-      + note('Bilan simplifié : à l\'ouverture, la société n\'a que de la trésorerie et des créances clients ; pas d\'immobilisations, de stocks ni de dettes fournisseurs. À remplacer par votre bilan réel (module Comptabilité) avant de présenter le dossier.')
+    return note('Montants en milliers de ' + esc(base.devise) + '. États financiers simplifiés du plan financé (mix).') + parProd + exploitation12
+      + tab('📈 Compte de résultat', m, [clients, L('Licences perpétuelles', 'lic'), L('Frais initiaux et services', 'serv'), L('Maintenance', 'maint'), L('Abonnements', 'abo'), L('Chiffre d\'affaires', 'ca', true), neg('Coûts directs et commissions', 'directs'), neg('Salaires', 'sal'), neg('Marketing', 'mkt'), neg('Charges fixes', 'fixes'), neg('Infrastructure technique', 'infra'), neg('Intelligence artificielle (Anthropic)', 'ia'), L('EBITDA', 'ebitda', true)].concat(invOn ? [neg('Dotations aux amortissements', 'dotation')] : []).concat([neg('Intérêts', 'interet'), neg('Impôts', 'impot'), L('Résultat net', 'resultatNet', true)]))
+      + tab('💧 Flux de trésorerie', m, [L('Flux d\'exploitation', 'fExpl')].concat(invOn ? [L('Flux d\'investissement (achats)', 'fInv')] : []).concat([L('Flux de financement (apports, intérêts, remboursements)', 'fFin'), L('Variation de trésorerie', 'flux', true), L('Trésorerie en fin d\'année', 'tresoFin', true)]))
+      + tab('🏛️ Bilan simplifié', m, [B('Trésorerie', 'tresorerie'), B('Créances clients (besoin en fonds de roulement)', 'creances')].concat(invOn ? [B('Immobilisations nettes (investissements amortis)', 'immo')] : []).concat([B('Total actif', 'actif', true), B('Capitaux propres', 'capitaux'), B('Dettes financières', 'dette'), B('Total passif', 'passif', true), [ 'Écart actif − passif (doit être nul)', (x) => x.bilan.actif - x.bilan.passif ]]))
+      + immoTables
+      + note('Bilan simplifié : à l\'ouverture, la société n\'a que de la trésorerie et des créances clients ; pas d\'immobilisations existantes, de stocks ni de dettes fournisseurs' + (invOn ? ' (les investissements saisis dans « Hypothèses » s\'y ajoutent, amortis linéairement)' : '') + '. À remplacer par votre bilan réel (module Comptabilité) avant de présenter le dossier.')
       + `<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">🥧 Tour de table</span></div>${tourHtml('client-table')}${note('Répartition du capital avant et après l\'apport. Renseignez vos associés et le pool d\'intéressement dans « Hypothèses » (« Capital actuel »).')}</div>`
       + tab('🅰️ Sans financement (activité actuelle)', s, [L('Chiffre d\'affaires', 'ca', true), L('EBITDA', 'ebitda'), L('Résultat net', 'resultatNet'), L('Trésorerie en fin d\'année', 'tresoFin', true)]);
   }
@@ -675,10 +745,12 @@
     ['Frais initiaux de mise en exploitation', 'Somme facturée au client à la signature pour installer, paramétrer et former : elle s\'ajoute à la licence ou à l\'abonnement.'],
     ['Abonnement annuel ou mensuel', 'Le client paie une redevance (par an ou par mois) tant qu\'il reste, maintenance comprise, au lieu d\'acheter la licence une fois. Le revenu est plus lent à venir mais récurrent.'],
     ['Infrastructure technique', 'Supabase (bases de données, un projet par client chez vous), Vercel (hébergement des applications) et GitHub (code), facturés en dollars. Convertis en FCFA avec le taux de change et des frais de paiement. L\'intelligence artificielle (Anthropic) est comptée à part.'],
+    ['Investissement', 'Achat ponctuel qui sert plusieurs années (ordinateurs, serveur, développement capitalisé, marque, aménagement). Il sort de la trésorerie le mois de l\'achat, mais n\'est pas une charge de l\'année : il est étalé par l\'<b>amortissement</b>.'],
+    ['Amortissement', 'Étalement du prix d\'un investissement sur sa durée d\'utilisation (linéaire : montant ÷ durée). C\'est une charge comptable sans décaissement : elle réduit le résultat et l\'impôt, pas la trésorerie.'],
     ['Partie liée', 'Client qui appartient à la société, à ses dirigeants ou à leurs proches. Les financeurs demandent de l\'isoler : ce chiffre d\'affaires est moins probant.']
   ];
   const LIMITES = ['Les valeurs initiales sont des exemples : seuls le nombre de clients, le prix moyen, la base installée et la commission viennent du CRM.', 'La croissance des ventes est une hypothèse : le modèle ne la relie pas automatiquement aux recrutements ou aux campagnes.',
-    'Modèle simplifié : pas d\'amortissements, de TVA ni de stocks ; bilan d\'ouverture réduit à la trésorerie et aux créances clients ; impôt calculé sur le résultat avec report des pertes.', 'Les abonnements, même annuels, sont comptabilisés et encaissés mois par mois (prudent pour la trésorerie) ; la même rétention s\'applique à tous les logiciels.', 'Ces projections ne sont ni une garantie de résultat ni un conseil financier : à faire valider par un expert-comptable.'];
+    'Modèle simplifié : pas de TVA ni de stocks ; seuls les investissements saisis sont amortis (linéaire, sans valeur résiduelle) ; bilan d\'ouverture réduit à la trésorerie et aux créances clients ; impôt calculé sur le résultat avec report des pertes.', 'Les abonnements, même annuels, sont comptabilisés et encaissés mois par mois (prudent pour la trésorerie) ; la même rétention s\'applique à tous les logiciels.', 'Ces projections ne sont ni une garantie de résultat ni un conseil financier : à faire valider par un expert-comptable.'];
 
   function tabNotes() {
     const etape = (n, t, d) => `<div style="display:flex;gap:12px;margin-bottom:10px"><div class="badge badge-primary" style="height:24px;flex-shrink:0">${n}</div><div><b>${t}</b><div class="muted" style="font-size:12.5px">${d}</div></div></div>`;
@@ -723,17 +795,26 @@
   /* — exports — */
   function csv() {
     const q = (v) => '"' + String(v).replace(/"/g, '""') + '"', R = (a) => a.map((v) => typeof v === 'number' ? String(Math.round(v)).replace('.', ',') : q(v)).join(';');
-    const keys = [['Nouveaux clients', 'clients'], ['Licences', 'lic'], ['Maintenance', 'maint'], ['Frais initiaux et services', 'serv'], ['Abonnements', 'abo'], ['CA', 'ca'], ['Couts directs', 'directs'], ['Commissions', 'commissions'], ['IA', 'ia'], ['Infrastructure technique', 'infra'], ['Marketing', 'mkt'], ['Salaires', 'sal'], ['Charges fixes', 'fixes'], ['EBITDA', 'ebitda'], ['Interets', 'interet'], ['Remboursement capital', 'princ'], ['Impots', 'impot'], ['Resultat net', 'resultatNet'], ['Flux de tresorerie', 'flux'], ['Tresorerie fin annee', 'tresoFin']];
+    const keys = [['Nouveaux clients', 'clients'], ['Licences', 'lic'], ['Maintenance', 'maint'], ['Frais initiaux et services', 'serv'], ['Abonnements', 'abo'], ['CA', 'ca'], ['Couts directs', 'directs'], ['Commissions', 'commissions'], ['IA', 'ia'], ['Infrastructure technique', 'infra'], ['Marketing', 'mkt'], ['Salaires', 'sal'], ['Charges fixes', 'fixes'], ['EBITDA', 'ebitda'], ['Investissements (decaissement)', 'capex'], ['Dotations amortissements', 'dotation'], ['Interets', 'interet'], ['Remboursement capital', 'princ'], ['Impots', 'impot'], ['Resultat net', 'resultatNet'], ['Flux de tresorerie', 'flux'], ['Tresorerie fin annee', 'tresoFin']];
     const L = [];
     if (!h.valide) { L.push(R(['DOCUMENT DE TRAVAIL : hypotheses indicatives non validees, ne pas diffuser'])); L.push(''); }
     const bloc = (titre, A) => { L.push(R([titre])); L.push(R(['Poste'].concat(A.map((x) => 'An ' + x.an)))); keys.forEach((k) => L.push(R([k[0]].concat(A.map((x) => x[k[1]] == null ? 0 : x[k[1]]))))); L.push(''); };
     L.push(R(['Revenus par logiciel (plan finance, mix)'])); L.push(R(['Logiciel', 'Mode'].concat(res.options[3].sim.annees.map((x) => 'An ' + x.an + ' total')).concat(res.options[3].sim.annees.map((x) => 'An ' + x.an + ' recurrent'))));
     res.options[3].sim.annees[0].produits.forEach((p, i) => L.push(R([p.nom, p.mode].concat(res.options[3].sim.annees.map((x) => x.produits[i].total)).concat(res.options[3].sim.annees.map((x) => x.produits[i].recurrent))))); L.push('');
     bloc('Plan finance (mix)', res.options[3].sim.annees); bloc('Plan de croissance sans apport', res.avec0.annees); bloc('Sans financement', res.sans.annees);
+    const ceC = calc.compteExploitation(res.options[3].sim, 12), immC = calc.tableauImmobilisations(h, 'avec');
+    L.push(R(['Compte d\'exploitation previsionnel 12 mois (plan finance, mix)'])); L.push(R(['Poste'].concat(ceC.lignes[0].v.map((_, i) => moisLabel(i))).concat(['Total'])));
+    ceC.lignes.forEach((l) => L.push(R([l.lib].concat(l.v).concat([l.total])))); L.push('');
+    if (immC.lignes.length) {
+      L.push(R(['Tableau des immobilisations'])); L.push(R(['Designation', 'Acquisition', 'Valeur d\'origine', 'Duree (ans)', 'Taux (%)', 'Finance']));
+      immC.lignes.forEach((l) => L.push(R([l.nom, moisLabel(l.mois), l.montant, Math.round(l.duree * 10) / 10, Math.round(l.taux * 10) / 10, l.finance ? 'oui' : 'non']))); L.push('');
+      L.push(R(['Plan d\'amortissement previsionnel (lineaire)'])); L.push(R(['Poste'].concat(immC.total.map((x) => 'An ' + x.an))));
+      immC.lignes.forEach((l) => L.push(R([l.nom + ' - dotation'].concat(l.annees.map((x) => x.dotation))))); [['Dotation de l\'exercice', 'dotation'], ['Valeur brute fin d\'annee', 'brut'], ['Cumul des amortissements', 'cumul'], ['Valeur nette comptable', 'vnc']].forEach((k) => L.push(R([k[0]].concat(immC.total.map((x) => x[k[1]]))))); L.push('');
+    }
     L.push(R(['Comparaison des options'])); L.push(R(['', 'Montant a lever', 'Tresorerie minimale', 'Tresorerie an 5', 'CA an 5', 'EBITDA an 5', 'Part cedee (%)', 'Multiple investisseur', 'TRI (%)', 'Interets payes', 'DSCR mini']));
     res.options.forEach((o) => L.push(R([o.label, o.montant, o.ind.tresoMin, o.ind.tresoFin, o.ind.ca5, o.ind.ebitda5, o.ind.equity ? Math.round(o.ind.equity.part * 1000) / 10 : '', o.ind.equity ? Math.round(o.ind.equity.moic * 10) / 10 : '', o.ind.equity ? Math.round(o.ind.equity.tri * 1000) / 10 : '', o.ind.dette ? o.ind.dette.totalInterets : '', o.ind.dette && o.ind.dette.dscrMin != null ? Math.round(o.ind.dette.dscrMin * 10) / 10 : ''])));
-    L.push(''); L.push(R(['Detail mensuel (plan finance, mix)'])); L.push(R(['Mois', 'CA', 'Charges', 'EBITDA', 'Flux', 'Tresorerie']));
-    res.options[3].sim.mois.forEach((x) => L.push(R([x.t + 1, x.ca, x.opex, x.ebitda, x.flux, x.treso])));
+    L.push(''); L.push(R(['Detail mensuel (plan finance, mix)'])); L.push(R(['Mois', 'CA', 'Charges', 'EBITDA', 'Investissements', 'Flux', 'Tresorerie']));
+    res.options[3].sim.mois.forEach((x) => L.push(R([x.t + 1, x.ca, x.opex, x.ebitda, x.capex, x.flux, x.treso])));
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + L.join('\r\n')], { type: 'text/csv;charset=utf-8' })); a.download = 'modele_financement.csv'; document.body.appendChild(a); a.click(); a.remove();
   }
 
@@ -742,9 +823,16 @@
     const K = (A2, k) => A2.map((x) => `<td style="text-align:right">${fmt(x[k] / 1e3)}</td>`).join(''), KB = (A2, k) => A2.map((x) => `<td style="text-align:right">${fmt(x.bilan[k] / 1e3)}</td>`).join('');
     const head = (A2) => `<thead><tr><th></th>${A2.map((x) => `<th style="text-align:right">An ${x.an}</th>`).join('')}</tr></thead>`;
     const opt = (o) => `<tr><td><b>${esc(o.label)}</b></td><td style="text-align:right">${fmtM(o.montant)}</td><td style="text-align:right">${o.ind.equity ? pct(o.ind.equity.part, 1) : '–'}</td><td style="text-align:right">${o.ind.equity ? o.ind.equity.moic.toFixed(1) + ' ×' : '–'}</td><td style="text-align:right">${o.ind.dette && o.ind.dette.dscrMin != null ? o.ind.dette.dscrMin.toFixed(1) + ' ×' : '–'}</td><td style="font-size:11px">${o.viable ? '' : '<b>Non viable. </b>'}${o.ind.alertes.map(esc).join(' ')}</td></tr>`;
-    const brouillon = !h.valide, R = T.retraite;
-    const css = '.wip{border:2px solid #c62828;color:#c62828;background:#fde5e5;padding:8px 12px;border-radius:8px;margin-bottom:14px;font-weight:700}.wm{position:fixed;top:42%;left:0;right:0;text-align:center;font-size:72px;font-weight:800;color:rgba(198,40,40,.09);transform:rotate(-25deg);pointer-events:none;z-index:0}body{font:13px/1.5 system-ui,Arial,sans-serif;color:#1b2240;max-width:900px;margin:0 auto;padding:24px}h1{font-size:24px;margin:0}h2{font-size:16px;margin:22px 0 8px;color:#0b3b4c;border-bottom:2px solid #0e7490;padding-bottom:4px}table{width:100%;border-collapse:collapse;margin:8px 0}th,td{border-bottom:1px solid #d6e4ea;padding:6px 8px;text-align:left}th{background:#dff3f8;font-size:12px}.k{display:flex;gap:12px;flex-wrap:wrap}.k div{flex:1;min-width:150px;border:1px solid #d6e4ea;border-radius:10px;padding:10px}.k b{display:block;font-size:20px;color:#0e7490}.n{font-size:11px;color:#6b7390;margin-top:18px}@media print{body{padding:0}h2{break-after:avoid}table{break-inside:avoid}}';
+    const brouillon = !h.valide, R = T.retraite, invOn = investissementsActifs(h).length > 0;
+    const css = '.m12{font-size:8px}.m12 td,.m12 th{padding:2px 3px}.wip{border:2px solid #c62828;color:#c62828;background:#fde5e5;padding:8px 12px;border-radius:8px;margin-bottom:14px;font-weight:700}.wm{position:fixed;top:42%;left:0;right:0;text-align:center;font-size:72px;font-weight:800;color:rgba(198,40,40,.09);transform:rotate(-25deg);pointer-events:none;z-index:0}body{font:13px/1.5 system-ui,Arial,sans-serif;color:#1b2240;max-width:900px;margin:0 auto;padding:24px}h1{font-size:24px;margin:0}h2{font-size:16px;margin:22px 0 8px;color:#0b3b4c;border-bottom:2px solid #0e7490;padding-bottom:4px}table{width:100%;border-collapse:collapse;margin:8px 0}th,td{border-bottom:1px solid #d6e4ea;padding:6px 8px;text-align:left}th{background:#dff3f8;font-size:12px}.k{display:flex;gap:12px;flex-wrap:wrap}.k div{flex:1;min-width:150px;border:1px solid #d6e4ea;border-radius:10px;padding:10px}.k b{display:block;font-size:20px;color:#0e7490}.n{font-size:11px;color:#6b7390;margin-top:18px}@media print{body{padding:0}h2{break-after:avoid}table{break-inside:avoid}}';
     const lignes = r.emplois ? r.emplois.lignes.map((l) => `<tr><td>${esc(l[0])}</td><td style="text-align:right">${fmt(l[1])}</td><td style="text-align:right">${pct(l[1] / r.emplois.depenses)}</td></tr>`).join('') : '';
+    const ce = calc.compteExploitation(mix.sim, 12), imm = calc.tableauImmobilisations(h, 'avec');
+    const ceHtml = `<p><b>Compte d'exploitation prévisionnel — 12 premiers mois</b> (milliers de ${esc(d)}, plan financé) :</p><table class="m12"><thead><tr><th></th>${ce.lignes[0].v.map((_, i) => `<th style="text-align:right">${esc(moisLabel(i))}</th>`).join('')}<th style="text-align:right">Total</th></tr></thead><tbody>${ce.lignes.filter((l) => invOn || !/^(Dotations|Résultat d'exploitation)/.test(l.lib)).map((l) => `<tr style="${l.gras ? 'font-weight:700' : ''}"><td>${esc(l.lib)}</td>${l.v.map((x) => `<td style="text-align:right">${fmt(x / 1e3)}</td>`).join('')}<td style="text-align:right"><b>${fmt(l.total / 1e3)}</b></td></tr>`).join('')}</tbody></table>`;
+    const immHtml = invOn ? `<p><b>Tableau des immobilisations</b> (${esc(d)}) :</p><table><thead><tr><th>Désignation</th><th>Acquisition</th><th style="text-align:right">Valeur d'origine</th><th style="text-align:right">Durée</th><th style="text-align:right">Taux</th></tr></thead><tbody>${imm.lignes.map((l) => `<tr><td>${esc(l.nom)}</td><td>${esc(moisLabel(l.mois))}</td><td style="text-align:right">${fmt(l.montant)}</td><td style="text-align:right">${l.duree ? (Math.round(l.duree * 10) / 10).toLocaleString('fr-FR') + ' an' + (l.duree > 1 ? 's' : '') : 'non amorti'}</td><td style="text-align:right">${l.taux ? pct(l.taux / 100, 1) : '–'}</td></tr>`).join('')}<tr><td colspan="2"><b>Total</b></td><td style="text-align:right"><b>${fmt(sum(imm.lignes, (l) => l.montant))}</b></td><td colspan="2"></td></tr></tbody></table>
+      <p><b>Plan d'amortissement prévisionnel</b> (linéaire, milliers de ${esc(d)}) :</p><table>${head(a)}<tbody>${imm.lignes.map((l) => `<tr><td>${esc(l.nom)} — dotation</td>${l.annees.map((x) => `<td style="text-align:right">${fmt(x.dotation / 1e3)}</td>`).join('')}</tr>`).join('')}<tr><td><b>Dotation aux amortissements de l'exercice</b></td>${imm.total.map((x) => `<td style="text-align:right"><b>${fmt(x.dotation / 1e3)}</b></td>`).join('')}</tr><tr><td>Valeur brute (fin d'année)</td>${imm.total.map((x) => `<td style="text-align:right">${fmt(x.brut / 1e3)}</td>`).join('')}</tr><tr><td>Cumul des amortissements</td>${imm.total.map((x) => `<td style="text-align:right">${fmt(x.cumul / 1e3)}</td>`).join('')}</tr><tr><td><b>Valeur nette comptable</b></td>${imm.total.map((x) => `<td style="text-align:right"><b>${fmt(x.vnc / 1e3)}</b></td>`).join('')}</tr></tbody></table>` : '';
+    const invs = investissementsActifs(h);
+    const invTab = invOn ? `<p><b>Investissements prévus</b> (${esc(d)}, amortissement linéaire) :</p><table><thead><tr><th>Investissement</th><th style="text-align:right">Mois (0 = aujourd'hui)</th><th style="text-align:right">Montant</th><th style="text-align:right">Amortissement</th><th>Financé par l'apport</th></tr></thead><tbody>${invs.map((i) => `<tr><td>${esc(i.nom)}</td><td style="text-align:right">${i.mois}</td><td style="text-align:right">${fmt(i.montant)}</td><td style="text-align:right">${i.mAmort ? fmt(i.mAmort / 12) + ' an' + (i.mAmort > 12 ? 's' : '') : 'non amorti'}</td><td>${i.finance ? 'oui' : 'non (déjà engagé)'}</td></tr>`).join('')}<tr><td><b>Total</b></td><td></td><td style="text-align:right"><b>${fmt(sum(invs, (i) => i.montant))}</b></td><td></td><td></td></tr></tbody></table>`
+      : '<p>Aucun investissement (matériel, développement capitalisé, juridique, aménagement) n\'est inclus dans ce plan : les fonds levés couvrent uniquement le fonctionnement.</p>';
     const tr = (lib, v1, v2) => `<tr><td>${lib}</td><td style="text-align:right">${v1}</td><td style="text-align:right">${v2}</td></tr>`;
     const ui2 = (lib, f) => `<tr><td>${lib}</td>${U.map((u) => `<td style="text-align:right">${f(u)}</td>`).join('')}</tr>`;
     return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Dossier de financement — ${esc(c.societe)}</title><style>${css}</style></head><body>${brouillon ? '<div class="wip">DOCUMENT DE TRAVAIL — hypothèses indicatives non validées. Ne pas diffuser à des financeurs.</div><div class="wm">DOCUMENT DE TRAVAIL</div>' : ''}
@@ -755,16 +843,19 @@
       <p>Concentration : le premier client représente ${pct(T.top1)} du facturé, les deux premiers ${pct(T.top2)}. ${T.nbLies > 0 ? `Les clients liés à la société ou à ses dirigeants représentent ${pct(T.partLies)} du facturé ; ils sont isolés dans la colonne « hors parties liées ».` : 'Aucun client n\'est déclaré lié à la société ou à ses dirigeants.'}${T.encaisseNature > 0 ? ` Des règlements en nature (${fmtM(T.encaisseNature)} ${esc(d)}) sont isolés de l'encaissé monétaire.` : ''} Créances de plus de 90 jours : ${fmtM(T.ages.plus)} ${esc(d)}.</p>
       <h2>3. Besoin de financement</h2>${r.avec0.pointMort === null ? '<p style="border:2px solid #c62828;padding:8px;border-radius:8px;color:#c62828"><b>Attention :</b> dans les hypothèses retenues, le plan n\'atteint pas la rentabilité sur 5 ans. À corriger avant toute remise à un financeur.</p>' : `<p>Rentabilité durable atteinte en ${moisLabel(r.avec0.pointMort)}.</p>`}<p>${r.besoin > 0 ? `Pour déployer le plan de croissance, la société a besoin de <b>${fmt(r.besoin)} ${esc(d)}</b> (point bas de trésorerie en ${moisLabel(r.avec0.moisMin)}). Avec une marge de sécurité de ${fmt(h.margeSecuritePct)} %, le montant recherché est de <b>${fmt(r.recommande)} ${esc(d)}</b>.` : 'Le plan de croissance s\'autofinance : aucun apport n\'est nécessaire dans les hypothèses retenues.'}</p>
       ${r.emplois ? `<table><thead><tr><th>Utilisation des fonds (jusqu'au point bas, ${r.emplois.mois} mois)</th><th style="text-align:right">${esc(d)}</th><th style="text-align:right">Part</th></tr></thead><tbody>${lignes}<tr><td>Encaissements sur la période</td><td style="text-align:right">− ${fmt(r.emplois.recu)}</td><td></td></tr><tr><td><b>Besoin de financement</b></td><td style="text-align:right"><b>${fmt(r.emplois.besoin)}</b></td><td></td></tr></tbody></table>` : ''}
-      <h2>4. Projections et états financiers (milliers de ${esc(d)})</h2><table>${head(a)}<tbody><tr><td>Chiffre d'affaires</td>${K(a, 'ca')}</tr><tr><td>EBITDA</td>${K(a, 'ebitda')}</tr><tr><td>Résultat net</td>${K(a, 'resultatNet')}</tr><tr><td>Flux d'exploitation</td>${K(a, 'fExpl')}</tr><tr><td>Flux de financement</td>${K(a, 'fFin')}</tr><tr><td><b>Trésorerie fin d'année</b></td>${K(a, 'tresoFin')}</tr></tbody></table>
-      <table>${head(a)}<tbody><tr><td>Trésorerie</td>${KB(a, 'tresorerie')}</tr><tr><td>Créances clients</td>${KB(a, 'creances')}</tr><tr><td><b>Total actif</b></td>${KB(a, 'actif')}</tr><tr><td>Capitaux propres</td>${KB(a, 'capitaux')}</tr><tr><td>Dettes financières</td>${KB(a, 'dette')}</tr><tr><td><b>Total passif</b></td>${KB(a, 'passif')}</tr></tbody></table>
+      ${invTab}
+      <h2>4. Projections et états financiers (milliers de ${esc(d)})</h2><table>${head(a)}<tbody><tr><td>Chiffre d'affaires</td>${K(a, 'ca')}</tr><tr><td>EBITDA</td>${K(a, 'ebitda')}</tr>${invOn ? `<tr><td>Dotations aux amortissements</td>${K(a, 'dotation')}</tr>` : ''}<tr><td>Résultat net</td>${K(a, 'resultatNet')}</tr><tr><td>Flux d'exploitation</td>${K(a, 'fExpl')}</tr>${invOn ? `<tr><td>Flux d'investissement</td>${K(a, 'fInv')}</tr>` : ''}<tr><td>Flux de financement</td>${K(a, 'fFin')}</tr><tr><td><b>Trésorerie fin d'année</b></td>${K(a, 'tresoFin')}</tr></tbody></table>
+      <table>${head(a)}<tbody><tr><td>Trésorerie</td>${KB(a, 'tresorerie')}</tr><tr><td>Créances clients</td>${KB(a, 'creances')}</tr>${invOn ? `<tr><td>Immobilisations nettes</td>${KB(a, 'immo')}</tr>` : ''}<tr><td><b>Total actif</b></td>${KB(a, 'actif')}</tr><tr><td>Capitaux propres</td>${KB(a, 'capitaux')}</tr><tr><td>Dettes financières</td>${KB(a, 'dette')}</tr><tr><td><b>Total passif</b></td>${KB(a, 'passif')}</tr></tbody></table>
+      ${ceHtml}
+      ${immHtml}
       <p><b>Revenus par logiciel</b> (milliers de ${esc(d)}) :</p><table>${head(a)}<tbody>${a[0].produits.map((p, i) => `<tr><td>${esc(p.nom)} <span style="font-size:10px;color:#6b7390">(${p.mode === 'perpetuelle' ? 'licence perpétuelle, maintenance ' + fmt((h.produits || []).filter((x) => x.id === p.id)[0] ? (h.produits.filter((x) => x.id === p.id)[0].maintPct) : h.maintenancePct) + ' %' : p.mode === 'annuelle' ? 'abonnement annuel' : 'abonnement mensuel'})</span></td>${a.map((x) => `<td style="text-align:right">${fmt(x.produits[i].total / 1e3)}</td>`).join('')}</tr>`).join('')}<tr><td><b>Total</b></td>${K(a, 'ca')}</tr><tr><td>dont récurrent (maintenance et abonnements)</td>${a.map((x) => `<td style="text-align:right">${fmt((x.maint + x.abo) / 1e3)}</td>`).join('')}</tr></tbody></table>
-      <p style="font-size:11px;color:#6b7390">Bilan simplifié : ouverture réduite à la trésorerie et aux créances clients, sans immobilisations ni stocks. Plan financé selon le mix choisi.</p>
+      <p style="font-size:11px;color:#6b7390">Bilan simplifié : ouverture réduite à la trésorerie et aux créances clients, sans immobilisations existantes ni stocks${invOn ? ' ; les investissements prévus s\'y ajoutent, amortis linéairement' : ''}. Plan financé selon le mix choisi.</p>
       <p>Sans financement, le chiffre d'affaires de l'année 5 serait de ${fmtM(r.sans.annees[ANNEES - 1].ca)} ${esc(d)}, contre ${fmtM(a[ANNEES - 1].ca)} ${esc(d)} avec le plan de croissance.</p>
       <h2>5. Indicateurs et économie unitaire</h2><table><thead><tr><th></th>${U.map((u) => `<th style="text-align:right">An ${u.an}</th>`).join('')}</tr></thead><tbody>${ui2('Nouveaux clients', (u) => u.clients.toLocaleString('fr-FR', { maximumFractionDigits: 1 }))}${ui2('Marge brute', (u) => pct(u.margeBrute))}${ui2('Revenu récurrent annualisé', (u) => fmtM(u.arr))}${ui2('Part du revenu récurrent', (u) => pct(u.partRecurrente))}${ui2('Coût d\'acquisition d\'un client', (u) => u.cac == null ? '–' : fmt(u.cac))}${ui2('Valeur d\'un client sur 5 ans', (u) => fmt(u.ltv))}${ui2('Valeur client / coût d\'acquisition', (u) => u.ltvCac == null ? '–' : u.ltvCac.toFixed(1) + ' ×')}${ui2('Délai de retour', (u) => u.retour == null ? '–' : u.retour === 0 ? 'immédiat' : Math.round(u.retour) + ' mois')}${ui2('CA par salarié', (u) => u.caParSalarie == null ? '–' : fmtM(u.caParSalarie))}</tbody></table>
       <p><b>Coûts techniques</b> (${esc(d)}, tarifs publics en dollars au taux de ${fmt(h.usdFcfa)}) :</p><table><thead><tr><th></th>${U.map((u) => `<th style="text-align:right">An ${u.an}</th>`).join('')}</tr></thead><tbody>${[['Supabase', 'supa'], ['Vercel', 'vercel'], ['GitHub', 'github'], ['Anthropic (intelligence artificielle)', 'ia']].map((x) => `<tr><td>${x[0]}</td>${r.avec0.annees.map((a) => `<td style="text-align:right">${fmt(a[x[1]])}</td>`).join('')}</tr>`).join('')}<tr><td><b>Total</b></td>${r.avec0.annees.map((a) => `<td style="text-align:right"><b>${fmt(a.infra + a.ia)}</b></td>`).join('')}</tr></tbody></table>
       <h2>6. Options de financement</h2><table><thead><tr><th>Option</th><th style="text-align:right">Montant</th><th style="text-align:right">Part cédée</th><th style="text-align:right">Multiple investisseur</th><th style="text-align:right">Capacité de remboursement</th><th>Points d'attention</th></tr></thead><tbody>${r.options.map(opt).join('')}</tbody></table>
       <h2>7. Tour de table</h2>${tourHtml('')}
-      <h2>8. Hypothèses principales</h2><ul><li>Scénario de croissance « ${esc(SCEN_LABEL[h.scenario] || 'personnalisé')} » : nouveaux clients +${h.croiss.join(' %, +')} % par an (année 1 : ${fmt(h.clientsAn1)} clients).</li><li>${(h.produits || []).some((p) => pos(p.part) > 0) ? `Ventes réparties entre ${produitsActifs(h).map((p) => esc(p.nom) + ' (' + Math.round(p.part * 100) + ' %)').join(', ')} ; prix indexés de ${h.hausseAn} % par an ; frais initiaux de mise en exploitation facturés à chaque nouveau client.` : `Prix moyen d'une licence : ${fmt(h.prixLicence)} ${esc(d)} HT (hausse de ${h.hausseAn} % par an) ; maintenance ${h.maintenancePct} % de la base installée ; services ${h.servicesPct} % des licences.`}</li><li>Équipe : ${h.postes.filter((p) => p.finance).map((p) => `${p.nb} ${esc(p.nom)}`).join(', ') || 'aucune embauche'} financé(s) par l'apport.</li><li>Sortie investisseur supposée à l'année 5 à ${h.multSortie} × le chiffre d'affaires.</li>${h.baseRetraitee ? '<li>Base de départ calculée hors clients liés à la société.</li>' : ''}</ul>
+      <h2>8. Hypothèses principales</h2><ul>${invOn ? `<li>Investissements : ${invs.length} ligne${invs.length > 1 ? 's' : ''}, ${fmt(sum(invs, (i) => i.montant))} ${esc(d)} au total, amortis linéairement ; ceux marqués « financés » s'ajoutent au besoin de financement.</li>` : ''}<li>Scénario de croissance « ${esc(SCEN_LABEL[h.scenario] || 'personnalisé')} » : nouveaux clients +${h.croiss.join(' %, +')} % par an (année 1 : ${fmt(h.clientsAn1)} clients).</li><li>${(h.produits || []).some((p) => pos(p.part) > 0) ? `Ventes réparties entre ${produitsActifs(h).map((p) => esc(p.nom) + ' (' + Math.round(p.part * 100) + ' %)').join(', ')} ; prix indexés de ${h.hausseAn} % par an ; frais initiaux de mise en exploitation facturés à chaque nouveau client.` : `Prix moyen d'une licence : ${fmt(h.prixLicence)} ${esc(d)} HT (hausse de ${h.hausseAn} % par an) ; maintenance ${h.maintenancePct} % de la base installée ; services ${h.servicesPct} % des licences.`}</li><li>Équipe : ${h.postes.filter((p) => p.finance).map((p) => `${p.nb} ${esc(p.nom)}`).join(', ') || 'aucune embauche'} financé(s) par l'apport.</li><li>Sortie investisseur supposée à l'année 5 à ${h.multSortie} × le chiffre d'affaires.</li>${h.baseRetraitee ? '<li>Base de départ calculée hors clients liés à la société.</li>' : ''}</ul>
       <h2>9. Notes méthodologiques</h2><p>Le modèle simule l'activité mois par mois sur 5 ans, à partir des chiffres réels de la société, dans deux situations : sans financement et avec le plan de croissance. Le besoin de financement est le point bas de trésorerie du plan de croissance sans apport.</p>
       <table><tbody>${LEXIQUE.map((l) => `<tr><td style="width:170px;vertical-align:top"><b>${l[0]}</b></td><td style="font-size:12px">${l[1]}</td></tr>`).join('')}</tbody></table><p><b>Limites :</b></p><ul>${LIMITES.map((l) => `<li style="font-size:12px">${l}</li>`).join('')}</ul>
       <p class="n">Ces projections reposent sur des hypothèses de la direction ; elles ne constituent ni une garantie de résultat ni une offre de titres financiers. Les données de départ proviennent du CRM de la société.</p></body></html>`;
@@ -796,6 +887,8 @@
       else if (a === 'reset') { if (confirm('Revenir aux valeurs initiales ? Vos hypothèses modifiées seront effacées ; le marquage des parties liées et des règlements en nature est conservé.')) { const liens = ov.liens; ov = liens ? { liens } : {}; persist(); recompute(); render(); } }
       else if (a === 'associe-add') { if (!('associes' in ov)) ov.associes = clone(h.associes); ov.associes.push({ id: 'a' + Date.now().toString(36), nom: 'Nouvel associé', part: 0 }); persist(); recompute(); render(); }
       else if (a === 'associe-del') { if (!('associes' in ov)) ov.associes = clone(h.associes); ov.associes = ov.associes.filter((x) => x.id !== t.dataset.id); persist(); recompute(); render(); }
+      else if (a === 'inv-add') { if (!('investissements' in ov)) ov.investissements = clone(h.investissements); ov.investissements.push({ id: 'i' + Date.now().toString(36), nom: 'Nouvel investissement', mois: 3, montant: 0, duree: 3, finance: true }); persist(); recompute(); render(); }
+      else if (a === 'inv-del') { if (!('investissements' in ov)) ov.investissements = clone(h.investissements); ov.investissements = ov.investissements.filter((i) => i.id !== t.dataset.id); persist(); recompute(); render(); }
       else if (a === 'poste-add') { if (!('postes' in ov)) ov.postes = clone(h.postes); ov.postes.push({ id: 'p' + Date.now().toString(36), nom: 'Nouveau poste', nb: 1, cout: 300000, debut: 6, finance: true }); persist(); recompute(); render(); }
       else if (a === 'poste-del') { if (!('postes' in ov)) ov.postes = clone(h.postes); ov.postes = ov.postes.filter((p) => p.id !== t.dataset.id); persist(); recompute(); render(); }
     };
@@ -809,6 +902,7 @@
     el.addEventListener('change', (e) => {
       const t = e.target;
       if (t.dataset.scen !== undefined) { edit('scenario', t.value); edit('croiss', SCEN[t.value].slice()); render(); }
+      else if (t.dataset.inv) { editInv(t.dataset.inv, t.dataset.f, t.dataset.f === 'nom' ? t.value : valeur(t)); render(); }
       else if (t.dataset.p) { editPoste(t.dataset.p, t.dataset.f, t.dataset.f === 'nom' ? t.value : valeur(t)); render(); }
       else if (t.dataset.prod !== undefined) { editProduit(t.dataset.prod, t.dataset.f, valeur(t)); render(); }
       else if (t.dataset.lien !== undefined) { editLien(t.dataset.lien, t.dataset.f, t.checked); render(); }
