@@ -22,6 +22,7 @@ try{var _t=localStorage.getItem("sanix_theme");if(_t&&_t!=="turquoise")document.
 <script src="shared/pager.js" defer></script>
 <script src="shared/crm-connector.js" defer></script>
 <script src="shared/pilotage.js" defer></script>
+<script src="shared/financement.js" defer></script>
 <style>
 :root{
   /* Charte ANGEL'S GROUP : turquoise profond, fonds clairs bleutés, police système */
@@ -1237,6 +1238,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--primary)}
     <!-- ══ VIEW: CRM INTELLIGENCE ══ -->
     <!-- ══ VIEW: DIRECTEUR COMMERCIAL IA ══ -->
     <div id="view-budget" class="hidden fade-in"></div>
+    <div id="view-financement" class="hidden fade-in"></div>
 
     <div id="view-aisales" class="hidden fade-in">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px">
@@ -5354,7 +5356,7 @@ const NAV_GROUPS = {
   convaincre:{views:[['marketing','🎯 Moteur Marketing'],['messagerie','💬 Messagerie'],['logiciels','💻 Catalogue'],['presentations','🎬 Démos']], badges:['sb-pres-badge']},
   ventes:    {views:[['pipeline','🎯 Pipeline'],['conversion','🚀 Relances prioritaires'],['commandes','🛒 Commandes'],['contrats','📝 Contrats']], badges:['sb-conv-badge','sb-cmd-badge','sb-contrat-badge']},
   livraison: {views:[['licences','🔑 Licences'],['planning','📅 Planning déploiement']], badges:['sb-lic-badge']},
-  finance:   {views:[['comptabilite','📒 Comptabilité'],['commissions','💰 Commissions']], badges:['sb-compta-badge','sb-comm-badge']},
+  finance:   {views:[['comptabilite','📒 Comptabilité'],['commissions','💰 Commissions'],['financement','🏦 Financement']], badges:['sb-compta-badge','sb-comm-badge']},
   apres:     {views:[['apresvente','🔁 Renouvellements & fidélisation']], badges:[]},
   pilot:     {views:[['direction','👔 Direction'],['budget','💶 Budget & actions'],['aisales','🤖 Directeur IA'],['cockpit','🧠 Cockpit IA'],['intel','🧬 Intelligence']], badges:['sb-ais-badge']},
   reglages:  {views:[['equipe','🏆 Équipe & Apporteurs'],['documents','📄 Documents & Modèles'],['parametrage','🛠️ Paramétrage']], badges:['sb-app-badge','sb-doc-badge']}
@@ -5688,7 +5690,7 @@ function navigate(view, el) {
     planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
     parametrage:'Paramétrage',apresvente:'Après-vente & fidélisation',
     presentations:'Présentations & Démos',commandes:'Commandes Clients',contrats:'Contrats & Conventions',
-    licences:'Licences Attribuées',documents:'Documents & Modèles',comptabilite:'Comptabilité SYSCOHADA'
+    licences:'Licences Attribuées',documents:'Documents & Modèles',comptabilite:'Comptabilité SYSCOHADA',financement:'Financement'
   }[view] || view;
   if(view === 'carte') setTimeout(()=>{ initMap(); updateCarteStats(); }, 100);
   if(view === 'clients') setTimeout(_dupUpdateBtn, 300);
@@ -5701,6 +5703,7 @@ function navigate(view, el) {
   if(view === 'cockpit') setTimeout(initCockpit, 50);
   if(view === 'aisales') setTimeout(initAiSales, 50);
   if(view === 'budget') setTimeout(()=>{ try{ initPilotage(); }catch(e){ console.error(e); } }, 30);
+  if(view === 'financement') setTimeout(()=>{ try{ initFinancement(); }catch(e){ console.error(e); } }, 30);
   if(view === 'direction'){ setTimeout(initIntel, 70); setTimeout(initDirection, 50); setTimeout(initCockpit, 60); const _ck=document.getElementById('view-cockpit'); if(_ck) _ck.classList.remove('hidden'); }
   if(view === 'equipe') eqSyncTab(_orig);
   if(view === 'marketing') setTimeout(initMarketing, 50);
@@ -8379,8 +8382,8 @@ const ROLE_BG = {
   apporteur:'#FFFBEB'
 };
 const PERMISSIONS = {
-  super_admin:['budget','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports','users','parametrage','parametres'],
-  manager:    ['budget','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports'],
+  super_admin:['budget','financement','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports','users','parametrage','parametres'],
+  manager:    ['budget','financement','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports'],
   commercial: ['journal','dashboard','pipeline','clients','logiciels','messagerie','carte','rapports'],
   apporteur:  ['pipeline','clients','messagerie','rapports'],
 };
