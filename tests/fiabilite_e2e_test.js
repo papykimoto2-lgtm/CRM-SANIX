@@ -67,8 +67,8 @@ const PORT = 4425;
     const ve = (id) => E.find((e) => e.id === "auto_ve_" + id), c4431 = (e) => (e.l.find((x) => x[0] === "4431") || [0, 0, 0])[2];
     ok(!ve("k3"), "commande à 0 : aucune pièce"); ok(ve("k2").l.every((x) => x[0] !== "4431") && ve("k2").l.find((x) => x[0] === "706000")[2] === 500000, "ancienne commande sans TVA et sans HT : 706 = 500 000, aucune TVA inventée");
     ok(c4431(ve("k1")) === 18000, "commande avec TVA : 4431 = 18 000");
-    const enc = E.find((e) => e.id === "auto_enc_k4"); ok(enc && enc.l[0][0] === "552000" && enc.l[0][1] === 118000, "encaissement plafonné au TTC (200 000 saisis sur 118 000) et passé au compte 552 (Mobile Money)");
-    ok(E.find((e) => e.id === "auto_enc_k5").l[1][2] === 50000, "acompte inférieur au TTC : repris tel quel");
+    const enc = E.find((e) => e.id.startsWith("auto_enc_k4")); ok(enc && enc.l[0][0] === "552000" && enc.l[0][1] === 118000, "encaissement plafonné au TTC (200 000 saisis sur 118 000) et passé au compte 552 (Mobile Money)");
+    ok(E.find((e) => e.id.startsWith("auto_enc_k5")).l[1][2] === 50000, "acompte inférieur au TTC : repris tel quel");
     const com = E.filter((e) => e.id.startsWith("auto_com_")); ok(com.length === 2 && com.every((e) => e.l[0][0] === "632000"), "commissions : seules les validées et payées (2 sur 3), au compte 632 (rémunérations d'intermédiaires)");
     ok(await page.evaluate(() => PLAN_COMPTABLE["552000"] && PLAN_COMPTABLE["632000"] && !PLAN_COMPTABLE["531000"] && !PLAN_COMPTABLE["622000"] && /Publicité/.test(PLAN_COMPTABLE["627000"]) && PLAN_COMPTABLE["631000"]), "plan comptable : 552, 632, 631 ; 627 = publicité");
 

@@ -24,6 +24,7 @@ try{var _t=localStorage.getItem("sanix_theme");if(_t&&_t!=="turquoise")document.
 <script src="shared/pilotage.js" defer></script>
 <script src="shared/financement.js" defer></script>
 <script src="shared/renouvellements.js" defer></script>
+<script src="shared/paiements.js" defer></script>
 <style>
 :root{
   /* Charte ANGEL'S GROUP : turquoise profond, fonds clairs bleutés, police système */
@@ -3762,14 +3763,16 @@ Seriez-vous disponible pour une démonstration {rdv} ?
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">Acompte (FCFA)</label>
+        <label class="form-label" id="cmd-acompte-lbl">Acompte reçu à la commande (FCFA)</label>
         <input type="number" class="form-input" id="cmd-acompte" value="0" min="0" oninput="cmdCalcTTC()">
+        <select class="form-input" id="cmd-acompte-mode" style="margin-top:6px" title="Mode de règlement de l'acompte"></select>
       </div>
       <div class="form-group">
         <label class="form-label">Solde restant</label>
         <input type="text" class="form-input" id="cmd-solde" readonly style="background:var(--warning-l);color:var(--warning);font-weight:700">
       </div>
     </div>
+    <div id="cmd-paiements-box" style="display:none;margin:0 0 14px"></div>
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Commercial</label>
@@ -9985,6 +9988,89 @@ function initCommandes() {
 // Reste à payer d'une commande : TTC moins le total versé (jamais négatif).
 function cmdReste(c){ return Math.max(0,(Number(c.ttc)||0)-(Number(c.acompte)||0)); }
 
+// ═══════════════════════════════════════════════════════════
+//  JOURNAL DES PAIEMENTS (moteur : shared/paiements.js)
+//  Chaque paiement a sa date, son montant, son mode et sa référence. L'acompte de la commande est le TOTAL des paiements.
+// ═══════════════════════════════════════════════════════════
+// Anciennes commandes : l'acompte devient un paiement « mode non précisé » daté de la vente (date estimée, à préciser).
+function _paiementsMigrer(){
+  if(!window.SanixPaiements) return 0; let n=0;
+  COMMANDES.forEach(c=>{ if(!Array.isArray(c.paiements)){ c.paiements=SanixPaiements.liste(c).map(p=>Object.assign({},p)); n++; } });
+  if(n) saveStore('commandes'); return n;
+}
+function _paiementModes(sel){ return Object.keys(SanixPaiements.MODES).filter(k=>k!=='inconnu'||sel==='inconnu').map(k=>`<option value="${k}"${k===sel?' selected':''}>${SanixPaiements.MODES[k].lib}</option>`).join(''); }
+// Fenêtre de commande : à la création, un acompte + son mode ; ensuite, le journal (lecture seule du total).
+function _cmdAcompteMode(existante,id){
+  const inp=document.getElementById('cmd-acompte'), md=document.getElementById('cmd-acompte-mode'), lbl=document.getElementById('cmd-acompte-lbl'), box=document.getElementById('cmd-paiements-box');
+  if(!inp||!md) return; md.innerHTML=_paiementModes('mobile_money');
+  inp.readOnly=!!existante; md.style.display=existante?'none':''; if(lbl) lbl.textContent=existante?'Total payé (journal des paiements ci-dessous)':'Acompte reçu à la commande (FCFA)';
+  if(box){ if(existante) cmdPaiementsBox(id); else { box.style.display='none'; box.innerHTML=''; } }
+}
+function cmdPaiementsBox(id){
+  const box=document.getElementById('cmd-paiements-box'), c=COMMANDES.find(x=>x.id===id); if(!box) return; if(!c||!window.SanixPaiements){ box.style.display='none'; return; }
+  const E=_dEsc, dfr=d=>String(d||'').split('-').reverse().join('/'), l=SanixPaiements.liste(c).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))), reste=SanixPaiements.reste(c);
+  box.style.display='';
+  box.innerHTML=`<div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 12px"><div style="font-weight:700;font-size:13px;margin-bottom:6px">💶 Journal des paiements</div>`
+    +(l.length?`<table class="client-table" style="font-size:12px"><thead><tr><th>Date</th><th>Mode</th><th>Référence</th><th style="text-align:right">Montant</th><th></th></tr></thead><tbody>${l.map(p=>`<tr><td>${E(dfr(p.date))}${p.estimee?' <span class="badge badge-warning" style="font-size:9px" title="Date de la vente reprise faute d\'information : précisez-la (✏️)">date estimée</span>':''}</td><td>${E(SanixPaiements.MODES[p.mode]?SanixPaiements.MODES[p.mode].lib:p.mode)}</td><td>${E(p.ref||'')}</td><td style="text-align:right;font-weight:700">${(p.montant||0).toLocaleString('fr-FR')}</td><td style="white-space:nowrap"><button class="btn btn-outline btn-sm" style="padding:2px 6px" onclick="openPaiement('${c.id}','${p.id}')" title="Modifier">✏️</button> <button class="btn btn-outline btn-sm" style="padding:2px 6px" onclick="imprimerRecu('${c.id}','${p.id}')" title="Reçu de paiement">🧾</button> <button class="btn btn-sm" style="padding:2px 6px;background:var(--danger-l);color:var(--danger)" onclick="delPaiement('${c.id}','${p.id}')" title="Supprimer">🗑</button></td></tr>`).join('')}</tbody></table>`:'<div style="font-size:12px;color:var(--muted)">Aucun paiement enregistré.</div>')
+    +`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:12px"><span>Payé <b>${SanixPaiements.total(c).toLocaleString('fr-FR')}</b> sur ${(c.ttc||0).toLocaleString('fr-FR')} FCFA · reste <b style="color:${reste>0?'var(--danger)':'var(--success)'}">${reste.toLocaleString('fr-FR')}</b></span>${(c.statut!=='annulee'&&c.statut!=='brouillon'&&reste>0)?`<button class="btn btn-primary btn-sm" onclick="openPaiement('${c.id}')">+ Enregistrer un paiement</button>`:''}</div></div>`;
+}
+function openPaiement(cmdId,pid){
+  const c=COMMANDES.find(x=>x.id===cmdId); if(!c||!window.SanixPaiements) return;
+  const p=pid?SanixPaiements.liste(c).find(x=>x.id===pid):null, reste=SanixPaiements.reste(c)+(p?p.montant:0);
+  if(!p){ const v=SanixPaiements.valider(c,{date:_ajd(),montant:1},{today:_ajd()}); if(v.erreur==='statut'){ showToast('❌ '+v.msg); return; } if(reste<=0){ showToast('✅ Commande déjà soldée'); return; } }
+  const old=document.getElementById('pay-ov'); if(old) old.remove();
+  const ov=document.createElement('div'); ov.id='pay-ov'; ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
+  ov.innerHTML=`<div style="background:var(--surface,#fff);color:var(--text,#111);border-radius:14px;padding:22px;max-width:440px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+    <div style="font-weight:800;font-size:16px;margin-bottom:2px">💶 ${p?'Modifier le paiement':'Enregistrer un paiement'}</div>
+    <div style="font-size:12px;color:var(--muted,#64748b);margin-bottom:12px">${_dEsc(c.client)} · ${_dEsc(c.ref||'')} · TTC ${(c.ttc||0).toLocaleString('fr-FR')} FCFA · reste dû <b>${reste.toLocaleString('fr-FR')}</b></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Date du paiement</label><input type="date" class="form-input" id="pay-date" value="${_dEsc(p&&p.date?p.date:_ajd())}" max="${_ajd()}"></div>
+    <div class="form-group"><label class="form-label">Montant (FCFA)</label><input type="number" class="form-input" id="pay-montant" min="1" max="${reste}" value="${p?p.montant:reste}"></div></div>
+    <div class="form-group"><label class="form-label">Mode de règlement</label><select class="form-input" id="pay-mode">${_paiementModes(p?p.mode:'mobile_money')}</select></div>
+    <div class="form-group"><label class="form-label">Référence (n° de transaction, de virement, de chèque…)</label><input type="text" class="form-input" id="pay-ref" maxlength="60" value="${_dEsc(p&&p.ref||'')}" placeholder="facultatif"></div>
+    ${p&&p.estimee?'<div style="font-size:11.5px;color:var(--warning);margin-bottom:8px">⚠️ Date et mode repris de l\'ancien acompte : indiquez la vraie date et le vrai mode de règlement.</div>':''}
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn btn-outline" id="pay-annul">Annuler</button><button class="btn btn-primary" id="pay-ok">Enregistrer</button></div></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#pay-annul').onclick=()=>ov.remove(); ov.querySelector('#pay-ok').onclick=()=>savePaiement(cmdId,pid||null);
+  setTimeout(()=>{ const m=ov.querySelector('#pay-montant'); if(m) m.focus(); },50);
+}
+function savePaiement(cmdId,pid){
+  const c=COMMANDES.find(x=>x.id===cmdId); if(!c) return; const g=i=>(document.getElementById(i)||{}).value||'';
+  const patch={date:g('pay-date'),montant:g('pay-montant'),mode:g('pay-mode'),ref:g('pay-ref').trim()};
+  const r=pid?SanixPaiements.modifier(c,pid,patch,{today:_ajd()}):SanixPaiements.ajouter(c,patch,{today:_ajd()});
+  if(!r.ok){ showToast('❌ '+r.msg); return; }
+  c.updatedAt=new Date().toISOString(); saveStore('commandes'); const ov=document.getElementById('pay-ov'); if(ov) ov.remove();
+  _apresPaiement(cmdId); showToast('💶 Paiement de '+r.paiement.montant.toLocaleString('fr-FR')+' FCFA enregistré — '+(SanixPaiements.reste(c)>0?'reste '+SanixPaiements.reste(c).toLocaleString('fr-FR'):'commande soldée'));
+}
+function delPaiement(cmdId,pid){
+  const c=COMMANDES.find(x=>x.id===cmdId); if(!c) return; const p=SanixPaiements.liste(c).find(x=>x.id===pid); if(!p) return;
+  if(!confirm('Supprimer ce paiement de '+(p.montant||0).toLocaleString('fr-FR')+' FCFA du '+String(p.date||'').split('-').reverse().join('/')+' ?\n\nLes écritures comptables et le solde de la commande seront recalculés.')) return;
+  SanixPaiements.supprimer(c,pid); saveStore('commandes'); _apresPaiement(cmdId); showToast('🗑 Paiement supprimé');
+}
+function _apresPaiement(cmdId){
+  const ed=document.getElementById('cmd-edit-id'), mod=document.getElementById('modal-commande');
+  if(ed&&mod&&!mod.classList.contains('hidden')&&ed.value===cmdId){ const c=COMMANDES.find(x=>x.id===cmdId); const a=document.getElementById('cmd-acompte'); if(a&&c) a.value=SanixPaiements.total(c)||''; try{ cmdCalcTTC(); }catch(e){} cmdPaiementsBox(cmdId); }
+  try{ initCommandes(); }catch(e){} try{ initApresVente(); }catch(e){} try{ updateSidebarNotifications(); }catch(e){}
+}
+// Reçu de paiement : numéro REC-AAAA-NNN attribué à la première impression (compteur mémorisé), jamais réutilisé. Ne tient pas lieu de facture.
+function imprimerRecu(cmdId,pid){
+  const c=COMMANDES.find(x=>x.id===cmdId); if(!c) return; const p=SanixPaiements.liste(c).find(x=>x.id===pid); if(!p){ showToast('❌ Paiement introuvable'); return; }
+  const an=new Date().getFullYear(); let rec=p.recu;
+  if(!rec){ let max=parseInt(lsLoad('rec_compteur_'+an),10)||0; COMMANDES.forEach(o=>(o.paiements||[]).forEach(q=>{ const m=new RegExp('^REC-'+an+'-(\\d+)$').exec(q.recu||''); if(m) max=Math.max(max,parseInt(m[1],10)); }));
+    rec='REC-'+an+'-'+String(max+1).padStart(3,'0'); lsSave('rec_compteur_'+an,max+1); if(Array.isArray(c.paiements)){ const q=c.paiements.find(x=>x.id===pid); if(q) q.recu=rec; } saveStore('commandes'); }
+  const E=FAC_EMETTEUR, md=SanixPaiements.MODES[p.mode]||SanixPaiements.MODES.inconnu, fm=n=>(n||0).toLocaleString('fr-FR'), tot=SanixPaiements.total(c), reste=SanixPaiements.reste(c);
+  const w=window.open('','_blank','width=800,height=900'); if(!w){ showToast('⚠️ Autorisez les popups pour imprimer'); return; }
+  w.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Reçu ${_facEsc(rec)} — ${_facEsc(c.client)}</title><style>body{font:14px Arial,sans-serif;color:#111;margin:30px}h1{margin:0;font-size:22px}.b{border:1px solid #999;border-radius:6px;padding:12px;margin:14px 0}table{width:100%;border-collapse:collapse}td{padding:6px 4px;border-bottom:1px solid #ddd}.r{text-align:right}.big{font-size:20px;font-weight:700}.sig{display:flex;justify-content:space-between;margin-top:60px;font-size:12px}.bar{margin-top:20px}@media print{.bar{display:none}}</style></head><body>
+<div style="display:flex;justify-content:space-between"><div><b>${E.nom}</b><br>${E.activite}<br>${E.lieu}, ${E.pays}<br>Tél : ${E.tel}<br>${E.email}${_facMentions()}</div><div style="text-align:right"><h1>REÇU DE PAIEMENT</h1>N° ${_facEsc(rec)}<br>Date : ${_facDateLongue(p.date)}</div></div>
+<div class="b"><table><tr><td>Reçu de</td><td class="r"><b>${_facEsc(c.client)}</b></td></tr><tr><td>Pour la commande</td><td class="r">${_facEsc(c.ref||'')} — ${_facEsc(c.logiciel||'')}</td></tr><tr><td>Mode de règlement</td><td class="r">${_facEsc(md.lib)}${p.ref?' — réf. '+_facEsc(p.ref):''}</td></tr><tr><td class="big">Montant reçu</td><td class="r big">${fm(p.montant)} FCFA</td></tr></table>
+<p>Arrêté le présent reçu à la somme de <b>${_facSomme(p.montant)}</b>.</p></div>
+<table><tr><td>Total de la commande (TTC)</td><td class="r">${fm(c.ttc)} FCFA</td></tr><tr><td>Total payé à ce jour</td><td class="r">${fm(tot)} FCFA</td></tr><tr><td><b>Reste dû</b></td><td class="r"><b>${fm(reste)} FCFA</b></td></tr></table>
+<p style="font-size:11px;color:#555;margin-top:16px">Ce reçu atteste d'un paiement ; il ne tient pas lieu de facture.</p>
+<div class="sig"><div>Pour ${E.court}<br>(cachet et signature)</div><div>Le client<br>(lu et approuvé)</div></div>
+<div class="bar"><button onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button></div></body></html>`);
+  w.document.close(); showToast('🧾 Reçu '+rec+' généré');
+}
+
 function renderCmdStats() {
   const el = document.getElementById('cmd-stats');
   if(!el) return;
@@ -10041,6 +10127,7 @@ function renderCommandes() {
           <button onclick="imprimerBonCommande('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;color:var(--primary)" title="Bon de commande">🖨️</button>
           <button onclick="choisirFacture('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;color:var(--success)" title="Imprimer la facture (avec ou sans TVA)">🧾</button>
           <button onclick="editCommande('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px">✏️</button>
+          ${(c.statut!=='annulee'&&c.statut!=='brouillon'&&cmdReste(c)>0)?`<button onclick="openPaiement('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;color:var(--success)" title="Enregistrer un paiement">💶</button>`:''}
           <button onclick="creerContratFromCmd('${c.id}')" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;color:var(--success)" title="Créer contrat">📝</button>
           <button onclick="deleteCommande('${c.id}')" class="btn btn-sm" style="padding:3px 8px;font-size:11px;background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.2)">🗑</button>
         </div>
@@ -10075,7 +10162,8 @@ function openCommandeModal(id=null, presId=null) {
     const sv=(elId,v)=>{ const e=document.getElementById(elId); if(e) e.value=v||''; };
     sv('cmd-client',c.client); sv('cmd-date',c.date); sv('cmd-logiciel',c.logiciel);
     sv('cmd-type-licence',c.typeLicence); sv('cmd-prix-ht',c.htBrut||'');
-    sv('cmd-remise',c.remise||0); sv('cmd-acompte',c.acompte||0);
+    sv('cmd-remise',c.remise||0); sv('cmd-acompte',window.SanixPaiements?SanixPaiements.total(c):(c.acompte||0));
+    _cmdAcompteMode(true,id);
     sv('cmd-commercial',c.commercial); sv('cmd-statut',c.statut);
     sv('cmd-pres-link',c.presId||''); sv('cmd-notes',c.notes||'');
     cmdCalcTTC();
@@ -10084,6 +10172,7 @@ function openCommandeModal(id=null, presId=null) {
     document.getElementById('cmd-prix-ht').value='';
     document.getElementById('cmd-remise').value='0';
     document.getElementById('cmd-acompte').value='0';
+    _cmdAcompteMode(false,null);
     document.getElementById('cmd-tva').value='';
     document.getElementById('cmd-ttc').value='';
     document.getElementById('cmd-solde').value='';
@@ -10133,7 +10222,8 @@ function saveCommande() {
     showToast('✅ Commande mise à jour');
   } else {
     const refNew = cmdNumero(data.date);
-    COMMANDES.push({id:'cmd_'+Date.now(), ref:refNew, ...data});
+    const pay0 = acompte>0 ? [{id:'p'+Date.now().toString(36)+'0', date:data.date, montant:acompte, mode:gv('cmd-acompte-mode')||'inconnu', ref:''}] : [];
+    COMMANDES.push({id:'cmd_'+Date.now(), ref:refNew, ...data, paiements:pay0});
     cmdCompteurMemo(refNew);
     showToast('✅ Commande créée — '+refNew);
   }
@@ -10988,11 +11078,7 @@ function renouvConfirmer(licId){
   showToast('✅ Renouvelé jusqu\'au '+e.finPrevue.split('-').reverse().join('/')+' — facture '+(o.ref||''));
   initApresVente(); try{ updateSidebarNotifications(); }catch(x){}
 }
-function renouvEncaisser(cmdId){
-  const o=COMMANDES.find(x=>x.id===cmdId); if(!o) return;
-  if(!confirm('Marquer la facture '+(o.ref||'')+' de '+o.client+' comme payée ('+(o.ttc||0).toLocaleString('fr-FR')+' '+renouvCfg().devise+' TTC) ?')) return;
-  o.acompte=o.ttc||0; o.solde=0; saveStore('commandes'); showToast('💶 Encaissement enregistré'); initApresVente();
-}
+function renouvEncaisser(cmdId){ openPaiement(cmdId); }     // date, mode et référence du règlement : journal des paiements
 function initApresVente(){
   const E=_dEsc, num=v=>Number(v||0).toLocaleString('fr-FR'), dv=renouvCfg().devise;
   renouvAuto();
@@ -13580,7 +13666,7 @@ function _migrerNumerosWAOnce(){
 
 
 document.addEventListener('DOMContentLoaded',()=>{
-  setTimeout(()=>{ _extendLoadAll(); _dedoublonnerCommandes(); _licencesPerpetuellesOnce(); _licencesDepuisCommandes(); _contratsDepuisCommandes(); try{ renouvAuto(); }catch(e){ console.error(e); } _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
+  setTimeout(()=>{ _extendLoadAll(); _dedoublonnerCommandes(); try{ _paiementsMigrer(); }catch(e){ console.error(e); } _licencesPerpetuellesOnce(); _licencesDepuisCommandes(); _contratsDepuisCommandes(); try{ renouvAuto(); }catch(e){ console.error(e); } _migrerNumerosWAOnce(); syncProspectsToPipeline(); updateSidebarBadges(); try{ schedInit(); }catch(e){} updateSidebarNotifications(); }, 900);
   // Refresh notifications toutes les 2 minutes
   setInterval(updateSidebarNotifications, 120000);
 });
@@ -13625,6 +13711,7 @@ const PLAN_COMPTABLE = {
   '4441':  'État, impôt sur les bénéfices',
   '521000':'Banque',
   '552000':'Monnaie électronique — téléphone portable (Mobile Money : Wave, Orange, MTN, Moov)',
+  '471000':'Règlements en nature à affecter (compte d\'attente : terrain, matériel… reçus en paiement)',
   '571000':'Caisse',
   '701000':'Ventes de marchandises',
   '706000':'Services vendus (licences, prestations)',
@@ -13666,17 +13753,17 @@ function comptaGenerateAuto() {
         {compte:'4431',   libelle:'TVA collectée '+(tvaRate*100)+'%', debit:0, credit:tva},
       ].filter(l=>l.debit||l.credit)
     });
-    // Encaissement : jamais plus que le TTC de la vente (le 411 ne peut pas devenir créditeur par un versement saisi en trop)
-    const encaisse = Math.min(c.acompte||0, ttc);
-    if(encaisse>0){
-      const cpt = '552000'; // Mobile Money par défaut (le mode de règlement n'est pas enregistré)
-      auto.push({
-        id:'auto_enc_'+c.id, auto:true, date, journal:'BQ', piece:piece+'-ENC',
-        libelle:`Encaissement acompte — ${c.client}`,
-        lignes:[
-          {compte:cpt,     libelle:'Encaissement '+c.client, debit:encaisse, credit:0},
-          {compte:'411000',libelle:c.client, debit:0, credit:encaisse},
-        ]
+    // Encaissements : une écriture par paiement, à SA date, au compte de son mode (plafonnées au TTC : un versement en trop ne rend pas le 411 créditeur)
+    if(window.SanixPaiements){
+      SanixPaiements.ecritures(c).forEach(e=>{
+        auto.push({
+          id:'auto_enc_'+c.id+'_'+e.id, auto:true, date:e.date||date, journal:e.journal, piece:piece+'-ENC'+e.n,
+          libelle:`Encaissement ${e.lib}${e.ref?' ('+e.ref+')':''} — ${c.client}`,
+          lignes:[
+            {compte:e.compte, libelle:'Encaissement '+c.client, debit:e.montant, credit:0},
+            {compte:'411000', libelle:c.client, debit:0, credit:e.montant},
+          ]
+        });
       });
     }
   });
