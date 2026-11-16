@@ -38,15 +38,16 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(A.includes("Le premier client pèse") && A.includes("Seulement 3 ventes"), "alertes : concentration et échantillon faible");
     console.log("▶ Semaine et objectifs");
     const H = await txt("#str-hebdo");
-    ok(H.includes("ImmoSuite ERP") && H.includes("Hub Angel's") && H.includes("MediCore Suite") && H.includes("réalisé / objectif"), "semaine : toutes les familles suivies, format réalisé / objectif");
+    ok(H.includes("ImmoSuite ERP") && H.includes("Angel's Livraison") && H.includes("MediCore Suite") && H.includes("réalisé / objectif"), "semaine : toutes les familles suivies, format réalisé / objectif");
     const reel = await page.evaluate(() => { const r = SanixStrategie.semaine(COMMANDES, DEALS, _strOpts()).lignes.find((x) => x.famille === "ImmoSuite ERP"); return { c: r.contacts, d: r.demos, v: r.ventes }; });
     ok(reel.c === 1 && reel.d === 1 && reel.v === 2, "activité de la semaine lue dans l'historique et les commandes (1 contact, 1 démo, 2 ventes)");
     await page.evaluate(() => strSet("ImmoSuite ERP", "contacts", 20)); await page.waitForTimeout(150);
     ok(await page.evaluate(() => CONFIG.strategie["ImmoSuite ERP"].contacts === 20 && JSON.parse(localStorage.getItem("sanix_crm_config")).strategie["ImmoSuite ERP"].contacts === 20), "objectif modifié et enregistré dans les réglages du CRM");
     await page.evaluate(() => strSet("ImmoSuite ERP", "part", 70)); await page.waitForTimeout(150);
     ok((await txt("#str-alertes")).includes("120 %"), "parts de temps ≠ 100 % : alerte (120 %)");
-    await page.evaluate(() => strSet("Sanix AluExpert ERP", "part", 0)); await page.evaluate(() => strSet("MediCore Suite", "part", 0)); await page.evaluate(() => strSet("Hub Angel's", "part", 30)); await page.waitForTimeout(150);
+    await page.evaluate(() => strSet("Sanix AluExpert ERP", "part", 0)); await page.evaluate(() => strSet("MediCore Suite", "part", 0)); await page.evaluate(() => strSet("Angel's Livraison", "part", 30)); await page.waitForTimeout(150);
     ok(!(await txt("#str-alertes")).includes("devraient totaliser"), "parts à 100 % : plus d'alerte");
+    ok(await page.evaluate(() => { const d = document.getElementById("str-note"); return d && d.open && d.innerText.includes("CA par fiche") && d.innerText.includes("Part du temps") && d.innerText.includes("(indicatif)") && d.innerText.includes("Cette semaine"); }), "note explicative affichée (CA par fiche, parts de temps, indicatif, semaine)");
     console.log("▶ Rechargement");
     await page.reload(); await page.waitForTimeout(900);
     await page.evaluate(() => { currentUser = USERS.find((u) => u.role === "super_admin"); enterApp(currentUser); }); await page.waitForTimeout(1300);
