@@ -5401,7 +5401,7 @@ function fcSenderVars(t){
 }
 function fcFill(t,c){
   const log = LOGICIELS.find(l=>l.nom===c.logiciel) || {};
-  const prix = ((c.valeur>0?c.valeur:log.prixNum)||0).toLocaleString('fr-FR');
+  const prix = (valeurFiche(c)||0).toLocaleString('fr-FR');
   return fcSenderVars(t)
     .replace(/{demo_line}/g, log.demo ? '📲 Démo en ligne : '+log.demo+(log.demo_acces?'\n'+log.demo_acces:'')+'\n\n' : '')
     .replace(/{destinataire}/g, fcDestinataire(c))
@@ -6419,9 +6419,9 @@ function renderLogStats() {
   const el = document.getElementById('log-stats');
   if(!el) return;
   const actifs = LOGICIELS.filter(l=>l.actif!==false);
-  const totalVentes = LOGICIELS.reduce((s,l)=>s+(l.ventes||0),0);
+  const totalVentes = LOGICIELS.reduce((s,l)=>s+_statsLogiciel(l).ventes,0);
   const totalCA = caCmd();      // même chiffre d'affaires que partout ailleurs (HT des commandes confirmées, en cours ou livrées), pas prix catalogue × compteur de ventes
-  const totalProspects = LOGICIELS.reduce((s,l)=>s+(l.prospects||0),0);
+  const totalProspects = LOGICIELS.reduce((s,l)=>s+_statsLogiciel(l).prospects,0);
   const cats = [...new Set(actifs.map(l=>l.cat))].length;
   el.innerHTML = [
     {v:actifs.length,lbl:'Produits actifs',ico:'💻',c:'var(--primary)',bg:'var(--primary-l)'},
@@ -6475,7 +6475,7 @@ function renderLogiciels() {
           <button onclick="deleteLogiciel('${l.id}')" style="background:rgba(220,38,38,.3);border:1px solid rgba(220,38,38,.4);border-radius:7px;padding:4px 8px;font-size:11px;color:#fff;cursor:pointer" title="Supprimer">🗑</button>
         </div>
         <div style="position:absolute;right:14px;bottom:14px;display:flex;gap:5px;align-items:center">
-          <span style="background:rgba(255,255,255,.15);border-radius:12px;padding:2px 9px;font-size:10px;color:#fff;font-weight:700">${l.ventes||0} ventes</span>
+          <span style="background:rgba(255,255,255,.15);border-radius:12px;padding:2px 9px;font-size:10px;color:#fff;font-weight:700">${_statsLogiciel(l).ventes} ventes</span>
           <span style="background:rgba(255,255,255,.1);border-radius:12px;padding:2px 7px;font-size:10px;color:#fff">${licIcon} ${l.type_licence==='Perpetuelle'||!l.type_licence?'Perpétuelle':l.type_licence}</span>
         </div>
       </div>
@@ -6490,7 +6490,7 @@ function renderLogiciels() {
           </div>
           <div style="text-align:right">
             <div style="font-size:10px;color:var(--muted)">PROSPECTS</div>
-            <div style="font-weight:700;font-size:18px;color:var(--primary)">${l.prospects||0}</div>
+            <div style="font-weight:700;font-size:18px;color:var(--primary)">${_statsLogiciel(l).prospects}</div>
           </div>
         </div>
         <div style="font-size:10px;color:var(--muted);margin-bottom:10px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:3px">
@@ -6732,6 +6732,20 @@ function updateLogPreview() {
   if(i) i.textContent = icon;
 }
 
+// Recalcule l'écran affiché (après une synchronisation ou un changement de catalogue).
+function rafraichirVueCourante(){
+  const v=document.querySelector('[id^="view-"]:not(.hidden)'); if(!v||v.id==='view-note-host') return;
+  const id=v.id.slice(5), F={strategie:'initStrategie',qualification:'qlRender',apresvente:'initApresVente',comptabilite:'initComptabilite',conversion:'initConversion',cockpit:'initCockpit',direction:'initDirection',intel:'initIntel',aisales:'initAiSales'};
+  try{ if(F[id]&&typeof window[F[id]]==='function') window[F[id]](); }catch(e){ console.error(e); }
+  try{ if(id==='financement'&&window.SanixFinancement&&window.SanixFinancement.refresh) window.SanixFinancement.refresh(); }catch(e){}
+  try{ if(typeof renderClients==='function'&&id==='clients'&&typeof getFilteredClients==='function') renderClients(getFilteredClients()); }catch(e){}
+}
+// Ventes et prospects d'un logiciel : calculés sur les commandes et les fiches du CRM (plus de compteur saisi à la main, qui restait à 0).
+function _statsLogiciel(l){
+  const ventes=cmdsRealisees(c=>!c.renouvellement&&c.logiciel===l.nom).length;
+  const prospects=CLIENTS.filter(c=>c.statut==='prospect'&&c.logiciel===l.nom).length;
+  return {ventes,prospects};
+}
 function updateLogicielSelects() {
   // Met à jour tous les <select> de choix de logiciel dans l'app
   const opts = LOGICIELS.filter(l=>l.actif!==false).map(l=>`<option value="${l.nom}">${l.icon||'💻'} ${l.nom}</option>`).join('');
@@ -6796,6 +6810,7 @@ function saveLogiciel() {
   closeLogicielModal();
   initLogiciels();
   updateLogicielSelects();
+  try{ if(syncProspectsToPipeline()) {} ; rafraichirVueCourante(); }catch(e){ console.error(e); }       // estimations du pipeline et écrans ouverts : prix à jour tout de suite
   showToast(`✅ ${editId?'Produit mis à jour':'Nouveau produit créé'} — ${nom}`);
 }
 
@@ -8032,7 +8047,7 @@ function renderClients(list) {
         <td style="font-size:12px">${c.logiciel||'—'}</td>
         <td><span class="badge ${STATUT_BADGE[c.statut]||'badge-muted'}">${STATUT_LABEL[c.statut]||c.statut}</span></td>
         <td style="font-size:12px">${c.commercial||'—'}</td>
-        <td><strong>${c.valeur?(c.valeur/1000).toFixed(0)+'k':'-'}</strong></td>
+        <td><strong>${valeurFiche(c)?(valeurFiche(c)/1000).toFixed(0)+'k':'-'}</strong></td>
         <td onclick="event.stopPropagation()">
           <div class="flex gap-2">
             <button class="btn btn-outline btn-sm" onclick="showQR(${c.id})" title="QR">🪪</button>
@@ -8057,7 +8072,7 @@ function renderClients(list) {
         <div class="client-card-meta">
           <span class="chip">${c.secteur||'—'}</span>
           <span class="chip" style="background:var(--primary-l);color:var(--primary)">${(c.logiciel||'').split(' ')[0]}</span>
-          <span class="chip" style="background:var(--success-l);color:var(--success)">${c.valeur?(c.valeur/1000).toFixed(0)+'k FCFA':'—'}</span>
+          <span class="chip" style="background:var(--success-l);color:var(--success)">${valeurFiche(c)?(valeurFiche(c)/1000).toFixed(0)+'k FCFA':'—'}</span>
         </div>
         <div class="client-card-actions" onclick="event.stopPropagation()">
           <button onclick="showQR(${c.id})">🪪 QR</button>
@@ -8079,7 +8094,7 @@ function renderClients(list) {
         </div>
         <div class="cli-right">
           <span class="badge ${STATUT_BADGE[c.statut]||'badge-muted'}" style="font-size:10px">${STATUT_LABEL[c.statut]||c.statut}</span>
-          <div class="cli-val" style="margin-top:4px">${c.valeur?(c.valeur/1000).toFixed(0)+'k':''}</div>
+          <div class="cli-val" style="margin-top:4px">${valeurFiche(c)?(valeurFiche(c)/1000).toFixed(0)+'k':''}</div>
           <div class="cli-actions" onclick="event.stopPropagation()">
             <button class="btn btn-outline btn-sm" onclick="showQR(${c.id})" style="padding:4px 8px" title="Carte QR">🪪</button>
             <button class="btn btn-outline btn-sm" onclick="editClient(${c.id})" style="padding:4px 8px" title="Modifier">✏️</button>
@@ -8177,7 +8192,7 @@ function editClient(id) {
   document.getElementById('c-nom').value = c.nom||'';
   document.getElementById('c-phone').value = c.phone||'';
   document.getElementById('c-email').value = c.email||'';
-  document.getElementById('c-valeur').value = c.valeur||'';
+  document.getElementById('c-valeur').value = valeurFiche(c)||'';
   { const e=document.getElementById('c-effectif'); if(e)e.value=c.effectif||''; const a=document.getElementById('c-ca'); if(a)a.value=c.caEstime||''; const b=document.getElementById('c-etabs'); if(b)b.value=c.etablissements||''; }
   document.getElementById('c-adresse').value = c.adresse||'';
   document.getElementById('c-notes').value = c.notes||'';
@@ -8218,10 +8233,11 @@ function saveClient() {
   if(!phone){ showToast('❌ Téléphone obligatoire'); document.getElementById('c-phone').focus(); return; }
   if(editId) {
     const c = CLIENTS.find(x=>x.id===editId);
-    if(c) Object.assign(c,{nom,phone,email,secteur,logiciel,statut,commercial,valeur,effectif,caEstime,etablissements,adresse,lat,lng,notes,updated_at:new Date().toISOString()});
+    if(c){ const vv=_valeurAEnregistrer(c,statut,logiciel,valeur); Object.assign(c,{nom,phone,email,secteur,logiciel,statut,commercial,valeur:vv.valeur,effectif,caEstime,etablissements,adresse,lat,lng,notes,updated_at:new Date().toISOString()}); if(vv.saisie) c.valeurSaisie=true; else delete c.valeurSaisie; }
   } else {
     const newId = Math.max(0,...CLIENTS.map(c=>c.id))+1;
-    CLIENTS.push({id:newId,nom,phone,email,secteur,logiciel,statut,commercial,valeur,effectif,caEstime,etablissements,adresse,lat,lng,notes,created_at:new Date().toISOString(),updated_at:new Date().toISOString()});
+    const vv=_valeurAEnregistrer(null,statut,logiciel,valeur);
+    CLIENTS.push({id:newId,nom,phone,email,secteur,logiciel,statut,commercial,valeur:vv.valeur,...(vv.saisie?{valeurSaisie:true}:{}),effectif,caEstime,etablissements,adresse,lat,lng,notes,created_at:new Date().toISOString(),updated_at:new Date().toISOString()});
   }
   saveStore('clients');
   closeClientModal();
@@ -11055,11 +11071,23 @@ function convNBA(c){
   return {label, act, color, urg, overdue, veryLate, days:d, etape:e, cadence:cad};
 }
 
-function convPipelineValue(c){
-  if(c.valeur>0) return c.valeur;
-  const log=LOGICIELS.find(l=>l.nom===c.logiciel);
-  return log?.prixNum || 0;
+// Valeur d'une fiche. Un prospect qui n'a pas encore de devis (étape < 3) et dont le montant n'a pas été saisi à la main
+// vaut le prix du catalogue EN VIGUEUR : changer le prix d'un logiciel met à jour toutes ces fiches. Un devis enregistré, un montant saisi
+// et la valeur d'un client (montant réellement vendu) ne bougent pas quand le catalogue change.
+function valeurFiche(c){
+  if(!c) return 0;
+  const log=LOGICIELS.find(l=>l.nom===c.logiciel), cat=(log&&log.prixNum>0)?log.prixNum:0, st=c.valeur>0?c.valeur:0;
+  const etape=(typeof aiGetEtape==='function')?aiGetEtape(c):0;
+  const suitCatalogue = c.statut==='prospect' && !c.valeurSaisie && etape<3;
+  return suitCatalogue ? (cat||st) : (st||cat);
 }
+// Valeur à enregistrer depuis la fiche : le prix catalogue affiché par défaut n'est pas figé dans la fiche.
+function _valeurAEnregistrer(c, statut, logiciel, valeur){
+  const log=LOGICIELS.find(l=>l.nom===logiciel), cat=(log&&log.prixNum>0)?log.prixNum:0, etape=(c&&typeof aiGetEtape==='function')?aiGetEtape(c):0;
+  if(statut==='prospect' && etape<3 && (!(valeur>0) || valeur===cat)) return {valeur:0, saisie:false};
+  return {valeur, saisie: statut==='prospect' && valeur>0};
+}
+function convPipelineValue(c){ return valeurFiche(c); }
 
 function convProspects(){
   return CLIENTS.filter(c=>c.statut==='prospect');
@@ -11353,7 +11381,7 @@ function qlAvancer(c,etape,montant,quiet){
   if(!c.interactions) c.interactions=[];
   const st=QL_STEPS[etape];
   c.interactions.push({date:new Date().toISOString(),type:st[2],note:'Qualification rapide',etape,ico:st[1]});
-  if(montant>0){ c.valeur=montant; }
+  if(montant>0){ c.valeur=montant; c.valeurSaisie=true; }
   c.updated_at=new Date().toISOString();
   syncDealForClient(c.id);
   const d=qlDeal(c);
@@ -11623,7 +11651,7 @@ function relanceBuildMsg(c, etape, canal){
   if(etape===0) return fcGet(c, canal==='email'?'email':'wa').body;   // premier contact : modèles WhatsApp / e-mail dédiés
   const r = relanceCfg();
   const log = LOGICIELS.find(l=>l.nom===c.logiciel);
-  const prix = (c.valeur>0?c.valeur:(log?.prixNum||0)).toLocaleString('fr-FR');
+  const prix = (valeurFiche(c)||0).toLocaleString('fr-FR');
   let tpl = r.templates[etape] || r.templates[0];
   const pitch = relanceBuildPitch(c);
   // Insertion auto du pitch pour les étapes de présentation (0-2) si non déjà présent
@@ -11875,7 +11903,7 @@ function syncProspectsToPipeline(){
     if(!deal){
       DEALS.push({
         id: nextId++, client:c.nom, clientId:c.id, logiciel:c.logiciel||'',
-        valeur: _prospectMontantReel(c), valeurEst: _prospectMontantReel(c)>0?0:(c.valeur>0?c.valeur:_dealPrixCatalogue(c.logiciel)),
+        valeur: _prospectMontantReel(c), valeurEst: _prospectMontantReel(c)>0?0:valeurFiche(c),
         commercial:c.commercial||'', stage, notes:c.notes||'', color:'#0e7490',
         date:new Date().toLocaleDateString('fr-FR'), fromProspect:true,
         history:[{date:new Date().toISOString(),type:'creation',ico:'🎯',label:'Deal créé (prospect)',note:'Généré depuis le prospect',resultat:'',commercial:c.commercial||''}]
@@ -11889,6 +11917,7 @@ function syncProspectsToPipeline(){
       const reel=_prospectMontantReel(c);
       if(reel>0){ if(deal.valeur!==reel){ deal.valeur=reel; deal.valeurEst=0; changed=true; } }
       else if(deal.valeur>0 && (deal.valeur===_dealPrixCatalogue(deal.logiciel) || deal.valeur===c.valeur)){ deal.valeurEst=deal.valeur; deal.valeur=0; changed=true; }
+      if(!(deal.valeur>0)){ const est=valeurFiche(c); if(est>0 && deal.valeurEst!==est){ deal.valeurEst=est; changed=true; } }     // l'estimation suit le prix du catalogue en vigueur
     }
   });
   if(changed) saveStore('deals');
@@ -11932,10 +11961,7 @@ function cokProba(c){
   if(d!==null){ if(d>30) p*=0.5; else if(d>14) p*=0.75; }
   return Math.max(2, Math.min(97, Math.round(p*100)));
 }
-function cokValeur(c){
-  if(c.valeur>0) return c.valeur;
-  return (LOGICIELS.find(l=>l.nom===c.logiciel)||{}).prixNum || 0;
-}
+function cokValeur(c){ return valeurFiche(c); }
 function cokRisk(c){
   const d = convDaysSince(c);
   if(d===null) return {pct:0, lbl:'—'};
@@ -13247,7 +13273,7 @@ function genDocFromDossier(clientId, kind){
   const tpl = kind==='contrat' ? (d.contrat||'') : (d.devis||'');
   const r=(typeof relanceCfg==='function')?relanceCfg():{gerant:'Cyrille KESIE',societe:'SANIX Africa',tel1:'',email:''};
   const sites=Math.max(1,c.etablissements||1);
-  const puHT=(c.valeur>0?c.valeur:(log.prixNum||0));
+  const puHT=valeurFiche(c);
   const totalHT=puHT*sites;
   const tva=Math.round(totalHT*0.18);
   const ttc=totalHT+tva;
