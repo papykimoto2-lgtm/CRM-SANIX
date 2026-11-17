@@ -20,6 +20,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     console.log("▶ Fenêtres ouvertes depuis la fiche");
     await ouvrirFiche(); await page.click("#sp-actions >> text=WhatsApp"); await page.waitForTimeout(400);
     ok((await auDessus("modal-relance")) === "dessus", "bouton WhatsApp : la fenêtre « Relance » s'affiche au-dessus de la fiche");
+    ok(await page.evaluate(() => { const b = document.querySelector("#modal-relance .modal"); const c = getComputedStyle(b).backgroundColor; return c !== "rgba(0, 0, 0, 0)" && c !== "transparent" && b.getBoundingClientRect().width > 300; }), "la fenêtre « Relance » a un fond plein (elle n'est plus transparente) et une largeur normale");
     ok(await page.evaluate(() => !!document.getElementById("rel-btn-wa") && document.getElementById("rel-btn-wa").offsetParent !== null), "le bouton « 📱 WhatsApp » de la relance est visible et cliquable");
     await ouvrirFiche(); await page.click("#sp-actions >> text=Relancer"); await page.waitForTimeout(400);
     ok((await auDessus("modal-relance")) === "dessus", "bouton Relancer : même chose");

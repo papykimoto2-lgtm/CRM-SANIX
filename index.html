@@ -339,7 +339,7 @@ select.form-input{cursor:pointer}
 .modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:center;justify-content:center}
 /* La fiche contact reste SOUS les fenêtres qu'elle ouvre (WhatsApp, Relancer, Devis, Contrat…) : elles étaient déclarées avant elle dans la page, au même niveau, donc cachées derrière. */
 #modal-client-detail{z-index:900}
-.modal-box{background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--sh-lg);padding:28px;max-width:420px;width:90%;position:relative;max-height:92vh;overflow-y:auto;overscroll-behavior:contain}   /* une fenêtre plus haute que l'écran défile au lieu d'être coupée */
+.modal-box,.modal{background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--sh-lg);padding:28px;max-width:420px;width:90%;position:relative;max-height:92vh;overflow-y:auto;overscroll-behavior:contain}   /* une fenêtre plus haute que l'écran défile au lieu d'être coupée */
 .modal-close{position:absolute;top:16px;right:16px;width:28px;height:28px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;transition:all .15s}
 .modal-close:hover{background:#EF4444;color:#fff;border-color:transparent;transform:rotate(90deg)}
 /* ─── PREMIUM MODAL UPGRADE ─── */
@@ -501,7 +501,7 @@ select.form-input{cursor:pointer}
   }
   /* Tableaux scrollables horizontalement */
   .client-table{font-size:11px}
-  .modal-box{max-width:100% !important}
+  .modal-box,.modal{max-width:100% !important}
   /* Réduire padding cartes */
   .card{padding:14px}
 }
@@ -552,7 +552,7 @@ select.form-input{cursor:pointer}
 .kanban-col{scroll-snap-align:start}
 /* Modals bottom-sheet on small screens */
 @media(max-width:600px){
-  .modal-box{width:100% !important;max-width:100% !important;border-radius:var(--r-lg) var(--r-lg) 0 0;position:fixed;bottom:0;left:0;right:0;max-height:94vh;overflow-y:auto;padding:20px 16px !important}
+  .modal-box,.modal{width:100% !important;max-width:100% !important;border-radius:var(--r-lg) var(--r-lg) 0 0;position:fixed;bottom:0;left:0;right:0;max-height:94vh;overflow-y:auto;padding:20px 16px !important}
   .modal-overlay{align-items:flex-end}
   /* Modal détail prospect padding:0 → garder mais ajuster contenu */
   #modal-client-detail .modal-box{padding:0 !important}
