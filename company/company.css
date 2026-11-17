@@ -51,6 +51,11 @@ h2{font-size:18px;margin:0 0 4px}
 
 /* Bureau 3D */
 .office{display:grid;grid-template-columns:minmax(0,1fr) 370px;height:100%}
+.imm-pad{position:absolute;right:12px;bottom:64px;z-index:2;display:flex;flex-direction:column;align-items:flex-end;gap:8px;max-width:calc(100% - 24px)}
+.imm-pad[hidden]{display:none}
+.imm-hint{background:rgba(11,18,32,.82);color:#E6ECF8;font-size:11px;padding:6px 10px;border-radius:9px;text-align:right}
+.imm-keys{display:grid;grid-template-columns:repeat(3,44px);gap:6px}.imm-keys .btn{min-height:44px;font-size:16px;touch-action:none;user-select:none}
+.stage:has(.imm-pad:not([hidden])) .legend{display:none}
 .office.side-off{grid-template-columns:minmax(0,1fr)}.office.side-off .side{display:none}
 .stage{position:relative;min-height:340px;background:#0b1220;overflow:hidden}
 .stage .np-layer{position:absolute;inset:0;pointer-events:none;overflow:hidden}

@@ -46,6 +46,14 @@ const stageHtml = () => html`<div class="stage" id="stage">
     <button class="btn sm" type="button" data-act="toggle-side" id="b-side" aria-label="Masquer le panneau de supervision" aria-pressed="false" title="Masquer / afficher le panneau de supervision">◧ Panneau</button></div>
   <div class="stage-right"><span class="chip sync" id="sync-chip" data-s="connecting" role="status"><i></i><span>Connexion…</span></span>
     <select id="q-sel" data-change="quality" aria-label="Qualité graphique"><option value="auto">Qualité : auto</option><option value="high">Élevée</option><option value="low">Réduite</option><option value="eco">Éco</option></select></div>
+  <div class="imm-pad" id="imm-pad" hidden aria-label="Visite immersive : commandes">
+    <div class="imm-hint">Glissez pour regarder · Z Q S D ou flèches pour marcher · Maj = courir · Échap = quitter</div>
+    <div class="imm-keys">
+      <button type="button" class="btn sm" data-imm="tl" aria-label="Tourner à gauche">⟲</button><button type="button" class="btn sm" data-imm="f" aria-label="Avancer">▲</button><button type="button" class="btn sm" data-imm="tr" aria-label="Tourner à droite">⟳</button>
+      <button type="button" class="btn sm" data-imm="l" aria-label="Pas à gauche">◀</button><button type="button" class="btn sm" data-imm="b" aria-label="Reculer">▼</button><button type="button" class="btn sm" data-imm="r" aria-label="Pas à droite">▶</button>
+    </div>
+    <button type="button" class="btn sm pri" data-act="imm-exit">✕ Quitter la visite</button>
+  </div>
   <div class="legend" aria-label="Légende des états">${legendHtml()}</div>
   <div class="stage-load" id="stage-load" role="status"><b>Chargement du bureau…</b><div class="bar"><b id="stage-load-bar" style="width:0%"></b></div><span class="small" id="stage-load-n"></span></div>
 </div><aside class="side" id="side"><section id="sup"></section><section id="sheet" hidden></section></aside>`;
@@ -74,7 +82,7 @@ async function initOffice() {
   S.officeOk = "pending";
   try {
     S.office = await createOffice($("#stage"), { onSelect: (id) => selectAgent(id, { fromScene: true }), onProgress: setProgress, onView: syncViewSel, onDisplay: saveDisplay });
-    restoreCamera();
+    restoreCamera(); wireImmersivePad();
     S.officeOk = true; pushOffice(); S.office.setActive(S.tab === "office");
   } catch (e) {
     console.warn("3D indisponible :", e.message);
@@ -104,13 +112,14 @@ function render2D() {
 function fillViewOptions() {
   const sel = $("#view-sel"); if (!sel) return;
   const cur = sel.value || "general", a = S.selected && agentBy(S.selected);
-  const opts = [["general", "Vue d'ensemble"], ["iso", "Vue isométrique (moins plongeante)"], ["aerial", "Vue aérienne (plan)"], ["exterior", "Vue extérieure (tour du bâtiment)"], ["executive", "Étage de direction"], ...S.depts.filter((d) => d.id !== "direction").map((d) => [`dept:${d.id}`, `Département : ${d.nom}`]),
+  const opts = [["general", "Vue d'ensemble"], ["iso", "Vue isométrique (moins plongeante)"], ["aerial", "Vue aérienne (plan)"], ["immersive", "Vue immersive (visite à hauteur d'homme)"], ["exterior", "Vue extérieure (tour du bâtiment)"], ["executive", "Étage de direction"], ...S.depts.filter((d) => d.id !== "direction").map((d) => [`dept:${d.id}`, `Département : ${d.nom}`]),
     ["direction", "Bureau du directeur IA"], ["meeting", "Salle de réunion"], ["supervision", "Salle de supervision"], ["activity", "Activités en cours"], ["follow", a ? `Suivre : ${a.nom}` : "Suivre un collaborateur (sélectionnez-en un)"], ["free", "Vue libre"]];
   sel.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}"${v === "follow" && !a ? " disabled" : ""}${v === "free" ? " hidden" : ""}>${esc(l)}</option>`).join("");
   sel.value = opts.some(([v]) => v === cur) ? cur : "general";
 }
 function syncViewSel({ mode, arg }) {
   const sel = $("#view-sel"); if (!sel) return;
+  const pad = $("#imm-pad"); if (pad) pad.hidden = mode !== "immersive";
   const v = mode === "dept" ? `dept:${arg}` : mode;
   if ([...sel.options].some((o) => o.value === v)) sel.value = v;
 }
@@ -125,6 +134,13 @@ function restoreCamera() {
   const d = S.office.display, w = $("#wall-sel"), l = $("#lab-sel"); if (w) w.value = d.walls; if (l) l.value = d.labels;
   if (c.view) S.office.restoreView(c.view);
 }
+/** Boutons de marche (écran tactile ou souris) : le mouvement dure tant que le bouton est enfoncé. */
+function wireImmersivePad() {
+  const pad = $("#imm-pad"); if (!pad || pad.dataset.wired) return; pad.dataset.wired = "1";
+  const stop = () => { for (const a of ["f", "b", "l", "r", "tl", "tr"]) S.office?.setMove(a, false); };
+  pad.addEventListener("pointerdown", (e) => { const b = e.target.closest("[data-imm]"); if (!b) return; e.preventDefault(); b.setPointerCapture?.(e.pointerId); S.office?.setMove(b.dataset.imm, true); });
+  for (const ev of ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"]) pad.addEventListener(ev, stop);
+}
 function applySideState() {
   const off = lsGet(SIDE_KEY) === "off", el = S.officeEl, b = $("#b-side"); if (!el) return;
   el.classList.toggle("side-off", off); if (b) { b.setAttribute("aria-pressed", String(off)); b.textContent = off ? "◨ Panneau" : "◧ Panneau"; b.setAttribute("aria-label", off ? "Afficher le panneau de supervision" : "Masquer le panneau de supervision"); }
@@ -136,7 +152,15 @@ export function setSync(state) {
   c.dataset.s = state; c.lastElementChild.textContent = { live: "Temps réel", reconnecting: "Reconnexion…", offline: "Hors ligne", connecting: "Connexion…" }[state] ?? state;
 }
 export const changes = {
-  view: (el) => { const [m, arg] = el.value.split(":"); if (m === "follow") { if (S.selected) S.office?.setView("follow", S.selected); } else if (m !== "free") S.office?.setView(m, arg); },
+  view: (el) => {
+    const [m, arg] = el.value.split(":");
+    if (m === "follow") { if (S.selected) S.office?.setView("follow", S.selected); }
+    else if (m === "immersive") {   // la visite commence dans la pièce que l'on regardait (sinon au bureau du directeur)
+      const v = S.office?.getView?.(), room = v?.mode === "dept" ? v.arg : ["direction", "supervision"].includes(v?.mode) ? v.mode : v?.mode === "meeting" ? "reunion" : undefined;
+      S.office?.setView("immersive", room);
+      el.blur?.(); S.office?.element?.focus?.({ preventScroll: true });   // la liste garderait le clavier : on rend les touches (Z Q S D, flèches, Échap) à la scène
+    } else if (m !== "free") S.office?.setView(m, arg);
+  },
   quality: (el) => {
     if (el.value === "auto") { try { localStorage.removeItem(QUALITY_KEY); } catch { /* sans stockage */ } S.office?.setQuality(detectQuality("auto"), false); }
     else S.office?.setQuality(el.value);
@@ -354,6 +378,7 @@ async function submitDialog(e) {
 export const acts = {
   "zoom": (el) => S.office?.zoom(Number(el.dataset.d)),
   "reset-view": () => S.office?.resetView(),
+  "imm-exit": () => S.office?.exitVisit(),
   "save-view": () => { const v = S.office?.getView(); if (!v) return; camSave({ view: v }); toast("Vue retenue : elle sera reprise à la prochaine ouverture", "ok"); },
   "toggle-side": () => { try { localStorage.setItem(SIDE_KEY, lsGet(SIDE_KEY) === "off" ? "on" : "off"); } catch { /* sans stockage */ } applySideState(); },
   "toggle-2d": (el) => { S.force2d = !S.force2d; el.textContent = S.force2d ? "Vue 3D" : "Vue 2D"; render2D(); },
