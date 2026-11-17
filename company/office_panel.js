@@ -8,7 +8,7 @@ import { createOffice, detectQuality } from "./office3d.js";
 const H = {};                       // liens vers app.js : go, showTask, showCharter, refreshCore (évite l'import circulaire)
 export const initPanel = (h) => Object.assign(H, h);
 const P = { sync: "connecting", supQ: "", supSt: "", supLimit: 60, extras: new Map(), supT: null, sheetT: null };
-const QUALITY_KEY = "sanix_company_quality";
+const QUALITY_KEY = "sanix_company_quality", CAM_KEY = "sanix_company_cam", SIDE_KEY = "sanix_company_side";
 const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const narrow = () => matchMedia("(max-width: 980px)").matches;
 const PLACE = { poste: "Poste de travail", reunion: "Salle de réunion", supervision: "Salle de supervision", collaboration: "Espace de collaboration", detente: "Espace détente" };
@@ -39,7 +39,11 @@ const stageHtml = () => html`<div class="stage" id="stage">
     <button class="btn sm" type="button" data-act="zoom" data-d="-1" aria-label="Zoom avant" title="Zoom avant">＋</button>
     <button class="btn sm" type="button" data-act="zoom" data-d="1" aria-label="Zoom arrière" title="Zoom arrière">－</button>
     <button class="btn sm" type="button" data-act="reset-view" aria-label="Vue d'ensemble" title="Vue d'ensemble">⟲</button>
-    <button class="btn sm" type="button" data-act="toggle-2d" id="b2d">Vue 2D</button></div>
+    <button class="btn sm" type="button" data-act="toggle-2d" id="b2d">Vue 2D</button>
+    <select id="wall-sel" data-change="walls" aria-label="Murs"><option value="auto">Murs : auto</option><option value="bas">Murs abaissés</option><option value="verre">Murs transparents</option></select>
+    <select id="lab-sel" data-change="labels" aria-label="Étiquettes des collaborateurs"><option value="auto">Étiquettes : auto</option><option value="responsables">Responsables</option><option value="toutes">Toutes</option><option value="aucune">Aucune</option></select>
+    <button class="btn sm" type="button" data-act="save-view" aria-label="Retenir cette vue" title="Retenir cette vue : elle sera reprise à la prochaine ouverture">📌 Retenir</button>
+    <button class="btn sm" type="button" data-act="toggle-side" id="b-side" aria-label="Masquer le panneau de supervision" aria-pressed="false" title="Masquer / afficher le panneau de supervision">◧ Panneau</button></div>
   <div class="stage-right"><span class="chip sync" id="sync-chip" data-s="connecting" role="status"><i></i><span>Connexion…</span></span>
     <select id="q-sel" data-change="quality" aria-label="Qualité graphique"><option value="auto">Qualité : auto</option><option value="high">Élevée</option><option value="low">Réduite</option><option value="eco">Éco</option></select></div>
   <div class="legend" aria-label="Légende des états">${legendHtml()}</div>
@@ -60,7 +64,7 @@ export function pushOffice() {
 export function renderOffice(main) {
   if (!S.officeEl) { S.officeEl = document.createElement("section"); S.officeEl.className = "panel full office"; S.officeEl.innerHTML = stageHtml().s; }
   if (main.firstElementChild !== S.officeEl) main.replaceChildren(S.officeEl);
-  fillViewOptions(); syncQualitySel(); setSync(P.sync);
+  fillViewOptions(); syncQualitySel(); applySideState(); setSync(P.sync);
   if (S.officeOk === null) initOffice(); else if (S.officeOk === true) pushOffice(); else render2D();
   S.office?.setActive(true);
   renderSide();
@@ -69,7 +73,8 @@ export function renderOffice(main) {
 async function initOffice() {
   S.officeOk = "pending";
   try {
-    S.office = await createOffice($("#stage"), { onSelect: (id) => selectAgent(id, { fromScene: true }), onProgress: setProgress, onView: syncViewSel });
+    S.office = await createOffice($("#stage"), { onSelect: (id) => selectAgent(id, { fromScene: true }), onProgress: setProgress, onView: syncViewSel, onDisplay: saveDisplay });
+    restoreCamera();
     S.officeOk = true; pushOffice(); S.office.setActive(S.tab === "office");
   } catch (e) {
     console.warn("3D indisponible :", e.message);
@@ -99,7 +104,7 @@ function render2D() {
 function fillViewOptions() {
   const sel = $("#view-sel"); if (!sel) return;
   const cur = sel.value || "general", a = S.selected && agentBy(S.selected);
-  const opts = [["general", "Vue d'ensemble"], ["executive", "Étage de direction"], ...S.depts.filter((d) => d.id !== "direction").map((d) => [`dept:${d.id}`, `Département : ${d.nom}`]),
+  const opts = [["general", "Vue d'ensemble"], ["iso", "Vue isométrique (moins plongeante)"], ["aerial", "Vue aérienne (plan)"], ["exterior", "Vue extérieure (tour du bâtiment)"], ["executive", "Étage de direction"], ...S.depts.filter((d) => d.id !== "direction").map((d) => [`dept:${d.id}`, `Département : ${d.nom}`]),
     ["direction", "Bureau du directeur IA"], ["meeting", "Salle de réunion"], ["supervision", "Salle de supervision"], ["activity", "Activités en cours"], ["follow", a ? `Suivre : ${a.nom}` : "Suivre un collaborateur (sélectionnez-en un)"], ["free", "Vue libre"]];
   sel.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}"${v === "follow" && !a ? " disabled" : ""}${v === "free" ? " hidden" : ""}>${esc(l)}</option>`).join("");
   sel.value = opts.some(([v]) => v === cur) ? cur : "general";
@@ -108,6 +113,21 @@ function syncViewSel({ mode, arg }) {
   const sel = $("#view-sel"); if (!sel) return;
   const v = mode === "dept" ? `dept:${arg}` : mode;
   if ([...sel.options].some((o) => o.value === v)) sel.value = v;
+}
+/** Préférences de caméra mémorisées dans ce navigateur : murs, étiquettes et « vue retenue ». */
+const camLoad = () => { try { return JSON.parse(lsGet(CAM_KEY) ?? "{}") || {}; } catch { return {}; } };
+const camSave = (patch) => { try { localStorage.setItem(CAM_KEY, JSON.stringify({ ...camLoad(), ...patch })); } catch { /* sans stockage */ } };
+function saveDisplay({ walls, labels }) { camSave({ walls, labels }); const w = $("#wall-sel"), l = $("#lab-sel"); if (w) w.value = walls; if (l) l.value = labels; }
+function restoreCamera() {
+  const c = camLoad(); if (!S.office) return;
+  if (c.walls) S.office.setWallMode(c.walls);
+  if (c.labels) S.office.setLabelMode(c.labels);
+  const d = S.office.display, w = $("#wall-sel"), l = $("#lab-sel"); if (w) w.value = d.walls; if (l) l.value = d.labels;
+  if (c.view) S.office.restoreView(c.view);
+}
+function applySideState() {
+  const off = lsGet(SIDE_KEY) === "off", el = S.officeEl, b = $("#b-side"); if (!el) return;
+  el.classList.toggle("side-off", off); if (b) { b.setAttribute("aria-pressed", String(off)); b.textContent = off ? "◨ Panneau" : "◧ Panneau"; b.setAttribute("aria-label", off ? "Afficher le panneau de supervision" : "Masquer le panneau de supervision"); }
 }
 function syncQualitySel() { const s = $("#q-sel"); if (s) s.value = lsGet(QUALITY_KEY) ?? "auto"; }
 export function setSync(state) {
@@ -121,6 +141,8 @@ export const changes = {
     if (el.value === "auto") { try { localStorage.removeItem(QUALITY_KEY); } catch { /* sans stockage */ } S.office?.setQuality(detectQuality("auto"), false); }
     else S.office?.setQuality(el.value);
   },
+  walls: (el) => S.office?.setWallMode(el.value),
+  labels: (el) => S.office?.setLabelMode(el.value),
   "sup-status": (el) => { P.supSt = el.value; P.supLimit = 60; renderSupervision(); },
 };
 export const inputs = { "sup-q": (el) => { P.supQ = el.value.trim().toLowerCase(); P.supLimit = 60; renderSupervision(); } };
@@ -332,6 +354,8 @@ async function submitDialog(e) {
 export const acts = {
   "zoom": (el) => S.office?.zoom(Number(el.dataset.d)),
   "reset-view": () => S.office?.resetView(),
+  "save-view": () => { const v = S.office?.getView(); if (!v) return; camSave({ view: v }); toast("Vue retenue : elle sera reprise à la prochaine ouverture", "ok"); },
+  "toggle-side": () => { try { localStorage.setItem(SIDE_KEY, lsGet(SIDE_KEY) === "off" ? "on" : "off"); } catch { /* sans stockage */ } applySideState(); },
   "toggle-2d": (el) => { S.force2d = !S.force2d; el.textContent = S.force2d ? "Vue 3D" : "Vue 2D"; render2D(); },
   "select-agent": (el, ev) => { ev.preventDefault(); selectAgent(el.dataset.id, { focus: true }); if (S.tab !== "office") H.go("office"); },
   "open-agent": async (el) => { S.selected = el.dataset.id; await H.go("office"); selectAgent(el.dataset.id, { focus: true }); },
