@@ -114,6 +114,7 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     await tab(page, "gov");
     await page.fill("input[name=max_agents_actifs]", "0"); await page.click("#gov-form button[type=submit]"); await page.waitForTimeout(200);
     ok((await page.locator("input[name=max_agents_actifs]:invalid").count()) === 1 && !(await page.evaluate(() => window.__Q.some((q) => q.table === "ai_governance" && q.op === "update"))), "valeur hors plage refusée avant tout envoi (validation du formulaire)");
+    await page.evaluate(() => { window.confirm = () => true; });   // le passage en mode autonome demande une confirmation
     await page.fill("input[name=max_agents_actifs]", "30"); await page.selectOption("#g-comm", "autonome"); await page.click("#gov-form button[type=submit]"); await page.waitForTimeout(250);
     ok((await page.evaluate(() => window.__Q.some((q) => q.table === "ai_governance" && q.op === "update" && q.payload.includes("communication_externe")))), "gouvernance enregistrée");
     ok((await page.locator("#status-chips").innerText()).includes("autonome"), "l'état de la communication externe s'affiche dans l'en-tête");
@@ -122,6 +123,20 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     ok((await page.evaluate(() => window.__Q.some((q) => q.table === "ai_governance" && q.op === "update" && q.payload.includes("consentement_requis")))), "la case de consentement est envoyée à la gouvernance");
     await tab(page, "exec"); await tab(page, "gov"); await page.waitForTimeout(200);
     ok(await page.locator("#g-consent").isChecked(), "le consentement exigé est conservé après rechargement de l'onglet");
+    console.log("▶ Gouvernance : réglages enregistrés dès qu'on les change");
+    await page.evaluate(() => { window.__Q.length = 0; });
+    await page.uncheck("#g-consent"); await page.waitForTimeout(250);
+    ok((await page.evaluate(() => window.__Q.filter((q) => q.table === "ai_governance" && q.op === "update").map((q) => q.payload.join(",")))).join("|") === "consentement_requis", "case décochée : enregistrée aussitôt, sans bouton, et seule cette valeur est envoyée");
+    ok((await page.locator("#toast").innerText()).includes("Enregistré"), "confirmation « Enregistré » affichée");
+    await tab(page, "exec"); await tab(page, "gov"); await page.waitForTimeout(200);
+    ok(!(await page.locator("#g-consent").isChecked()), "après avoir changé d'onglet et être revenu : le réglage est conservé");
+    await page.fill("input[name=max_missions_actives]", "61");
+    await page.evaluate(() => window.__emit("ai_agents", "INSERT", { id: crypto.randomUUID(), code: "ia_tmp_gov", nom: "Temp", fonction: "x", etat: "actif", activite: "disponible", niveau: 3, departement_id: "commercial", created_at: new Date().toISOString() }));
+    await page.waitForTimeout(1400);
+    ok((await page.locator("input[name=max_missions_actives]").inputValue()) === "61", "limite saisie mais pas encore enregistrée : un rafraîchissement automatique ne l'efface plus");
+    await page.click("#gov-form button[type=submit]"); await page.waitForTimeout(300);
+    await tab(page, "exec"); await tab(page, "gov"); await page.waitForTimeout(200);
+    ok((await page.locator("input[name=max_missions_actives]").inputValue()) === "61", "limite enregistrée avec le bouton : conservée après rechargement");
 
     console.log("▶ Commercial");
     await tab(page, "sales"); await page.waitForTimeout(250);
