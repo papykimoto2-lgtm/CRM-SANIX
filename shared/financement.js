@@ -100,7 +100,7 @@
       baseRetraitee: false,                                                // base du modèle : exclut les clients marqués « partie liée »
       associes: [{ id: 'a1', nom: 'Fondateur(s) et associés actuels', part: 100 }], esopPct: 0,   // tour de table actuel ; pool d'intéressement en % après l'apport
       margeSecuritePct: 20, partCapital: 50, partDette: 30, partSubvention: 20,
-      preMoney: null, multEntree: 2, multSortie: 2.5, taux: 12, dureeMois: 60, differeMois: 12
+      preMoney: null, partMaxPct: 45, dscrMin: 1.2, multEntree: 2, multSortie: 2.5, taux: 12, dureeMois: 60, differeMois: 12
     };
   }
 
@@ -316,7 +316,7 @@
       if (out.dette.dscrMin !== null && out.dette.dscrMin < 1.2) out.alertes.push('Capacité de remboursement insuffisante (flux disponible / service de la dette < 1,2) : un prêteur refusera probablement.');
     }
     if (d.opt === 'subvention' || pos(d.struct.subvention) > 0) out.alertes.push('Dépend de la disponibilité d\'un programme d\'appui : montant et conditions à vérifier auprès de l\'organisme.');
-    if (!d.viable) out.alertes.push('Ce montage ne couvre pas le besoin : le service de la dette absorbe plus que l\'apport.');
+    if (!d.viable) out.alertes.push(d.opt === 'corrige' ? 'Le besoin dépasse ce que le plan peut financer dans ces limites : voir « Comment corriger » ci-dessous.' : 'Ce montage ne couvre pas le besoin : le service de la dette absorbe plus que l\'apport.');
     return out;
   }
 
@@ -324,7 +324,42 @@
   function comparer(h) {
     const sans = simuler(h, 'sans', {}), avec0 = simuler(h, 'avec', {});
     const besoin = Math.max(0, -avec0.tresoMin), options = ['capital', 'dette', 'subvention', 'mix'].map((o) => { const d = dimensionner(h, o); d.ind = indicateurs(h, d); return d; });
-    return { sans, avec0, besoin, recommande: besoin * (1 + pos(h.margeSecuritePct) / 100), options, emplois: emplois(h, avec0, besoin) };
+    return { sans, avec0, besoin, recommande: besoin * (1 + pos(h.margeSecuritePct) / 100), options, corrige: montageCorrige(h), emplois: emplois(h, avec0, besoin) };
+  }
+
+
+  /** Montage corrigé : un financement dimensionné pour respecter les limites au lieu de les subir.
+      · dette : le plus gros prêt dont le flux disponible couvre 1,2 fois le service de la dette chaque année (0 si le plan ne dégage pas de flux) ;
+      · capital : le complément, plafonné à la part cédée maximale (45 % par défaut, jamais plus de 49 %) à la valorisation actuelle ;
+      · subvention : non comptée (incertaine) : si elle est obtenue, elle réduit d'autant l'apport.
+      Si le besoin dépasse ce que le plan peut financer sans franchir ces limites, `manque` donne l'écart à combler en réduisant le besoin. */
+  function montageCorrige(h) {
+    const detteDe = (D) => ({ montant: D, taux: h.taux, duree: h.dureeMois, differe: h.differeMois }), minDscr = Math.max(1, num(h.dscrMin) || 1.2);
+    const avec0 = simuler(h, 'avec', {}), besoin = Math.max(0, -avec0.tresoMin);
+    const pre = preMoney(h, avec0.annees[0].ca), partMax = clamp(num(h.partMaxPct) || 45, 5, 49) / 100, apportMax = pre * partMax / (1 - partMax);
+    const dscrDe = (D) => { const a = simuler(h, 'avec', { dette: detteDe(D) }).annees.filter((x) => x.interet + x.princ > 0).map((x) => (x.fExpl + x.fInv) / (x.interet + x.princ)); return a.length ? Math.min.apply(null, a) : Infinity; };
+    const borne = Math.max(1, besoin * 60);
+    let detteMax = 0;
+    if (besoin > 0) {
+      if (dscrDe(borne) >= minDscr) detteMax = borne;
+      else if (dscrDe(Math.max(1, borne * 1e-4)) >= minDscr) { let lo = borne * 1e-4, hi = borne; for (let i = 0; i < 50; i++) { const mid = (lo + hi) / 2; if (dscrDe(mid) >= minDscr) lo = mid; else hi = mid; } detteMax = lo; }
+    }
+    let montant = 0, equityNec = 0, D = 0;
+    if (besoin > 0) {
+      D = Math.min(detteMax, besoin * (1 + pos(h.margeSecuritePct) / 100));
+      const sim = (E) => simuler(h, 'avec', { equity: E, dette: D > 0 ? detteDe(D) : undefined });
+      let lo = 0, hi = Math.max(1, besoin * 4);
+      for (let i = 0; i < 5 && sim(hi).tresoMin < -0.5; i++) hi *= 2;
+      for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (sim(mid).tresoMin >= -0.5) hi = mid; else lo = mid; }
+      equityNec = hi * (1 + pos(h.margeSecuritePct) / 100);
+      if (D > 0 && sim(equityNec).tresoMin < -0.5) equityNec = hi;
+      montant = equityNec + D;
+    }
+    const equity = Math.min(equityNec, apportMax), manque = Math.max(0, equityNec - apportMax), couvert = manque < 1;
+    const struct = { equity: equity, dette: D > 0 ? detteDe(D) : undefined };
+    const sim = simuler(h, 'avec', struct), d = { opt: 'corrige', label: 'Montage corrigé', xMin: besoin, montant: equity + D, struct: struct, sim: sim, viable: couvert };
+    d.ind = indicateurs(h, d);
+    return { detteMax: detteMax, dette: D, equityNecessaire: equityNec, equity: equity, apportMax: apportMax, preMoney: pre, partMax: partMax, minDscr: minDscr, manque: manque, couvert: couvert, besoin: besoin, montantComplet: montant, option: d };
   }
 
   /** Où va l'argent : dépenses cumulées du plan complet jusqu'au point bas de trésorerie, et part couverte par les ventes. */
@@ -498,7 +533,7 @@
     return { base, leviers, seuils: { clients: seuil(h, 'clientsAn1'), prix: (h.produits || []).some((p) => pos(p.part) > 0) ? seuilPrix(h) : seuil(h, 'prixLicence') }, combine: { etapes, final: mcur, h: cur, rentable: mcur.pointMort !== null, autofinance: mcur.besoin < 0.5 } };
   }
 
-  const calc = { regimePourCA, REGIMES, FORFAIT, tauxIS, controlesDossier, compteExploitation, tableauImmobilisations, investissementsActifs, N, ANNEES, SCEN, SCEN_LABEL, OPT_LABEL, MODES, LEVIERS, produitsDefaut, fusionProduits, diffProduits, editsDepuisListe, produitsActifs, contratsParLogiciel, scalePrix, seuilPrix, cle, analyserTraction, economieUnitaire, tourDeTable, evaluer, optimiser, seuil, defauts, simuler, structure, dimensionner, indicateurs, comparer, emplois, preMoney };
+  const calc = { montageCorrige, regimePourCA, REGIMES, FORFAIT, tauxIS, controlesDossier, compteExploitation, tableauImmobilisations, investissementsActifs, N, ANNEES, SCEN, SCEN_LABEL, OPT_LABEL, MODES, LEVIERS, produitsDefaut, fusionProduits, diffProduits, editsDepuisListe, produitsActifs, contratsParLogiciel, scalePrix, seuilPrix, cle, analyserTraction, economieUnitaire, tourDeTable, evaluer, optimiser, seuil, defauts, simuler, structure, dimensionner, indicateurs, comparer, emplois, preMoney };
   G.SanixFinancement = { calc };
   if (typeof module !== 'undefined' && module.exports) module.exports = { calc };
   if (!G.document) return;
@@ -622,14 +657,35 @@
       ${stat('EBITDA année 5', fmtM(an5.ebitda) + ' ' + base.devise, 'Marge : ' + pct(an5.margeEbitda) + (pm === null ? ' · pas rentable' : ''), pm === null ? 'orange' : 'purple')}</div>`;
     html += `<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">📉 Trésorerie cumulée sur 5 ans</span></div>${courbe(series, 860, 230)}${legende(series)}
       ${r.besoin > 0 ? note('Sans apport, la trésorerie du plan de croissance descend à <b>' + fmt(a0.tresoMin) + ' ' + esc(base.devise) + '</b> en ' + moisLabel(a0.moisMin) + ' : c\'est le besoin à financer.') : ''}</div>`;
-    html += '<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">⚖️ Comparaison des options de financement</span></div><div style="overflow-x:auto"><table class="client-table" style="min-width:640px"><thead><tr><th></th>' + r.options.map((o) => `<th style="text-align:right">${esc(o.label)}</th>`).join('') + '</tr></thead><tbody>';
-    const row = (lib, f) => `<tr><td>${lib}</td>${r.options.map((o) => `<td style="text-align:right">${f(o)}</td>`).join('')}</tr>`;
+    const cols = r.options.concat(r.corrige ? [r.corrige.option] : []);
+    html += '<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">⚖️ Comparaison des options de financement</span></div><div style="overflow-x:auto"><table class="client-table" style="min-width:640px"><thead><tr><th></th>' + cols.map((o) => `<th style="text-align:right">${o.opt === 'corrige' ? '✅ ' : ''}${esc(o.label)}</th>`).join('') + '</tr></thead><tbody>';
+    const row = (lib, f) => `<tr><td>${lib}</td>${cols.map((o) => `<td style="text-align:right">${f(o)}</td>`).join('')}</tr>`;
     html += row('Montant à lever', (o) => '<b>' + fmtM(o.montant) + '</b>' + (o.viable ? '' : '<br><span class="badge badge-warning">Non viable</span>')) + row('Trésorerie minimale', (o) => `<span style="${o.ind.tresoMin < -0.5 ? 'color:var(--danger)' : ''}">${fmtM(o.ind.tresoMin)}</span>`) + row('Trésorerie année 5', (o) => `<span style="${o.ind.tresoFin < 0 ? 'color:var(--danger)' : ''}">${fmtM(o.ind.tresoFin)}</span>`)
       + row('Résultat net cumulé 5 ans', (o) => fmtM(o.ind.resultatCumule)) + row('Part du capital cédée', (o) => o.ind.equity ? pct(o.ind.equity.part, 1) : '–')
       + row('Rendement investisseur (×)', (o) => o.ind.equity ? dec1(o.ind.equity.moic) + ' × · TRI ' + pct(o.ind.equity.tri) : '–')
       + row('Intérêts payés', (o) => o.ind.dette ? fmtM(o.ind.dette.totalInterets) : '–') + row('Capacité de remboursement', (o) => o.ind.dette && o.ind.dette.dscrMin != null ? dec1(o.ind.dette.dscrMin) + ' ×' : '–')
-      + `<tr><td>Points d'attention</td>${r.options.map((o) => `<td style="text-align:left;font-size:11px;vertical-align:top;min-width:150px">${o.ind.alertes.length ? o.ind.alertes.map((x) => '⚠️ ' + esc(x)).join('<br>') : '<span style="color:var(--success)">✓ Aucun</span>'}</td>`).join('')}</tr></tbody></table></div>
+      + `<tr><td>Points d'attention</td>${cols.map((o) => `<td style="text-align:left;font-size:11px;vertical-align:top;min-width:150px">${o.ind.alertes.length ? o.ind.alertes.map((x) => '⚠️ ' + esc(x)).join('<br>') : '<span style="color:var(--success)">✓ Aucun</span>'}</td>`).join('')}</tr></tbody></table></div>
       ${note('Le <b>mix</b> répartit le montant selon les parts réglées ci-dessus. Le rendement investisseur suppose une sortie à l\'année 5 à ' + h.multSortie + ' × le CA (hypothèse modifiable dans « Hypothèses »).')}</div>`;
+    if (r.corrige && r.besoin > 0) {
+      const c = r.corrige, o = c.option, eq = o.ind.equity, pm = c.partMax;
+      const valoMini = c.equityNecessaire * (1 - pm) / pm;
+      let lev = '';
+      if (!c.couvert) { try { const O = calc.optimiser(h); lev = O.leviers.filter((l) => l.dTreso > 0).slice(0, 3).map((l) => `<li><b>${esc(l.lib)}</b> (${esc(l.test)}) : +${fmtM(l.dTreso)} de trésorerie sur 5 ans</li>`).join(''); } catch (e) { lev = ''; } }
+      html += `<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">🛠️ Comment corriger les points d'attention</span></div><div style="font-size:13px;line-height:1.55">
+        <p style="margin:0 0 8px">Le <b>montage corrigé</b> (dernière colonne) est dimensionné pour respecter deux limites : une <b>part cédée d'au plus ${fmt(pm * 100)} %</b> (le contrôle de la société reste aux associés) et une <b>capacité de remboursement d'au moins ${dec1(c.minDscr)} fois</b> le service de la dette chaque année.</p>
+        <table class="client-table"><tbody>
+          <tr><td>Besoin à couvrir (avec marge)</td><td style="text-align:right"><b>${fmtM(c.montantComplet)}</b></td></tr>
+          <tr><td>Prêt maximum finançable (flux disponible ≥ ${dec1(c.minDscr)} × service de la dette)</td><td style="text-align:right">${c.detteMax > 0 ? fmtM(c.detteMax) : '<span style="color:var(--danger)">0 : le plan ne dégage pas assez de flux pour rembourser</span>'}</td></tr>
+          <tr><td>Apport en capital maximum à la valorisation actuelle de ${fmtM(c.preMoney)} (part cédée ≤ ${fmt(pm * 100)} %)</td><td style="text-align:right">${fmtM(c.apportMax)}</td></tr>
+        </tbody></table>
+        ${c.couvert
+          ? `<p style="margin:10px 0 0">✅ <b>Montage retenu : prêt de ${fmtM(c.dette)} + apport en capital de ${fmtM(c.equity)}${eq ? ' (part cédée ' + pct(eq.part, 1) + ')' : ''}.</b> Aucune des limites n'est franchie. La subvention n'est pas comptée : si vous l'obtenez, elle réduit d'autant l'apport.</p>`
+          : `<p style="margin:10px 0 6px">⛔ <b>Il manque ${fmtM(c.manque)}</b> : même en empruntant le maximum et en cédant ${fmt(pm * 100)} %, le plan ne se finance pas sans franchir une limite. Trois façons de corriger :</p>
+             <ol style="margin:0;padding-left:20px"><li><b>Réduire le besoin d'au moins ${fmtM(c.manque)}</b> : étaler ou reporter les embauches, vendre plus avant d'embaucher.${lev ? '<ul style="margin:4px 0 0;padding-left:18px">' + lev + '</ul>' : ''}</li>
+             <li><b>Relever la valorisation avant apport à ${fmtM(valoMini)} au moins</b> (elle est de ${fmtM(c.preMoney)}) : possible seulement si vos ventes réelles le justifient.</li>
+             <li><b>Compléter par une subvention ou un apport des associés</b> à hauteur de ${fmtM(c.manque)}, à confirmer auprès de l'organisme avant de l'inscrire au plan.</li></ol>`}
+      </div></div>`;
+    }
     if (r.emplois) {
       const e = r.emplois;
       html += `<div class="card"><div class="card-header"><span class="card-title">🧭 Utilisation des fonds</span><span class="badge badge-primary">Jusqu'au point bas : ${e.mois} mois</span></div><table class="client-table"><tbody>${e.lignes.map((l) => `<tr><td>${esc(l[0])}</td><td style="text-align:right">${fmt(l[1])}</td><td style="text-align:right;width:70px">${pct(l[1] / e.depenses)}</td></tr>`).join('')}
@@ -659,7 +715,7 @@
       ${bloc('👥 Équipe', note('Coût mensuel brut par personne. « Financé » : poste créé grâce au financement (absent du scénario sans financement). « Début » : mois de prise de poste (0 = déjà en place). « Acquisition » : poste commercial ou marketing, compté dans le coût d\'acquisition d\'un client. « Technique » : poste qui utilise Vercel et GitHub (vous comptez déjà pour un poste).') + `<div style="overflow-x:auto"><table class="client-table" style="min-width:560px"><thead><tr><th>Poste</th><th>Nombre</th><th>Coût mensuel</th><th>Début (mois)</th><th>Financé</th><th title="Compte dans le coût d'acquisition d'un client">Acquisition</th><th title="Poste technique : compte pour Vercel et GitHub">Technique</th><th></th></tr></thead><tbody>${h.postes.map(poste).join('')}</tbody></table></div><button class="btn btn-outline btn-sm" data-act="poste-add" style="margin-top:10px">+ Ajouter un poste</button>`)}
       ${bloc('🏗️ Investissements', blocInvestissements())}
       ${bloc('🧾 Capital actuel', note('Répartition du capital avant l\'apport, en %. Sert au tour de table : dilution des associés après l\'entrée d\'un investisseur.') + `<div style="overflow-x:auto"><table class="client-table" style="min-width:420px"><thead><tr><th>Associé</th><th>Part (%)</th><th></th></tr></thead><tbody>${h.associes.map((x) => `<tr><td><input class="form-input" data-a="${esc(x.id)}" data-f="nom" value="${esc(x.nom)}"></td><td><input class="form-input" type="number" min="0" max="100" style="width:90px" data-a="${esc(x.id)}" data-f="part" value="${num(x.part)}"></td><td><button class="btn btn-outline btn-sm" data-act="associe-del" data-id="${esc(x.id)}" aria-label="Supprimer cet associé">🗑</button></td></tr>`).join('')}</tbody></table></div><button class="btn btn-outline btn-sm" data-act="associe-add" style="margin:10px 0 12px">+ Ajouter un associé</button>` + grid(field('Pool d\'intéressement après l\'apport (% du capital)', 'esopPct', h.esopPct, { min: 0 })))}
-      ${bloc('🏦 Conditions de financement', grid(field('Valorisation avant apport (vide = automatique)', 'preMoney', ov.preMoney, { min: 0 }) + field('Multiple d\'entrée (× CA année 1)', 'multEntree', h.multEntree) + field('Multiple de sortie (× CA année 5)', 'multSortie', h.multSortie) + field('Taux du prêt (% / an)', 'taux', h.taux) + field('Durée du prêt (mois)', 'dureeMois', h.dureeMois, { min: 1 }) + field('Différé de remboursement (mois)', 'differeMois', h.differeMois, { min: 0 })))}
+      ${bloc('🏦 Conditions de financement', grid(field('Valorisation avant apport (vide = automatique)', 'preMoney', ov.preMoney, { min: 0 }) + field('Multiple d\'entrée (× CA année 1)', 'multEntree', h.multEntree) + field('Multiple de sortie (× CA année 5)', 'multSortie', h.multSortie) + field('Taux du prêt (% / an)', 'taux', h.taux) + field('Durée du prêt (mois)', 'dureeMois', h.dureeMois, { min: 1 }) + field('Différé de remboursement (mois)', 'differeMois', h.differeMois, { min: 0 }) + field('Part cédée maximale (%) du montage corrigé', 'partMaxPct', h.partMaxPct, { min: 5 }) + field('Capacité de remboursement minimale (×) du montage corrigé', 'dscrMin', h.dscrMin, { min: 1 })))}
       <button class="btn btn-outline btn-sm" data-act="reset">↺ Revenir aux valeurs initiales</button>`;
   }
 
@@ -919,7 +975,7 @@
       <p>Sans financement, le chiffre d'affaires de l'année 5 serait de ${fmtM(r.sans.annees[ANNEES - 1].ca)} ${esc(d)}, contre ${fmtM(a[ANNEES - 1].ca)} ${esc(d)} avec le plan de croissance.</p>
       <h2>5. Indicateurs et économie unitaire</h2><table><thead><tr><th></th>${U.map((u) => `<th style="text-align:right">An ${u.an}</th>`).join('')}</tr></thead><tbody>${ui2('Nouveaux clients', (u) => u.clients.toLocaleString('fr-FR', { maximumFractionDigits: 1 }))}${ui2('Marge brute', (u) => pct(u.margeBrute))}${ui2('Revenu récurrent annualisé', (u) => fmtM(u.arr))}${ui2('Part du revenu récurrent', (u) => pct(u.partRecurrente))}${ui2('Coût d\'acquisition d\'un client', (u) => u.cac == null ? '–' : fmt(u.cac))}${ui2('Valeur d\'un client sur 5 ans', (u) => fmt(u.ltv))}${ui2('Valeur client / coût d\'acquisition', (u) => u.ltvCac == null ? '–' : dec1(u.ltvCac) + ' ×')}${ui2('Délai de retour', (u) => u.retour == null ? '–' : u.retour === 0 ? 'immédiat' : Math.round(u.retour) + ' mois')}${ui2('CA par salarié', (u) => u.caParSalarie == null ? '–' : fmtM(u.caParSalarie))}</tbody></table>
       <p><b>Coûts techniques</b> (${esc(d)}, tarifs publics en dollars au taux de ${fmt(h.usdFcfa)}) :</p><table><thead><tr><th></th>${U.map((u) => `<th style="text-align:right">An ${u.an}</th>`).join('')}</tr></thead><tbody>${[['Supabase', 'supa'], ['Vercel', 'vercel'], ['GitHub', 'github'], ['Anthropic (intelligence artificielle)', 'ia']].map((x) => `<tr><td>${x[0]}</td>${r.avec0.annees.map((a) => `<td style="text-align:right">${fmt(a[x[1]])}</td>`).join('')}</tr>`).join('')}<tr><td><b>Total</b></td>${r.avec0.annees.map((a) => `<td style="text-align:right"><b>${fmt(a.infra + a.ia)}</b></td>`).join('')}</tr></tbody></table>
-      <h2>6. Options de financement</h2><table><thead><tr><th>Option</th><th style="text-align:right">Montant</th><th style="text-align:right">Part cédée</th><th style="text-align:right">Multiple investisseur</th><th style="text-align:right">Capacité de remboursement</th><th>Points d'attention</th></tr></thead><tbody>${r.options.map(opt).join('')}</tbody></table>
+      <h2>6. Options de financement</h2><table><thead><tr><th>Option</th><th style="text-align:right">Montant</th><th style="text-align:right">Part cédée</th><th style="text-align:right">Multiple investisseur</th><th style="text-align:right">Capacité de remboursement</th><th>Points d'attention</th></tr></thead><tbody>${r.options.concat(r.corrige ? [r.corrige.option] : []).map(opt).join('')}</tbody></table>
       <h2>7. Tour de table</h2>${tourHtml('')}
       <h2>8. Hypothèses principales</h2><ul>${invOn ? `<li>Investissements : ${invs.length} ligne${invs.length > 1 ? 's' : ''}, ${fmt(sum(invs, (i) => i.montant))} ${esc(d)} au total, amortis linéairement ; ceux marqués « financés » s'ajoutent au besoin de financement.</li>` : ''}<li>Scénario de croissance « ${esc(SCEN_LABEL[h.scenario] || 'personnalisé')} » : nouveaux clients +${h.croiss.join(' %, +')} % par an (année 1 : ${fmt(h.clientsAn1)} clients).</li><li>${(h.produits || []).some((p) => pos(p.part) > 0) ? `Ventes réparties entre ${produitsActifs(h).map((p) => esc(p.nom) + ' (' + Math.round(p.part * 100) + ' %)').join(', ')} ; prix indexés de ${h.hausseAn} % par an ; frais initiaux de mise en exploitation facturés à chaque nouveau client.` : `Prix moyen d'une licence : ${fmt(h.prixLicence)} ${esc(d)} HT (hausse de ${h.hausseAn} % par an) ; maintenance ${h.maintenancePct} % de la base installée ; services ${h.servicesPct} % des licences.`}</li><li>Équipe : ${h.postes.filter((p) => p.finance).map((p) => `${p.nb} ${esc(p.nom)}`).join(', ') || 'aucune embauche'} financé(s) par l'apport.</li><li>Sortie investisseur supposée à l'année 5 à ${h.multSortie} × le chiffre d'affaires.</li>${h.baseRetraitee ? '<li>Base de départ calculée hors clients liés à la société.</li>' : ''}</ul>
       <h2>9. Notes méthodologiques</h2><p>Le modèle simule l'activité mois par mois sur 5 ans, à partir des chiffres réels de la société, dans deux situations : sans financement et avec le plan de croissance. Le besoin de financement est le point bas de trésorerie du plan de croissance sans apport.</p>

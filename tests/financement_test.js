@@ -498,4 +498,30 @@ console.log("▶ Régime d'imposition (DGI : TCU, TEE, RME, réel simplifié, r�
   ok(calc.defauts({}).regime === "auto" && calc.defauts({}).ticOn === true && calc.defauts({}).regimeConfirme === false, "valeurs par défaut : régime automatique, secteur TIC (30 %), non confirmé");
 }
 
+console.log("▶ Montage corrigé (limites : part cédée et capacité de remboursement)");
+{
+  const I = (mois, montant) => ({ id: "i" + mois, nom: "Matériel", mois, montant, duree: 3, finance: true });
+  const dscrDe = (h, D) => { const a = calc.simuler(h, "avec", { dette: { montant: D, taux: h.taux, duree: h.dureeMois, differe: h.differeMois } }).annees.filter((x) => x.interet + x.princ > 0).map((x) => (x.fExpl + x.fInv) / (x.interet + x.princ)); return Math.min.apply(null, a); };
+  // 1) besoin modeste, flux solides : de la dette est finançable
+  let h = Object.assign(base(), { investissements: [I(0, 6e6)], preMoney: 30e6, partMaxPct: 40 });
+  let r = calc.comparer(h), c = r.corrige;
+  near(c.apportMax, 30e6 * 0.4 / 0.6, 1e-6, "apport maximum = valorisation × part max / (1 − part max) = 30 M × 0,4 / 0,6 = 20 000 000");
+  ok(c.partMax === 0.4 && c.minDscr === 1.2, "limites lues dans les hypothèses (40 %, 1,2)");
+  ok(c.detteMax > 0 && dscrDe(h, c.detteMax) >= 1.2 - 1e-6, "prêt maximum : capacité de remboursement ≥ 1,2 (" + dscrDe(h, c.detteMax).toFixed(3) + ")");
+  ok(dscrDe(h, c.detteMax * 1.05) < 1.2, "au-delà de 5 % de prêt en plus, la capacité passe sous 1,2 : c'est bien le maximum");
+  ok(c.couvert && c.manque === 0 && c.option.ind.tresoMin >= -0.5, "besoin couvert : trésorerie jamais négative");
+  ok(!c.option.ind.alertes.some((x) => /Part cédée|Capacité de remboursement/.test(x)), "montage corrigé : ni part cédée excessive ni capacité insuffisante");
+  ok(!c.option.ind.equity || c.option.ind.equity.part <= 0.4 + 1e-9, "part cédée ≤ 40 %");
+  ok(r.options.length === 4 && r.corrige.option.label === "Montage corrigé", "les quatre options d'origine sont inchangées, le montage corrigé s'ajoute");
+  // 2) besoin énorme : on le dit au lieu de franchir les limites
+  h = Object.assign(base(), { fixesMensuels: 10e6, preMoney: 30e6, partMaxPct: 40 }); r = calc.comparer(h); c = r.corrige;
+  ok(!c.couvert && c.manque > 0 && Math.abs(c.manque - (c.equityNecessaire - c.apportMax)) < 1e-6, "besoin trop élevé : le manque = apport nécessaire − apport maximum (" + Math.round(c.manque) + ")");
+  near(c.equity, c.apportMax, 1e-6, "l'apport reste plafonné à la limite");
+  ok(c.option.ind.equity.part <= 0.4 + 1e-9 && !c.option.viable && c.option.ind.alertes.some((x) => /Comment corriger/.test(x)), "la part cédée reste ≤ 40 % ; le montage est signalé incomplet avec renvoi vers les corrections");
+  // 3) plan rentable : rien à financer
+  h = base(); r = calc.comparer(h); ok(r.besoin === 0 && r.corrige.montantComplet === 0 && r.corrige.couvert, "plan rentable : aucun montage nécessaire");
+  // 4) la limite ne dépasse jamais 49 %
+  h = Object.assign(base(), { partMaxPct: 80 }); ok(calc.comparer(h).corrige.partMax === 0.49, "part max plafonnée à 49 % même si on saisit 80 %");
+}
+
 console.log("\nTous les contrôles du modèle de financement sont passés.");
