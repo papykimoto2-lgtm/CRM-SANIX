@@ -47,7 +47,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(await page.evaluate(() => !document.getElementById("fin-atelier")), "l'atelier se ferme");
 
     console.log("▶ Pastilles sur les champs des hypothèses");
-    await page.evaluate(() => { const b = document.querySelector('#fin-body [data-tab="hyp"]'); b.click(); }); await page.waitForTimeout(400);
+    await page.evaluate(() => { const b = document.querySelector('#fin-body [data-tab="hyp"]'); b.click(); }); await page.waitForTimeout(400); await page.click('[data-sub="tout"]');
     const lie = await page.evaluate(() => [...document.querySelectorAll("#fin-body .fin-lien[data-act='atelier']")].map((b) => b.closest("label") && b.closest("label").querySelector("[data-k]") ? b.closest("label").querySelector("[data-k]").dataset.k : ""));
     ok(lie.length >= 3 && lie.includes("clientsAn1"), "des pastilles apparaissent à côté des champs qui commandent un point actif (" + [...new Set(lie)].join(", ") + ")");
     ok(await page.evaluate(() => [...document.querySelectorAll("#fin-body .fin-lien[data-act='atelier']")].every((b) => b.title.includes("agit sur"))), "chaque pastille indique les points qu'elle commande");
@@ -56,6 +56,18 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.evaluate(() => { const b = document.querySelector('#fin-out table .fin-pt[data-al="besoin"], #fin-out table .fin-pt[data-al="capacite"], #fin-out table .fin-pt[data-al="part"]'); if (b) b.click(); }); await page.waitForTimeout(400);
     await page.evaluate(() => document.querySelector('#fin-atelier [data-act="goto-postes"]').click()); await page.waitForTimeout(400);
     ok(await page.evaluate(() => document.querySelector('#fin-body .tab.active').dataset.tab === "hyp" && !!document.querySelector("#fin-body [data-p]")), "« Ouvrir les embauches » mène aux postes dans les hypothèses");
+    ok(await page.evaluate(() => document.querySelector('#fin-body .fin-sub-b.on').dataset.sub === "equipe"), "la section Équipe s'ouvre toute seule");
+
+    console.log("▶ Sous-sections des hypothèses (moins de défilement)");
+    await page.click('[data-sub="ventes"]'); await page.waitForTimeout(200);
+    const un = await page.evaluate(() => ({ cartes: document.querySelectorAll("#fin-body .card").length, titre: (document.querySelector("#fin-body .card-title") || {}).textContent, h: document.getElementById("fin-body").scrollHeight }));
+    await page.click('[data-sub="tout"]'); await page.waitForTimeout(200);
+    const tout = await page.evaluate(() => ({ cartes: document.querySelectorAll("#fin-body .card").length, h: document.getElementById("fin-body").scrollHeight }));
+    ok(un.cartes === 1 && /Ventes/.test(un.titre), "une seule section affichée à la fois : Ventes");
+    ok(tout.cartes >= 9 && tout.h > un.h * 3, "« Tout » réaffiche toutes les sections (page " + Math.round(tout.h / un.h) + " fois plus longue)");
+    await page.click('[data-sub="ventes"]'); await page.fill('#fin-body [data-k="clientsAn1"]', "33"); await page.keyboard.press("Tab"); await page.waitForTimeout(300);
+    await page.click('[data-sub="couts"]'); await page.click('[data-sub="ventes"]'); await page.waitForTimeout(200);
+    ok((await page.inputValue('#fin-body [data-k="clientsAn1"]')) === "33", "la valeur saisie est conservée en changeant de section");
     ok(errors.length === 0, "aucune erreur JavaScript " + errors.slice(0, 2).join("|"));
     await page.evaluate(() => { document.querySelector('#fin-body [data-tab="synthese"]').click(); }); await page.waitForTimeout(300);
     await page.screenshot({ path: "/tmp/claude-0/-home-user-CRM-SANIX/fda489a8-65a8-578c-bff6-b00bf4b09a64/scratchpad/points.png", fullPage: false });
