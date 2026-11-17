@@ -150,7 +150,7 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     ok((await page.locator("#main tbody tr").count()) === 3, "nouveau prospect visible dans la liste");
     console.log("▶ Commercial : vues Pipeline, Rendez-vous, Offres, Conversations");
     const vue = async (v) => { await page.click(`[data-act=sales-vue][data-vue=${v}]`); await page.waitForTimeout(250); };
-    ok((await page.locator("[data-act=sales-vue]").count()) === 5 && (await page.locator("[data-act=sales-vue][data-vue=prospects]").getAttribute("aria-selected")) === "true", "5 vues proposées, « Prospects » active par défaut");
+    ok((await page.locator("[data-act=sales-vue]").count()) === 6 && (await page.locator("[data-act=sales-vue][data-vue=prospects]").getAttribute("aria-selected")) === "true", "6 vues proposées, « Prospects » active par défaut");
     await vue("pipeline");
     ok((await page.locator(".pipe-col").count()) === 16, "pipeline : une colonne par étape (16)");
     ok((await page.locator('.pipe-col[data-stage=rdv_propose]').innerText()).includes("Express Colis"), "pipeline : la carte du prospect est dans la colonne de son étape");
@@ -172,6 +172,33 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     await page.selectOption("#sales-canal", "");
     await vue("prospects");
     ok((await page.locator("#main tbody tr").count()) === 3, "retour à la vue Prospects");
+    console.log("▶ Commercial : suivi des relances");
+    await vue("relances");
+    ok((await page.locator("#main").innerText()).includes("Suivi des e-mails indisponible"), "table des e-mails absente : message clair, pas d'erreur");
+    await page.evaluate(() => {
+      const j = (n) => new Date(Date.now() - n * 864e5).toISOString();
+      const P = window.__FIX.ai_prospects; P[0].email = "colis@example.test"; P[1].crm_rid = "c_alpha"; P[0].next_action_at = j(2); P[0].relances_sans_reponse = 1;
+      window.__FIX.crm_mails = [
+        { id: "m1", client_rid: "c_alpha", to_email: "alpha@example.test", subject: "Présentation", status: "envoye", error: null, sent_at: j(6), replied_at: null, relance_apres_jours: 4 },
+        { id: "m0", client_rid: "c_alpha", to_email: "alpha@example.test", subject: "Premier message", status: "envoye", error: null, sent_at: j(12), replied_at: null, relance_apres_jours: 4 },
+        { id: "m2", client_rid: null, to_email: "colis@example.test", subject: "Offre", status: "envoye", error: null, sent_at: j(1), replied_at: null, relance_apres_jours: 4 },
+        { id: "m3", client_rid: "c_x", to_email: "x@example.test", subject: "Suite", status: "repondu", error: null, sent_at: j(3), replied_at: j(2), relance_apres_jours: 4 },
+        { id: "m4", client_rid: "c_y", to_email: "y@example.test", subject: "Bonjour", status: "echec", error: "Non distribué", sent_at: j(2), replied_at: null, relance_apres_jours: 4 },
+        { id: "m5", client_rid: "c_z", to_email: "z@example.test", subject: "Ancien", status: "envoye", error: null, sent_at: j(60), replied_at: null, relance_apres_jours: 4 }];
+    });
+    await page.click("[data-act=sales-refresh]"); await page.waitForTimeout(300);
+    const rt = await page.locator("#main").innerText();
+    ok((await page.locator("#main tbody tr").first().innerText()).includes("Promoteur Alpha") && (await page.locator("#main tbody tr").first().innerText()).includes("À relancer") && rt.includes("retard de 2 j"), "en tête : le contact à relancer, avec son retard (6 j d'âge − 4 j de délai = 2 j)");
+    ok((await page.locator("#main tbody tr").first().locator("td").nth(2).innerText()).trim() === "2", "deux envois au même contact : une seule ligne, 2 envois");
+    ok((await page.locator("#main tbody tr", { hasText: "Express Colis" }).first().innerText()).includes("Relance prévue"), "e-mail d'hier : relance prévue (rapproché du prospect par son adresse)");
+    ok((await page.locator("#main tbody tr", { hasText: "x@example.test" }).innerText()).includes("Réponse reçue") && (await page.locator("#main tbody tr", { hasText: "y@example.test" }).innerText()).includes("Adresse à corriger"), "réponse reçue et adresse à corriger identifiées");
+    ok((await page.locator("#main tbody tr", { hasText: "z@example.test" }).innerText()).includes("Sans réponse > 45 j"), "au-delà de 45 jours : plus proposé à la relance");
+    ok((await page.locator("#main .kpi b").nth(5).innerText()) === "1", "indicateur : 1 à relancer maintenant");
+    await page.selectOption("#sales-relance", "adresse"); await page.waitForTimeout(150);
+    ok((await page.locator("#main tbody tr").first().innerText()).includes("y@example.test") && (await page.locator("#main tbody").first().locator("tr").count()) === 1, "filtre par état");
+    await page.selectOption("#sales-relance", "");
+    ok(rt.includes("Action prévue dépassée") && (await page.locator("#main tbody").nth(1).innerText()).includes("Express Colis"), "prospects des agents dont l'action prévue est dépassée");
+    await vue("prospects");
     ok((await page.locator("#toast .bad").count()) === 0, "onglet Commercial : aucune erreur pendant les actions");
     await page.evaluate(() => { for (let i = 0; i < 70; i++) window.__emit("ai_prospects", "INSERT", { id: crypto.randomUUID(), entreprise: `Prospect lot ${i}`, stage: "identifie", score: 10, potentiel_fcfa: 1000, updated_at: new Date().toISOString() }); });
     await page.click("[data-act=sales-refresh]"); await page.waitForTimeout(500);

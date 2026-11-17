@@ -14,8 +14,8 @@ const STAGES = [
 const LABEL = Object.fromEntries(STAGES);
 const money = n => `${num(n)} FCFA`;
 const PAGE=50, MAX_ROWS=1000;   // affichage par pages de 50 ; la base est lue jusqu'à 1 000 prospects
-let prospects=[], products=[], offers=[], messages=[], selected=null, filter={q:"",stage:"",owner:"",canal:"",offre:""}, shown=PAGE, vue="prospects";
-const VUES=[["pipeline","🧭 Pipeline"],["prospects","👥 Prospects"],["rdv","📅 Rendez-vous"],["offres","📄 Offres"],["conversations","💬 Conversations"]];
+let prospects=[], products=[], offers=[], messages=[], mails=[], mailsErreur="", selected=null, filter={q:"",stage:"",owner:"",canal:"",offre:"",relance:""}, shown=PAGE, vue="prospects";
+const VUES=[["pipeline","🧭 Pipeline"],["prospects","👥 Prospects"],["rdv","📅 Rendez-vous"],["offres","📄 Offres"],["conversations","💬 Conversations"],["relances","🔔 Relances"]];
 const RDV_STAGES=["rdv_propose","rdv_confirme","demo_realisee"];
 const CLOSED=["perdu","en_veille","marche_gagne","client_fidelise"];
 const OFFRE_ST={brouillon:["Brouillon","#64748b"],a_valider:["À valider","#F59E0B"],validee:["Validée","#0ea5e9"],envoyee:["Envoyée","#6366f1"],acceptee:["Acceptée","#22C55E"],refusee:["Refusée","#EF4444"],expiree:["Expirée","#94a3b8"]};
@@ -24,11 +24,17 @@ const nomDe=id=>prospects.find(p=>p.id===id)?.entreprise??"Prospect inconnu";
 
 export async function loadSales() {
   const [p, pr, o] = await Promise.all([
-    q(S.sb.from("ai_prospects").select("id,crm_client_id,entreprise,secteur,ville,pays,decideur,telephone,whatsapp,email,stage,score,priorite,potentiel_fcfa,produits_recommandes,owner_id,opt_out,next_action_at,last_outbound_at,last_inbound_at,created_at,resume_ia").order("updated_at",{ascending:false}).limit(MAX_ROWS)),
+    q(S.sb.from("ai_prospects").select("id,crm_client_id,crm_rid,relances_sans_reponse,entreprise,secteur,ville,pays,decideur,telephone,whatsapp,email,stage,score,priorite,potentiel_fcfa,produits_recommandes,owner_id,opt_out,next_action_at,last_outbound_at,last_inbound_at,created_at,resume_ia").order("updated_at",{ascending:false}).limit(MAX_ROWS)),
     q(S.sb.from("ai_products").select("id,nom,marche_cible,actif").eq("actif",true).order("nom")),
     q(S.sb.from("ai_offers").select("id,reference,prospect_id,product_id,total_ht,total_ttc,statut,created_at").order("created_at",{ascending:false}).limit(100)),
   ]);
   prospects=p??[]; products=pr??[]; offers=o??[];
+}
+/** E-mails envoyés depuis le CRM (Gmail) : base du suivi des relances. */
+export async function loadRelances() {
+  mailsErreur="";
+  try { mails=(await q(S.sb.from("crm_mails").select("id,client_rid,to_email,subject,status,error,sent_at,replied_at,relance_apres_jours").order("sent_at",{ascending:false}).limit(500)))??[]; }
+  catch(e){ mails=[]; mailsErreur=e.message; }
 }
 /** Derniers échanges, tous prospects confondus (vue Conversations). */
 export async function loadMessages() {
@@ -120,12 +126,59 @@ function vueConversations(){
     ${messages.length>=150?html`<p class="small muted">Les 150 échanges les plus récents sont affichés.</p>`:""}`;
 }
 
+const RELANCE_MAX_JOURS=45;   // même règle que le CRM : au-delà de 45 jours sans réponse, le mail n'est plus proposé à la relance
+/** Un contact par destinataire (dernier mail) avec la date de la prochaine relance : envoi + « relancer après N jours » (4 par défaut). */
+export function relancesLignes(liste, prospectsListe, now=Date.now()) {
+  const parCle=new Map();
+  for(const m of liste??[]){ const k=m.client_rid||String(m.to_email||"").toLowerCase(); const g=parCle.get(k); if(!g) parCle.set(k,{dernier:m,nb:1}); else { g.nb++; if(new Date(m.sent_at)>new Date(g.dernier.sent_at)) g.dernier=m; } }
+  const lignes=[];
+  for(const {dernier:m,nb} of parCle.values()){
+    const p=(prospectsListe??[]).find(x=>(m.client_rid&&x.crm_rid===m.client_rid)||(x.email&&String(x.email).toLowerCase()===String(m.to_email).toLowerCase()));
+    const envoi=new Date(m.sent_at).getTime(), jours=Math.max(1,Number(m.relance_apres_jours)||4), echeance=envoi+jours*864e5, age=Math.floor((now-envoi)/864e5);
+    let etat, retard=0;
+    if(m.status==="repondu") etat="reponse";
+    else if(m.status==="echec") etat="adresse";
+    else if(age>RELANCE_MAX_JOURS) etat="hors_delai";
+    else if(now>=echeance){ etat="a_relancer"; retard=Math.floor((now-echeance)/864e5); }
+    else etat="a_venir";
+    lignes.push({ cle:m.client_rid||m.to_email, nom:p?.entreprise||m.to_email, prospectId:p?.id??null, email:m.to_email, objet:m.subject, nb, envoi:m.sent_at, repondu:m.replied_at, echeance:etat==="a_relancer"||etat==="a_venir"?new Date(echeance).toISOString():null, etat, retard, erreur:m.error||"" });
+  }
+  const ordre={a_relancer:0,reponse:1,a_venir:2,adresse:3,hors_delai:4};
+  return lignes.sort((a,b)=>ordre[a.etat]-ordre[b.etat]||(a.etat==="a_relancer"?b.retard-a.retard:a.echeance&&b.echeance?a.echeance.localeCompare(b.echeance):0));
+}
+const RELANCE_ETAT={a_relancer:["À relancer","#EF4444"],a_venir:["Relance prévue","#0ea5e9"],reponse:["Réponse reçue","#22C55E"],adresse:["Adresse à corriger","#F59E0B"],hors_delai:["Sans réponse > 45 j","#94a3b8"]};
+function vueRelances(){
+  if(mailsErreur) return html`<div class="card muted">Suivi des e-mails indisponible : ${mailsErreur}</div>`;
+  const now=Date.now(), tout=relancesLignes(mails,prospects,now), nb=k=>tout.filter(l=>l.etat===k).length;
+  const sept=tout.filter(l=>l.etat==="a_venir"&&new Date(l.echeance).getTime()-now<=7*864e5).length;
+  const lignes=tout.filter(l=>!filter.relance||l.etat===filter.relance);
+  const iaRetard=prospects.filter(p=>p.next_action_at&&new Date(p.next_action_at).getTime()<now&&!p.opt_out&&!CLOSED.includes(p.stage)).sort((a,b)=>new Date(a.next_action_at)-new Date(b.next_action_at));
+  const sansContact=prospects.filter(p=>!p.last_outbound_at&&!p.opt_out&&!CLOSED.includes(p.stage)).length;
+  return html`<div class="grid g4" style="margin-bottom:10px">
+      <div class="card kpi"><b>${tout.length}</b><span>Contacts relancés par e-mail</span></div>
+      <div class="card kpi"><b style="${nb("a_relancer")?"color:var(--danger)":""}">${nb("a_relancer")}</b><span>À relancer maintenant</span></div>
+      <div class="card kpi"><b>${sept}</b><span>Relances prévues sous 7 jours</span></div>
+      <div class="card kpi"><b>${nb("reponse")}</b><span>Réponses reçues · ${nb("adresse")} adresse(s) à corriger</span></div></div>
+    <div class="filters"><select id="sales-relance" aria-label="Filtrer le suivi">${[["","Tous les états"],...Object.entries(RELANCE_ETAT).map(([k,[l]])=>[k,l])].map(([k,l])=>html`<option value="${k}" ${filter.relance===k?"selected":""}>${l}${k?" · "+nb(k):""}</option>`)}</select></div>
+    <div class="scroll"><table class="tbl"><thead><tr><th>Contact</th><th>Dernier e-mail</th><th class="num">Envois</th><th>État</th><th>Prochaine relance</th><th></th></tr></thead><tbody>
+    ${raw(lignes.map(l=>html`<tr><td><b>${l.nom}</b><div class="small muted">${l.email}</div></td>
+      <td class="small">${fmtDT(l.envoi)}<div class="muted">${l.objet}</div></td><td class="num">${l.nb}</td>
+      <td>${pill(RELANCE_ETAT[l.etat][0],RELANCE_ETAT[l.etat][1])}${l.etat==="a_relancer"?html`<div class="small muted">retard de ${l.retard} j</div>`:l.etat==="reponse"?html`<div class="small muted">${fmtDT(l.repondu)}</div>`:l.etat==="adresse"?html`<div class="small muted">${l.erreur}</div>`:""}</td>
+      <td class="small">${l.echeance?fmtDT(l.echeance):"—"}</td>
+      <td>${l.prospectId?html`<button class="btn sm" type="button" data-act="sales-open" data-id="${l.prospectId}">Ouvrir</button>`:html`<span class="small muted">Fiche dans SANIX CRM</span>`}</td></tr>`.s).join("")||html`<tr><td colspan="6" class="muted">Aucun e-mail envoyé pour l'instant.</td></tr>`.s)}
+    </tbody></table></div>
+    <h3 style="margin:16px 0 6px">Prospects suivis par les agents IA</h3>
+    <div class="grid g2" style="margin-bottom:8px"><div class="card kpi"><b>${sansContact}</b><span>Jamais contactés par les agents</span></div><div class="card kpi"><b style="${iaRetard.length?"color:var(--danger)":""}">${iaRetard.length}</b><span>Action prévue dépassée</span></div></div>
+    ${iaRetard.length?html`<div class="scroll"><table class="tbl"><thead><tr><th>Prospect</th><th>Étape</th><th>Action prévue</th><th class="num">Relances sans réponse</th><th></th></tr></thead><tbody>${raw(iaRetard.slice(0,20).map(p=>html`<tr><td><b>${p.entreprise}</b></td><td>${LABEL[p.stage]??p.stage}</td><td class="small">${fmtDT(p.next_action_at)}</td><td class="num">${p.relances_sans_reponse??0}</td><td><button class="btn sm" type="button" data-act="sales-open" data-id="${p.id}">Ouvrir</button></td></tr>`.s).join(""))}</tbody></table></div>`:html`<p class="muted">Aucune action prévue par les agents n'est en retard.</p>`}
+    <p class="small muted" style="margin-top:8px">Règle : un e-mail sans réponse est à relancer au bout du délai choisi à l'envoi (4 jours par défaut), jusqu'à 45 jours. Les relances sont proposées ici ; rien n'est envoyé automatiquement.</p>`;
+}
+
 export function renderSales(main) {
   const total=prospects.length, capped=total>=MAX_ROWS, qualified=prospects.filter(p=>(p.score??0)>=60).length;
   const active=prospects.filter(p=>!CLOSED.includes(p.stage)).length;
   const potential=prospects.reduce((s,p)=>s+Number(p.potentiel_fcfa||0),0);
-  const compte={pipeline:active,prospects:total,rdv:prospects.filter(p=>RDV_STAGES.includes(p.stage)).length,offres:offers.length,conversations:null};
-  const corps={pipeline:vuePipeline,prospects:vueProspects,rdv:vueRdv,offres:vueOffres,conversations:vueConversations}[vue]();
+  const compte={pipeline:active,prospects:total,rdv:prospects.filter(p=>RDV_STAGES.includes(p.stage)).length,offres:offers.length,conversations:null,relances:null};
+  const corps={pipeline:vuePipeline,prospects:vueProspects,rdv:vueRdv,offres:vueOffres,conversations:vueConversations,relances:vueRelances}[vue]();
   main.innerHTML=html`<section class="panel">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
       <div><h2>Direction commerciale</h2><p class="sub">Prospects, pipeline, qualification IA, historique et rattachement aux fiches clients SANIX CRM.</p></div>
@@ -145,6 +198,7 @@ export function renderSales(main) {
   const sq=$("#sales-q"); if(sq) sq.oninput=e=>{filter.q=e.target.value;shown=PAGE;renderSales(main);restoreQ();};
   const ss=$("#sales-stage"); if(ss) ss.onchange=e=>{filter.stage=e.target.value;shown=PAGE;renderSales(main);};
   const so=$("#sales-offre"); if(so) so.onchange=e=>{filter.offre=e.target.value;renderSales(main);};
+  const sr=$("#sales-relance"); if(sr) sr.onchange=e=>{filter.relance=e.target.value;renderSales(main);};
   const sc=$("#sales-canal"); if(sc) sc.onchange=e=>{filter.canal=e.target.value;renderSales(main);};
 }
 
@@ -206,11 +260,12 @@ export async function salesAction(el) {
   const id=el.dataset.id;
   if(el.dataset.act==="sales-new") return newProspectForm();
   if(el.dataset.act==="sales-open") return openProspect(id);
-  if(el.dataset.act==="sales-refresh"){await loadSales();if(vue==="conversations")await loadMessages();renderSales($("#main"));return;}
+  if(el.dataset.act==="sales-refresh"){await loadSales();if(vue==="conversations")await loadMessages();if(vue==="relances")await loadRelances();renderSales($("#main"));return;}
   if(el.dataset.act==="sales-more"){shown+=PAGE;renderSales($("#main"));return;}
   if(el.dataset.act==="sales-vue"){
     vue=VUES.some(v=>v[0]===el.dataset.vue)?el.dataset.vue:"prospects"; shown=PAGE;
     if(vue==="conversations"){ try{ await loadMessages(); }catch(err){ toast(err.message,"bad"); } }
+    if(vue==="relances") await loadRelances();
     renderSales($("#main")); return;
   }
   if(el.dataset.act==="sales-qualify"||el.dataset.act==="sales-contact"){
