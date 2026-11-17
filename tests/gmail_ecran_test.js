@@ -90,6 +90,23 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(await page.evaluate(() => window._courrierEx[0].id === "relance"), "« Relancer » ouvre les exemples avec « Relance sans réponse » conseillé en premier");
     await page.evaluate(() => document.getElementById("modal-courrier").classList.add("hidden"));
 
+    console.log("▶ Adresse déjà revenue en erreur (cas ABRI 2000)");
+    await page.evaluate(() => { __srv.etat = { connecte: true, email: "sanix@gmail.com" }; _gmail.charge = 0; CLIENTS.find((c) => c.id === 996001).email = "x@promo-gmail.ci"; });
+    await ouvrir(); t = await MODAL();
+    ok(await page.evaluate(() => !!document.getElementById("courrier-morte")) && /revenu en erreur/.test(t) && /bloqué/.test(t), "bandeau rouge : l'e-mail précédent est revenu en erreur, l'envoi direct est bloqué tant que l'adresse ne change pas");
+    ok(!/Cette adresse semble incorrecte/.test(t), "pas de second avertissement redondant");
+    await page.evaluate((i) => courrierEcrire(i), iAppel);
+    ok(await page.evaluate(() => document.getElementById("cg-envoyer").disabled && /déjà revenu en erreur/.test(document.getElementById("cg-msg").textContent)), "formulaire d'envoi : bouton « Envoyer » bloqué avec l'explication, pour la même adresse");
+    await page.fill("#cg-a", "bonne@promo-gmail.ci");
+    ok(await page.evaluate(() => !document.getElementById("cg-envoyer").disabled), "avec une autre adresse saisie : l'envoi est de nouveau possible");
+    await page.fill("#cg-a", "X@Promo-Gmail.CI");
+    ok(await page.evaluate(() => document.getElementById("cg-envoyer").disabled), "même adresse en majuscules : toujours bloquée");
+    await page.evaluate(() => { courrierAnnuler(); document.getElementById("modal-courrier").classList.add("hidden"); });
+    const rv = await page.evaluate(() => { const q = contactQualite(CLIENTS.find((c) => c.id === 996001)); return { mail: q.mail, codes: q.problemes.map((p) => p.code), niveau: q.niveau }; });
+    ok(!rv.mail && rv.codes.includes("rebond"), "revue des contacts : l'adresse rejetée n'est plus « joignable » et un problème « rebond » est signalé");
+    await page.evaluate(() => { CLIENTS.find((c) => c.id === 996001).email = "contact@promo-gmail.ci"; });
+    ok(await page.evaluate(() => contactQualite(CLIENTS.find((c) => c.id === 996001)).mail), "une autre adresse sur la fiche : de nouveau valide");
+
     console.log("▶ Réglages et connexion");
     await page.evaluate(() => { __srv.etat = { connecte: false }; _gmail.charge = 0; });
     await page.evaluate(() => { navigate("relance", null); }).catch(() => {});

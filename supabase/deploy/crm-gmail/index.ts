@@ -76,6 +76,7 @@ function errMsg(e) {
 var GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.metadata";
 var LIMITE_PAR_JOUR = 100;
 var JOURS_SUIVI = 45;
+var JOURS_ADRESSE_MORTE = 30;
 var GmailError = class extends Error {
   status;
   constructor(status, message) {
@@ -167,8 +168,12 @@ var addressOf = (header) => {
   const m = /<([^>]+)>/.exec(header) ?? /([^\s<>"]+@[^\s<>"]+)/.exec(header);
   return (m ? m[1] : header).trim().toLowerCase();
 };
-function analyseThread(thread, myEmail) {
-  const me = myEmail.toLowerCase(), msgs = Array.isArray(thread?.messages) ? thread.messages : [];
+var failedRecipients = (m) => {
+  const h = (m?.payload?.headers ?? []).find((x) => String(x.name).toLowerCase() === "x-failed-recipients");
+  return h ? String(h.value).split(/[,;\s]+/).map((a) => addressOf(a)).filter(Boolean) : [];
+};
+function analyseThread(thread, myEmail, destinataire) {
+  const me = myEmail.toLowerCase(), dest = destinataire ? destinataire.toLowerCase() : "", msgs = Array.isArray(thread?.messages) ? thread.messages : [];
   const first = msgs.length ? Number(msgs[0].internalDate) || 0 : 0;
   for (const m of msgs.slice(1)) {
     const h = (m?.payload?.headers ?? []).find((x) => String(x.name).toLowerCase() === "from");
@@ -178,7 +183,12 @@ function analyseThread(thread, myEmail) {
     const t = Number(m.internalDate) || 0;
     if (first && t && t < first) continue;
     const at = t ? new Date(t).toISOString() : void 0;
-    return /^(mailer-daemon|postmaster)@/.test(from) ? { replied: false, bounced: true, from, at } : { replied: true, bounced: false, from, at };
+    if (/^(mailer-daemon|postmaster)@/.test(from)) {
+      const cibles = failedRecipients(m);
+      if (cibles.length ? dest && !cibles.includes(dest) : msgs.length > 2) continue;
+      return { replied: false, bounced: true, from, at };
+    }
+    return { replied: true, bounced: false, from, at };
   }
   return { replied: false, bounced: false };
 }
@@ -253,6 +263,7 @@ async function sendMail(d, op, i) {
   const now = d.now();
   if (await d.store.countSentSince(new Date(now.getTime() - 24 * 36e5).toISOString()) >= LIMITE_PAR_JOUR) throw new GmailError(429, `Plafond de ${LIMITE_PAR_JOUR} e-mails par 24 h atteint`);
   if (await d.store.recentDuplicate(to, subject, new Date(now.getTime() - 12e4).toISOString())) throw new GmailError(409, "Cet e-mail vient d\xE9j\xE0 d'\xEAtre envoy\xE9 \xE0 ce destinataire");
+  if (await d.store.recentBounce(to, new Date(now.getTime() - JOURS_ADRESSE_MORTE * 864e5).toISOString())) throw new GmailError(409, "Cette adresse a d\xE9j\xE0 renvoy\xE9 une erreur de distribution (adresse inexistante ou bo\xEEte pleine) : corrigez-la avant de r\xE9\xE9crire");
   const { token, email } = await accessToken(d);
   const fromName = String(i.from_name ?? "").replace(/[\r\n"\\]/g, " ").trim().slice(0, 80) || void 0;
   const raw = b64url(buildMime({ from: email, fromName, to, subject, text: body }));
@@ -294,13 +305,13 @@ async function syncReplies(d) {
   let verifies = 0, reponses = 0, echecs = 0;
   for (const m of pending) {
     try {
-      const r = await d.fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(String(m.gmail_thread_id))}?format=metadata&metadataHeaders=From&metadataHeaders=Date`, { headers: { Authorization: "Bearer " + token } });
+      const r = await d.fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(String(m.gmail_thread_id))}?format=metadata&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=X-Failed-Recipients`, { headers: { Authorization: "Bearer " + token } });
       if (r.status === 404) {
         await d.store.updateMail(m.id, { last_checked_at: d.now().toISOString() });
         continue;
       }
       if (!r.ok) continue;
-      const a = analyseThread(await r.json(), email);
+      const a = analyseThread(await r.json(), email, m.to_email);
       verifies++;
       if (a.replied) {
         await d.store.updateMail(m.id, { status: "repondu", replied_at: a.at ?? d.now().toISOString(), reply_from: a.from ?? null, last_checked_at: d.now().toISOString() });
@@ -364,6 +375,10 @@ var store = {
   },
   async recentDuplicate(toEmail, subject, sinceIso) {
     const { count } = await db().from("crm_mails").select("id", { count: "exact", head: true }).eq("to_email", toEmail).eq("subject", subject).neq("status", "echec").gte("sent_at", sinceIso);
+    return (count ?? 0) > 0;
+  },
+  async recentBounce(toEmail, sinceIso) {
+    const { count } = await db().from("crm_mails").select("id", { count: "exact", head: true }).eq("to_email", toEmail).eq("status", "echec").ilike("error", "%distribu%").gte("sent_at", sinceIso);
     return (count ?? 0) > 0;
   },
   async addInteraction(clientRid, interaction) {
