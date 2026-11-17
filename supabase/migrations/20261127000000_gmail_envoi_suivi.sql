@@ -43,8 +43,11 @@ create index if not exists crm_mails_suivi_idx on public.crm_mails (status, sent
 alter table public.crm_mails enable row level security;
 revoke all on table public.crm_mails from anon, authenticated;
 grant select on table public.crm_mails to authenticated;
-drop policy if exists crm_mails_lecture on public.crm_mails;
-create policy crm_mails_lecture on public.crm_mails for select to authenticated using (public.ai_is_operator());
+do $$ begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'crm_mails' and policyname = 'crm_mails_lecture') then
+    create policy crm_mails_lecture on public.crm_mails for select to authenticated using (public.ai_is_operator());
+  end if;
+end $$;
 
 -- État de la connexion Gmail pour l'écran (sans aucun jeton).
 create or replace function public.crm_mail_state() returns jsonb
