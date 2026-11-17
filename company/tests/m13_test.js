@@ -253,7 +253,7 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
     ok(true, "vue aérienne : caméra placée (cadrage recalculé)");
     await page.selectOption("#view-sel", "exterior"); await ev(page, () => window.__vc.office.settleCamera());
     const th0 = await ev(page, () => window.__vc.office.orbitTheta?.() ?? null);
-    await page.waitForTimeout(1200);
+    await ev(page, () => { const o = window.__vc.office; o.advance(5); o.settleCamera(); });   // 5 s simulées (le rendu logiciel de la CI ne tient pas 60 images/s)
     const th1 = await ev(page, () => window.__vc.office.orbitTheta?.() ?? null);
     ok(th0 !== null && th1 !== null && Math.abs(th1 - th0) > 0.01, "vue extérieure : le bâtiment tourne lentement");
     await page.selectOption("#view-sel", "general");
