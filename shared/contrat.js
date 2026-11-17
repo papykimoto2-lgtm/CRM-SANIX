@@ -172,6 +172,12 @@
     return { html: out.join(""), nbRestants: n };
   }
 
-  var API = { MODELE: MODELE, concedant: concedant, duree: duree, remplir: remplir, restants: restants, enHtml: enHtml };
+  /** Texte du contrat SANS les deux blocs de signature finaux : la page officielle porte déjà ses lignes de signature, le tampon et le QR code. */
+  function corps(texte) {
+    var t = String(texte == null ? "" : texte), i = t.search(/\nLE CONCÉDANT\s*\n/);
+    return i >= 0 ? t.slice(0, i).replace(/\s+$/, "") : t.replace(/\s+$/, "");
+  }
+
+  var API = { MODELE: MODELE, corps: corps, concedant: concedant, duree: duree, remplir: remplir, restants: restants, enHtml: enHtml };
   G.SanixContrat = API; if (typeof module !== "undefined" && module.exports) module.exports = API;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -44,4 +44,8 @@ ok(h.nbRestants === (h.html.match(/<mark class="ph">/g) || []).length && h.nbRes
 ok((h.html.match(/<div class="li">• /g) || []).length >= 25, "les listes sont mises en puces");
 const x = C.enHtml(C.remplir("{licencie} [a]b", { licencie: "<script>alert(1)</script> & Cie" }));
 ok(!/<script>/.test(x.html) && /&lt;script&gt;/.test(x.html), "le nom d'un client est échappé : aucun HTML injecté dans le contrat");
+console.log("▶ Corps sans les signatures du texte");
+const cp = C.corps(t);
+ok(/FAIT À Abidjan, LE 17\/11\/2026$/.test(cp) && !/\nLE CONCÉDANT\n/.test(cp) && !/Signature et cachet/.test(cp), "le texte s'arrête à « FAIT À …, LE … » : les signatures sont portées par la page officielle");
+ok(C.corps("Un texte modifié sans bloc de signature.\n\n") === "Un texte modifié sans bloc de signature.", "un texte sans bloc de signature est conservé tel quel");
 console.log("\nContrat : tous les contrôles passent.");
