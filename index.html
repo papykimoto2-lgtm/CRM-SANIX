@@ -287,7 +287,7 @@ select.form-input{cursor:pointer}
 
 /* ─── QR MODAL ─────────────────────────────────────── */
 .modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:center;justify-content:center}
-.modal-box{background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--sh-lg);padding:28px;max-width:420px;width:90%;position:relative}
+.modal-box{background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--sh-lg);padding:28px;max-width:420px;width:90%;position:relative;max-height:92vh;overflow-y:auto;overscroll-behavior:contain}   /* une fenêtre plus haute que l'écran défile au lieu d'être coupée */
 .modal-close{position:absolute;top:16px;right:16px;width:28px;height:28px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;transition:all .15s}
 .modal-close:hover{background:#EF4444;color:#fff;border-color:transparent;transform:rotate(90deg)}
 /* ─── PREMIUM MODAL UPGRADE ─── */
@@ -11211,6 +11211,11 @@ function qlIsPerdu(c){ const d=qlDeal(c); return !!(d&&d.stage==='perdu'); }
 function qlEtape(c){ return Math.min(aiGetEtape(c),4); }
 function qlProspects(){ return CLIENTS.filter(c=>c.statut==='prospect'); }
 function qlCompletude(c){ return (c.phone?3:0)+(c.email?2:0)+(c.adresse?1:0)+(c.lat?1:0)+(c.logiciel?1:0); }
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape') return;
+  const ov=[...document.querySelectorAll('.modal-overlay:not(.hidden)')].filter(o=>o.offsetParent!==null||getComputedStyle(o).position==='fixed').pop();
+  const x=ov&&ov.querySelector('.modal-close'); if(x){ e.preventDefault(); x.click(); }
+});
 // ─── Notes explicatives (une par onglet) ───
 const NOTES_VUES = {
   dashboard:{quoi:"Vue d'ensemble de l'activité : chiffre d'affaires, entonnoir de transformation, santé du pipeline, relances à faire et échéances de licences.",pts:["Le chiffre d'affaires est celui des commandes confirmées, en cours ou livrées (hors taxes).","« Prospects à relancer » et « Licences & échéances » sont les deux listes à traiter chaque jour.","Le bouton Actualiser recalcule les chiffres à partir des données du CRM."]},

@@ -404,7 +404,7 @@
   function ensureModal() {
     var m = document.getElementById('modal-crmsync'); if (m) return m;
     m = document.createElement('div'); m.id = 'modal-crmsync'; m.className = 'modal-overlay hidden';
-    m.innerHTML = '<div class="modal-box" style="max-width:780px;width:94vw"><div class="modal-close" onclick="document.getElementById(\'modal-crmsync\').classList.add(\'hidden\')">✕</div><div id="crmsync-body"></div></div>';
+    m.innerHTML = '<div class="modal-box" style="max-width:780px;width:94vw;max-height:92vh;overflow-y:auto"><div class="modal-close" onclick="document.getElementById(\'modal-crmsync\').classList.add(\'hidden\')">✕</div><div id="crmsync-body"></div></div>';
     document.body.appendChild(m); return m;
   }
   function openPanel(tab) { ensureModal().classList.remove('hidden'); if (tab) panelTab = tab; render(); refreshServer(); }
