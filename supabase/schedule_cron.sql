@@ -3,7 +3,7 @@
 -- Le secret du planificateur est généré ici (64 caractères aléatoires) et gardé dans le Vault Supabase. Il n'apparaît dans aucune requête
 -- planifiée ni dans le dépôt, et RIEN n'est à recopier dans les secrets Edge : les tâches le lisent dans le Vault à chaque appel, et les
 -- fonctions Edge le lisent par ai_cron_secret() (fonction SQL réservée au service). Le secret Edge CRON_SECRET n'est qu'un repli facultatif.
--- Arrêter : select cron.unschedule('ai-company-tick'); (idem 'ai-company-reports', 'ai-sales-followups').
+-- Arrêter : select cron.unschedule('ai-company-tick'); (idem 'ai-company-reports', 'ai-sales-followups', 'crm-gmail-sync').
 -- Changer le secret : delete from vault.secrets where name = 'ai_cron_secret'; puis relancer ce script (les fonctions s'alignent en 30 s).
 
 create extension if not exists pg_cron;
@@ -45,5 +45,14 @@ select cron.schedule('ai-sales-followups', '*/15 * * * *', $$
     timeout_milliseconds := 30000)
 $$);
 
+-- Suivi des réponses aux e-mails envoyés par le CRM (Gmail) : toutes les 15 minutes. Sans compte Gmail connecté, l'appel ne fait rien.
+select cron.schedule('crm-gmail-sync', '*/15 * * * *', $$
+  select net.http_post(
+    url := 'https://izgpvhwhbrgeagjfhfli.supabase.co/functions/v1/crm-gmail',
+    body := '{"action":"sync"}'::jsonb,
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'ai_cron_secret')),
+    timeout_milliseconds := 30000)
+$$);
+
 select jobname as "tâche planifiée", schedule as "cadence", active as "active"
-  from cron.job where jobname like 'ai-%' order by jobname;
+  from cron.job where jobname like 'ai-%' or jobname like 'crm-%' order by jobname;

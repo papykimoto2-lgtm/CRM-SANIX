@@ -68,4 +68,12 @@ const L = A.construire({ now: NOW, clients, commandes: [], rdvs: [], echeances: 
 ok(L.relances.length === 2 && L.relancesAutres === 2 && L.contacts.length === 1, "limites : 2 relances affichées, 2 autres signalées, 1 contact");
 const V = A.construire({ now: NOW, clients: [], commandes: [], rdvs: [], echeances: [], f });
 ok(V.total === 0 && V.argent.length === 0, "rien à faire : liste vide");
+// E-mails envoyés par le CRM (Gmail) sans réponse : relance quand le délai propre à chaque e-mail est dépassé.
+const mail = (id, jours, over) => Object.assign({ id, clientId: id, client: "Prospect " + id, to_email: "p" + id + "@x.ci", subject: "Sujet " + id, status: "envoye", sent_at: new Date(Date.parse(NOW) - jours * 864e5).toISOString(), relance_apres_jours: 4 }, over || {});
+const M = A.construire({ now: NOW, clients: [], commandes: [], rdvs: [], echeances: [], f, mails: [mail(1, 6), mail(2, 2), mail(3, 10), mail(4, 8, { status: "repondu" }), mail(5, 9, { status: "echec" }), mail(6, 60), mail(7, 5, { relance_apres_jours: 7 }), mail(8, 4)] });
+ok(M.mails.map((x) => x.id).join() === "3,1,8", "e-mails à relancer : sans réponse et délai dépassé (10 j, 6 j, 4 j pile) ; le plus ancien d'abord");
+ok(!M.mails.some((x) => [2, 4, 5, 6, 7].includes(x.id)), "exclus : trop récent, déjà répondu, échec, plus de 45 jours, délai personnel de 7 jours non atteint");
+ok(M.mails[0].jours === 10 && M.mails[0].relanceJours === 4 && M.mails[0].sujet === "Sujet 3", "jours écoulés, délai et objet fournis à l'écran");
+ok(M.total === 3, "les e-mails à relancer comptent dans le total des actions du jour");
+ok(A.construire({ now: NOW, clients: [], commandes: [], rdvs: [], echeances: [], f }).mails.length === 0, "sans Gmail connecté : aucun e-mail dans la liste");
 console.log("À faire aujourd'hui : " + n + " contrôles passés.");

@@ -26,7 +26,7 @@ Arbre des missions : président → directeur général → directeurs (commerci
 Les missions démarrent dès que les fonctions (§1) et les secrets (§2) sont en place. Budget IA par défaut : 20 $ par jour et 5 $ par agent (onglet *Gouvernance*). Les données du CRM quittent le navigateur : elles sont copiées dans **votre** projet Supabase, protégé par la connexion d'opérateur.
 Régénération : `node supabase/tools/export_crm.js > crm_export.json && python3 supabase/tools/gen_seed_crm_missions.py crm_export.json`.
 
-## 1. Les trois fonctions (tableau de bord)
+## 1. Les fonctions (tableau de bord)
 Supabase → **Edge Functions** → **Deploy a new function** → **Via Editor**. Pour chacune : saisir le nom exact, effacer l'exemple, coller **tout** le fichier (GitHub → fichier → *Copy raw file*), **Deploy**.
 
 | Nom (exact) | Fichier à coller | Verify JWT |
@@ -34,6 +34,7 @@ Supabase → **Edge Functions** → **Deploy a new function** → **Via Editor**
 | `ai-company` | `supabase/deploy/ai-company/index.ts` | **désactivé** |
 | `ai-sales-director` | `supabase/deploy/ai-sales-director/index.ts` | **désactivé** |
 | `whatsapp-webhook` | `supabase/deploy/whatsapp-webhook/index.ts` | **désactivé** |
+| `crm-gmail` (envoi d'e-mails par Gmail, voir `GMAIL.md`) | `supabase/deploy/crm-gmail/index.ts` | **désactivé** |
 
 *Verify JWT désactivé* : chaque fonction authentifie elle-même son appelant (JWT opérateur vérifié par Supabase Auth + ligne `ai_operators` ; secret du planificateur `x-cron-secret` ; signature HMAC de Meta). Le contrôle de la plateforme refuserait les clés « publishable » (qui ne sont pas des JWT).
 
