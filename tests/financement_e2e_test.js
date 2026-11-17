@@ -26,7 +26,10 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(await page.locator("#fin-body .ban h1").count() === 1, "bandeau d'en-tête");
     ok(await page.locator("#fin-body .stat-card").count() >= 4, "indicateurs clés affichés");
     ok(await page.locator("#fin-body svg polyline").count() === 3, "courbe de trésorerie à trois séries");
-    ok(await page.locator("#fin-out table thead th").count() === 5, "tableau comparatif : quatre options");
+    ok(await page.locator("#fin-out table thead th").count() === 6, "tableau comparatif : quatre options et le montage corrigé");
+    ok((await page.locator("#fin-out table thead th").last().innerText()).includes("Montage corrigé"), "dernière colonne : « Montage corrigé »");
+    ok((await page.locator("#fin-out").innerText()).includes("Comment corriger les points d'attention"), "bloc « Comment corriger les points d'attention » affiché");
+    ok(await page.evaluate(() => { const t = document.getElementById("fin-out").innerText; return t.includes("Prêt maximum finançable") && t.includes("Apport en capital maximum") && t.includes("Besoin à couvrir"); }), "limites chiffrées : prêt maximum, apport maximum, besoin à couvrir");
 
     console.log("▶ Simulation en direct");
     const before = await page.locator("#fin-out .stat-card").first().innerText();
