@@ -2566,6 +2566,11 @@ Seriez-vous disponible pour une démonstration {rdv} ?
           </div>
         </div>
 
+        <div class="card" style="padding:16px;margin-bottom:16px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px">📧 Envoi d'e-mails par Gmail</div>
+          <div id="gmail-reglage"></div>
+        </div>
+
         <!-- Premier contact : modèles WhatsApp & e-mail -->
         <div class="card" style="padding:16px;margin-bottom:16px">
           <div style="font-weight:700;font-size:13px;margin-bottom:6px">👋 Messages de premier contact — WhatsApp & e-mail</div>
@@ -5512,7 +5517,7 @@ const COURRIER_MODELES = [
 /** Exemples prêts à envoyer pour un prospect, avec celui qui convient le mieux en premier. */
 function courrierExemples(c){
   const et=aiGetEtape(c), d=convDaysSince(c);
-  const reco = et===0 ? 'premier' : (d!==null && d>=7) ? 'relance' : et===1 ? 'appel' : et===2 ? 'apres_demo' : 'proposition';
+  const reco = (typeof gmailAttente==='function' && gmailAttente(c)) ? 'relance' : et===0 ? 'premier' : (d!==null && d>=7) ? 'relance' : et===1 ? 'appel' : et===2 ? 'apres_demo' : 'proposition';
   const out = COURRIER_MODELES.map(m=>{
     if(m.fc){ const g=fcGet(c,'email'); return {id:m.id,titre:m.titre,quand:m.quand,objet:g.subject,corps:g.body,conseille:m.id===reco}; }
     return {id:m.id,titre:m.titre,quand:m.quand,objet:fcFill(m.objet,c),corps:fcFill(m.corps,c),conseille:m.id===reco};
@@ -5524,23 +5529,72 @@ function openCourrierModal(id){
   let m=document.getElementById('modal-courrier');
   if(!m){ m=document.createElement('div'); m.id='modal-courrier'; m.className='modal-overlay hidden';
     m.innerHTML='<div class="modal-box" style="max-width:720px;max-height:92vh;overflow-y:auto"><div class="modal-close" onclick="document.getElementById(\'modal-courrier\').classList.add(\'hidden\')">✕</div><div id="courrier-body"></div></div>'; document.body.appendChild(m); }
-  window._courrierId=id; window._courrierEx=courrierExemples(c);
-  const esc=t=>String(t==null?'':t).replace(/[&<>"]/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[x])), g=courrierSignataire(), q=contactQualite(c);
+  window._courrierId=id; window._courrierEdit=null; window._courrierEx=courrierExemples(c);
+  courrierRender(); m.classList.remove('hidden');
+  const vu=_gmail.charge;
+  gmailRefresh().then(()=>{ if(m.classList.contains('hidden')||window._courrierId!==id||window._courrierEdit!==null||_gmail.charge===vu) return; window._courrierEx=courrierExemples(c); courrierRender(); }).then(()=>gmailSync());
+}
+function courrierRender(){
+  const c=CLIENTS.find(x=>x.id===window._courrierId); if(!c) return;
+  const esc=t=>String(t==null?'':t).replace(/[&<>"]/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[x])), g=courrierSignataire(), q=contactQualite(c), ed=window._courrierEdit;
   const alerte = !String(c.email||'').trim() ? '⚠️ Aucune adresse e-mail sur cette fiche : copiez le courrier et envoyez-le depuis votre messagerie, ou demandez l’adresse au prospect.'
     : !q.mail ? '⚠️ L’adresse enregistrée <b>'+esc(c.email)+'</b> semble incorrecte'+(q.confirmer.email?' (proposition : <b>'+esc(q.confirmer.email)+'</b>)':'')+'. Confirmez-la avec le prospect avant d’envoyer.' : '';
+  const direct = gmailConnecte();
+  const ligneGmail = direct ? '<div style="background:#ECFDF5;color:#065F46;border-radius:var(--r-sm);padding:7px 10px;font-size:12px;margin-bottom:10px">✅ Envoi direct depuis <b>'+esc(_gmail.etat.email)+'</b> : le suivi des réponses est automatique.</div>'
+    : _gmail.etat && _gmail.etat.hors_session ? '<div style="background:var(--surface2);border-radius:var(--r-sm);padding:7px 10px;font-size:12px;margin-bottom:10px;color:var(--muted)">📧 Envoi depuis votre messagerie. Pour envoyer d’ici et suivre les réponses : connectez l’agent IA (session opérateur), puis Gmail dans Réglages.</div>'
+    : '<div style="background:var(--surface2);border-radius:var(--r-sm);padding:7px 10px;font-size:12px;margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="flex:1;min-width:200px">📧 Envoi depuis votre messagerie. Connectez Gmail pour envoyer d’ici et suivre les réponses.</span><button class="btn btn-outline btn-sm" style="font-size:11px" onclick="gmailConnecter()">🔗 Connecter Gmail</button></div>';
+  const deja = gmailMailsDe(c).slice(0,3);
+  const histo = deja.length ? '<div style="font-size:12px;margin-bottom:10px">'+deja.map(m=>gmailLigneMail(m)).join('')+'</div>' : '';
+  const carte=(e,i)=>{
+    if(ed===i){
+      return '<div class="card" style="padding:12px;margin-bottom:10px;border:2px solid var(--primary)"><b>'+esc(e.titre)+'</b> <span style="font-size:11px;color:var(--muted)">— relisez, modifiez si besoin, puis envoyez</span>'
+        +'<label class="form-label" style="margin-top:8px">À</label><input class="form-input" id="cg-a" value="'+esc(c.email||'')+'" oninput="courrierVerifie()">'
+        +'<label class="form-label" style="margin-top:8px">Objet</label><input class="form-input" id="cg-objet" value="'+esc(e.objet)+'" oninput="courrierVerifie()">'
+        +'<label class="form-label" style="margin-top:8px">Message</label><textarea class="form-input" id="cg-corps" rows="14" style="font-size:12px;line-height:1.45" oninput="courrierVerifie()">'+esc(e.corps)+'</textarea>'
+        +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:12px"><label>Relancer si pas de réponse après</label><select id="cg-relance" class="form-input" style="width:auto"><option value="2">2 jours</option><option value="3">3 jours</option><option value="4" selected>4 jours</option><option value="7">7 jours</option><option value="10">10 jours</option></select></div>'
+        +'<div id="cg-msg" style="font-size:12px;margin-top:8px;color:var(--danger)"></div>'
+        +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn btn-primary btn-sm" id="cg-envoyer" onclick="courrierEnvoyerGmail('+i+')">📤 Envoyer maintenant</button><button class="btn btn-outline btn-sm" onclick="courrierAnnuler()">Annuler</button></div></div>';
+    }
+    return '<div class="card" style="padding:12px;margin-bottom:10px'+(e.conseille?';border:2px solid var(--primary)':'')+'">'
+      +'<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap"><div><b>'+esc(e.titre)+'</b>'+(e.conseille?' <span class="badge badge-success">Conseillé</span>':'')+'<div style="font-size:11px;color:var(--muted)">'+esc(e.quand)+'</div></div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-outline btn-sm" style="font-size:11px" onclick="courrierCopier('+i+')">📋 Copier</button>'
+      +(direct?'<button class="btn btn-primary btn-sm" style="font-size:11px" onclick="courrierEcrire('+i+')">📤 Envoyer depuis Gmail</button><button class="btn btn-outline btn-sm" style="font-size:11px" onclick="courrierEnvoyer('+i+')">📧 Ma messagerie</button>':'<button class="btn btn-primary btn-sm" style="font-size:11px" onclick="courrierEnvoyer('+i+')">📧 Ouvrir dans ma messagerie</button>')+'</div></div>'
+      +'<div style="font-size:12px;margin:8px 0 4px"><b>Objet :</b> '+esc(e.objet)+'</div>'
+      +'<div style="font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--surface2);border-radius:var(--r-sm);padding:10px;max-height:'+(e.conseille?'none':'120px')+';overflow:hidden">'+esc(e.corps)+'</div>'
+      +(e.conseille?'':'<button class="btn btn-outline btn-sm" style="font-size:11px;margin-top:6px" onclick="this.previousElementSibling.style.maxHeight=\'none\';this.remove()">Voir tout le courrier</button>')+'</div>';
+  };
   document.getElementById('courrier-body').innerHTML=
     '<div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:2px">✉️ Exemples de courrier — '+esc(c.nom)+'</div>'
     +'<div style="font-size:12px;color:var(--muted);margin-bottom:10px">À : '+(c.email?esc(c.email):'—')+' · Signé : <b>'+esc(g.nom)+'</b>'+(g.poste?', '+esc(g.poste):'')+' · '+esc(g.tel||'')+' · '+esc(g.email||'')+' <span style="opacity:.8">(compte connecté)</span></div>'
+    +ligneGmail+histo
     +(alerte?'<div style="background:#FEF3C7;color:#92400E;border-radius:var(--r-sm);padding:8px 10px;font-size:12px;margin-bottom:10px">'+alerte+'</div>':'')
     +'<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Complétez les passages entre [crochets] avant d’envoyer. Chaque courrier se termine par votre signature.</div>'
-    +window._courrierEx.map((e,i)=>'<div class="card" style="padding:12px;margin-bottom:10px'+(e.conseille?';border:2px solid var(--primary)':'')+'">'
-      +'<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap"><div><b>'+esc(e.titre)+'</b>'+(e.conseille?' <span class="badge badge-success">Conseillé</span>':'')+'<div style="font-size:11px;color:var(--muted)">'+esc(e.quand)+'</div></div>'
-      +'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-outline btn-sm" style="font-size:11px" onclick="courrierCopier('+i+')">📋 Copier</button><button class="btn btn-primary btn-sm" style="font-size:11px" onclick="courrierEnvoyer('+i+')">📧 Ouvrir dans ma messagerie</button></div></div>'
-      +'<div style="font-size:12px;margin:8px 0 4px"><b>Objet :</b> '+esc(e.objet)+'</div>'
-      +'<div style="font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--surface2);border-radius:var(--r-sm);padding:10px;max-height:'+(e.conseille?'none':'120px')+';overflow:hidden">'+esc(e.corps)+'</div>'
-      +(e.conseille?'':'<button class="btn btn-outline btn-sm" style="font-size:11px;margin-top:6px" onclick="this.previousElementSibling.style.maxHeight=\'none\';this.remove()">Voir tout le courrier</button>')
-      +'</div>').join('');
-  m.classList.remove('hidden');
+    +window._courrierEx.map(carte).join('');
+  if(ed!==null) courrierVerifie();
+}
+function courrierEcrire(i){ window._courrierEdit=i; courrierRender(); const t=document.getElementById('cg-corps'); if(t&&t.scrollIntoView) t.scrollIntoView({block:'center'}); }
+function courrierAnnuler(){ window._courrierEdit=null; courrierRender(); }
+/** Bloque l'envoi tant qu'il reste un passage [à compléter] ou une adresse invalide. */
+function courrierVerifie(){
+  const b=document.getElementById('cg-envoyer'), msg=document.getElementById('cg-msg'); if(!b||!msg) return;
+  const a=(document.getElementById('cg-a').value||'').trim(), t=(document.getElementById('cg-objet').value||'')+'\n'+(document.getElementById('cg-corps').value||'');
+  let m=''; if(!emailAnalyse(a).ok) m='Adresse du destinataire invalide ou incertaine.'; else if(/\[[^\]\n]{2,}\]/.test(t)) m='Il reste un passage entre [crochets] à compléter.';
+  msg.textContent=m; b.disabled=!!m;
+}
+async function courrierEnvoyerGmail(i){
+  const c=CLIENTS.find(x=>x.id===window._courrierId); if(!c) return;
+  courrierVerifie(); const b=document.getElementById('cg-envoyer'); if(!b||b.disabled) return;
+  const a=emailAnalyse(document.getElementById('cg-a').value).principal, objet=document.getElementById('cg-objet').value.trim(), corps=document.getElementById('cg-corps').value, jours=Number(document.getElementById('cg-relance').value)||4;
+  b.disabled=true; b.textContent='Envoi en cours…';
+  try{
+    const g=courrierSignataire();
+    await aisApi(_GM_FONC,{method:'POST',body:JSON.stringify({action:'send',client_rid:c._rid||null,to:a,subject:objet,body:corps,from_name:g.nom+(g.societe?' — '+g.societe:''),relance_jours:jours}),timeout:45000});
+    if(!c._rid) _relanceLog(c,'Email (Gmail)');
+    if(a!==String(c.email||'').trim().toLowerCase()){ c.email=a; c.updated_at=new Date().toISOString(); saveStore('clients'); }
+    showToast('✅ E-mail envoyé à '+a);
+    document.getElementById('modal-courrier').classList.add('hidden');
+    await gmailRefresh(true); try{ gmailFicheRender(c.id); }catch(e){}
+  }catch(e){ showToast('❌ '+e.message,'error'); const x=document.getElementById('cg-envoyer'); if(x){ x.disabled=false; x.textContent='📤 Envoyer maintenant'; } const mm=document.getElementById('cg-msg'); if(mm) mm.textContent=e.message; }
 }
 function courrierCopier(i){
   const e=(window._courrierEx||[])[i]; if(!e) return;
@@ -5553,6 +5607,88 @@ function courrierEnvoyer(i){
   _relanceLog(c,'Email');
   window.location.href='mailto:'+encodeURIComponent(String(c.email).trim()).replace(/%40/g,'@')+'?subject='+encodeURIComponent(e.objet)+'&body='+encodeURIComponent(e.corps);
 }
+
+
+// ═══════════════════════════════════════════════════════════════
+//  GMAIL — envoi depuis le CRM par le Gmail de l'entreprise, suivi des réponses (fonction serveur crm-gmail)
+//  Le jeton Google reste chiffré côté serveur ; le CRM ne lit que les en-têtes des fils qu'il a lui-même ouverts.
+// ═══════════════════════════════════════════════════════════════
+const _GM_FONC='/functions/v1/crm-gmail';
+const _gmail={etat:null,mails:[],charge:0,enCours:null,sync:0};
+async function gmailRefresh(force){
+  if(!force && _gmail.etat && Date.now()-_gmail.charge<60000) return _gmail;
+  if(_gmail.enCours) return _gmail.enCours;
+  _gmail.enCours=(async()=>{
+    try{
+      const etat=await aisApi('/rest/v1/rpc/crm_mail_state',{method:'POST',body:'{}'});
+      let mails=[]; if(etat && etat.connecte!==undefined) mails=(await aisApi('/rest/v1/crm_mails?select=id,client_rid,to_email,subject,status,sent_at,replied_at,reply_from,relance_apres_jours,sent_by,error&order=sent_at.desc&limit=300'))||[];
+      _gmail.etat=etat||{connecte:false}; _gmail.mails=mails;
+    }catch(e){ _gmail.etat=_gmail.etat||{connecte:false,hors_session:/session|Connectez/i.test(e.message)}; _gmail.erreurChargement=e.message; }
+    _gmail.charge=Date.now(); _gmail.enCours=null; return _gmail;
+  })();
+  return _gmail.enCours;
+}
+const gmailConnecte=()=>!!(_gmail.etat && _gmail.etat.connecte);
+const gmailMailsDe=c=>(c&&c._rid)?_gmail.mails.filter(m=>m.client_rid===c._rid):[];
+const _joursDepuis=d=>Math.floor((Date.now()-new Date(d))/864e5);
+/** Dernier e-mail envoyé à ce prospect, resté sans réponse au-delà du délai de relance (ou null). */
+function gmailAttente(c){
+  return gmailMailsDe(c).filter(m=>m.status==='envoye').map(m=>({m,j:_joursDepuis(m.sent_at)})).filter(x=>x.j>=(x.m.relance_apres_jours||4) && x.j<=45).sort((a,b)=>b.j-a.j)[0]||null;
+}
+function gmailLigneMail(m){
+  const E=_dEsc, d=x=>new Date(x).toLocaleDateString('fr-FR'), j=_joursDepuis(m.sent_at), att=m.status==='envoye' && j>=(m.relance_apres_jours||4);
+  const st = m.status==='repondu' ? '<span style="color:var(--success);font-weight:600">✅ Répondu le '+d(m.replied_at)+'</span>'
+    : m.status==='echec' ? '<span style="color:var(--danger);font-weight:600">⚠️ '+E(m.error||'Non distribué')+'</span>'
+    : att ? '<span style="color:var(--warning);font-weight:600">⏳ Sans réponse depuis '+j+' j : relance conseillée</span>' : '<span style="color:var(--muted)">⏳ En attente de réponse ('+j+' j)</span>';
+  return '<div style="padding:4px 0;overflow-wrap:anywhere">📤 <b>'+E(m.subject)+'</b> · '+d(m.sent_at)+(m.sent_by?' · '+E(m.sent_by):'')+'<br>'+st+'</div>';
+}
+async function gmailSync(force){
+  if(!gmailConnecte()) return; if(!force && Date.now()-_gmail.sync<5*60e3) return; _gmail.sync=Date.now();
+  try{ await aisApi(_GM_FONC,{method:'POST',body:JSON.stringify({action:'sync'}),timeout:60000}); }catch(e){}
+  const avant=JSON.stringify(_gmail.mails.map(m=>m.status)); await gmailRefresh(true);
+  if(JSON.stringify(_gmail.mails.map(m=>m.status))!==avant){ try{ gmailFicheRender(); }catch(e){} try{ if(document.getElementById('pipeline-afaire') && !document.getElementById('pipeline-afaire').classList.contains('hidden')) afaireRender(); }catch(e){} }
+}
+async function gmailConnecter(){
+  try{ showToast('🔗 Ouverture de Google…'); const j=await aisApi(_GM_FONC,{method:'POST',body:JSON.stringify({action:'connect_url'})}); if(!j||!j.url) throw new Error('Adresse Google indisponible'); location.href=j.url; }
+  catch(e){ showToast('❌ '+e.message,'error'); const z=document.getElementById('gmail-reglage-msg'); if(z) z.textContent=e.message; }
+}
+async function gmailDeconnecter(){
+  if(!confirm('Déconnecter Gmail ? Le CRM ne pourra plus envoyer ni suivre les réponses (l\'historique des e-mails envoyés est conservé).')) return;
+  try{ await aisApi(_GM_FONC,{method:'POST',body:JSON.stringify({action:'disconnect'})}); _gmail.etat={connecte:false}; showToast('Gmail déconnecté'); gmailReglageRender(); }
+  catch(e){ showToast('❌ '+e.message,'error'); }
+}
+/** Carte « Envoi d'e-mails par Gmail » des réglages. */
+async function gmailReglageRender(){
+  const el=document.getElementById('gmail-reglage'); if(!el) return;
+  const E=_dEsc; el.innerHTML='<div style="font-size:12px;color:var(--muted)">Vérification…</div>';
+  await gmailRefresh(true); const e=_gmail.etat||{};
+  const nb=_gmail.mails.length, att=_gmail.mails.filter(m=>m.status==='envoye').length, rep=_gmail.mails.filter(m=>m.status==='repondu').length;
+  const info='<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">Droits demandés à Google : <b>envoyer des e-mails</b> et <b>lire les en-têtes</b> (expéditeur, date) des fils que le CRM a lui-même ouverts, pour savoir si le prospect a répondu. Le contenu de votre boîte n’est jamais lu. Vous pouvez retirer l’accès à tout moment (ici ou dans votre compte Google).</div>';
+  el.innerHTML = e.connecte
+    ? '<div style="background:#ECFDF5;color:#065F46;border-radius:var(--r-sm);padding:8px 10px;font-size:13px;margin-bottom:8px">✅ Connecté : <b>'+E(e.email)+'</b></div>'
+      +'<div style="font-size:12px;margin-bottom:8px">'+nb+' e-mail'+(nb>1?'s':'')+' envoyé'+(nb>1?'s':'')+' · '+rep+' réponse'+(rep>1?'s':'')+' · '+att+' en attente</div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-outline btn-sm" onclick="gmailSync(true).then(()=>{showToast(\'🔄 Réponses vérifiées\');gmailReglageRender();})">🔄 Vérifier les réponses maintenant</button><button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="gmailDeconnecter()">Déconnecter</button></div>'+info
+    : e.hors_session
+      ? '<div style="font-size:12px;color:var(--muted)">Connectez d’abord l’agent IA (session opérateur) : c’est lui qui relie le CRM au serveur.</div>'
+      : (e.status==='erreur' ? '<div style="background:#FEF3C7;color:#92400E;border-radius:var(--r-sm);padding:8px 10px;font-size:12px;margin-bottom:8px">⚠️ '+E(e.erreur||'Connexion Gmail interrompue')+'</div>' : '')
+        +'<div style="font-size:12px;margin-bottom:8px">Envoyez vos e-mails directement depuis le CRM avec votre Gmail et suivez les réponses (envoyé, répondu, relance à faire).</div>'
+        +'<button class="btn btn-primary btn-sm" onclick="gmailConnecter()">🔗 Connecter Gmail</button><div id="gmail-reglage-msg" style="font-size:12px;color:var(--danger);margin-top:6px"></div>'+info;
+}
+/** E-mails envoyés à un prospect, dans sa fiche. */
+async function gmailFicheRender(id){
+  const h=document.getElementById('gmail-fiche-host'); if(!h) return;
+  id=id||h.dataset.cid; const c=CLIENTS.find(x=>x.id===Number(id)); if(!c) return; h.dataset.cid=c.id;
+  const dessiner=()=>{ const l=gmailMailsDe(c).slice(0,4); h.innerHTML=l.length?'<div style="margin-bottom:12px"><div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">✉️ E-mails envoyés ('+gmailMailsDe(c).length+')</div><div style="font-size:12px;border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px">'+l.map(gmailLigneMail).join('')+(gmailAttente(c)?'<button class="btn btn-primary btn-sm" style="font-size:11px;margin:4px 0" onclick="openCourrierModal('+c.id+')">✉️ Relancer par e-mail</button>':'')+'</div></div>':''; };
+  dessiner(); if(!_gmail.etat || Date.now()-_gmail.charge>60000){ await gmailRefresh(); dessiner(); }
+  gmailSync();
+}
+(function(){ const o=window.showClientDetail; if(typeof o!=='function') return; window.showClientDetail=function(id){ const r=o.apply(this,arguments); try{ gmailFicheRender(id); }catch(e){} return r; }; })();
+/** Retour de Google (?gmail=ok | erreur) : message, puis nettoyage de l'adresse. */
+(function(){
+  let p; try{ p=new URLSearchParams(location.search); }catch(e){ return; } const r=p.get('gmail'); if(!r) return;
+  const m=p.get('m')||''; try{ history.replaceState(null,'',location.pathname); }catch(e){}
+  let n=0; const t=setInterval(()=>{ if(typeof currentUser!=='undefined' && currentUser){ clearInterval(t); gmailRefresh(true).then(()=>{ showToast(r==='ok'?'✅ Gmail connecté : vous pouvez envoyer et suivre vos e-mails':'❌ Connexion Gmail : '+(m||'échec'), r==='ok'?undefined:'error'); try{ gmailReglageRender(); }catch(e){} }); } else if(++n>60) clearInterval(t); },500);
+})();
 
 const MSG_TEMPLATES = [
   {canal:'wa',titre:'Présentation produit',msg:'Bonjour {prenom},\n\nJe suis {commercial} de SANIX Africa Division Technologies.\nNous développons des logiciels ERP sur mesure pour les entreprises ivoiriennes.\n\nJe souhaiterais vous présenter {logiciel} — la solution idéale pour votre secteur.\n\n📱 Lien démo gratuite : {demo}\n\nDisponible pour un échange cette semaine ?'},
@@ -6403,11 +6539,11 @@ function pipeMode(m, sansMemoire){
   const fl=document.getElementById('pipe-filtres'); if(fl) fl.classList.toggle('hidden',af);
   if(t) t.className='btn btn-sm '+(af?'btn-outline':'btn-primary'); if(f) f.className='btn btn-sm '+(af?'btn-primary':'btn-outline');
   const R=afaireDonnees(), n=document.getElementById('pipe-afaire-n'); if(n){ n.textContent=R.total; n.className='badge '+(R.total?'badge-danger':'badge-muted'); }
-  if(af) afaireRender(R);
+  if(af){ afaireRender(R); gmailRefresh().then(()=>{ const a2=document.getElementById('pipeline-afaire'); if(!a2||a2.classList.contains('hidden')) return; const R2=afaireDonnees(); if((R2.mails||[]).length!==(R.mails||[]).length){ afaireRender(R2); const n2=document.getElementById('pipe-afaire-n'); if(n2){ n2.textContent=R2.total; n2.className='badge '+(R2.total?'badge-danger':'badge-muted'); } } }).then(()=>gmailSync()); }
 }
 function afaireDonnees(){
-  if(!window.SanixAFaire) return {date:'',rdv:[],argent:[],echeances:[],relances:[],relancesAutres:0,contacts:[],total:0,aEncaisser:0};
-  return SanixAFaire.construire({ clients:CLIENTS, commandes:COMMANDES, rdvs:(typeof RDVS!=='undefined'?RDVS:[]), echeances:renouvListe(),
+  if(!window.SanixAFaire) return {date:'',rdv:[],argent:[],echeances:[],relances:[],relancesAutres:0,contacts:[],mails:[],total:0,aEncaisser:0};
+  return SanixAFaire.construire({ mails:_gmail.mails.map(m=>{ const cl=CLIENTS.find(c=>c._rid&&c._rid===m.client_rid); return {...m,clientId:cl?cl.id:null,client:cl?cl.nom:m.to_email}; }), clients:CLIENTS, commandes:COMMANDES, rdvs:(typeof RDVS!=='undefined'?RDVS:[]), echeances:renouvListe(),
     f:{ etape:c=>aiGetEtape(c), nba:c=>convNBA(c), valeur:c=>valeurFiche(c), perdu:c=>qlIsPerdu(c), completude:c=>qlCompletude(c),
         reste:c=>SanixPaiements.reste(c), dernierPaiement:c=>{ const l=SanixPaiements.liste(c).map(p=>p.date).filter(Boolean).sort(); return l.length?l[l.length-1]:null; } } });
 }
@@ -6425,6 +6561,7 @@ function afaireRender(R){
   const ech=R.echeances.map(e=>ligne(`${E(e.client)} · ${E(e.logiciel)}`,`Renouvellement ${E(e.palier||'')} · échéance ${E(e.due)} · ${M(e.montantHT||0)} FCFA HT`,bt('Ouvrir Après-vente',"navigate('apresvente',null)")));
   const rel=R.relances.map(x=>ligne(`${E(x.nom)}`,`${E(x.label)} · ${E(x.logiciel)} · ${x.valeur>0?M(x.valeur)+' FCFA':'non chiffré'}${x.jours!==null?' · dernier contact il y a '+x.jours+' j':''}`,
     bt('📲 WhatsApp',`afaireRelancerProspect(${x.id})`)+bt('✅ Fait',`afaireFait(${x.id})`,true)+bt('Fiche',`showClientDetail(${x.id})`),x.retard>0?tag('⚠ '+x.retard+' j de retard','deal-age-warn'):''));
+  const mls=(R.mails||[]).map(x=>ligne(`${E(x.client)}`,`${E(x.sujet)} · envoyé il y a ${x.jours} j, sans réponse (relance prévue après ${x.relanceJours} j)`,x.clientId?bt('✉️ Relancer',`openCourrierModal(${x.clientId})`,true)+bt('Fiche',`showClientDetail(${x.clientId})`):'',tag('⏳ '+x.jours+' j','deal-age-warn')));
   const con=R.contacts.map(x=>ligne(`${E(x.nom)}`,`${E(x.logiciel)} · ${x.valeur>0?M(x.valeur)+' FCFA au catalogue':''} · ${E(x.phone)}`,
     `<a class="btn btn-outline btn-sm" href="tel:${E(String(x.phone).replace(/[^+\d]/g,''))}">📞 Appeler</a>`+bt('✅ Contacté',`afaireContacte(${x.id})`,true)+bt('Fiche',`showClientDetail(${x.id})`)));
   el.innerHTML=`<div class="stats-grid" style="margin-bottom:14px">
@@ -6436,6 +6573,7 @@ function afaireRender(R){
     +bloc('💶','Argent à encaisser',R.argent.length?M(R.aEncaisser)+' FCFA':'',argent,'Aucun reste dû sur vos commandes. ✅')
     +(R.echeances.length?bloc('🔁','Renouvellements à relancer','',ech,''):'')
     +bloc('🤝','Affaires à relancer',R.relancesAutres?`${R.relances.length} affichées, ${R.relancesAutres} autres`:'',rel,'Aucune affaire engagée à relancer.')
+    +((R.mails||[]).length?bloc('📧','E-mails sans réponse','relance conseillée',mls,''):'')
     +bloc('📞','Premiers contacts à passer','les 5 prospects les mieux valorisés',con,'Aucun prospect à contacter.');
 }
 function _afaireClient(id){ return CLIENTS.find(c=>c.id===id); }
@@ -8563,6 +8701,7 @@ function showClientDetail(id) {
       </div>
     </div>
 
+    <div id="gmail-fiche-host"></div>
     <!-- HISTORIQUE INTERACTIONS -->
     <div style="margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -12096,7 +12235,7 @@ function relanceCopy(){
 
 // ─── Paramétrage : identité + modèles + API ───
 function initRelanceConfig(){
-  const r = relanceCfg();
+  const r = relanceCfg(); try{ gmailReglageRender(); }catch(e){}
   const g=id=>document.getElementById(id);
   g('rel-cfg-gerant').value=r.gerant; g('rel-cfg-societe').value=r.societe; g('rel-cfg-ville').value=r.ville;
   g('rel-cfg-tel1').value=r.tel1; g('rel-cfg-tel2').value=r.tel2; g('rel-cfg-email').value=r.email;

@@ -39,8 +39,14 @@
       .sort(function (a, b) { return b.valeur - a.valeur || b.k - a.k || String(a.nom).localeCompare(String(b.nom)); })
       .slice(0, lim.contacts);
 
-    var total = rdv.length + argent.length + echeances.length + relances.length + contacts.length;
-    return { date: auj, rdv: rdv, argent: argent, echeances: echeances, relances: relances, relancesAutres: Math.max(0, relancesTous.length - relances.length), contacts: contacts, total: total,
+    // E-mails envoyés par le CRM (Gmail) restés sans réponse au-delà de leur délai de relance.
+    var mails = (o.mails || []).filter(function (m) { return m && m.status === "envoye"; })
+      .map(function (m) { var j = ecart(m.sent_at, o.now); return { id: m.id, clientId: m.clientId || null, client: m.client || m.to_email, to: m.to_email, sujet: m.subject, jours: j === null ? 0 : j, relanceJours: num(m.relance_apres_jours) || 4 }; })
+      .filter(function (m) { return m.jours >= m.relanceJours && m.jours <= 45; })
+      .sort(function (x, y) { return y.jours - x.jours; }).slice(0, 10);
+
+    var total = rdv.length + argent.length + echeances.length + relances.length + contacts.length + mails.length;
+    return { date: auj, rdv: rdv, argent: argent, echeances: echeances, relances: relances, relancesAutres: Math.max(0, relancesTous.length - relances.length), contacts: contacts, mails: mails, total: total,
       aEncaisser: argent.reduce(function (t, x) { return t + x.reste; }, 0) };
   }
   var API = { construire: construire, jour: jour, ecart: ecart };
