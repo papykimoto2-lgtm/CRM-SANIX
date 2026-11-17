@@ -44,4 +44,31 @@ ok(h.nbRestants === (h.html.match(/<mark class="ph">/g) || []).length && h.nbRes
 ok((h.html.match(/<div class="li">• /g) || []).length >= 25, "les listes sont mises en puces");
 const x = C.enHtml(C.remplir("{licencie} [a]b", { licencie: "<script>alert(1)</script> & Cie" }));
 ok(!/<script>/.test(x.html) && /&lt;script&gt;/.test(x.html), "le nom d'un client est échappé : aucun HTML injecté dans le contrat");
+console.log("▶ Corps sans les signatures du texte");
+const cp = C.corps(t);
+ok(/FAIT À Abidjan, LE 17\/11\/2026$/.test(cp) && !/\nLE CONCÉDANT\n/.test(cp) && !/Signature et cachet/.test(cp), "le texte s'arrête à « FAIT À …, LE … » : les signatures sont portées par la page officielle");
+ok(C.corps("Un texte modifié sans bloc de signature.\n\n") === "Un texte modifié sans bloc de signature.", "un texte sans bloc de signature est conservé tel quel");
+console.log("▶ Les trois formes de licence");
+const F = C.FORMES;
+ok(Object.keys(F).join() === "utilisation,exploitation,exclusive" && /utilise le logiciel pour ses propres activités/.test(F.utilisation.desc) && /commercialise ou exploite/.test(F.exploitation.desc) && /exclusivité définie sur un territoire/.test(F.exclusive.desc), "trois formes, avec leur principe");
+ok(C.forme("n'importe quoi").cle === "utilisation" && C.modele("n'importe quoi") === C.MODELE, "une forme inconnue retombe sur la licence d'utilisation");
+const n = (m) => (m.match(/^ARTICLE \d+ – /gm) || []).length;
+ok(n(C.modele("utilisation")) === 14 && n(C.modele("exploitation")) === 16 && n(C.modele("exclusive")) === 17, "14 articles (utilisation), 16 (exploitation commerciale), 17 (exclusive : un article d'objectifs en plus)");
+const ex = C.modele("exploitation"), xc = C.modele("exclusive");
+for (const [nom, m] of [["exploitation commerciale", ex], ["exclusive", xc]]) {
+  ok(/CODE SOURCE/.test(m) && /code source n'est en aucun cas remis/.test(m), nom + " : le code source reste la propriété du Concédant et n'est jamais remis");
+  ok(/Pour chaque licence vendue : \{redevance\}/.test(m) && /CONDITIONS DE COMMERCIALISATION/.test(m), nom + " : commercialisation et redevances par licence vendue");
+  ok(/PORTEFEUILLE CLIENTS/.test(m) && /détourner/.test(m) && /ÉVOLUTIONS ET DÉVELOPPEMENTS SPÉCIFIQUES/.test(m) && /améliorations génériques/.test(m), nom + " : règles sur le portefeuille clients et sur les évolutions (génériques protégées, spécifiques encadrées)");
+  ok(/ne peut en aucun cas s'approprier le logiciel/.test(m) && /RÉSILIATION ET FIN DU CONTRAT/.test(m), nom + " : à la fin du contrat le partenaire ne peut pas s'approprier le logiciel");
+  ok(/HÉBERGEMENT, DISPONIBILITÉ, SAUVEGARDE, RÉVERSIBILITÉ ET DONNÉES PERSONNELLES/.test(m), nom + " : hébergement, disponibilité, sauvegarde, réversibilité, données personnelles");
+  ok(/LE PARTENAIRE/.test(m) && !/LICENCIÉ/.test(m) && !/société de droit ivoirien/i.test(m), nom + " : « partenaire » et non « licencié » ; aucune mention de société de droit ivoirien");
+}
+ok(/à titre non exclusif/.test(ex) && !/OBJECTIFS ET MAINTIEN/.test(ex) && /Le Concédant reste libre de commercialiser/.test(ex), "exploitation commerciale : à titre non exclusif, le Concédant reste libre");
+ok(/à titre exclusif/.test(xc) && /OBJECTIFS ET MAINTIEN DE L'EXCLUSIVITÉ/.test(xc) && /convertir la licence en licence non exclusive/.test(xc) && /logiciel concurrent/.test(xc), "exclusive : exclusivité délimitée, objectifs, perte de l'exclusivité, non-concurrence");
+const vp = { concedant: "SANIX AFRICA, siège à Abidjan", concedant_nom: "SANIX AFRICA", partenaire: "Distributeur Beta", adresse_partenaire: "Plateau", representant_partenaire: "M. Beta", logiciel: "ImmoSuite ERP", territoire: "la Côte d'Ivoire", redevance: "15 % du prix de vente HT", ville: "Abidjan", date: "17/11/2026" };
+const tp = C.remplir(xc, vp);
+ok(!/\{[a-z_]+\}/.test(tp) && /territoire suivant : la Côte d'Ivoire/.test(tp) && /Pour chaque licence vendue : 15 % du prix de vente HT/.test(tp), "territoire et redevance de la licence repris dans le contrat");
+ok(!/\nLE CONCÉDANT\n/.test(C.corps(tp)) && /FAIT À Abidjan, LE 17\/11\/2026$/.test(C.corps(tp)), "le texte d'un contrat partenaire s'arrête aussi à « FAIT À … » (les signatures sont celles de la page)");
+ok(C.restants(tp).includes("[Marché / secteur]") && C.restants(tp).includes("[Objectif minimal annuel : nombre de licences ou chiffre d'affaires]"), "ce qui relève de la négociation reste entre crochets à compléter");
+
 console.log("\nContrat : tous les contrôles passent.");
