@@ -1016,7 +1016,8 @@
     const blocages = calc.controlesDossier(h, res).filter((c) => c.bloquant), bloc = blocages.length ? `<div class="alert alert-danger" role="alert">⛔ <div><b>Ce dossier n'est pas prêt à être diffusé</b> : ${blocages.map((c) => esc(c.msg)).join(' ')} <span class="muted">La validation est impossible tant que ces points ne sont pas réglés ; le PDF porte la mention « non prêt à diffuser ».</span></div></div>` : '';
     return `${alerte}${bloc}${note('Le dossier reprend la synthèse, le besoin, les projections et les options. <b>Aucune donnée de client</b> n\'y figure : seulement des totaux.')}<div class="card" style="margin-bottom:16px"><label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;font-size:13px"><input type="checkbox" data-k="valide" ${h.valide ? 'checked' : ''} style="margin-top:3px"><span><b>J'ai vérifié et validé toutes les hypothèses</b> (ventes, coûts, équipe, conditions de financement). Cochez seulement quand chaque valeur reflète votre réalité ou votre décision.</span></label></div><div class="card"><div class="flex gap-3" style="flex-wrap:wrap">
       <button class="btn btn-primary" data-act="pdf">🖨️ Dossier PDF (imprimer)</button><button class="btn btn-outline" data-act="csv">📥 Tableur (CSV pour Excel)</button></div>
-      ${note('Le dossier s\'ouvre dans un nouvel onglet : utilisez « Imprimer » puis « Enregistrer au format PDF ». Le tableur contient les projections annuelles, la comparaison des options et le détail mensuel.')}</div>`;
+      ${note('Le dossier s\'ouvre dans un nouvel onglet : utilisez « Imprimer » puis « Enregistrer au format PDF ». Le tableur contient les projections annuelles, la comparaison des options et le détail mensuel.')}</div>
+      <div class="card" id="fin-apercu" style="margin-top:16px"><div class="card-header"><span class="card-title">👁️ Aperçu du dossier</span><span class="badge badge-muted">tel qu'il sera imprimé</span></div>${note('Voici le dossier à l\'écran, sans rien imprimer : il se met à jour à chaque modification des hypothèses.')}<iframe id="fin-apercu-f" title="Aperçu du dossier de financement" style="width:100%;border:1px solid var(--border,#d6e4ea);border-radius:10px;background:#fff;height:600px;display:block" srcdoc="${esc(dossierHtml(true))}"></iframe></div>`;
   }
 
   /* — exports — */
@@ -1046,7 +1047,7 @@
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + L.join('\r\n')], { type: 'text/csv;charset=utf-8' })); a.download = 'modele_financement.csv'; document.body.appendChild(a); a.click(); a.remove();
   }
 
-  function dossierHtml() {
+  function dossierHtml(apercu) {
     const r = res, c = base, T = c.traction, A = T.tous, mix = r.options[3], a = mix.sim.annees, d = c.devise, U = calc.economieUnitaire(h, r.avec0);
     const K = (A2, k) => A2.map((x) => `<td style="text-align:right">${fmt(x[k] / 1e3)}</td>`).join(''), KB = (A2, k) => A2.map((x) => `<td style="text-align:right">${fmt(x.bilan[k] / 1e3)}</td>`).join('');
     const head = (A2) => `<thead><tr><th></th>${A2.map((x) => `<th style="text-align:right">An ${x.an}</th>`).join('')}</tr></thead>`;
@@ -1063,7 +1064,7 @@
       : '<p>Aucun investissement (matériel, développement capitalisé, juridique, aménagement) n\'est inclus dans ce plan : les fonds levés couvrent uniquement le fonctionnement.</p>';
     const tr = (lib, v1, v2) => `<tr><td>${lib}</td><td style="text-align:right">${v1}</td><td style="text-align:right">${v2}</td></tr>`;
     const ui2 = (lib, f) => `<tr><td>${lib}</td>${U.map((u) => `<td style="text-align:right">${f(u)}</td>`).join('')}</tr>`;
-    return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Dossier de financement — ${esc(c.societe)}</title><style>${css}</style></head><body>${brouillon ? '<div class="wip">DOCUMENT DE TRAVAIL — hypothèses indicatives non validées. Ne pas diffuser à des financeurs.</div><div class="wm">DOCUMENT DE TRAVAIL</div>' : ''}${blocages.length ? `<div class="wip">NON PRÊT À DIFFUSER — ${blocages.map((x) => esc(x.msg)).join(' ')}</div>${brouillon ? '' : '<div class="wm">NON PRÊT</div>'}` : ''}
+    return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Dossier de financement — ${esc(c.societe)}</title><style>${css}${apercu ? 'body{padding:12px;max-width:none}.wm{display:none}table{display:block;overflow-x:auto;max-width:100%}.k div{min-width:120px}' : ''}</style></head><body>${brouillon ? '<div class="wip">DOCUMENT DE TRAVAIL — hypothèses indicatives non validées. Ne pas diffuser à des financeurs.</div><div class="wm">DOCUMENT DE TRAVAIL</div>' : ''}${blocages.length ? `<div class="wip">NON PRÊT À DIFFUSER — ${blocages.map((x) => esc(x.msg)).join(' ')}</div>${brouillon ? '' : '<div class="wm">NON PRÊT</div>'}` : ''}
       <h1>${esc(c.societe)}</h1><p style="margin:2px 0 0;color:#6b7390">Dossier de financement · ${new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
       <h2>1. Situation actuelle</h2><div class="k"><div><b>${fmtM(c.ca12m)} ${esc(d)}</b>CA HT, ${lib12()}</div><div><b>${c.commandes12m}</b>commandes, ${lib12()}</div><div><b>${c.clients}</b>clients actifs</div><div><b>${fmtM(c.pipelinePondere)} ${esc(d)}</b>pipeline pondéré (${c.prospects} prospects)</div><div><b>${c.produits}</b>produits au catalogue</div></div>
       <h2>2. Qualité des chiffres</h2><p>Chiffres réels issus des commandes du CRM (hors brouillons et commandes annulées). Les montants encaissés correspondent aux acomptes et règlements saisis.</p>
@@ -1099,6 +1100,8 @@
     el.innerHTML = `<div class="ban"><div class="ban-deco"></div><h1 class="page-title">🏦 Financement</h1><p class="page-sub">Modèle financier sur 5 ans : besoin de financement, options et dossier pour les financeurs — départ : vos chiffres réels du CRM</p></div>
       <div class="tabs" role="tablist" style="margin-bottom:16px">${tabs.map((t) => `<div class="tab ${ui.tab === t[0] ? 'active' : ''}" role="tab" tabindex="0" aria-selected="${ui.tab === t[0]}" data-tab="${t[0]}">${t[1]}</div>`).join('')}</div>` +
       (ui.tab === 'hyp' ? tabHyp() : ui.tab === 'traction' ? tabTraction() : ui.tab === 'indic' ? tabIndic() : ui.tab === 'proj' ? tabProj() : ui.tab === 'opti' ? tabOpti() : ui.tab === 'notes' ? tabNotes() : ui.tab === 'dossier' ? tabDossier() : tabSynthese());
+    const fr = el.querySelector('#fin-apercu-f');
+    if (fr) { const aj = () => { try { const d = fr.contentDocument; if (d && d.documentElement) fr.style.height = Math.max(300, d.documentElement.scrollHeight + 4) + 'px'; } catch (e) { /* aperçu : hauteur fixe */ } }; fr.addEventListener('load', aj); setTimeout(aj, 150); }
   }
   function bind() {
     const el = root(); if (!el || el.dataset.bound) return; el.dataset.bound = '1';
