@@ -301,22 +301,23 @@
 
   function indicateurs(h, d) {
     const s = d.sim, a = s.annees, last = a[ANNEES - 1], out = { tresoMin: s.tresoMin, moisMin: s.moisMin, tresoFin: s.tresoFin, ca5: last.ca, ebitda5: last.ebitda,
-      resultatCumule: sum(a, (x) => x.resultatNet), alertes: [] };
+      resultatCumule: sum(a, (x) => x.resultatNet), alertes: [], points: [] };
+    const al = (id, texte) => { out.alertes.push(texte); out.points.push({ id: id, texte: texte }); };      // chaque point d'attention garde un identifiant : il renvoie aux hypothèses qui le commandent
     const eq = pos(d.struct.equity);
     if (eq > 0) {
       const pre = preMoney(h, a[0].ca), part = eq / (pre + eq), valeur = pos(h.multSortie) * last.ca + s.tresoFin - s.detteRestante, produit = part * Math.max(0, valeur), moic = produit / eq;
       out.equity = { montant: eq, preMoney: pre, postMoney: pre + eq, part, valeurSortie: valeur, produit, moic, tri: moic > 0 ? Math.pow(moic, 1 / ANNEES) - 1 : -1 };
-      if (part > 0.49) out.alertes.push('Part cédée supérieure à 49 % : perte du contrôle de la société.');
-      if (moic < 2) out.alertes.push('Rendement investisseur faible (moins de 2 fois la mise sur 5 ans) : peu attractif pour un fonds.');
+      if (part > 0.49) al('part', 'Part cédée supérieure à 49 % : perte du contrôle de la société.');
+      if (moic < 2) al('rendement', 'Rendement investisseur faible (moins de 2 fois la mise sur 5 ans) : peu attractif pour un fonds.');
     }
     const dm = d.struct.dette ? pos(d.struct.dette.montant) : 0;
     if (dm > 0) {
       const dscr = a.filter((x) => x.interet + x.princ > 0).map((x) => (x.fExpl + x.fInv) / (x.interet + x.princ));     // flux disponible : exploitation encaissée après impôt, moins investissements
       out.dette = { montant: dm, totalInterets: sum(a, (x) => x.interet), dscrMin: dscr.length ? Math.min.apply(null, dscr) : null, restant: s.detteRestante };
-      if (out.dette.dscrMin !== null && out.dette.dscrMin < 1.2) out.alertes.push('Capacité de remboursement insuffisante (flux disponible / service de la dette < 1,2) : un prêteur refusera probablement.');
+      if (out.dette.dscrMin !== null && out.dette.dscrMin < 1.2) al('capacite', 'Capacité de remboursement insuffisante (flux disponible / service de la dette < 1,2) : un prêteur refusera probablement.');
     }
-    if (d.opt === 'subvention' || pos(d.struct.subvention) > 0) out.alertes.push('Dépend de la disponibilité d\'un programme d\'appui : montant et conditions à vérifier auprès de l\'organisme.');
-    if (!d.viable) out.alertes.push(d.opt === 'corrige' ? 'Le besoin dépasse ce que le plan peut financer dans ces limites : voir « Comment corriger » ci-dessous.' : 'Ce montage ne couvre pas le besoin : le service de la dette absorbe plus que l\'apport.');
+    if (d.opt === 'subvention' || pos(d.struct.subvention) > 0) al('subvention', 'Dépend de la disponibilité d\'un programme d\'appui : montant et conditions à vérifier auprès de l\'organisme.');
+    if (!d.viable) al(d.opt === 'corrige' ? 'besoin' : 'couverture', d.opt === 'corrige' ? 'Le besoin dépasse ce que le plan peut financer dans ces limites : voir « Comment corriger » ci-dessous.' : 'Ce montage ne couvre pas le besoin : le service de la dette absorbe plus que l\'apport.');
     return out;
   }
 
@@ -360,6 +361,48 @@
     const sim = simuler(h, 'avec', struct), d = { opt: 'corrige', label: 'Montage corrigé', xMin: besoin, montant: equity + D, struct: struct, sim: sim, viable: couvert };
     d.ind = indicateurs(h, d);
     return { detteMax: detteMax, dette: D, equityNecessaire: equityNec, equity: equity, apportMax: apportMax, preMoney: pre, partMax: partMax, minDscr: minDscr, manque: manque, couvert: couvert, besoin: besoin, montantComplet: montant, option: d };
+  }
+
+
+  /* ───────────── Points d'attention : les hypothèses qui les commandent ───────────── */
+  // Chaque point d'attention est relié aux champs qui agissent sur lui : [clé de l'hypothèse, libellé, effet attendu]. « direct » : le champ change la mesure elle-même ; « indirect » : il change le besoin de financement, donc tout le reste.
+  const PTS_INDIRECT = [['clientsAn1', 'Nouveaux clients, année 1', '↑ plus de ventes, moins de besoin'], ['delaiEncaissement', 'Délai d\'encaissement (mois)', '↓ encaisser plus tôt réduit le besoin'], ['fixesMensuels', 'Charges fixes (par mois)', '↓ moins de charges, moins de besoin']];
+  const POINTS = {
+    part: { ico: '🥧', coul: '#7C3AED', court: 'Part cédée', titre: 'Part cédée supérieure à 49 %', direct: [['preMoney', 'Valorisation avant apport', '↑ plus elle est haute, moins on cède'], ['multEntree', 'Multiple d\'entrée (× CA année 1)', '↑ valorisation plus haute (si vide ci-dessus)'], ['partCapital', 'Part du capital dans le mix (%)', '↓ moins de capital, plus de dette ou de subvention'], ['partDette', 'Part de la dette dans le mix (%)', '↑ moins de capital (si le plan peut la rembourser)'], ['partSubvention', 'Part de la subvention dans le mix (%)', '↑ moins de capital (si elle est obtenue)'], ['margeSecuritePct', 'Marge de sécurité (%)', '↓ moins à lever']], indirect: PTS_INDIRECT, postes: true },
+    rendement: { ico: '📉', coul: '#EA580C', court: 'Rendement investisseur', titre: 'Rendement investisseur faible (moins de 2 fois la mise)', direct: [['multSortie', 'Multiple de sortie (× CA année 5)', '↑ valeur de revente plus haute'], ['preMoney', 'Valorisation avant apport', '↓ entrée moins chère pour l\'investisseur'], ['multEntree', 'Multiple d\'entrée (× CA année 1)', '↓ entrée moins chère (si valorisation vide)']], indirect: [['clientsAn1', 'Nouveaux clients, année 1', '↑ plus de chiffre d\'affaires à l\'année 5'], ['hausseAn', 'Hausse annuelle des prix (%)', '↑ plus de chiffre d\'affaires'], ['retentionPct', 'Rétention des clients (% / an)', '↑ plus de revenu récurrent']], postes: false },
+    capacite: { ico: '🏦', coul: '#DC2626', court: 'Capacité de remboursement', titre: 'Capacité de remboursement insuffisante', direct: [['taux', 'Taux du prêt (% / an)', '↓ moins d\'intérêts'], ['dureeMois', 'Durée du prêt (mois)', '↑ échéances plus légères'], ['differeMois', 'Différé de remboursement (mois)', '↑ laisse le temps aux ventes de démarrer'], ['partDette', 'Part de la dette dans le mix (%)', '↓ moins à rembourser']], indirect: PTS_INDIRECT, postes: true },
+    subvention: { ico: '🤝', coul: '#2563EB', court: 'Subvention', titre: 'Dépend d\'un programme d\'appui', direct: [['partSubvention', 'Part de la subvention dans le mix (%)', '↓ moins de dépendance à un organisme']], indirect: [], postes: false, externe: 'Ce point ne se corrige pas dans le modèle : il faut confirmer le montant et les conditions auprès de l\'organisme avant de l\'inscrire au dossier.' },
+    couverture: { ico: '⛔', coul: '#991B1B', court: 'Besoin non couvert', titre: 'Le montage ne couvre pas le besoin', direct: [['partDette', 'Part de la dette dans le mix (%)', '↓ le service de la dette absorbe moins'], ['taux', 'Taux du prêt (% / an)', '↓ moins d\'intérêts'], ['dureeMois', 'Durée du prêt (mois)', '↑ échéances plus légères'], ['differeMois', 'Différé de remboursement (mois)', '↑ plus de temps'], ['margeSecuritePct', 'Marge de sécurité (%)', 'à ajuster avec prudence']], indirect: PTS_INDIRECT, postes: true },
+    besoin: { ico: '🧭', coul: '#0F766E', court: 'Besoin hors limites', titre: 'Le besoin dépasse ce que le plan peut financer dans les limites', direct: [['partMaxPct', 'Part cédée maximale (%)', '↑ accepte de céder davantage (jamais plus de 49 %)'], ['dscrMin', 'Capacité de remboursement minimale (×)', '↓ accepte un prêt plus lourd'], ['preMoney', 'Valorisation avant apport', '↑ plus d\'apport pour une même part cédée'], ['margeSecuritePct', 'Marge de sécurité (%)', '↓ moins à lever']], indirect: PTS_INDIRECT, postes: true }
+  };
+  /** Mesure d'un point d'attention sur une option : valeur actuelle, cible, et si la cible est atteinte. */
+  function pointMesure(id, h, d, res) {
+    const ind = d.ind, eq = ind.equity, dt = ind.dette;
+    if (id === 'part') return eq ? { type: 'pct', actuel: eq.part, cible: 0.49, sens: '<=', ok: eq.part <= 0.49 } : null;
+    if (id === 'rendement') return eq ? { type: 'x', actuel: eq.moic, cible: 2, sens: '>=', ok: eq.moic >= 2 } : null;
+    if (id === 'capacite') return dt && dt.dscrMin !== null ? { type: 'x', actuel: dt.dscrMin, cible: 1.2, sens: '>=', ok: dt.dscrMin >= 1.2 } : null;
+    if (id === 'couverture') return { type: 'bool', actuel: d.viable ? 1 : 0, cible: 1, sens: '>=', ok: !!d.viable };
+    if (id === 'besoin') { const c = res && res.corrige; return c ? { type: 'montant', actuel: c.manque, cible: 0, sens: '<=', ok: c.couvert } : null; }
+    return { type: 'info', actuel: pos(d.struct.subvention), cible: 0, sens: '<=', ok: false };
+  }
+  /** Repères chiffrés qui aident à corriger : ce que la cible exige. */
+  function pointRepères(id, h, d, res) {
+    const out = [], ind = d.ind, eq = ind.equity, s = d.sim, last = s.annees[ANNEES - 1];
+    if (id === 'part' && eq) out.push({ lib: 'Valorisation avant apport nécessaire pour passer sous 49 % avec ce même apport', val: eq.montant * 0.51 / 0.49, f: 'M' }, { lib: 'Valorisation actuelle', val: eq.preMoney, f: 'M' }, { lib: 'Apport maximum à la valorisation actuelle', val: eq.preMoney * 0.49 / 0.51, f: 'M' });
+    if (id === 'rendement' && eq && last.ca > 0) out.push({ lib: 'Multiple de sortie nécessaire pour atteindre 2 fois la mise', val: Math.max(0, (2 * eq.montant / eq.part - s.tresoFin + s.detteRestante) / last.ca), f: 'x' }, { lib: 'Multiple de sortie actuel', val: pos(h.multSortie), f: 'x' });
+    if (id === 'capacite' && res && res.corrige) out.push({ lib: 'Prêt maximum dont le flux disponible couvre 1,2 fois le service', val: res.corrige.detteMax, f: 'M' }, { lib: 'Prêt demandé dans cette option', val: ind.dette ? ind.dette.montant : 0, f: 'M' });
+    if (id === 'besoin' && res && res.corrige) out.push({ lib: 'Il manque pour rester dans les limites', val: res.corrige.manque, f: 'M' }, { lib: 'Valorisation avant apport nécessaire pour absorber le besoin', val: res.corrige.equityNecessaire * (1 - res.corrige.partMax) / res.corrige.partMax, f: 'M' });
+    if (id === 'couverture') out.push({ lib: 'Intérêts et capital à rembourser sur la période', val: ind.dette ? ind.dette.totalInterets + ind.dette.montant : 0, f: 'M' });
+    return out;
+  }
+  /** Pour chaque hypothèse : les points d'attention actifs qu'elle commande (toutes options) → { cle: [{ id, opt }] }. */
+  function liensParChamp(res) {
+    const m = {}; if (!res) return m;
+    res.options.concat(res.corrige ? [res.corrige.option] : []).forEach((o) => (o.ind.points || []).forEach((pt) => {
+      const P = POINTS[pt.id]; if (!P) return;
+      P.direct.concat(P.indirect).forEach((c) => { const l = m[c[0]] || (m[c[0]] = []); if (!l.some((x) => x.id === pt.id && x.opt === o.opt)) l.push({ id: pt.id, opt: o.opt }); });
+    }));
+    return m;
   }
 
   /** Où va l'argent : dépenses cumulées du plan complet jusqu'au point bas de trésorerie, et part couverte par les ventes. */
@@ -533,7 +576,7 @@
     return { base, leviers, seuils: { clients: seuil(h, 'clientsAn1'), prix: (h.produits || []).some((p) => pos(p.part) > 0) ? seuilPrix(h) : seuil(h, 'prixLicence') }, combine: { etapes, final: mcur, h: cur, rentable: mcur.pointMort !== null, autofinance: mcur.besoin < 0.5 } };
   }
 
-  const calc = { montageCorrige, regimePourCA, REGIMES, FORFAIT, tauxIS, controlesDossier, compteExploitation, tableauImmobilisations, investissementsActifs, N, ANNEES, SCEN, SCEN_LABEL, OPT_LABEL, MODES, LEVIERS, produitsDefaut, fusionProduits, diffProduits, editsDepuisListe, produitsActifs, contratsParLogiciel, scalePrix, seuilPrix, cle, analyserTraction, economieUnitaire, tourDeTable, evaluer, optimiser, seuil, defauts, simuler, structure, dimensionner, indicateurs, comparer, emplois, preMoney };
+  const calc = { POINTS, pointMesure, pointRepères, liensParChamp, montageCorrige, regimePourCA, REGIMES, FORFAIT, tauxIS, controlesDossier, compteExploitation, tableauImmobilisations, investissementsActifs, N, ANNEES, SCEN, SCEN_LABEL, OPT_LABEL, MODES, LEVIERS, produitsDefaut, fusionProduits, diffProduits, editsDepuisListe, produitsActifs, contratsParLogiciel, scalePrix, seuilPrix, cle, analyserTraction, economieUnitaire, tourDeTable, evaluer, optimiser, seuil, defauts, simuler, structure, dimensionner, indicateurs, comparer, emplois, preMoney };
   G.SanixFinancement = { calc };
   if (typeof module !== 'undefined' && module.exports) module.exports = { calc };
   if (!G.document) return;
@@ -551,10 +594,11 @@
   const pad = (n) => (n < 10 ? '0' : '') + n;
   const monthKey = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1);
   const LSK = 'fin_config';
-  const ui = { tab: 'synthese' };
+  const ui = { tab: 'synthese', atelier: null, prevPts: null, liens: {} };
   let ov = null, h = null, base = null, res = null;
   const root = () => document.getElementById('view-financement');
   const toast = (m) => { try { showToast(m); } catch (e) { /* hors CRM */ } };
+  const POINTS_UI = POINTS;
   const visible = () => { const r = root(); return !!(r && !r.classList.contains('hidden')); };
 
   function crm() {
@@ -617,7 +661,14 @@
 
   /* — éléments d'interface — */
   const stat = (titre, val, sub, color) => `<div class="stat-card ${color || 'blue'}"><div class="stat-label">${esc(titre)}</div><div class="stat-val" style="font-size:20px">${val}</div><div class="stat-label" style="margin-top:4px">${sub || ''}</div></div>`;
-  const field = (label, key, val, o) => { o = o || {}; return `<label class="form-label" style="margin:0">${esc(label)}${o.hint ? ` <span class="muted" style="font-weight:400">${esc(o.hint)}</span>` : ''}<input class="form-input" type="${o.text ? 'text' : 'number'}" ${o.text ? '' : `step="${o.step || 'any'}"`} ${o.min != null ? `min="${o.min}"` : ''} data-k="${key}" value="${val == null ? '' : o.text ? esc(val) : num(val)}" ${o.ph ? `placeholder="${esc(o.ph)}"` : ''} style="margin-top:4px"></label>`; };
+  /** Pastille « point d'attention » à côté d'un champ qui commande une alerte active : un clic ouvre l'atelier de correction. */
+  const lienChamp = (key) => {
+    const L = (ui.liens || {})[key]; if (!L || !L.length) return '';
+    const vu = {}, uniq = L.filter((x) => (vu[x.id] ? false : (vu[x.id] = true))), P = POINTS_UI;
+    const noms = uniq.map((x) => (P[x.id] ? P[x.id].court : x.id)).join(', ');
+    return ` <button type="button" class="fin-lien" style="--c:${P[uniq[0].id] ? P[uniq[0].id].coul : '#64748b'}" data-act="atelier" data-al="${uniq[0].id}" data-opt="${uniq[0].opt}" title="Ce champ agit sur : ${esc(noms)}. Cliquez pour voir ce qu'il faut corriger." aria-label="Points d'attention liés : ${esc(noms)}">${uniq.map((x) => (P[x.id] ? P[x.id].ico : '⚠️')).join('')}</button>`;
+  };
+  const field = (label, key, val, o) => { o = o || {}; return `<label class="form-label" style="margin:0">${esc(label)}${o.noLien ? '' : lienChamp(key)}${o.hint ? ` <span class="muted" style="font-weight:400">${esc(o.hint)}</span>` : ''}<input class="form-input" type="${o.text ? 'text' : 'number'}" ${o.text ? '' : `step="${o.step || 'any'}"`} ${o.min != null ? `min="${o.min}"` : ''} data-k="${key}" value="${val == null ? '' : o.text ? esc(val) : num(val)}" ${o.ph ? `placeholder="${esc(o.ph)}"` : ''} style="margin-top:4px"></label>`; };
   const note = (t) => `<p class="page-sub" style="margin:4px 0 12px">${t}</p>`;
 
   function courbe(series, w, hh) {
@@ -644,13 +695,64 @@
       </div></div>`;
   }
 
+
+  /* ───────────── Points d'attention : surveillance, atelier de correction, suivi ───────────── */
+  const colsDe = (r) => r.options.concat(r.corrige ? [r.corrige.option] : []);
+  const cleOpt = (o, pt) => o.opt + ':' + pt.id;
+  /** Compare les points actifs à ceux du dernier calcul : prévient quand un point se règle ou apparaît (sur le montage corrigé ou le point ouvert). */
+  function suiviPoints(r) {
+    const cur = {}; colsDe(r).forEach((o) => (o.ind.points || []).forEach((pt) => { cur[cleOpt(o, pt)] = { o: o, pt: pt }; }));
+    const prev = ui.prevPts; ui.prevPts = Object.keys(cur).reduce((a, k) => { a[k] = 1; return a; }, {});
+    ui.liens = calc.liensParChamp(r);
+    if (!prev) return;
+    const ouvert = ui.atelier ? ui.atelier.opt + ':' + ui.atelier.al : null, interesse = (k) => k.indexOf('corrige:') === 0 || k === ouvert;
+    Object.keys(prev).filter((k) => !cur[k] && interesse(k)).forEach((k) => { const id = k.split(':')[1], P = POINTS_UI[id]; toast('✅ Point d\'attention réglé : ' + (P ? P.court : id)); });
+    Object.keys(cur).filter((k) => !prev[k] && interesse(k)).forEach((k) => { const P = POINTS_UI[cur[k].pt.id]; toast('⚠️ Nouveau point d\'attention : ' + (P ? P.court : cur[k].pt.id) + ' (' + cur[k].o.label + ')'); });
+  }
+  const pastille = (id) => { const P = POINTS_UI[id]; return P ? `<span class="fin-lien" style="--c:${P.coul};cursor:default">${P.ico} ${esc(P.court)}</span>` : ''; };
+  /** Bandeau de surveillance en tête de l'écran : l'état des points d'attention du montage retenu. */
+  function surveillance(r) {
+    if (!(r.besoin > 0)) return `<div class="card fin-surv" style="margin-bottom:12px;padding:10px 14px">🔔 <b>Surveillance</b> : aucun besoin de financement dans ces hypothèses, rien à surveiller. ✅</div>`;
+    const c = r.corrige ? r.corrige.option : r.options[3], pts = c.ind.points || [], autres = r.options.reduce((t, o) => t + (o.ind.points || []).length, 0);
+    const chips = pts.map((pt) => { const P = POINTS_UI[pt.id]; return `<button type="button" class="fin-pt on-chip" style="--c:${P ? P.coul : '#64748b'}" data-act="atelier" data-al="${pt.id}" data-opt="${c.opt}">${P ? P.ico + ' ' + esc(P.court) : esc(pt.id)}</button>`; }).join('');
+    return `<div class="card fin-surv" style="margin-bottom:12px;padding:10px 14px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span>🔔 <b>Surveillance</b> : ${pts.length ? '<b style="color:var(--danger)">' + pts.length + ' point' + (pts.length > 1 ? 's' : '') + ' d\'attention</b> sur le montage retenu (« ' + esc(c.label) + ' »)' : '<b style="color:var(--success)">aucun point d\'attention</b> sur le montage retenu (« ' + esc(c.label) + ' ») ✅'}</span>${chips}</div>
+      <div class="muted" style="font-size:11.5px;margin-top:4px">Cliquez sur un point pour ouvrir l'atelier : les champs qui le commandent, leur effet, et la correction en direct. ${autres ? autres + ' point' + (autres > 1 ? 's' : '') + ' au total sur les cinq colonnes du comparatif.' : ''}</div></div>`;
+  }
+  function fmtRepere(x) { return x.f === 'x' ? dec1(x.val) + ' ×' : fmtM(x.val) + ' ' + esc(base.devise); }
+  /** Atelier de correction du point ouvert : mesure, repères, champs directs et indirects modifiables sur place. */
+  function atelier(r) {
+    const a = ui.atelier; if (!a) return '';
+    const o = colsDe(r).filter((x) => x.opt === a.opt)[0], P = POINTS_UI[a.al]; if (!o || !P) return '';
+    const actif = (o.ind.points || []).some((pt) => pt.id === a.al), m = actif ? calc.pointMesure(a.al, h, o, r) : null;
+    let mesure = '';
+    if (!actif) mesure = `<div class="alert alert-info" role="status" style="margin:8px 0">✅ <div><b>Réglé</b> : ce point d'attention n'existe plus avec les hypothèses actuelles.</div></div>`;
+    else if (m) {
+      const ft = (v) => m.type === 'pct' ? pct(v, 1) : m.type === 'x' ? dec1(v) + ' ×' : m.type === 'montant' ? fmtM(v) + ' ' + esc(base.devise) : m.type === 'bool' ? (v ? 'oui' : 'non') : fmt(v);
+      const ratio = m.type === 'pct' ? Math.min(1, m.cible / Math.max(m.actuel, 1e-9)) : m.type === 'x' ? Math.min(1, Math.max(m.actuel, 0) / m.cible) : 0;
+      mesure = m.type === 'info' ? '' : `<div style="margin:8px 0"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px"><span>Actuel : <b>${ft(m.actuel)}</b></span><span>Cible : <b>${m.sens === '<=' ? '≤' : '≥'} ${ft(m.cible)}</b></span><span class="badge ${m.ok ? 'badge-success' : 'badge-danger'}">${m.ok ? '✓ atteinte' : '⚠ à corriger'}</span></div>${m.type === 'pct' || m.type === 'x' ? `<div style="background:var(--border,#e2e8f0);border-radius:6px;height:8px;margin-top:6px"><div style="width:${Math.round(ratio * 100)}%;background:${P.coul};height:8px;border-radius:6px"></div></div>` : ''}</div>`;
+    }
+    const rep = actif ? calc.pointRepères(a.al, h, o, r).filter((x) => x.val > 0 || x.f === 'x') : [];
+    const champ = (c, direct) => `<div style="display:flex;flex-direction:column;gap:2px">${field(c[1], c[0], c[0] === 'preMoney' ? ov.preMoney : c[0] === 'partMaxPct' ? h.partMaxPct : h[c[0]], { min: 0, noLien: true, ph: c[0] === 'preMoney' ? 'automatique : ' + fmt(preMoney(h, res.avec0.annees[0].ca)) : '' })}<span class="muted" style="font-size:11px">${esc(c[2])}</span></div>`;
+    const grille = (L) => `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:8px 0">${L.map((c) => champ(c)).join('')}</div>`;
+    return `<div class="card fin-atelier" id="fin-atelier" style="margin-bottom:16px;border-left:5px solid ${P.coul}">
+      <div class="card-header" style="gap:8px;flex-wrap:wrap"><span class="card-title">${P.ico} Atelier : ${esc(P.titre)}</span><span class="muted" style="font-size:12px">colonne « ${esc(o.label)} »</span><button type="button" class="btn btn-outline btn-sm" data-act="atelier-close" style="margin-left:auto">Fermer</button></div>
+      ${mesure}
+      ${rep.length ? `<div style="margin:6px 0">${rep.map((x) => `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:4px 14px;flex-wrap:wrap;padding:7px 0;border-top:1px solid var(--border)"><span style="font-size:12.5px;flex:1 1 220px">${esc(x.lib)}</span><b style="white-space:nowrap">${fmtRepere(x)}</b></div>`).join('')}</div>` : ''}
+      ${P.externe ? `<div class="alert alert-warn" style="margin:8px 0">ℹ️ <div>${esc(P.externe)}</div></div>` : ''}
+      ${P.direct.length ? `<div style="font-weight:700;font-size:13px;margin-top:10px">🎯 Champs qui agissent directement</div>${grille(P.direct)}` : ''}
+      ${P.indirect.length || P.postes ? `<div style="font-weight:700;font-size:13px;margin-top:6px">🧩 Champs qui agissent sur le besoin de financement (donc sur tout le reste)</div>${P.indirect.length ? grille(P.indirect) : ''}${P.postes ? `<button type="button" class="btn btn-outline btn-sm" data-act="goto-postes">👥 Ouvrir les embauches (Hypothèses)</button>` : ''}` : ''}
+      <p class="muted" style="font-size:11.5px;margin:10px 0 0">Corrigez une hypothèse seulement si vos chiffres réels la justifient : la ramener là où l'alerte disparaît sans raison la rendrait trompeuse dans le dossier. Les points se mettent à jour à chaque modification, et un message vous prévient quand l'un se règle.</p></div>`;
+  }
+
   function out() {
     const r = res, a0 = r.avec0, sans = r.sans, ca5s = sans.annees[ANNEES - 1].ca, ca5a = a0.annees[ANNEES - 1].ca;
     const mix = r.options[3], series = [{ n: 'Sans financement (activité actuelle)', v: sans.mois.map((x) => x.treso), c: '#8b93a8' }, { n: 'Plan de croissance sans apport', v: a0.mois.map((x) => x.treso), c: '#c62828', d: 1 }, { n: 'Plan financé (mix)', v: mix.sim.mois.map((x) => x.treso), c: 'var(--primary)' }];
     const pm = a0.pointMort, an5 = a0.annees[ANNEES - 1];
+    suiviPoints(r);
     let html = pm === null
       ? `<div class="alert alert-danger" role="alert">⛔ <div><b>Dans ces hypothèses, le plan n'est pas rentable à l'année 5</b> (EBITDA ${fmtM(an5.ebitda)} ${esc(base.devise)}). Un financeur ne s'engagera pas : l'apport ne ferait que financer des pertes. Revoyez les ventes (nombre de clients, prix, maintenance) ou les coûts (équipe, marketing) dans « Hypothèses ».</div></div>`
       : `<div class="alert alert-info" role="status">✅ <div>Rentabilité (EBITDA positif de façon durable) atteinte à partir de <b>${moisLabel(pm)}</b>, soit au mois ${pm + 1} du plan.</div></div>`;
+    html = surveillance(r) + html;
     html += `<div class="stats-grid">${stat('Besoin de financement', r.besoin > 0 ? fmt(r.besoin) + ' ' + base.devise : 'Aucun', r.besoin > 0 ? 'Point bas de trésorerie : ' + moisLabel(a0.moisMin) : 'Le plan s\'autofinance', r.besoin > 0 ? 'orange' : 'green')}
       ${stat('À lever (avec marge de ' + fmt(h.margeSecuritePct) + ' %)', fmt(r.recommande) + ' ' + base.devise, 'Montant recommandé', 'blue')}
       ${stat('CA année 5', fmtM(ca5a) + ' ' + base.devise, 'Sans financement : ' + fmtM(ca5s) + ' · ×' + (ca5s > 0 ? dec1(ca5a / ca5s) : '–'), 'green')}
@@ -664,8 +766,9 @@
       + row('Résultat net cumulé 5 ans', (o) => fmtM(o.ind.resultatCumule)) + row('Part du capital cédée', (o) => o.ind.equity ? pct(o.ind.equity.part, 1) : '–')
       + row('Rendement investisseur (×)', (o) => o.ind.equity ? dec1(o.ind.equity.moic) + ' × · TRI ' + pct(o.ind.equity.tri) : '–')
       + row('Intérêts payés', (o) => o.ind.dette ? fmtM(o.ind.dette.totalInterets) : '–') + row('Capacité de remboursement', (o) => o.ind.dette && o.ind.dette.dscrMin != null ? dec1(o.ind.dette.dscrMin) + ' ×' : '–')
-      + `<tr><td>Points d'attention</td>${cols.map((o) => `<td style="text-align:left;font-size:11px;vertical-align:top;min-width:150px">${o.ind.alertes.length ? o.ind.alertes.map((x) => '⚠️ ' + esc(x)).join('<br>') : '<span style="color:var(--success)">✓ Aucun</span>'}</td>`).join('')}</tr></tbody></table></div>
+      + `<tr><td>Points d'attention</td>${cols.map((o) => `<td style="text-align:left;font-size:11px;vertical-align:top;min-width:150px">${(o.ind.points || []).length ? o.ind.points.map((pt) => { const P = POINTS_UI[pt.id]; return `<button type="button" class="fin-pt ${ui.atelier && ui.atelier.opt === o.opt && ui.atelier.al === pt.id ? 'on' : ''}" style="--c:${P ? P.coul : '#64748b'}" data-act="atelier" data-al="${pt.id}" data-opt="${o.opt}" title="Voir les champs qui commandent ce point">${P ? P.ico : '⚠️'} ${esc(pt.texte)}</button>`; }).join('') : '<span style="color:var(--success)">✓ Aucun</span>'}</td>`).join('')}</tr></tbody></table></div>
       ${note('Le <b>mix</b> répartit le montant selon les parts réglées ci-dessus. Le rendement investisseur suppose une sortie à l\'année 5 à ' + h.multSortie + ' × le CA (hypothèse modifiable dans « Hypothèses »).')}</div>`;
+    html += atelier(r);
     if (r.corrige && r.besoin > 0) {
       const c = r.corrige, o = c.option, eq = o.ind.equity, pm = c.partMax;
       const valoMini = c.equityNecessaire * (1 - pm) / pm;
@@ -988,7 +1091,8 @@
   function render() {
     const host = root(); if (!host) return;
     let el = host.querySelector(':scope > #fin-body'); if (!el) { el = document.createElement('div'); el.id = 'fin-body'; host.appendChild(el); }
-    const tabs = [['synthese', '📊 Synthèse'], ['traction', '🔎 Traction'], ['hyp', '🧮 Hypothèses'], ['proj', '📈 États financiers'], ['indic', '📐 Indicateurs'], ['opti', '💡 Optimisations'], ['notes', '📖 Notes'], ['dossier', '📄 Dossier']];
+    const nPts = res && res.corrige && res.besoin > 0 ? (res.corrige.option.ind.points || []).length : 0;
+    const tabs = [['synthese', '📊 Synthèse' + (nPts ? ' <span class="badge badge-danger" title="Points d\'attention sur le montage retenu">' + nPts + '</span>' : '')], ['traction', '🔎 Traction'], ['hyp', '🧮 Hypothèses'], ['proj', '📈 États financiers'], ['indic', '📐 Indicateurs'], ['opti', '💡 Optimisations'], ['notes', '📖 Notes'], ['dossier', '📄 Dossier']];
     el.innerHTML = `<div class="ban"><div class="ban-deco"></div><h1 class="page-title">🏦 Financement</h1><p class="page-sub">Modèle financier sur 5 ans : besoin de financement, options et dossier pour les financeurs — départ : vos chiffres réels du CRM</p></div>
       <div class="tabs" role="tablist" style="margin-bottom:16px">${tabs.map((t) => `<div class="tab ${ui.tab === t[0] ? 'active' : ''}" role="tab" tabindex="0" aria-selected="${ui.tab === t[0]}" data-tab="${t[0]}">${t[1]}</div>`).join('')}</div>` +
       (ui.tab === 'hyp' ? tabHyp() : ui.tab === 'traction' ? tabTraction() : ui.tab === 'indic' ? tabIndic() : ui.tab === 'proj' ? tabProj() : ui.tab === 'opti' ? tabOpti() : ui.tab === 'notes' ? tabNotes() : ui.tab === 'dossier' ? tabDossier() : tabSynthese());
@@ -998,6 +1102,9 @@
     const act = (t) => {
       if (t.dataset.tab) { ui.tab = t.dataset.tab; render(); return; }
       const a = t.dataset.act; if (!a) return;
+      if (a === 'atelier') { ui.atelier = { al: t.dataset.al, opt: t.dataset.opt }; ui.tab = 'synthese'; render(); const z = document.getElementById('fin-atelier'); if (z && z.scrollIntoView) z.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+      if (a === 'atelier-close') { ui.atelier = null; render(); return; }
+      if (a === 'goto-postes') { ui.tab = 'hyp'; render(); const z = document.querySelector('#fin-body [data-p]'); if (z) { const c = z.closest('.card') || z; if (c.scrollIntoView) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
       const appliquer = (h2, qui) => {
         if (!confirm(qui + '\n\nVos hypothèses seront modifiées et la mention « document de travail » reviendra. « Réinitialiser » (onglet Hypothèses) remet les valeurs initiales. Continuer ?')) return;
         Object.keys(h2).forEach((k) => { if (k === 'produits') diffProduits(h.produits, h2.produits).forEach((d) => editProduit(d.id, d.champ, d.valeur)); else if (JSON.stringify(h2[k]) !== JSON.stringify(h[k])) edit(k, clone(h2[k])); });

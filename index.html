@@ -172,6 +172,11 @@ input,textarea,select{font-family:var(--font-b);outline:none}
 }
 
 /* ─── PIPELINE ─────────────────────────────────────── */
+.fin-pt{display:block;width:100%;text-align:left;background:var(--surface);border:1px solid var(--c,#cbd5e1);border-left-width:4px;border-radius:8px;padding:6px 8px;margin:0 0 6px;font-size:11px;line-height:1.35;cursor:pointer;color:var(--text);font-family:inherit}
+.fin-pt:hover,.fin-pt.on{background:color-mix(in srgb,var(--c,#cbd5e1) 14%,var(--surface))}.fin-pt.on{box-shadow:0 0 0 2px color-mix(in srgb,var(--c,#cbd5e1) 40%,transparent)}
+.fin-pt.on-chip{display:inline-block;width:auto;margin:0;font-size:12px;font-weight:700;padding:4px 10px}
+.fin-lien{display:inline-flex;align-items:center;gap:3px;margin-left:6px;border:1px solid var(--c,#64748b);background:color-mix(in srgb,var(--c,#64748b) 14%,transparent);border-radius:10px;padding:0 7px;font-size:11px;font-weight:700;cursor:pointer;vertical-align:middle;color:var(--text);font-family:inherit}
+.fin-lien:hover{background:color-mix(in srgb,var(--c,#64748b) 28%,transparent)}
 .pipe-funnel{display:flex;gap:8px;overflow-x:auto;margin-bottom:16px;padding-bottom:2px}
 .pipe-step{flex:1;min-width:118px;background:var(--surface);border:1px solid var(--border);border-top:4px solid var(--c);border-radius:var(--r-sm);padding:9px 12px}
 .pipe-step .n{font-size:24px;font-weight:800;line-height:1.1}.pipe-step .l{font-size:11.5px;font-weight:700}.pipe-step .t{font-size:10.5px;color:var(--muted);margin-top:2px}

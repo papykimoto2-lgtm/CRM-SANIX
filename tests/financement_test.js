@@ -524,4 +524,40 @@ console.log("▶ Montage corrigé (limites : part cédée et capacité de rembou
   h = Object.assign(base(), { partMaxPct: 80 }); ok(calc.comparer(h).corrige.partMax === 0.49, "part max plafonnée à 49 % même si on saisit 80 %");
 }
 
+console.log("▶ Points d'attention : identifiants, champs liés, effets annoncés");
+{
+  const I = (mois, montant) => ({ id: "i" + mois, nom: "Matériel", mois, montant, duree: 3, finance: true });
+  const cles = Object.keys(base());
+  // 1) chaque point émis connaît ses champs, et chaque champ cité est une vraie hypothèse
+  let h = Object.assign(base(), { fixesMensuels: 3e6, preMoney: 30e6 }), r = calc.comparer(h);
+  const tous = r.options.concat([r.corrige.option]), ids = {}; tous.forEach((o) => o.ind.points.forEach((p) => { ids[p.id] = 1; }));
+  ok(Object.keys(ids).every((id) => !!calc.POINTS[id]), "chaque point d'attention émis (" + Object.keys(ids).join(", ") + ") a sa fiche de champs liés");
+  ok(tous.every((o) => o.ind.points.length === o.ind.alertes.length && o.ind.points.every((p, i) => p.texte === o.ind.alertes[i])), "points et textes d'alerte concordent (l'export du dossier ne change pas)");
+  const manquants = []; Object.keys(calc.POINTS).forEach((id) => calc.POINTS[id].direct.concat(calc.POINTS[id].indirect).forEach((c) => { if (cles.indexOf(c[0]) < 0) manquants.push(id + ":" + c[0]); }));
+  ok(manquants.length === 0, "tous les champs liés existent dans les hypothèses (manquants : " + manquants.join(",") + ")");
+  const L = calc.liensParChamp(r);
+  ok(L.preMoney && L.preMoney.some((x) => x.id === "part"), "la valorisation avant apport est reliée au point « part cédée »");
+  ok(Object.keys(L).every((k) => cles.indexOf(k) >= 0), "aucun lien vers un champ inexistant");
+  // 2) mesure et repère exacts
+  const cap = r.options[0], pt = cap.ind.points.filter((x) => x.id === "part")[0];
+  ok(!!pt, "levée en capital : « part cédée » signalée");
+  const m = calc.pointMesure("part", h, cap, r); ok(Math.abs(m.actuel - cap.ind.equity.part) < 1e-12 && m.cible === 0.49 && m.ok === false, "mesure : part cédée actuelle = " + (m.actuel * 100).toFixed(1) + " %, cible ≤ 49 %");
+  const rp = calc.pointRepères("part", h, cap, r)[0]; near(rp.val, cap.ind.equity.montant * 0.51 / 0.49, 1e-6, "repère : valorisation nécessaire = apport × 0,51 / 0,49");
+  // 3) un effet annoncé est réel : appliquer ce que dit le repère règle le point
+  const h2 = Object.assign({}, h, { preMoney: rp.val * 1.02 }), r2 = calc.comparer(h2);
+  ok(r2.options[0].ind.points.every((x) => x.id !== "part"), "valorisation relevée au repère : le point « part cédée » disparaît");
+  // 4) sens des flèches
+  const part = (hh) => calc.comparer(hh).options[0].ind.equity.part, moic = (hh) => calc.comparer(hh).options[0].ind.equity.moic;
+  ok(part(Object.assign({}, h, { preMoney: 60e6 })) < part(h), "↑ valorisation avant apport : moins de part cédée");
+  ok(moic(Object.assign({}, h, { multSortie: 5 })) > moic(h), "↑ multiple de sortie : meilleur rendement investisseur");
+  ok(moic(Object.assign({}, h, { preMoney: 15e6 })) > moic(h), "↓ valorisation d'entrée : meilleur rendement investisseur");
+  // 5) capacité de remboursement : sens des flèches sur un plan qui peut emprunter
+  const hd = Object.assign(base(), { investissements: [I(0, 6e6)], preMoney: 30e6, partDette: 100, partCapital: 0, partSubvention: 0 });
+  const dscr = (hh) => { const o = calc.comparer(hh).options[3]; return o.ind.dette ? o.ind.dette.dscrMin : null; };
+  const d0 = dscr(hd); ok(d0 !== null && d0 > 0, "plan avec dette : capacité de remboursement mesurée (" + (d0 && d0.toFixed(2)) + ")");
+  ok(dscr(Object.assign({}, hd, { taux: 6 })) > d0, "↓ taux du prêt : meilleure capacité de remboursement");
+  ok(dscr(Object.assign({}, hd, { dureeMois: 120 })) > d0, "↑ durée du prêt : meilleure capacité de remboursement");
+  ok(dscr(Object.assign({}, hd, { partDette: 50, partCapital: 50 })) > d0, "↓ part de la dette : meilleure capacité de remboursement");
+}
+
 console.log("\nTous les contrôles du modèle de financement sont passés.");
