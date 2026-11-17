@@ -1,6 +1,6 @@
 // Stockage et dépendances de l'envoi Gmail (accès base de données + secrets), partagés par la fonction crm-gmail et par l'envoi des rapports (ai-company).
 import { db } from "./core.ts";
-import { GmailError, type Deps, type MailRow, type Store } from "./gmail.ts";
+import { estDesinscription, GmailError, type Deps, type MailRow, type Store } from "./gmail.ts";
 
 export const store: Store = {
   async getAccount() {
@@ -29,6 +29,10 @@ export const store: Store = {
     const { count } = await db().from("crm_mails").select("id", { count: "exact", head: true }).neq("status", "echec").gte("sent_at", sinceIso);
     return count ?? 0;
   },
+  async countSentBy(sentBy, sinceIso) {
+    const { count } = await db().from("crm_mails").select("id", { count: "exact", head: true }).eq("sent_by", sentBy).neq("status", "echec").gte("sent_at", sinceIso);
+    return count ?? 0;
+  },
   async recentDuplicate(toEmail, subject, sinceIso) {
     const { count } = await db().from("crm_mails").select("id", { count: "exact", head: true }).eq("to_email", toEmail).eq("subject", subject).neq("status", "echec").gte("sent_at", sinceIso);
     return (count ?? 0) > 0;
@@ -45,6 +49,19 @@ export const store: Store = {
   async repliedWithoutText(sinceIso, checkedBeforeIso, limit) {
     const { data } = await db().from("crm_mails").select("*, crm_mail_replies(id)").eq("status", "repondu").not("gmail_thread_id", "is", null).gte("sent_at", sinceIso).order("sent_at", { ascending: false }).limit(200);
     return (data ?? []).filter((m: any) => !(m.crm_mail_replies ?? []).length && (!m.last_checked_at || m.last_checked_at < checkedBeforeIso)).slice(0, limit).map(({ crm_mail_replies: _r, ...m }: any) => m) as MailRow[];
+  },
+  async onProspectReply(m, textes) {
+    // Prospect côté agents : retrouvé par la clé stable du CRM, à défaut par l'adresse e-mail.
+    const q = db().from("ai_prospects").select("id, opt_out, relances_sans_reponse");
+    const { data } = m.client_rid ? await q.eq("crm_rid", m.client_rid).limit(1) : await q.ilike("email", m.to_email.replace(/[\\%_]/g, "\\$&")).limit(1);
+    const p = data?.[0]; if (!p) return;
+    const quand = m.replied_at ?? new Date().toISOString();
+    await db().from("ai_prospects").update({ last_inbound_at: quand, relances_sans_reponse: 0 }).eq("id", p.id);   // une réponse arrête les relances
+    if (textes && !p.opt_out && textes.some((t) => estDesinscription(t))) {
+      await db().from("ai_prospects").update({ opt_out: true, opt_out_at: new Date().toISOString() }).eq("id", p.id);
+      await db().from("ai_actions").insert({ agent: "gmail", action: "desinscription_stop", prospect_id: p.id, ok: true, payload: { canal: "email" } });
+      if (m.client_rid) await store.addInteraction(m.client_rid, { date: new Date().toISOString(), type: "Désinscription (STOP)", note: "Le prospect demande de ne plus être contacté : plus aucun message automatique", ico: "🚫", source: "gmail" }).catch(() => {});
+    }
   },
   async addInteraction(clientRid, interaction) {
     // Jamais de création de fiche : on n'écrit que sur une fiche cliente qui existe déjà.

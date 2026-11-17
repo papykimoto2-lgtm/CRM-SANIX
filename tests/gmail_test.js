@@ -6,7 +6,7 @@ const KEY = Buffer.alloc(32, 7).toString("base64");
   const ENV = { SUPABASE_URL: "https://proj.supabase.co", GOOGLE_CLIENT_ID: "cid", GOOGLE_CLIENT_SECRET: "csecret", GMAIL_TOKEN_KEY: KEY, APP_URL: "https://crm.exemple.app" };
   let T = Date.parse("2026-11-17T10:00:00Z");
   // — faux stockage —
-  const S = { account: null, mails: [], inter: [], replies: [], err: undefined };
+  const S = { account: null, mails: [], inter: [], replies: [], events: [], err: undefined };
   const store = {
     getAccount: async () => S.account, saveAccount: async (a) => { S.account = { ...a, status: "connecte" }; }, markAccountError: async (m) => { if (S.account) S.account.status = m ? "erreur" : "connecte"; S.err = m; },
     deleteAccount: async () => { S.account = null; }, insertMail: async (m) => { const id = "m" + (S.mails.length + 1); S.mails.push({ ...m, id, sent_at: new Date(T).toISOString() }); return id; },
@@ -14,6 +14,8 @@ const KEY = Buffer.alloc(32, 7).toString("base64");
     countSentSince: async () => S.mails.length, recentDuplicate: async (to, subj, since) => S.mails.some((m) => m.to_email === to && m.subject === subj && m.sent_at > since),
     recentBounce: async (to) => S.mails.some((m) => m.to_email === to && m.status === "echec" && /distribu/i.test(m.error || "")),
     addInteraction: async (rid, i) => { S.inter.push({ rid, ...i }); },
+    countSentBy: async (by, since) => S.mails.filter((m) => m.sent_by === by && m.status !== "echec" && m.sent_at > since).length,
+    onProspectReply: async (m, textes) => { S.events.push({ rid: m.client_rid, textes }); },
     saveReplies: async (mailId, rs) => { for (const r of rs) if (!S.replies.some((x) => x.gmail_message_id === r.gmail_message_id)) S.replies.push({ mail_id: mailId, ...r }); },
     repliedWithoutText: async (since, avant) => S.mails.filter((m) => m.status === "repondu" && m.gmail_thread_id && !S.replies.some((r) => r.mail_id === m.id) && (!m.last_checked_at || m.last_checked_at < avant))
   };
@@ -203,6 +205,37 @@ const KEY = Buffer.alloc(32, 7).toString("base64");
   const sansCompte = { ...D, store: { ...store, getAccount: async () => null } }; let e4 = null; try { await G.sendSystemMail(sansCompte, { to: "a@x.ci", subject: "R", html: "x" }); } catch (e) { e4 = e; }
   ok(e4 && e4.status === 409 && /pas connecté/.test(e4.message), "Gmail non connecté : refus explicite");
 
+  }
+
+  console.log("▶ E-mails des agents IA par Gmail");
+  {
+    const sauve = S.mails.map((m) => ({ ...m })), sauveInter = [...S.inter]; calls.length = 0; GOOGLE.sendOk = true;
+    ok(["STOP", "Stop, merci", "  > stop", "« Stop »", "Désinscrivez-moi", "Arrêtez svp", "Ne plus recevoir vos messages", "UNSUBSCRIBE"].every((t) => G.estDesinscription(t)), "réponses qui demandent l'arrêt (STOP, désinscription, arrêtez…) : reconnues");
+    ok(["Oui, stop aux relances", "Bonjour, stop", "Nous ne stoppons pas", "Merci pour votre message", "Quand peut-on faire une démonstration ?"].every((t) => !G.estDesinscription(t)), "un « stop » au milieu d'une phrase ou une réponse ordinaire : jamais pris pour une désinscription");
+    S.mails.length = 0; S.inter.length = 0;
+    const r1 = await G.sendAgentMail(D, { client_rid: "c_agent", to: "prospect@x.ci", subject: "Gestion immobilière", body: "Bonjour,\nTexte.\n\n—\nPour ne plus recevoir nos messages, répondez simplement « STOP »." });
+    ok(r1.ok && r1.statut === "envoye" && r1.external_id, "e-mail d'agent : envoyé par le Gmail connecté");
+    ok(S.mails.length === 1 && S.mails[0].sent_by === "Agent IA" && S.mails[0].client_rid === "c_agent" && S.mails[0].sent_by_user === null && S.mails[0].relance_apres_jours === 4, "inscrit dans le journal du CRM (donc dans « Relances ») au nom de « Agent IA », relance prévue à 4 jours");
+    ok(S.inter.some((i) => i.rid === "c_agent" && i.type === "E-mail envoyé"), "la fiche client reçoit « E-mail envoyé »");
+    const plein = { ...D, store: { ...store, countSentBy: async () => G.LIMITE_AGENTS_PAR_JOUR } }; calls.length = 0;
+    const r2 = await G.sendAgentMail(plein, { client_rid: "c_agent2", to: "autre@x.ci", subject: "S", body: "b" });
+    ok(!r2.ok && r2.statut === "a_envoyer" && /Plafond de 30/.test(r2.detail) && !calls.some((c) => c.url.endsWith("/messages/send")), "plafond de 30 e-mails d'agents par 24 h : le message reste en file, rien n'est envoyé à Gmail");
+    const r3 = await G.sendAgentMail({ ...D, store: { ...store, getAccount: async () => null } }, { to: "autre@x.ci", subject: "S", body: "b" });
+    ok(!r3.ok && r3.statut === "a_envoyer" && /connectez Gmail/.test(r3.detail), "Gmail non connecté : message gardé en file avec la consigne pour connecter Gmail");
+    S.mails.push({ id: "mMort", client_rid: null, to_email: "mort@x.ci", subject: "S", body: "b", status: "echec", error: "Non distribué (retour Gmail) : adresse inexistante ou boîte pleine", sent_at: new Date(T).toISOString() });
+    const r4 = await G.sendAgentMail(D, { to: "mort@x.ci", subject: "S2", body: "b" });
+    ok(!r4.ok && r4.statut === "echec" && /déjà renvoyé une erreur/.test(r4.detail), "adresse déjà revenue en erreur : échec définitif, jamais renvoyé");
+    const r5 = await G.sendAgentMail(D, { to: "pas-une-adresse", subject: "S", body: "b" });
+    ok(!r5.ok && r5.statut === "echec", "adresse invalide : échec définitif");
+    GOOGLE.sendOk = false; const r6 = await G.sendAgentMail(D, { to: "ok@x.ci", subject: "S3", body: "b" }); GOOGLE.sendOk = true;
+    ok(!r6.ok && r6.statut === "echec" && /Gmail a refusé/.test(r6.detail), "Gmail refuse l'envoi : échec explicite (jamais « envoyé » à tort)");
+    // une réponse met à jour le prospect côté agents (relances remises à zéro) ; le texte lu sert à détecter un STOP
+    S.mails.length = 0; S.events.length = 0; S.replies.length = 0; S.account.scopes = G.GMAIL_SCOPES;
+    await store.insertMail({ client_rid: "c_R2", to_email: "marc@promo.ci", subject: "Démo", body: "b", sent_by: "Agent IA", sent_by_user: null, gmail_message_id: "p1", gmail_thread_id: "thR2", status: "envoye", error: null, replied_at: null, reply_from: null, relance_apres_jours: 4, last_checked_at: null });
+    GOOGLE.threads = { thR2: { messages: [msgT("p1", "sanix@gmail.com", T - 9e6, "Bonjour"), msgT("r1", "Marc <marc@promo.ci>", T - 5e6, "STOP\n\nLe lundi, Sanix a écrit :\n> Bonjour")] } };
+    await G.syncReplies(D);
+    ok(S.events.length >= 1 && S.events.every((e) => e.rid === "c_R2") && S.events.some((e) => e.textes === null) && S.events.some((e) => Array.isArray(e.textes) && e.textes.some((t) => G.estDesinscription(t))), "une réponse : le prospect est signalé aux agents ; son texte (« STOP ») permet la désinscription");
+    S.mails.length = 0; S.mails.push(...sauve); S.inter.length = 0; S.inter.push(...sauveInter); S.replies.length = 0; S.events.length = 0;
   }
 
   console.log("▶ Accès retiré par l'utilisateur");

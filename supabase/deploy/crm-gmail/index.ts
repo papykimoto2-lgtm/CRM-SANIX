@@ -244,13 +244,21 @@ function extractReplies(thread, myEmail) {
   }
   return out;
 }
+function estDesinscription(texte) {
+  const t = String(texte ?? "").replace(/^[\s"'«»>*_-]+/, "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return /^(stop\b|unsubscribe\b|desinscri|desabonn|ne plus recevoir|ne m'?envoyez plus|arretez\b|merci de ne plus)/.test(t);
+}
 var lecturePermise = (acc) => String(acc.scopes ?? "").includes(SCOPE_LECTURE);
 async function lireReponses(d, token, m, email) {
   try {
     const r = await d.fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(String(m.gmail_thread_id))}?format=full`, { headers: { Authorization: "Bearer " + token } });
     if (!r.ok) return 0;
     const reps = extractReplies(await r.json(), email);
-    if (reps.length) await d.store.saveReplies(m.id, reps);
+    if (reps.length) {
+      await d.store.saveReplies(m.id, reps);
+      await d.store.onProspectReply?.(m, reps.map((r2) => r2.body)).catch(() => {
+      });
+    }
     return reps.length;
   } catch {
     return 0;
@@ -386,6 +394,8 @@ async function syncReplies(d) {
       if (a.replied) {
         await d.store.updateMail(m.id, { status: "repondu", replied_at: a.at ?? d.now().toISOString(), reply_from: a.from ?? null, last_checked_at: d.now().toISOString() });
         reponses++;
+        await d.store.onProspectReply?.(m, null).catch(() => {
+        });
         if (lecture) lues += await lireReponses(d, token, m, email);
         if (m.client_rid) await d.store.addInteraction(m.client_rid, { date: a.at ?? d.now().toISOString(), type: "R\xE9ponse re\xE7ue par e-mail", note: "R\xE9ponse de " + (a.from ?? "le prospect") + " \xE0 : " + m.subject, etape: 1, ico: "\u{1F4E9}", source: "gmail" }).catch(() => {
         });
@@ -444,6 +454,10 @@ var store = {
     const { count } = await db().from("crm_mails").select("id", { count: "exact", head: true }).neq("status", "echec").gte("sent_at", sinceIso);
     return count ?? 0;
   },
+  async countSentBy(sentBy, sinceIso) {
+    const { count } = await db().from("crm_mails").select("id", { count: "exact", head: true }).eq("sent_by", sentBy).neq("status", "echec").gte("sent_at", sinceIso);
+    return count ?? 0;
+  },
   async recentDuplicate(toEmail, subject, sinceIso) {
     const { count } = await db().from("crm_mails").select("id", { count: "exact", head: true }).eq("to_email", toEmail).eq("subject", subject).neq("status", "echec").gte("sent_at", sinceIso);
     return (count ?? 0) > 0;
@@ -460,6 +474,20 @@ var store = {
   async repliedWithoutText(sinceIso, checkedBeforeIso, limit) {
     const { data } = await db().from("crm_mails").select("*, crm_mail_replies(id)").eq("status", "repondu").not("gmail_thread_id", "is", null).gte("sent_at", sinceIso).order("sent_at", { ascending: false }).limit(200);
     return (data ?? []).filter((m) => !(m.crm_mail_replies ?? []).length && (!m.last_checked_at || m.last_checked_at < checkedBeforeIso)).slice(0, limit).map(({ crm_mail_replies: _r, ...m }) => m);
+  },
+  async onProspectReply(m, textes) {
+    const q = db().from("ai_prospects").select("id, opt_out, relances_sans_reponse");
+    const { data } = m.client_rid ? await q.eq("crm_rid", m.client_rid).limit(1) : await q.ilike("email", m.to_email.replace(/[\\%_]/g, "\\$&")).limit(1);
+    const p = data?.[0];
+    if (!p) return;
+    const quand = m.replied_at ?? (/* @__PURE__ */ new Date()).toISOString();
+    await db().from("ai_prospects").update({ last_inbound_at: quand, relances_sans_reponse: 0 }).eq("id", p.id);
+    if (textes && !p.opt_out && textes.some((t) => estDesinscription(t))) {
+      await db().from("ai_prospects").update({ opt_out: true, opt_out_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", p.id);
+      await db().from("ai_actions").insert({ agent: "gmail", action: "desinscription_stop", prospect_id: p.id, ok: true, payload: { canal: "email" } });
+      if (m.client_rid) await store.addInteraction(m.client_rid, { date: (/* @__PURE__ */ new Date()).toISOString(), type: "D\xE9sinscription (STOP)", note: "Le prospect demande de ne plus \xEAtre contact\xE9 : plus aucun message automatique", ico: "\u{1F6AB}", source: "gmail" }).catch(() => {
+      });
+    }
   },
   async addInteraction(clientRid, interaction) {
     const { data } = await db().from("crm_records").select("rid").eq("entity", "clients").eq("rid", clientRid).is("deleted_at", null).maybeSingle();

@@ -36,12 +36,16 @@ export type Store = {
   pendingMails(sinceIso: string, limit: number): Promise<MailRow[]>;
   updateMail(id: string, patch: Partial<MailRow>): Promise<void>;
   countSentSince(sinceIso: string): Promise<number>;
+  /** E-mails non échoués envoyés par cet expéditeur (ex. « Agent IA ») depuis cette date. */
+  countSentBy(sentBy: string, sinceIso: string): Promise<number>;
   recentDuplicate(toEmail: string, subject: string, sinceIso: string): Promise<boolean>;
   /** Un e-mail récent à cette adresse est revenu « non distribué » (adresse inexistante ou boîte pleine). */
   recentBounce(toEmail: string, sinceIso: string): Promise<boolean>;
   addInteraction(clientRid: string, interaction: Record<string, unknown>): Promise<void>;
   /** Enregistre le texte des réponses d'un e-mail (sans doublon : un message Gmail n'est enregistré qu'une fois). */
   saveReplies(mailId: string, replies: ReplyRow[]): Promise<void>;
+  /** Un prospect a répondu (texte lu ou non) : met à jour sa fiche côté agents (dernier échange, relances remises à zéro) et, si la réponse demande l'arrêt (« STOP »), le désinscrit. Facultatif. */
+  onProspectReply?(m: MailRow, textes: string[] | null): Promise<void>;
   /** E-mails déjà marqués « répondu » dont le texte n'a pas été lu (reconnexion tardive), non vérifiés depuis `checkedBeforeIso`. */
   repliedWithoutText(sinceIso: string, checkedBeforeIso: string, limit: number): Promise<MailRow[]>;
 };
@@ -236,6 +240,11 @@ export function extractReplies(thread: any, myEmail: string): ReplyRow[] {
   }
   return out;
 }
+/** La réponse demande-t-elle d'arrêter les messages ? Strict : le message commence par STOP / « désinscription » / « ne plus recevoir » / « arrêtez » (pas un « stop » au milieu d'une phrase). */
+export function estDesinscription(texte: string): boolean {
+  const t = String(texte ?? "").replace(/^[\s"'«»>*_-]+/, "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return /^(stop\b|unsubscribe\b|desinscri|desabonn|ne plus recevoir|ne m'?envoyez plus|arretez\b|merci de ne plus)/.test(t);
+}
 const lecturePermise = (acc: MailAccount) => String(acc.scopes ?? "").includes(SCOPE_LECTURE);
 /** Lit le fil en entier (droit de lecture requis) et enregistre le texte des réponses ; renvoie leur nombre. Un échec n'interrompt pas le suivi. */
 async function lireReponses(d: Deps, token: string, m: MailRow, email: string): Promise<number> {
@@ -243,7 +252,7 @@ async function lireReponses(d: Deps, token: string, m: MailRow, email: string): 
     const r = await d.fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(String(m.gmail_thread_id))}?format=full`, { headers: { Authorization: "Bearer " + token } });
     if (!r.ok) return 0;
     const reps = extractReplies(await r.json(), email);
-    if (reps.length) await d.store.saveReplies(m.id!, reps);
+    if (reps.length) { await d.store.saveReplies(m.id!, reps); await d.store.onProspectReply?.(m, reps.map((r) => r.body)).catch(() => {}); }
     return reps.length;
   } catch { return 0; }
 }
@@ -302,7 +311,7 @@ async function accessToken(d: Deps): Promise<{ token: string; email: string }> {
 
 // ───────────────────────── Envoi ─────────────────────────
 export type SendInput = { client_rid?: string | null; to: string; subject: string; body: string; from_name?: string; relance_jours?: number };
-export async function sendMail(d: Deps, op: { user_id: string; nom: string }, i: SendInput): Promise<{ id: string; thread_id: string | null }> {
+export async function sendMail(d: Deps, op: { user_id: string | null; nom: string }, i: SendInput): Promise<{ id: string; thread_id: string | null }> {
   const to = String(i.to ?? "").trim(), subject = String(i.subject ?? "").trim(), body = String(i.body ?? "");
   if (!validEmail(to)) throw new GmailError(400, "Adresse du destinataire invalide");
   if (!subject || subject.length > 300) throw new GmailError(400, "Objet vide ou trop long (300 caractères maximum)");
@@ -329,6 +338,30 @@ export async function sendMail(d: Deps, op: { user_id: string; nom: string }, i:
   return { id, thread_id: j.threadId ? String(j.threadId) : null };
 }
 
+// ───────────────────────── E-mails des agents IA ─────────────────────────
+export const LIMITE_AGENTS_PAR_JOUR = 30;     // plafond d'e-mails des agents sur 24 h (en plus du plafond de 100 du compte)
+export const SIGNATAIRE_AGENT = "Agent IA";
+export type AgentSend = { ok: boolean; statut: string; detail: string; external_id?: string };
+/**
+ * Envoie l'e-mail d'un agent par le Gmail connecté. Il entre dans le journal des e-mails du CRM (donc dans « Relances », avec lecture des réponses
+ * et fiche client mise à jour). Gmail non connecté, plafond atteint ou panne passagère : statut « a_envoyer » (le message reste en file pour un prochain essai).
+ * Refus définitif (adresse invalide ou en erreur, doublon) : statut « echec ».
+ */
+export async function sendAgentMail(d: Deps, i: { client_rid?: string | null; to: string; subject: string; body: string }): Promise<AgentSend> {
+  const enFile = (detail: string): AgentSend => ({ ok: false, statut: "a_envoyer", detail });
+  const acc = await d.store.getAccount();
+  if (!acc || acc.status !== "connecte") return enFile("E-mail non configuré : connectez Gmail dans le CRM (Paramétrage → Relances) ; message mis en file");
+  if (await d.store.countSentBy(SIGNATAIRE_AGENT, new Date(d.now().getTime() - 24 * 3600e3).toISOString()) >= LIMITE_AGENTS_PAR_JOUR)
+    return enFile(`Plafond de ${LIMITE_AGENTS_PAR_JOUR} e-mails d'agents par 24 h atteint : message gardé en file`);
+  try {
+    const r = await sendMail(d, { user_id: null, nom: SIGNATAIRE_AGENT }, { client_rid: i.client_rid ?? null, to: i.to, subject: i.subject.slice(0, 300), body: i.body, relance_jours: 4 });
+    return { ok: true, statut: "envoye", detail: "Envoyé par Gmail", external_id: r.id };
+  } catch (e) {
+    if (e instanceof GmailError) return e.status === 429 || e.status === 502 ? enFile(e.message + " : message gardé en file") : { ok: false, statut: "echec", detail: e.message };
+    return { ok: false, statut: "echec", detail: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 // ───────────────────────── Suivi des réponses ─────────────────────────
 export async function syncReplies(d: Deps): Promise<{ verifies: number; reponses: number; echecs: number; lues: number }> {
   const acc = await d.store.getAccount();
@@ -348,6 +381,7 @@ export async function syncReplies(d: Deps): Promise<{ verifies: number; reponses
       const a = analyseThread(await r.json(), email, m.to_email); verifies++;
       if (a.replied) {
         await d.store.updateMail(m.id!, { status: "repondu", replied_at: a.at ?? d.now().toISOString(), reply_from: a.from ?? null, last_checked_at: d.now().toISOString() }); reponses++;
+        await d.store.onProspectReply?.(m, null).catch(() => {});
         if (lecture) lues += await lireReponses(d, token, m, email);
         if (m.client_rid) await d.store.addInteraction(m.client_rid, { date: a.at ?? d.now().toISOString(), type: "Réponse reçue par e-mail", note: "Réponse de " + (a.from ?? "le prospect") + " à : " + m.subject, etape: 1, ico: "📩", source: "gmail" }).catch(() => {});
       } else if (a.bounced) {
