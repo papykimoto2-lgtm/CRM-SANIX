@@ -317,6 +317,7 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
     ok(sorti.length === 0, `60 trajets aléatoires : jamais dans un mur ni hors du bâtiment (${sorti.length} sortie(s))`);
     ok(await ev(page, () => { const o = window.__vc.office, d = o.deskPoints(); return d.length > 3 && d.every((p) => !o.walkable(p.x, p.z)); }), "les bureaux sont des obstacles");
     // boutons de marche (souris / tactile)
+    await ev(page, () => window.__vc.office.setView("immersive", "commercial"));   // retour au point de départ, face à la pièce (la marche aléatoire a pu finir contre un mur)
     const bf = await page.locator("[data-imm=f]").boundingBox(); const J0 = await ev(page, () => window.__vc.office.immersive);
     await page.mouse.move(bf.x + bf.width / 2, bf.y + bf.height / 2); await page.mouse.down();
     await ev(page, () => window.__vc.office.advance(1)); const J1 = await ev(page, () => window.__vc.office.immersive);
