@@ -1690,6 +1690,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
         <div class="flex gap-2" style="flex-wrap:wrap">
           <button class="btn btn-outline btn-sm" id="btn-view-toggle" onclick="toggleClientView()">⊞ Cartes</button>
           <button class="btn btn-outline btn-sm" onclick="openImportProspectsModal()" style="color:var(--success);border-color:var(--success)">📲 Importer contacts</button>
+          <button class="btn btn-outline btn-sm" onclick="openContactsModal()" style="color:var(--primary);border-color:var(--primary)">📇 Revue contacts</button>
           <button class="btn btn-outline btn-sm" id="btn-dups" onclick="openDupModal()" style="color:var(--warning);border-color:var(--warning)">🧹 Doublons</button>
           <button class="btn btn-primary btn-sm" onclick="openNewClient()">+ Nouveau client</button>
         </div>
@@ -1720,6 +1721,9 @@ Seriez-vous disponible pour une démonstration {rdv} ?
           <option value="email">✉️ Avec e-mail</option>
           <option value="noemail">Sans e-mail</option>
           <option value="nophone">Sans téléphone</option>
+          <option value="emailinvalide">⚠️ E-mail à corriger</option>
+          <option value="injoignable">🚫 Aucun contact valide</option>
+          <option value="nonverifie">🕓 Contact jamais vérifié</option>
         </select>
         <select class="form-input" id="cf-sort" onchange="clientFilterChange()">
           <option value="">Tri : par défaut</option>
@@ -8127,6 +8131,9 @@ function getFilteredClients() {
   if(fk==='email') list=list.filter(c=>c.email);
   if(fk==='noemail') list=list.filter(c=>!c.email);
   if(fk==='nophone') list=list.filter(c=>!(c.phone||'').trim());
+  if(fk==='emailinvalide') list=list.filter(c=>c.email && !emailAnalyse(c.email).ok);
+  if(fk==='injoignable') list=list.filter(c=>contactQualite(c).niveau==='aucun');
+  if(fk==='nonverifie') list=list.filter(c=>!c.contactVerifie);
   if(so==='nom') list=[...list].sort((a,b)=>(a.nom||'').localeCompare(b.nom||'','fr'));
   else if(so==='valeur') list=[...list].sort((a,b)=>(b.valeur||0)-(a.valeur||0));
   else if(so==='recent') list=[...list].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')) || (b.id||0)-(a.id||0));
@@ -16125,6 +16132,140 @@ function waBtnHtml(c,css,cls,label){
   return url
     ? `<a href="${url}" target="_blank" rel="noopener" class="${cls}" style="${css}">${label}</a>`
     : `<span class="${cls}" style="${css.replace(/background:#25D366/,'background:#9ca3af')};opacity:.65;cursor:not-allowed" title="${waWhy(c.phone).replace(/"/g,'&quot;')}">${label} ✗</span>`;
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  REVUE DES CONTACTS — téléphone et e-mail de chaque fiche : valides, joignables, à corriger
+//  Les agents (WhatsApp, e-mail) ne valent que par la qualité de ces coordonnées : une fiche est « joignable »
+//  seulement avec un mobile 01 / 05 / 07 (WhatsApp) ou un e-mail à la syntaxe correcte. Rien n'est supposé : les
+//  corrections « sûres » sont mécaniques (format +225, numéro à 8 chiffres converti, plusieurs e-mails séparés, faute
+//  de frappe connue d'un fournisseur) ; les autres sont proposées à confirmer.
+// ═══════════════════════════════════════════════════════════════
+const _EMAIL_FRAG = /[a-z0-9._%+\-]+@[a-z0-9\-]+(?:\.[a-z0-9\-]+)*\.[a-z]{2,}/gi;
+const _EMAIL_TYPOS = {'gmial.com':'gmail.com','gmai.com':'gmail.com','gamil.com':'gmail.com','gnail.com':'gmail.com','gmail.con':'gmail.com','gmail.cm':'gmail.com','gmail.co':'gmail.com','hotmial.com':'hotmail.com','hotmail.con':'hotmail.com','hotmai.com':'hotmail.com','yaho.fr':'yahoo.fr','yahooo.fr':'yahoo.fr','yahoo.fr.':'yahoo.fr','yahoo.con':'yahoo.com','outlok.com':'outlook.com','outlook.con':'outlook.com'};
+const _EMAIL_FACTICES = /^(test|exemple|example|noreply|no-reply|xxx+|aucun|none|na|n\/a)@|@(example\.(com|org)|test\.com|xxx+\.[a-z]+)$/i;
+function emailAnalyse(raw){
+  const brut = String(raw==null?'':raw).trim();
+  if(!brut) return {ok:false,vide:true,emails:[],principal:'',problemes:[],sure:{},confirmer:{}};
+  const probl=[], sure={}, confirmer={};
+  const trouves = (brut.replace(/^mailto:/i,'').match(_EMAIL_FRAG)||[]).map(x=>x.toLowerCase());
+  const uniques = [...new Set(trouves)];
+  // adresse de site web saisie à la place d'un e-mail
+  if(!uniques.length && /^(https?:\/\/|www\.)/i.test(brut)){
+    probl.push({code:'site',texte:'C’est une adresse de site web, pas un e-mail',sure:true}); sure.email=''; sure.noteSite=brut;
+    return {ok:false,emails:[],principal:'',problemes:probl,sure,confirmer};
+  }
+  if(!uniques.length){ probl.push({code:'invalide',texte:'E-mail invalide « '+brut.slice(0,40)+' »',sure:false}); return {ok:false,emails:[],principal:'',problemes:probl,sure,confirmer}; }
+  // reste de texte hors adresses (« Dg dupont@exemple-test.org », « info programmes@… ») : l'adresse trouvée est peut-être tronquée
+  const reste = brut.replace(_EMAIL_FRAG,' ').replace(/mailto:|[\s\/;,|<>()]+|\bou\b|\bet\b/gi,'');
+  const valides=[], suspects=[];
+  uniques.forEach(m=>{
+    const dom=m.split('@')[1]; let a=m;
+    if(_EMAIL_FACTICES.test(a)){ probl.push({code:'factice',texte:'Adresse factice « '+a+' »',sure:false}); return; }
+    if(_EMAIL_TYPOS[dom]){ a=m.split('@')[0]+'@'+_EMAIL_TYPOS[dom]; probl.push({code:'faute',texte:'Faute de frappe du domaine : '+dom+' → '+_EMAIL_TYPOS[dom],sure:true}); }
+    if(/\.cl$/.test(a)){ suspects.push(a); probl.push({code:'cl',texte:'Domaine en « .cl » (Chili) : probablement « .ci » (Côte d’Ivoire) à confirmer',sure:false}); confirmer.email=a.replace(/\.cl$/,'.ci'); return; }
+    valides.push(a);
+  });
+  if(reste && uniques.length===1){ probl.push({code:'parasite',texte:'Texte autour de l’adresse « '+brut.slice(0,40)+' » : adresse reconnue à confirmer',sure:false}); confirmer.email=uniques[0]; }
+  const principal = valides[0] || '';
+  if(valides.length>1){ probl.push({code:'multiple',texte:valides.length+' adresses dans le champ : la première reste, les autres vont dans les notes',sure:true}); sure.noteEmails=valides.slice(1); }
+  if(principal && principal!==brut && !confirmer.email){ sure.email=principal; }
+  if(!principal && !confirmer.email) probl.push({code:'invalide',texte:'Aucune adresse exploitable',sure:false});
+  return {ok:valides.length>0 && !confirmer.email, emails:valides, principal, problemes:probl, sure, confirmer};
+}
+
+/** Qualité des coordonnées d'une fiche : canaux utilisables, niveau, problèmes et corrections. */
+function contactQualite(c){
+  const tel = waAnalyse(c.phone||''), em = emailAnalyse(c.email||'');
+  const probl=[], sure={}, confirmer={};
+  const vide = !String(c.phone||'').trim();
+  let niveauTel = vide?'vide':tel.kind;                                            // mobile | fixe | invalide | vide
+  const canon = n => '+'+n;
+  if(tel.ok){
+    const cible = canon(tel.num);
+    if(String(c.phone).replace(/\s/g,'')!==cible) sure.phone=cible;
+    if(tel.converti) probl.push({code:'ancien8',texte:'Numéro à 8 chiffres converti en 10 (plan ivoirien de 2021)',sure:true});
+    const autres = tel.all.filter(x=>x.kind!=='invalide' && '225'+x.n!==tel.num).map(x=>x.kind==='mobile'||x.n.length===10?'+225'+x.n:x.brut);
+    if(autres.length){ sure.noteTels=autres; probl.push({code:'multiphone',texte:'Plusieurs numéros dans le champ : le mobile reste, les autres vont dans les notes',sure:true}); }
+  } else if(tel.kind==='fixe'){
+    probl.push({code:'fixe',texte:'Numéro fixe : appel possible, pas de WhatsApp — demandez un mobile',sure:false});
+    const d10 = tel.all.find(x=>x.kind==='fixe' && x.n.length===10); if(d10 && String(c.phone).replace(/\s/g,'')!=='+225'+d10.n && tel.all.length===1) sure.phone='+225'+d10.n;
+  } else if(tel.kind==='invalide'){ probl.push({code:'telinvalide',texte:tel.reason,sure:false}); }
+  else probl.push({code:'notel',texte:'Pas de téléphone',sure:false});
+  if(em.vide){ probl.push({code:'noemail',texte:'Pas d’e-mail',sure:false,info:true}); }
+  else em.problemes.forEach(x=>probl.push(x));
+  Object.assign(sure, em.sure); Object.assign(confirmer, em.confirmer);
+  const wa = !!tel.ok, mail = em.ok;
+  const niveau = wa&&mail ? 'complet' : (wa||mail) ? 'joignable' : (tel.kind==='fixe') ? 'fixe' : 'aucun';
+  return {tel,em,wa,mail,niveau,niveauTel,problemes:probl,sure,confirmer,corrigeable:Object.keys(sure).length>0};
+}
+function contactAppliquerSur(c, q){
+  const s=q.sure; let ch=false;
+  if('phone' in s && s.phone!==c.phone){ c.phone=s.phone; ch=true; }
+  if('email' in s && s.email!==c.email){ c.email=s.email; ch=true; }
+  const ajout=[]; if(s.noteTels && s.noteTels.length) ajout.push('Autres numéros : '+s.noteTels.join(', ')); if(s.noteEmails && s.noteEmails.length) ajout.push('Autres e-mails : '+s.noteEmails.join(', ')); if(s.noteSite) ajout.push('Site : '+s.noteSite);
+  ajout.forEach(l=>{ if(!String(c.notes||'').includes(l)){ c.notes=(c.notes?c.notes+' · ':'')+l; ch=true; } });
+  if(ch) c.updated_at=new Date().toISOString();
+  return ch;
+}
+function contactsBilan(liste){
+  const rows = (liste||CLIENTS.filter(c=>c.statut==='prospect')).map(c=>({c,q:contactQualite(c)}));
+  const par={}; rows.forEach(r=>{ const k=r.c.secteur||'(sans secteur)'; const o=par[k]||(par[k]={secteur:k,n:0,wa:0,mail:0,joignable:0,aucun:0}); o.n++; if(r.q.wa)o.wa++; if(r.q.mail)o.mail++; if(r.q.niveau==='complet'||r.q.niveau==='joignable')o.joignable++; if(r.q.niveau==='aucun')o.aucun++; });
+  return {rows,n:rows.length,wa:rows.filter(r=>r.q.wa).length,mail:rows.filter(r=>r.q.mail).length,
+    joignables:rows.filter(r=>r.q.niveau==='complet'||r.q.niveau==='joignable').length,fixe:rows.filter(r=>r.q.niveau==='fixe').length,aucun:rows.filter(r=>r.q.niveau==='aucun').length,
+    corrigeables:rows.filter(r=>r.q.corrigeable).length,aConfirmer:rows.filter(r=>Object.keys(r.q.confirmer).length>0||r.q.problemes.some(p=>!p.sure&&!p.info&&p.code!=='fixe'&&p.code!=='notel')).length,
+    verifies:rows.filter(r=>r.c.contactVerifie).length,secteurs:Object.values(par).sort((a,b)=>b.n-a.n)};
+}
+let _ctOnglet='corriger', _ctMax=40;
+function openContactsModal(){
+  let m=document.getElementById('modal-contacts');
+  if(!m){ m=document.createElement('div'); m.id='modal-contacts'; m.className='modal-overlay hidden';
+    m.innerHTML='<div class="modal-box" style="max-width:820px;max-height:92vh;overflow-y:auto"><div class="modal-close" onclick="document.getElementById(\'modal-contacts\').classList.add(\'hidden\')">✕</div><div id="contacts-body"></div></div>'; document.body.appendChild(m); }
+  _ctOnglet='corriger'; _ctMax=40; contactsRender(); m.classList.remove('hidden');
+}
+function contactsRender(){
+  const el=document.getElementById('contacts-body'); if(!el) return;
+  const B=contactsBilan(), esc=t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const pc=(a,b)=>b?Math.round(a*100/b)+' %':'–';
+  const tile=(v,l,c)=>'<div style="flex:1;min-width:120px;background:var(--surface2);border-radius:var(--r-sm);padding:10px 12px"><div style="font-family:var(--font-h);font-weight:800;font-size:20px;color:'+(c||'var(--text)')+'">'+v+'</div><div style="font-size:11px;color:var(--muted)">'+l+'</div></div>';
+  const onglets=[['corriger','⚠️ À corriger',B.rows.filter(r=>r.q.corrigeable||r.q.problemes.some(p=>!p.sure&&!p.info&&p.code!=='fixe'&&p.code!=='notel')).length],['fixe','☎️ Fixe seulement',B.fixe],['aucun','🚫 Sans contact',B.aucun],['noverif','🕓 Jamais vérifiés',B.n-B.verifies]];
+  let liste;
+  if(_ctOnglet==='corriger') liste=B.rows.filter(r=>r.q.corrigeable||r.q.problemes.some(p=>!p.sure&&!p.info&&p.code!=='fixe'&&p.code!=='notel'));
+  else if(_ctOnglet==='fixe') liste=B.rows.filter(r=>r.q.niveau==='fixe');
+  else if(_ctOnglet==='aucun') liste=B.rows.filter(r=>r.q.niveau==='aucun');
+  else liste=B.rows.filter(r=>!r.c.contactVerifie);
+  const ligne=r=>{ const c=r.c,q=r.q, pb=q.problemes.filter(p=>!p.info||_ctOnglet==='aucun');
+    return '<div style="padding:10px 0;border-top:1px solid var(--border);font-size:12px"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:flex-start">'
+      +'<div style="min-width:0;flex:1;overflow-wrap:anywhere"><b>'+esc(c.nom)+'</b> <span style="color:var(--muted)">· '+esc(c.secteur||'')+'</span><div style="color:var(--muted);margin-top:2px">📞 '+(esc(c.phone)||'—')+' · ✉️ '+(esc(c.email)||'—')+'</div>'
+      +pb.map(p=>'<div style="margin-top:3px;color:'+(p.sure?'var(--success)':'var(--warning)')+'">'+(p.sure?'✔ ':'⚠ ')+esc(p.texte)+'</div>').join('')
+      +(Object.keys(q.confirmer).length?'<div style="margin-top:3px">Proposition à confirmer : <b>'+esc(q.confirmer.email||'')+'</b></div>':'')+'</div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
+      +(q.corrigeable?'<button class="btn btn-primary btn-sm" style="font-size:11px" onclick="contactCorriger('+c.id+')">Corriger</button>':'')
+      +(q.confirmer.email?'<button class="btn btn-outline btn-sm" style="font-size:11px" onclick="contactConfirmer('+c.id+')">Accepter</button>':'')
+      +'<button class="btn btn-outline btn-sm" style="font-size:11px" onclick="contactVerifie('+c.id+')">✔ Vérifié</button>'
+      +'<button class="btn btn-outline btn-sm" style="font-size:11px" onclick="document.getElementById(\'modal-contacts\').classList.add(\'hidden\');showClientDetail('+c.id+')">Ouvrir</button></div></div></div>'; };
+  el.innerHTML='<div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:4px">📇 Revue des contacts — prospects</div>'
+    +'<div style="font-size:12px;color:var(--muted);margin-bottom:12px">Les agents ne valent que par vos coordonnées. <b>Joignable</b> = mobile 01 / 05 / 07 (WhatsApp) ou e-mail à la syntaxe correcte. L’existence réelle d’un numéro ou d’une boîte ne se prouve que par un échange : marquez « Vérifié » une fiche dont vous avez eu confirmation.</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'+tile(B.n,'prospects')+tile(pc(B.joignables,B.n),'joignables ('+B.joignables+')','var(--success)')+tile(pc(B.wa,B.n),'mobile / WhatsApp ('+B.wa+')')+tile(pc(B.mail,B.n),'e-mail valide ('+B.mail+')')+tile(B.fixe,'fixe seulement','var(--warning)')+tile(B.aucun,'sans contact','var(--danger)')+tile(B.verifies,'vérifiés')+'</div>'
+    +'<div style="overflow-x:auto;margin-bottom:12px"><table class="client-table" style="min-width:420px"><thead><tr><th>Secteur</th><th style="text-align:right">Prospects</th><th style="text-align:right">Mobile</th><th style="text-align:right">E-mail</th><th style="text-align:right">Joignables</th><th style="text-align:right">Sans contact</th></tr></thead><tbody>'
+      +B.secteurs.map(o=>'<tr><td>'+esc(o.secteur)+'</td><td style="text-align:right">'+o.n+'</td><td style="text-align:right">'+o.wa+'</td><td style="text-align:right">'+o.mail+'</td><td style="text-align:right;white-space:nowrap">'+o.joignable+' ('+pc(o.joignable,o.n)+')</td><td style="text-align:right">'+o.aucun+'</td></tr>').join('')+'</tbody></table></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
+      +(B.corrigeables?'<button class="btn btn-primary btn-sm" onclick="contactsToutCorriger()">⚡ Appliquer les '+B.corrigeables+' corrections sûres</button>':'<span style="font-size:12px;color:var(--success);font-weight:600">✅ Aucune correction mécanique en attente</span>')
+      +'<button class="btn btn-outline btn-sm" onclick="contactsExport()">📥 Exporter les fiches à compléter (CSV)</button></div>'
+    +'<div class="tabs" style="margin-bottom:6px">'+onglets.map(o=>'<div class="tab '+(_ctOnglet===o[0]?'active':'')+'" onclick="_ctOnglet=\''+o[0]+'\';_ctMax=40;contactsRender()">'+o[1]+' ('+o[2]+')</div>').join('')+'</div>'
+    +(liste.length?liste.slice(0,_ctMax).map(ligne).join('')+(liste.length>_ctMax?'<div style="padding:10px 0;text-align:center"><button class="btn btn-outline btn-sm" onclick="_ctMax+=60;contactsRender()">Afficher '+Math.min(60,liste.length-_ctMax)+' de plus ('+(liste.length-_ctMax)+' restantes)</button></div>':''):'<div style="padding:24px 0;text-align:center;color:var(--success);font-weight:600">✅ Rien à traiter ici</div>');
+}
+function _contactMaj(n){ saveStore('clients'); try{ clientFilterChange(); }catch(e){} contactsRender(); showToast('✅ '+n+' fiche'+(n>1?'s':'')+' mise'+(n>1?'s':'')+' à jour'); }
+function contactCorriger(id){ const c=CLIENTS.find(x=>x.id===id); if(c && contactAppliquerSur(c,contactQualite(c))) _contactMaj(1); }
+function contactConfirmer(id){ const c=CLIENTS.find(x=>x.id===id); if(!c) return; const q=contactQualite(c); if(q.confirmer.email){ c.email=q.confirmer.email; c.updated_at=new Date().toISOString(); _contactMaj(1); } }
+function contactVerifie(id){ const c=CLIENTS.find(x=>x.id===id); if(!c) return; c.contactVerifie=new Date().toISOString().slice(0,10); c.updated_at=new Date().toISOString(); _contactMaj(1); }
+function contactsToutCorriger(){ let n=0; CLIENTS.filter(c=>c.statut==='prospect').forEach(c=>{ if(contactAppliquerSur(c,contactQualite(c))) n++; }); if(n) _contactMaj(n); }
+function contactsExport(){
+  const B=contactsBilan(), q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+  const L=[['Nom','Secteur','Téléphone','E-mail','Niveau','Problèmes','Proposition'].map(q).join(';')];
+  B.rows.filter(r=>r.q.niveau!=='complet').forEach(r=>L.push([r.c.nom,r.c.secteur,r.c.phone,r.c.email,r.q.niveau,r.q.problemes.filter(p=>!p.info).map(p=>p.texte).join(' | '),r.q.confirmer.email||r.q.sure.phone||r.q.sure.email||''].map(q).join(';')));
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+L.join('\r\n')],{type:'text/csv;charset=utf-8'})); a.download='contacts_a_completer_'+new Date().toISOString().slice(0,10)+'.csv'; document.body.appendChild(a); a.click(); a.remove();
 }
 
 function importNormalizePhone(raw) {
