@@ -14,6 +14,7 @@ Deux ensembles livrés ensemble :
 | `functions/ai-company` | Président : instruction, rapports à la demande · Planificateur : `tick`, `report_tick` |
 | `functions/ai-sales-director` | Missions de recherche, qualification, relances (CRM) |
 | `functions/whatsapp-webhook` | Messages WhatsApp entrants (signature HMAC Meta) |
+| `functions/crm-whatsapp` | Envoi WhatsApp depuis le CRM (modèles approuvés, réponses libres), plafond et désinscription — voir `WHATSAPP.md` ; accusés et réponses : `whatsapp-webhook` |
 | `functions/_shared/` | `llm.ts` (appel IA budgété), `company/*` (moteur), `reports/*` (rapports HTML + PDF), `outbox.ts` (envois sous gouvernance) |
 | `migrations/20261109030000_ai_virtual_office_3d.sql` | Présence temps réel : activité détaillée, lieu, phase de réunion, flux `ai_agent_events`, `ai_agent_presence()` |
 | `migrations/20261109031000_ai_realtime_participants.sql` | Participants de réunion diffusés en temps réel |

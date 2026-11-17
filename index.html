@@ -2212,11 +2212,19 @@ Seriez-vous disponible pour une démonstration {rdv} ?
           <div class="card" id="msg-carte-message">
             <div class="card-header"><span class="card-title">3 · Message</span></div>
             <div id="msg-objet-wrap" style="display:none;margin-bottom:8px"><label class="form-label">Objet</label><input class="form-input" id="msg-objet" oninput="msgRender()" placeholder="Objet de l'e-mail"></div>
+            <div id="msg-wa-direct" style="display:none">
+              <label class="form-label">Modèle approuvé par Meta</label>
+              <select class="form-input" id="msg-wa-modele" onchange="msgRender()"></select>
+              <div class="msg-aide">Un premier message WhatsApp passe obligatoirement par un modèle approuvé. Les variables (nom, logiciel, signataire) sont remplies pour chaque destinataire.</div>
+              <label style="display:flex;gap:8px;align-items:flex-start;font-size:12px;margin-top:10px"><input type="checkbox" id="msg-wa-consent" onchange="msgRender()" style="margin-top:2px"><span>Je confirme que ces personnes ont accepté d'être contactées sur WhatsApp (échange téléphonique, rendez-vous, demande de leur part). Meta l'exige : sans accord, le numéro peut être bloqué.</span></label>
+            </div>
+            <div id="msg-texte-bloc">
             <textarea class="form-input" id="msg-text" rows="8" oninput="msgRender()" placeholder="Choisissez un modèle à droite ou rédigez votre message…"></textarea>
             <div class="msg-aide">Les mots entre accolades, comme <b>{destinataire}</b>, <b>{nom}</b>, <b>{logiciel}</b>, <b>{signature}</b>, sont remplacés pour chaque destinataire.</div>
+            </div>
             <div id="msg-apercu"></div>
             <div id="msg-manques"></div>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+            <div id="msg-sauver-bloc" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
               <input class="form-input" id="msg-tpl-titre" placeholder="Nom du modèle à enregistrer" style="flex:1;min-width:160px">
               <button class="btn btn-outline" onclick="msgSauverModele()">💾 Enregistrer comme modèle</button>
             </div>
@@ -2611,6 +2619,11 @@ Seriez-vous disponible pour une démonstration {rdv} ?
         <div class="card" style="padding:16px;margin-bottom:16px">
           <div style="font-weight:700;font-size:13px;margin-bottom:8px">📧 Envoi d'e-mails par Gmail</div>
           <div id="gmail-reglage"></div>
+        </div>
+
+        <div class="card" style="padding:16px;margin-bottom:16px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px">💬 WhatsApp — API officielle (envoi direct)</div>
+          <div id="wa-reglage"></div>
         </div>
 
         <!-- Premier contact : modèles WhatsApp & e-mail -->
@@ -5782,7 +5795,7 @@ function gmailAlertes(vuRef){
 /** Compteur rouge sur la cloche = alertes e-mail pas encore vues. */
 function notifBadgeMaj(){
   const b=document.querySelector('.notif-btn'); if(!b) return;
-  const n=gmailConnecte()?gmailAlertes().filter(a=>a.nouveau).length:0;
+  const n=(gmailConnecte()?gmailAlertes().filter(a=>a.nouveau).length:0)+((typeof waAlertes==='function')?waAlertes().filter(a=>a.nouveau).length:0);
   let c=b.querySelector('.notif-count');
   if(n>0){ if(!c){ c=document.createElement('span'); c.className='notif-count'; b.appendChild(c); } c.textContent=n>9?'9+':String(n); const d=b.querySelector('.notif-dot'); if(d) d.style.display='none'; b.setAttribute('aria-label','Notifications : '+n+' nouvelle'+(n>1?'s':'')); }
   else if(c) c.remove();
@@ -5814,6 +5827,7 @@ function notifToggle(ev){
 function notifPanelRender(){
   const p=document.getElementById('notif-panel'); if(!p) return; const E=_dEsc;
   const mails=gmailConnecte()?gmailAlertes(p._vuAvant!==undefined?p._vuAvant:_notifVu()):[];
+  const was=(typeof waAlertes==='function')?waAlertes(p._vuAvant!==undefined?p._vuAvant:_notifVu()):[];
   if(typeof buildNotifications==='function') try{ buildNotifications(); }catch(e){}
   const autres=(typeof _notifications!=='undefined'?_notifications:[]).slice(0,8);
   const ligne=(ico,titre,sous,go,nouveau)=>'<div role="button" tabindex="0" onclick="'+go+'" style="display:flex;gap:10px;align-items:flex-start;padding:9px 14px;cursor:pointer;border-top:1px solid var(--border);'+(nouveau?'background:#ECFDF5;':'')+'"><span style="font-size:16px;flex-shrink:0">'+ico+'</span><div style="min-width:0;flex:1;overflow-wrap:anywhere"><div style="font-size:13px;font-weight:'+(nouveau?'700':'600')+'">'+titre+'</div>'+(sous?'<div style="font-size:11px;color:var(--muted);margin-top:1px">'+sous+'</div>':'')+'</div></div>';
@@ -5825,17 +5839,146 @@ function notifPanelRender(){
       ? ligne('📩','<span class="notif-rep">'+E(a.nom)+' a répondu</span>',E(a.m.subject)+' · '+_ilya(a.quand),ouvrir(a),a.nouveau)
       : (()=>{ const rv=gmailRenvoyables().find(r=>r.m.id===a.m.id); return rv ? ligne('↻','<span class="notif-ech">Adresse corrigée : renvoyer à '+E(a.nom)+'</span>','Nouvelle adresse '+E(rv.nouvelle)+' · cliquez pour renvoyer le même e-mail',"document.getElementById('notif-panel').classList.add('hidden');courrierRenvoyer('"+a.m.id+"')",a.nouveau) : ligne('⚠️','<span class="notif-ech">E-mail non distribué : '+E(a.nom)+'</span>','Adresse '+E(a.m.to_email)+' à vérifier · '+_ilya(a.quand),ouvrir(a),a.nouveau); })()).join('');
   } else if(gmailConnecte()) h+='<div style="padding:8px 14px;font-size:12px;color:var(--muted)">📭 Aucune réponse reçue ces '+_NOTIF_JOURS+' derniers jours.</div>';
+  if(was.length){
+    h+='<div style="padding:4px 14px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">💬 WhatsApp</div>';
+    h+=was.slice(0,8).map(a=>ligne(a.stop?'⛔':'💬','<span class="notif-rep">'+E(a.nom)+(a.stop?' demande à ne plus être contacté':' a répondu')+'</span>',E(a.extrait)+' · '+_ilya(a.quand),ouvrir(a),a.nouveau)).join('');
+  }
   if(autres.length){
     h+='<div style="padding:8px 14px 4px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">À surveiller</div>';
     h+=autres.map(n=>ligne(n.ico,E(n.msg),'', "document.getElementById('notif-panel').classList.add('hidden');navigate('"+n.module+"',null)",false)).join('');
   }
-  if(!mails.length && !autres.length) h+='<div style="padding:18px 14px;text-align:center;color:var(--success);font-size:13px">✅ Rien à signaler</div>';
+  if(!mails.length && !was.length && !autres.length) h+='<div style="padding:18px 14px;text-align:center;color:var(--success);font-size:13px">✅ Rien à signaler</div>';
   p.innerHTML=h;
 }
 // Vérification régulière des réponses tant que le CRM est ouvert (en plus du planificateur du serveur, toutes les 15 min).
 setInterval(()=>{ if(document.visibilityState==='visible' && typeof currentUser!=='undefined' && currentUser && gmailConnecte()) gmailSync(); },5*60e3);
 setTimeout(()=>{ if(typeof currentUser!=='undefined' && currentUser) gmailRefresh().then(()=>{ notifBadgeMaj(); gmailSync(); }); },9000);
 
+
+// ═══════════════════════════════════════════════════════════════
+//  WHATSAPP — API officielle (Meta) : envoi direct depuis le CRM par la fonction serveur crm-whatsapp
+//  Le jeton Meta reste sur le serveur. Un premier message passe par un MODÈLE approuvé par Meta ; le texte libre n'est permis que dans les 24 h
+//  qui suivent une réponse du prospect. Les accusés (remis / lu) et les réponses arrivent par le webhook et s'affichent ici.
+// ═══════════════════════════════════════════════════════════════
+const _WA_FONC='/functions/v1/crm-whatsapp';
+const _wa={etat:null,msgs:[],inb:[],optout:new Set(),charge:0,enCours:null};
+const waConfigure=()=>!!(_wa.etat && _wa.etat.configure);
+async function waRefresh(force){
+  if(!force && _wa.etat && Date.now()-_wa.charge<60000) return _wa;
+  if(_wa.enCours) return _wa.enCours;
+  _wa.enCours=(async()=>{
+    try{
+      const etat=await aisApi(_WA_FONC,{method:'POST',body:JSON.stringify({action:'status'}),timeout:20000});
+      const lire=p=>aisApi(p).then(r=>Array.isArray(r)?r:[]).catch(()=>[]);
+      const [msgs,inb,opt]=await Promise.all([
+        lire('/rest/v1/crm_wa_messages?select=id,client_rid,to_phone,kind,template,body,sent_by,status,error,sent_at,delivered_at,read_at&order=sent_at.desc&limit=300'),
+        lire('/rest/v1/crm_wa_inbound?select=id,client_rid,from_phone,body,kind,received_at&order=received_at.desc&limit=200'),
+        lire('/rest/v1/crm_wa_optout?select=phone')]);
+      const avant=new Set(_wa.inb.map(x=>x.id));
+      _wa.etat=etat||{configure:false}; _wa.msgs=msgs; _wa.inb=inb; _wa.optout=new Set(opt.map(o=>o.phone));
+      if(_wa.charge) try{ waNouvelles(avant); }catch(e){}
+    }catch(e){ _wa.etat=_wa.etat||{configure:false,hors_session:/session|Connectez/i.test(e.message),erreur:e.message}; }
+    _wa.charge=Date.now(); _wa.enCours=null; return _wa;
+  })();
+  return _wa.enCours;
+}
+const _waNum=c=>(typeof waAnalyse==='function' && waAnalyse(c.phone||'').num)||'';
+/** Fil WhatsApp d'un contact (messages envoyés et réponses reçues), le plus récent d'abord. */
+function waFil(c){
+  const num=_waNum(c), mine=x=>(c._rid && x.client_rid===c._rid) || (num && (x.to_phone===num || x.from_phone===num));
+  return [..._wa.msgs.filter(mine).map(m=>({s:'out',t:m.sent_at,m})), ..._wa.inb.filter(mine).map(m=>({s:'in',t:m.received_at,m}))].sort((a,b)=>String(b.t).localeCompare(String(a.t)));
+}
+/** Texte libre permis : le prospect a écrit il y a moins de 24 h. */
+function waFenetre(c){ const d=waFil(c).find(x=>x.s==='in'); return !!d && Date.now()-new Date(d.t).getTime()<864e5; }
+const waDesinscrit=c=>{ const n=_waNum(c); return !!n && _wa.optout.has(n); };
+
+// ── Modèles approuvés par Meta : le texte ci-dessous doit être identique à celui soumis dans WhatsApp Manager (supabase/WHATSAPP.md) ──
+const WA_MODELES_DEFAUT=[
+  {id:'premier',titre:'Premier contact',nom:'sanix_crm_premier_contact',langue:'fr',approuve:false,
+   corps:"Bonjour {{1}}, je suis {{3}} de SANIX Africa à Abidjan. Nous éditons {{2}}, un logiciel de gestion pensé pour les entreprises ivoiriennes (conforme SYSCOHADA, utilisable hors connexion). Puis-je vous proposer une démonstration gratuite de 20 minutes ? Répondez OUI et je vous appelle, ou STOP pour ne plus recevoir nos messages."},
+  {id:'relance',titre:'Relance',nom:'sanix_crm_relance',langue:'fr',approuve:false,
+   corps:"Bonjour {{1}}, je reviens vers vous au sujet de {{2}}. Avez-vous pu y réfléchir ? Je reste disponible pour répondre à vos questions ou organiser une démonstration. {{3}}, SANIX Africa. Répondez STOP pour ne plus recevoir nos messages."},
+  {id:'demo',titre:'Invitation à une démonstration',nom:'sanix_crm_demo',langue:'fr',approuve:false,
+   corps:"Bonjour {{1}}, nous vous invitons à une démonstration gratuite de {{2}}, adaptée à votre activité : 30 minutes, en visio ou dans vos locaux. Répondez à ce message pour choisir un créneau. {{3}}, SANIX Africa. Répondez STOP pour ne plus recevoir nos messages."}
+];
+function waModeles(){ const sv=CONFIG.waModeles||[]; return WA_MODELES_DEFAUT.map(d=>Object.assign({},d,sv.find(x=>x.id===d.id)||{})); }
+function waModeleMaj(id,patch){
+  const cur=waModeles().find(x=>x.id===id); if(!cur) return;
+  CONFIG.waModeles=(CONFIG.waModeles||[]).filter(x=>x.id!==id).concat([Object.assign({id:id,nom:cur.nom,langue:cur.langue,corps:cur.corps,approuve:cur.approuve},patch)]);
+  persistConfig();
+}
+/** Les trois variables du modèle pour ce contact : {{1}} destinataire, {{2}} logiciel, {{3}} signataire (utilisateur connecté). */
+function waParams(c){
+  let d=fcDestinataire(c); if(!d || /^madame, monsieur$/i.test(d)) d=c.nom||'';
+  return [d, c.logiciel||'nos solutions de gestion', courrierSignataire().nom||''];
+}
+const waApercu=(mod,c)=>{ const p=waParams(c); return mod.corps.replace(/\{\{(\d)\}\}/g,(_,i)=>p[Number(i)-1]||''); };
+
+// ── Fiche du contact : fil WhatsApp et réponse libre ──
+const _waTick={envoye:['✓','envoyé','var(--muted)'],remis:['✓✓','remis','var(--muted)'],lu:['✓✓','lu','#2563EB'],echec:['⚠️','échec','var(--danger)']};
+function waFicheRender(id){
+  const h=document.getElementById('wa-fiche-host'); if(!h) return;
+  id=id||h.dataset.cid; const c=CLIENTS.find(x=>x.id===Number(id)); if(!c) return; h.dataset.cid=c.id;
+  const E=_dEsc, fil=waFil(c), stop=waDesinscrit(c);
+  if(!fil.length && !stop){ h.innerHTML=''; return; }
+  const d=x=>new Date(x).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const ligne=x=>{
+    if(x.s==='in') return '<div style="padding:4px 0;overflow-wrap:anywhere">💬 <b>Réponse</b> · '+d(x.t)+'<div style="background:#ECFDF5;border-radius:var(--r-sm);padding:6px 8px;margin-top:2px;white-space:pre-wrap">'+E(x.m.body)+'</div></div>';
+    const k=_waTick[x.m.status]||_waTick.envoye;
+    return '<div style="padding:4px 0;overflow-wrap:anywhere">📤 <b>'+(x.m.kind==='template'?'Modèle « '+E(x.m.template)+' »':'Réponse')+'</b> · '+d(x.t)+(x.m.sent_by?' · '+E(x.m.sent_by):'')+' <span style="color:'+k[2]+';font-weight:600">'+k[0]+' '+k[1]+'</span>'+(x.m.status==='echec'&&x.m.error?'<div style="color:var(--danger)">'+E(x.m.error)+'</div>':'')+'</div>';
+  };
+  const fen=waConfigure() && waFenetre(c) && !stop;
+  h.innerHTML='<div style="margin-bottom:12px"><div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">💬 WhatsApp ('+fil.length+')</div><div style="font-size:12px;border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px">'
+    +(stop?'<div style="background:#FEE2E2;color:#991B1B;border-radius:var(--r-sm);padding:6px 8px;margin:4px 0">⛔ Ce contact a demandé à ne plus être contacté (STOP) : ne plus lui écrire.</div>':'')
+    +fil.slice(0,6).map(ligne).join('')
+    +(fen?'<div style="margin-top:6px"><textarea class="form-input" id="wa-rep" rows="3" placeholder="Répondre à '+E(c.nom)+' (fenêtre de 24 h ouverte)…"></textarea><button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="waRepondre('+c.id+')">📤 Envoyer la réponse</button></div>'
+      : (!stop && fil.some(x=>x.s==='in') && waConfigure() ? '<div style="color:var(--muted);margin-top:6px">La fenêtre de 24 h est fermée : seul un modèle approuvé peut être envoyé (depuis la Messagerie).</div>' : ''))
+    +'</div></div>';
+}
+async function waRepondre(id){
+  const c=CLIENTS.find(x=>x.id===Number(id)), t=document.getElementById('wa-rep'); if(!c||!t) return;
+  const texte=t.value.trim(); if(!texte){ showToast('❌ Écrivez votre réponse','error'); return; }
+  try{
+    await aisApi(_WA_FONC,{method:'POST',body:JSON.stringify({action:'send_text',client_rid:c._rid||null,to:_waNum(c),text:texte}),timeout:30000});
+    showToast('✅ Réponse envoyée à '+c.nom); await waRefresh(true); waFicheRender(c.id);
+  }catch(e){ showToast('❌ '+e.message,'error'); }
+}
+(function(){ const o=window.showClientDetail; if(typeof o!=='function') return; window.showClientDetail=function(id){ const r=o.apply(this,arguments); try{ waFicheRender(id); waRefresh().then(()=>waFicheRender(id)); }catch(e){} return r; }; })();
+
+// ── Cloche : réponses reçues par WhatsApp ──
+const _waStopRe=/^\s*(stop|arr[eê]t|d[eé]sinscri|unsubscribe)/i;
+function waAlertes(vuRef){
+  const vu=vuRef!==undefined?vuRef:_notifVu(), lim=Date.now()-_NOTIF_JOURS*864e5;
+  return _wa.inb.filter(x=>new Date(x.received_at).getTime()>=lim).map(x=>{ const cl=CLIENTS.find(c=>(c._rid && c._rid===x.client_rid) || (_waNum(c) && _waNum(c)===x.from_phone));
+    return {id:x.id,clientId:cl?cl.id:null,nom:cl?cl.nom:'+'+x.from_phone,extrait:String(x.body||'').replace(/\s+/g,' ').slice(0,70),quand:x.received_at,stop:_waStopRe.test(x.body||''),nouveau:!vu||x.received_at>vu}; })
+    .sort((a,b)=>String(b.quand).localeCompare(String(a.quand)));
+}
+function waNouvelles(avant){
+  const neuves=_wa.inb.filter(x=>!avant.has(x.id));
+  neuves.forEach(x=>{ const cl=CLIENTS.find(c=>(c._rid && c._rid===x.client_rid) || (_waNum(c) && _waNum(c)===x.from_phone)); showToast(_waStopRe.test(x.body||'')?'⛔ '+(cl?cl.nom:'+'+x.from_phone)+' demande à ne plus être contacté':'💬 '+(cl?cl.nom:'+'+x.from_phone)+' a répondu sur WhatsApp'); });
+  if(neuves.length){ try{ notifBadgeMaj(); }catch(e){} const p=document.getElementById('notif-panel'); if(p && !p.classList.contains('hidden')) notifPanelRender(); try{ waFicheRender(); }catch(e){} }
+}
+setInterval(()=>{ if(document.visibilityState==='visible' && typeof currentUser!=='undefined' && currentUser && waConfigure()) waRefresh(true); },2*60e3);
+setTimeout(()=>{ if(typeof currentUser!=='undefined' && currentUser) waRefresh().then(()=>{ try{ notifBadgeMaj(); }catch(e){} }); },10000);
+
+// ── Réglages : état du serveur et modèles approuvés ──
+async function waReglageRender(){
+  const el=document.getElementById('wa-reglage'); if(!el) return; const E=_dEsc;
+  el.innerHTML='<div style="font-size:12px;color:var(--muted)">Vérification…</div>'; await waRefresh(true);
+  const e=_wa.etat||{}, ok=!!e.configure;
+  const ligne=(bon,txt)=>'<div style="font-size:12px;margin-bottom:4px">'+(bon?'✅':'⚠️')+' '+txt+'</div>';
+  const statut = e.hors_session ? '<div style="font-size:12px;color:var(--muted)">Connectez d’abord l’agent IA (session opérateur) : c’est lui qui relie le CRM au serveur.</div>'
+    : ligne(ok,ok?'Serveur prêt : l’envoi direct est disponible.':'Serveur non configuré'+(e.manquants&&e.manquants.length?' — secret(s) manquant(s) : <b>'+e.manquants.map(E).join(', ')+'</b>':(e.erreur?' ('+E(e.erreur)+')':'')))
+      +(ok?ligne(!!e.webhook,e.webhook?'Réception des réponses et des accusés (webhook) : secrets présents.':'Webhook non configuré (<b>WHATSAPP_VERIFY_TOKEN</b>, <b>WHATSAPP_APP_SECRET</b>) : les réponses et les accusés « remis / lu » ne remonteront pas.'):'');
+  const mods=waModeles().map(m=>'<div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:10px;margin-top:8px"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><b style="font-size:12px">'+E(m.titre)+'</b><label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" '+(m.approuve?'checked':'')+' onchange="waModeleMaj(\''+m.id+'\',{approuve:this.checked});msgRender&&msgRender()"> Approuvé par Meta</label></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><div style="flex:2;min-width:180px"><label class="form-label">Nom du modèle chez Meta</label><input class="form-input" value="'+E(m.nom)+'" onchange="waModeleMaj(\''+m.id+'\',{nom:this.value.trim()})"></div><div style="flex:1;min-width:80px"><label class="form-label">Langue</label><input class="form-input" value="'+E(m.langue)+'" onchange="waModeleMaj(\''+m.id+'\',{langue:this.value.trim()})"></div></div>'
+    +'<label class="form-label" style="margin-top:6px">Texte (identique à celui approuvé ; {{1}} destinataire, {{2}} logiciel, {{3}} signataire)</label><textarea class="form-input" rows="4" style="font-size:12px" onchange="waModeleMaj(\''+m.id+'\',{corps:this.value})">'+E(m.corps)+'</textarea></div>').join('');
+  el.innerHTML=statut
+    +'<div style="font-size:12px;margin:8px 0">'+_wa.msgs.length+' message'+(_wa.msgs.length>1?'s':'')+' envoyé'+(_wa.msgs.length>1?'s':'')+' · '+_wa.inb.length+' réponse'+(_wa.inb.length>1?'s':'')+' reçue'+(_wa.inb.length>1?'s':'')+' · '+_wa.optout.size+' désinscrit'+(_wa.optout.size>1?'s':'')+'</div>'
+    +'<div style="font-size:11px;color:var(--muted);line-height:1.5">Le jeton Meta reste sur le serveur : <b>laissez vides</b> les champs « API WhatsApp » plus bas. Un premier message à un prospect passe obligatoirement par un modèle approuvé par Meta (payant au message délivré) ; le texte libre n’est permis que dans les 24 h qui suivent sa réponse. Guide : <code>supabase/WHATSAPP.md</code>.</div>'
+    +'<div style="font-weight:700;font-size:12px;margin-top:12px">Modèles de message</div>'+mods
+    +'<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="waReglageRender()">🔄 Revérifier</button>';
+}
 
 // ═══════════════════════════════════════════════════════════════
 //  BUREAU DU JOUR — ce qui demande votre action, ce que les agents ont fait (moteur : shared/bureau.js)
@@ -5863,7 +6006,7 @@ async function bureauCharger(){
     R:SanixBureau.construire({ session, agents:agents||[], tachesOuvertes:ouvertes||[], tachesTerminees:terminees||[], incidents:incidents||[],
       validations:(validations||[]).map(v=>({id:v.id,type:v.type,entreprise:v.ai_prospects&&v.ai_prospects.entreprise})),
       gouvernance:Array.isArray(gov)&&gov[0]?gov[0]:null, coutJour:Array.isArray(actions)?actions.reduce((t,a)=>t+(Number(a.cout_usd)||0),0):null,
-      mails:connecte?_gmail.mails:[], renvoyables:renv.map(r=>({id:r.m.id,nom:r.c.nom})), mailsNouveaux:connecte?gmailAlertes().filter(a=>a.nouveau).length:0,
+      mails:connecte?_gmail.mails:[], renvoyables:renv.map(r=>({id:r.m.id,nom:r.c.nom})), mailsNouveaux:connecte?gmailAlertes().filter(a=>a.nouveau).length:0, waReponses:waAlertes().filter(a=>a.nouveau).length,
       adressesACorriger:aCorriger, afaire:afaireDonnees(),
       interactionsJour:CLIENTS.reduce((t,c)=>t+(c.interactions||[]).filter(i=>String(i.date||'').slice(0,10)===aujourdhui).length,0) })
   };
@@ -8327,7 +8470,10 @@ function submitRapport() {
 //  Rien ne part sans clic : e-mail = Gmail connecté (ou messagerie de l'utilisateur), WhatsApp = un chat à la fois, message prêt.
 // ═══════════════════════════════════════
 const _MSG_PLAFOND = 100;
-const _msg = {canal:'wa', desel:new Set(), file:null, enCours:false, stop:false, tplTexte:'', tplId:'', cible:null, histCharge:false};
+const _msg = {canal:'wa', mode:null, desel:new Set(), file:null, enCours:false, stop:false, tplTexte:'', tplId:'', cible:null, histCharge:false};
+/** WhatsApp en envoi direct : API configurée sur le serveur, canal WhatsApp, mode « direct » (par défaut dès qu'un modèle est approuvé). */
+function msgDirect(){ if(_msg.canal!=='wa' || !waConfigure()) return false; if(_msg.mode===null) _msg.mode=waModeles().some(m=>m.approuve)?'direct':'manuel'; return _msg.mode==='direct'; }
+function msgMode(m){ if(_msg.file||_msg.enCours) return; _msg.mode=m; msgRender(); }
 const _msgEsc = t=>String(t==null?'':t).replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
 const _msgG = id=>{ const e=document.getElementById(id); return e?e.value:''; };
 
@@ -8341,6 +8487,7 @@ function initMessagerie() {
   msgOptions('msg-tpl-seg', seg.slice(1), seg[0][1]);
   msgRenderModeles(); msgRender(); renderMsgHistory();
   gmailRefresh().then(()=>{ if(!v.classList.contains('hidden')) msgRender(); }).catch(()=>{});
+  waRefresh().then(()=>{ if(!v.classList.contains('hidden')) msgRender(); }).catch(()=>{});
 }
 function msgOptions(id, items, tous){
   const s=document.getElementById(id); if(!s) return; const v=s.value;
@@ -8372,7 +8519,7 @@ function msgFiltres(){
   return {statut:_msgG('msg-f-statut')||'prospect', logiciel:_msgG('msg-f-logiciel'), secteur:_msgG('msg-f-secteur'), etape:_msgG('msg-f-etape'), texte:_msgG('msg-f-texte'), joursSansContact:(r&&r.checked)?7:0};
 }
 function msgCiblage(){
-  return SanixMessagerie.cibler(CLIENTS, _msg.canal, msgFiltres(), {qualite:contactQualite, morte:e=>!!gmailAdresseMorte(e), recent:msgRecent}, aiGetEtape);
+  return SanixMessagerie.cibler(CLIENTS, _msg.canal, msgFiltres(), {qualite:contactQualite, morte:e=>!!gmailAdresseMorte(e), desinscrit:n=>_wa.optout.has(n), recent:msgRecent}, aiGetEtape);
 }
 const msgSelection = res=>res.retenus.filter(r=>!_msg.desel.has(r.c.id));
 function msgBascule(id){ if(_msg.desel.has(id)) _msg.desel.delete(id); else _msg.desel.add(id); msgRender(); }
@@ -8381,8 +8528,17 @@ function msgCibleAffiche(r){ return _msg.canal==='wa' ? (waAnalyse(r.c.phone).af
 
 // ── Message personnalisé ──
 function msgRempli(c){ return {objet:fcFill(_msgG('msg-objet'),c).trim(), corps:fcFill(_msgG('msg-text'),c).trim()}; }
+function msgModeleWa(){ const id=_msgG('msg-wa-modele'); return waModeles().find(m=>m.id===id)||null; }
 function msgPret(sel){
   const SM=SanixMessagerie, email=_msg.canal==='email';
+  if(msgDirect()){
+    const mod=msgModeleWa();
+    if(!mod) return {ok:false,raison:'Choisissez un modèle approuvé.'};
+    if(!sel.length) return {ok:false,raison:'Aucun destinataire sélectionné.'};
+    if(waParams(sel[0].c).some(x=>!String(x).trim())) return {ok:false,raison:'Une variable du modèle est vide pour '+sel[0].c.nom+' (nom, logiciel ou signataire).'};
+    if(!(document.getElementById('msg-wa-consent')||{}).checked) return {ok:false,raison:'Cochez la confirmation d\'accord des destinataires.'};
+    return {ok:true};
+  }
   if(!_msgG('msg-text').trim()) return {ok:false,raison:'Choisissez un modèle ou rédigez votre message.'};
   if(email && !_msgG('msg-objet').trim()) return {ok:false,raison:'Ajoutez un objet à l\'e-mail.'};
   if(!sel.length) return {ok:false,raison:'Aucun destinataire sélectionné.'};
@@ -8411,22 +8567,38 @@ function msgRender(){
     : '';
   // ligne Gmail
   const g=document.getElementById('msg-gmail-ligne');
-  if(!email) g.innerHTML='<div class="msg-note">WhatsApp : chaque chat s\'ouvre avec le message prêt, vous appuyez sur « Envoyer » dans WhatsApp. L\'envoi automatique en masse n\'existe pas : il exposerait votre numéro à un blocage.</div>';
+  const direct=msgDirect();
+  if(!email){
+    const choix=waConfigure()?'<div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap"><button class="btn '+(direct?'btn-primary':'btn-outline')+' btn-sm" style="font-size:11px" onclick="msgMode(\'direct\')">⚡ Envoi direct (API)</button><button class="btn '+(!direct?'btn-primary':'btn-outline')+' btn-sm" style="font-size:11px" onclick="msgMode(\'manuel\')">👆 Un par un (manuel)</button></div>':'';
+    g.innerHTML=choix+(direct
+      ? '<div class="msg-note msg-ok">⚡ Envoi direct par l\'API officielle de WhatsApp : le message part sans quitter le CRM, avec un <b>modèle approuvé par Meta</b>. Vous suivez ici « remis », « lu » et les réponses.'+(_wa.optout.size?' '+_wa.optout.size+' numéro(s) désinscrit(s) sont exclus.':'')+'</div>'
+      : '<div class="msg-note">WhatsApp : chaque chat s\'ouvre avec le message prêt, vous appuyez sur « Envoyer » dans WhatsApp. Pour un envoi direct, configurez l\'API (Paramétrage → WhatsApp).</div>');
+  }
   else if(gmailConnecte()) g.innerHTML='<div class="msg-note msg-ok">✅ Envoi direct depuis <b>'+_msgEsc(_gmail.etat.email)+'</b> · il reste <b>'+SM.resteGmail(_gmail.mails,Date.now(),_MSG_PLAFOND)+'</b> e-mail(s) à envoyer aujourd\'hui (plafond '+_MSG_PLAFOND+' par 24 h). Les réponses sont suivies automatiquement.</div>';
   else g.innerHTML='<div class="msg-note">📧 Gmail n\'est pas connecté : les e-mails s\'ouvriront un par un dans votre messagerie. <button class="btn btn-outline btn-sm" style="font-size:11px" onclick="gmailConnecter()">🔗 Connecter Gmail</button></div>';
+  // modèle approuvé (envoi direct) ou texte libre
+  document.getElementById('msg-wa-direct').style.display=direct?'':'none';
+  document.getElementById('msg-texte-bloc').style.display=direct?'none':'';
+  document.getElementById('msg-sauver-bloc').style.display=direct?'none':'';
+  if(direct){
+    const sm=document.getElementById('msg-wa-modele'), cur=sm.value, mods=waModeles().filter(m=>m.approuve);
+    const sig=mods.map(m=>m.id+m.titre).join('|'); if(sm.dataset.sig!==sig){ sm.dataset.sig=sig; sm.innerHTML='<option value="">— Choisir un modèle approuvé —</option>'+mods.map(m=>'<option value="'+m.id+'">'+_msgEsc(m.titre)+'</option>').join(''); sm.value=mods.some(m=>m.id===cur)?cur:''; }
+  }
   // aperçu + manques
   const ap=document.getElementById('msg-apercu'), mq=document.getElementById('msg-manques'), p=msgPret(sel);
-  if(sel.length && _msgG('msg-text').trim()){
+  if(direct && sel.length && msgModeleWa()){
+    ap.innerHTML='<div class="msg-apercu"><div class="msg-sous">Aperçu pour <b>'+_msgEsc(sel[0].c.nom)+'</b> :</div><div style="white-space:pre-wrap;overflow-wrap:anywhere">'+_msgEsc(waApercu(msgModeleWa(),sel[0].c))+'</div></div>';
+  } else if(!direct && sel.length && _msgG('msg-text').trim()){
     const m=msgRempli(sel[0].c);
     ap.innerHTML='<div class="msg-apercu"><div class="msg-sous">Aperçu pour <b>'+_msgEsc(sel[0].c.nom)+'</b> :</div>'+(email&&m.objet?'<div><b>Objet :</b> '+_msgEsc(m.objet)+'</div>':'')+'<div style="white-space:pre-wrap;overflow-wrap:anywhere">'+_msgEsc(m.corps)+'</div></div>';
   } else ap.innerHTML='';
-  mq.innerHTML = (!p.ok && p.manques) ? '<div class="msg-erreur">⚠️ '+_msgEsc(p.raison)+' L\'envoi est bloqué tant que le message n\'est pas complet.</div>' : '';
+  mq.innerHTML = (!p.ok && (p.manques || (direct && /variable/.test(p.raison)))) ? '<div class="msg-erreur">⚠️ '+_msgEsc(p.raison)+' L\'envoi est bloqué tant que le message n\'est pas complet.</div>' : '';
   if(!_msg.file && !_msg.enCours) msgEnvoiRender(sel,p);
 }
 function msgEnvoiRender(sel,p){
-  const box=document.getElementById('msg-envoi'), n=sel.length, email=_msg.canal==='email', direct=email&&gmailConnecte();
+  const box=document.getElementById('msg-envoi'), n=sel.length, email=_msg.canal==='email', direct=email&&gmailConnecte(), waDirect=msgDirect();
   const reste=SanixMessagerie.resteGmail(_gmail.mails,Date.now(),_MSG_PLAFOND);
-  const lib = direct ? '📤 Envoyer '+n+' e-mail'+(n>1?'s':'')+' depuis Gmail' : (email?'📧 Préparer '+n+' e-mail'+(n>1?'s':'')+' (un par un)':'📱 Préparer '+n+' message'+(n>1?'s':'')+' WhatsApp (un par un)');
+  const lib = waDirect ? '⚡ Envoyer '+n+' message'+(n>1?'s':'')+' WhatsApp (API)' : direct ? '📤 Envoyer '+n+' e-mail'+(n>1?'s':'')+' depuis Gmail' : (email?'📧 Préparer '+n+' e-mail'+(n>1?'s':'')+' (un par un)':'📱 Préparer '+n+' message'+(n>1?'s':'')+' WhatsApp (un par un)');
   box.innerHTML='<button class="btn btn-primary" id="msg-btn-envoyer" '+(p.ok?'':'disabled')+' onclick="msgEnvoyer()">'+lib+'</button>'
     +(!p.ok?'<div class="msg-sous" style="margin-top:6px">'+_msgEsc(p.raison)+'</div>':'')
     +(direct&&n>reste&&p.ok?'<div class="msg-sous" style="margin-top:6px">⚠️ Plafond du jour : seuls '+reste+' e-mail(s) partiront maintenant, les '+(n-reste)+' autres resteront à envoyer demain.</div>':'')
@@ -8439,11 +8611,39 @@ async function msgEnvoyer(){
   const res=_msg.cible||msgCiblage(), sel=msgSelection(res), p=msgPret(sel);
   if(!p.ok){ showToast('❌ '+p.raison,'error'); return; }
   const SM=SanixMessagerie, email=_msg.canal==='email';
+  if(msgDirect()) return msgEnvoiWa(sel);
   const items=sel.map(r=>Object.assign({c:r.c,cible:r.cible},msgRempli(r.c)));
   const mauvais=items.find(x=>SM.manques(x.corps+(email?'\n'+x.objet:'')).length);   // dernier contrôle, destinataire par destinataire
   if(mauvais){ showToast('❌ Message incomplet pour '+mauvais.c.nom+' : '+SM.manques(mauvais.corps+'\n'+mauvais.objet).join(', '),'error'); return; }
   if(email && gmailConnecte()) return msgEnvoiGmail(items);
   _msg.file={liste:items,i:0,faits:0,passes:0}; msgFileRender();
+}
+async function msgEnvoiWa(sel){
+  const mod=msgModeleWa(); if(!mod) return;
+  const items=sel.map(r=>({c:r.c,cible:r.cible,params:waParams(r.c),preview:waApercu(mod,r.c)}));
+  if(!confirm('Envoyer '+items.length+' message'+(items.length>1?'s':'')+' WhatsApp avec le modèle « '+mod.titre+' » ?\n\nVous confirmez que ces personnes ont accepté d\'être contactées sur WhatsApp. Chaque message délivré est facturé par Meta.\n\nCette action ne peut pas être annulée.')) return;
+  const box=document.getElementById('msg-envoi');
+  _msg.enCours=true; _msg.stop=false; let ok=0, ko=0, suite=0, interrompu='';
+  for(let i=0;i<items.length;i++){
+    if(_msg.stop) break;
+    const x=items[i];
+    box.innerHTML='<div class="msg-note">⚡ Envoi en cours : '+(i+1)+' / '+items.length+' — '+_msgEsc(x.c.nom)+' <button class="btn btn-outline btn-sm" style="font-size:11px;margin-left:8px" onclick="_msg.stop=true">⏹ Arrêter</button></div>';
+    if(x.params.some(p=>!String(p).trim())){ ko++; msgTrace(x.c,'wa','api','echec',x.preview,'Variable du modèle vide : message non envoyé'); continue; }
+    try{
+      await aisApi(_WA_FONC,{method:'POST',body:JSON.stringify({action:'send_template',client_rid:x.c._rid||null,to:x.cible,template:mod.nom,lang:mod.langue,params:x.params,preview:x.preview,consent:true}),timeout:45000});
+      ok++; suite=0; msgTrace(x.c,'wa','api','envoye',x.preview);
+    }catch(e){
+      ko++; suite++; msgTrace(x.c,'wa','api','echec',x.preview,e.message);
+      if(/Plafond|configur|Invalid OAuth|refusé l'envoi : .*(template|modèle)/i.test(e.message) || suite>=3){ interrompu=e.message; break; }
+    }
+    if(i<items.length-1) await new Promise(r=>setTimeout(r,1100));
+  }
+  _msg.enCours=false;
+  try{ await waRefresh(true); }catch(e){}
+  const arret=_msg.stop; _msg.stop=false;
+  if(interrompu) showToast('⛔ Envoi interrompu : '+interrompu,'error');
+  showToast((ko?'⚠️ ':'✅ ')+ok+' message'+(ok>1?'s':'')+' envoyé'+(ok>1?'s':'')+(ko?' · '+ko+' échec'+(ko>1?'s':''):'')+(arret?' · envoi arrêté':''), ko?6000:3500);
+  renderMsgHistory(); msgRender();
 }
 async function msgEnvoiGmail(items){
   const SM=SanixMessagerie, reste=SM.resteGmail(_gmail.mails,Date.now(),_MSG_PLAFOND), l=SM.lot(items.length,reste);
@@ -8508,7 +8708,7 @@ function msgTrace(c, canal, mode, statut, extrait, erreur){
   lsSave('msg_history', window.MSG_HISTORY);
   if(statut==='echec') return;
   // fiche du contact (le serveur écrit déjà l'interaction pour un envoi Gmail d'une fiche synchronisée)
-  if(mode==='gmail' && c._rid) return;
+  if((mode==='gmail'||mode==='api') && c._rid) return;
   if(!c.interactions) c.interactions=[];
   const et=aiGetEtape(c);
   c.interactions.push({date:new Date().toISOString(),type:canal==='wa'?'Message WhatsApp':(mode==='gmail'?'Email (Gmail)':'Email'),note:'Messagerie : '+String(extrait||'').replace(/\s+/g,' ').trim().slice(0,80),etape:Math.max(et,1),ico:'💬'});
@@ -9128,6 +9328,7 @@ function showClientDetail(id) {
     </div>
 
     <div id="gmail-fiche-host"></div>
+    <div id="wa-fiche-host"></div>
     <!-- HISTORIQUE INTERACTIONS -->
     <div style="margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -12664,7 +12865,7 @@ function relanceCopy(){
 
 // ─── Paramétrage : identité + modèles + API ───
 function initRelanceConfig(){
-  const r = relanceCfg(); try{ gmailReglageRender(); }catch(e){}
+  const r = relanceCfg(); try{ gmailReglageRender(); }catch(e){} try{ waReglageRender(); }catch(e){}
   const g=id=>document.getElementById(id);
   g('rel-cfg-gerant').value=r.gerant; g('rel-cfg-societe').value=r.societe; g('rel-cfg-ville').value=r.ville;
   g('rel-cfg-tel1').value=r.tel1; g('rel-cfg-tel2').value=r.tel2; g('rel-cfg-email').value=r.email;

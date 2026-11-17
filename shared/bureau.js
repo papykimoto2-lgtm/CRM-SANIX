@@ -18,7 +18,7 @@
   };
   function libelleIncident(type) { return INCIDENTS[type] || "Incident d'agent (« " + String(type || "inconnu") + " »)."; }
 
-  /** o : { now, session, agents[], tachesOuvertes[], tachesTerminees[], incidents[], validations[], gouvernance, coutJour, mails[], renvoyables[], mailsNouveaux, afaire, interactionsJour, adressesACorriger } */
+  /** o : { now, session, agents[], tachesOuvertes[], tachesTerminees[], incidents[], validations[], gouvernance, coutJour, mails[], renvoyables[], mailsNouveaux, waReponses, afaire, interactionsJour, adressesACorriger } */
   function construire(o) {
     o = o || {}; var now = o.now ? new Date(o.now).getTime() : Date.now(), j0 = debutJour(o.now), h24 = now - 864e5;
     var agentsOk = !!o.session && Array.isArray(o.agents);
@@ -63,6 +63,7 @@
     var valid = o.validations || [];
     if (valid.length) add({ id: "validations", ico: "✅", niveau: "urgent", titre: valid.length + " validation" + (valid.length > 1 ? "s" : "") + " d'agent en attente", detail: valid.slice(0, 3).map(function (v) { return (v.type || "") + (v.entreprise ? " — " + v.entreprise : ""); }).join(" · "), action: { type: "validations" }, n: valid.length });
     if (num(o.mailsNouveaux) > 0) add({ id: "reponses", ico: "📩", niveau: "urgent", titre: o.mailsNouveaux + " réponse" + (o.mailsNouveaux > 1 ? "s" : "") + " ou retour" + (o.mailsNouveaux > 1 ? "s" : "") + " d'e-mail à lire", detail: "Ouvrez la cloche pour voir qui a répondu.", action: { type: "cloche" }, n: o.mailsNouveaux });
+    if (num(o.waReponses) > 0) add({ id: "wa_reponses", ico: "💬", niveau: "urgent", titre: o.waReponses + " réponse" + (o.waReponses > 1 ? "s" : "") + " WhatsApp à lire", detail: "Ouvrez la cloche pour voir qui a écrit.", action: { type: "cloche" }, n: o.waReponses });
     var rv = o.renvoyables || [];
     if (rv.length) add({ id: "renvoyer", ico: "↻", niveau: "urgent", titre: rv.length + " e-mail" + (rv.length > 1 ? "s" : "") + " à renvoyer : adresse corrigée", detail: rv.slice(0, 3).map(function (r) { return r.nom; }).join(", "), action: { type: "renvoyer", mailId: rv[0].id }, n: rv.length });
     if (rdv) add({ id: "rdv", ico: "📅", niveau: "normal", titre: rdv + " rendez-vous aujourd'hui", detail: (af.rdv || []).slice(0, 3).map(function (r) { return (r.heure ? r.heure + " " : "") + (r.client || ""); }).join(" · "), action: { type: "afaire" }, n: rdv });

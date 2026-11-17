@@ -142,7 +142,7 @@ function textOf(m) {
 // functions/_shared/channels.ts
 var AI_DISCLOSURE = "Je suis l'assistant commercial virtuel (IA) de SANIX AFRICA ; un conseiller humain peut prendre le relais \xE0 tout moment.";
 var WA_WINDOW_MS = 24 * 3600 * 1e3;
-var GRAPH = "https://graph.facebook.com/v21.0";
+var GRAPH = "https://graph.facebook.com/" + (Deno.env.get("WHATSAPP_GRAPH_VERSION") || "v27.0");
 async function sendWhatsApp(p, text) {
   if (p.opt_out) return { ok: false, statut: "echec", detail: "Prospect d\xE9sinscrit : envoi interdit" };
   if (!p.phone_norm) return { ok: false, statut: "echec", detail: "Aucun num\xE9ro WhatsApp" };
@@ -1022,6 +1022,115 @@ async function runAgent(run, brief) {
   return { resume, created: ctx.created, tours };
 }
 
+// functions/_shared/wacrm.ts
+var FENETRE_MS = 24 * 36e5;
+var JOURS_CONVERSATION = 7;
+var WaError = class extends Error {
+  status;
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+};
+function normPhone(raw) {
+  let d = String(raw ?? "").replace(/\D/g, "");
+  if (d.startsWith("00")) d = d.slice(2);
+  return /^[0-9]{8,15}$/.test(d) ? d : "";
+}
+var STOP = /^\s*(stop|arr[eê]t(er)?|d[eé]sinscri(re|ption)|unsubscribe|ne plus (me )?contacter|ne m'?[eé]crivez plus)\b/i;
+var sansAccent = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+var estStop = (t) => STOP.test(sansAccent(t).replace(/^[\s"'«»*_.!]+/, ""));
+var RANG = { envoye: 0, remis: 1, lu: 2 };
+var iso = (ts, d) => {
+  const t = Number(ts) * 1e3;
+  return Number.isFinite(t) && t > 0 ? new Date(t).toISOString() : d.now().toISOString();
+};
+async function recordStatus(d, s) {
+  const wamid = String(s?.id ?? "");
+  if (!wamid) return false;
+  const m = await d.store.getByWamid(wamid);
+  if (!m || !m.id) return false;
+  const at = iso(s.timestamp, d), rang = RANG[m.status] ?? 0;
+  if (s.status === "delivered" && rang < 1) await d.store.updateById(m.id, { status: "remis", delivered_at: at });
+  else if (s.status === "read" && rang < 2) await d.store.updateById(m.id, { status: "lu", read_at: at, delivered_at: m.delivered_at ?? at });
+  else if (s.status === "failed" && rang < 1) {
+    const e = s.errors?.[0] ?? {};
+    await d.store.updateById(m.id, { status: "echec", error: String(e.error_data?.details || e.message || e.title || "\xC9chec de distribution").slice(0, 300) });
+  }
+  return true;
+}
+async function routeInbound(d, m, profileName) {
+  const phone = normPhone(m?.from);
+  if (!phone) return false;
+  const since = new Date(d.now().getTime() - JOURS_CONVERSATION * 864e5).toISOString();
+  const conv = await d.store.recentOutbound(phone, since);
+  if (!conv) return false;
+  const texte = String(m.text?.body ?? m.button?.text ?? m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? `[${m.type ?? "message"} re\xE7u]`).slice(0, 4e3);
+  const neuf = await d.store.insertInbound({ wa_message_id: String(m.id ?? ""), from_phone: phone, client_rid: conv.client_rid, body: texte, kind: String(m.type ?? "text"), received_at: iso(m.timestamp, d) });
+  if (!neuf) return true;
+  const stop = estStop(texte);
+  if (stop) await d.store.setOptOut(phone, "STOP par WhatsApp");
+  if (conv.client_rid) {
+    const nom = profileName ? profileName + " : " : "";
+    await d.store.addInteraction(conv.client_rid, stop ? { date: iso(m.timestamp, d), type: "D\xE9sinscription WhatsApp", note: "A demand\xE9 \xE0 ne plus \xEAtre contact\xE9 : ne plus lui \xE9crire", ico: "\u26D4", source: "whatsapp" } : { date: iso(m.timestamp, d), type: "R\xE9ponse re\xE7ue par WhatsApp", note: nom + "\xAB " + texte.replace(/\s+/g, " ").slice(0, 80) + (texte.length > 80 ? "\u2026" : "") + " \xBB", etape: 1, ico: "\u{1F4AC}", source: "whatsapp" }).catch(() => {
+    });
+  }
+  return true;
+}
+
+// functions/_shared/wacrm_store.ts
+var store = {
+  async countSentSince(sinceIso) {
+    const { count } = await db().from("crm_wa_messages").select("id", { count: "exact", head: true }).neq("status", "echec").gte("sent_at", sinceIso);
+    return count ?? 0;
+  },
+  async recentDuplicate(phone, template, sinceIso) {
+    const { count } = await db().from("crm_wa_messages").select("id", { count: "exact", head: true }).eq("to_phone", phone).eq("template", template).neq("status", "echec").gte("sent_at", sinceIso);
+    return (count ?? 0) > 0;
+  },
+  async isOptedOut(phone) {
+    const a = await db().from("crm_wa_optout").select("phone", { count: "exact", head: true }).eq("phone", phone);
+    if ((a.count ?? 0) > 0) return true;
+    const b = await db().from("ai_prospects").select("id", { count: "exact", head: true }).eq("phone_norm", phone).eq("opt_out", true);
+    return (b.count ?? 0) > 0;
+  },
+  async lastInboundAt(phone) {
+    const { data } = await db().from("crm_wa_inbound").select("received_at").eq("from_phone", phone).order("received_at", { ascending: false }).limit(1).maybeSingle();
+    return data?.received_at ?? null;
+  },
+  async insertMessage(m) {
+    const { data, error } = await db().from("crm_wa_messages").insert(m).select("id").single();
+    if (error) throw new WaError(500, "Journal des messages indisponible : " + error.message);
+    return data.id;
+  },
+  async getByWamid(wamid) {
+    const { data } = await db().from("crm_wa_messages").select("*").eq("wa_message_id", wamid).maybeSingle();
+    return data ?? null;
+  },
+  async updateById(id, patch) {
+    await db().from("crm_wa_messages").update(patch).eq("id", id);
+  },
+  async recentOutbound(phone, sinceIso) {
+    const { data } = await db().from("crm_wa_messages").select("client_rid").eq("to_phone", phone).neq("status", "echec").gte("sent_at", sinceIso).order("sent_at", { ascending: false }).limit(1).maybeSingle();
+    return data ? { client_rid: data.client_rid ?? null } : null;
+  },
+  async insertInbound(r) {
+    const { error } = await db().from("crm_wa_inbound").insert(r);
+    if (error?.code === "23505") return false;
+    if (error) throw new WaError(500, "Enregistrement de la r\xE9ponse impossible : " + error.message);
+    return true;
+  },
+  async setOptOut(phone, source) {
+    await db().from("crm_wa_optout").upsert({ phone, source, since: (/* @__PURE__ */ new Date()).toISOString() });
+  },
+  async addInteraction(clientRid, interaction) {
+    const { data } = await db().from("crm_records").select("rid").eq("entity", "clients").eq("rid", clientRid).is("deleted_at", null).maybeSingle();
+    if (!data) return;
+    await db().rpc("crm_put", { p_entity: "clients", p_rid: clientRid, p_patch: { interactions: [interaction] }, p_origin: "ia", p_actor: "whatsapp", p_protect: false, p_base: null, p_client_ts: null, p_natural: false });
+  }
+};
+var deps = { fetch: (u, i) => fetch(u, { signal: AbortSignal.timeout(2e4), ...i }), now: () => /* @__PURE__ */ new Date(), env: (n) => Deno.env.get(n) ?? "", store };
+
 // functions/whatsapp-webhook/index.ts
 async function hmacHex(secret, body) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -1055,12 +1164,23 @@ Deno.serve(async (req) => {
     for (const ch of entry?.changes ?? []) {
       const v = ch?.value ?? {};
       for (const s of v.statuses ?? []) {
+        try {
+          if (await recordStatus(deps, s)) continue;
+        } catch (e) {
+          console.error("crm_wa statut", String(e));
+        }
         const statut = { sent: "envoye", delivered: "delivre", read: "lu", failed: "echec" }[s.status];
         if (statut) await db().from("ai_messages").update({ statut }).eq("canal", "whatsapp").eq("external_id", s.id);
       }
       for (const m of v.messages ?? []) {
         const name = v.contacts?.find((c) => c.wa_id === m.from)?.profile?.name;
-        EdgeRuntime.waitUntil(handleInbound(m, name));
+        let traite = false;
+        try {
+          traite = await routeInbound(deps, m, name);
+        } catch (e) {
+          console.error("crm_wa entrant", String(e));
+        }
+        if (!traite) EdgeRuntime.waitUntil(handleInbound(m, name));
       }
     }
   }
