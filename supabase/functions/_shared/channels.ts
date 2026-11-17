@@ -13,7 +13,7 @@ export const AI_DISCLOSURE =
   "Je suis l'assistant commercial virtuel (IA) de SANIX AFRICA ; un conseiller humain peut prendre le relais à tout moment.";
 
 const WA_WINDOW_MS = 24 * 3600 * 1000;
-const GRAPH = "https://graph.facebook.com/v21.0";
+const GRAPH = "https://graph.facebook.com/" + (Deno.env.get("WHATSAPP_GRAPH_VERSION") || "v27.0");
 
 /** Vrai seulement si les clés de l'API WhatsApp sont posées ; sinon les messages approuvés restent « a_envoyer » et un opérateur les envoie à la main (mode manuel). */
 export const whatsappConfigured = (): boolean => !!(env("WHATSAPP_TOKEN", false) && env("WHATSAPP_PHONE_NUMBER_ID", false));

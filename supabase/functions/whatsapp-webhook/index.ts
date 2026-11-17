@@ -3,6 +3,8 @@
 import { audit, db, env, neutralize, safeEqual } from "../_shared/core.ts";
 import { runAgent } from "../_shared/agent.ts";
 import { BudgetError } from "../_shared/llm.ts";
+import { recordStatus, routeInbound } from "../_shared/wacrm.ts";
+import { deps as waCrm } from "../_shared/wacrm_store.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
@@ -44,12 +46,17 @@ Deno.serve(async (req) => {
       const v = ch?.value ?? {};
       // Accusés de livraison / lecture
       for (const s of v.statuses ?? []) {
+        // Messages envoyés par le CRM (crm-whatsapp) : état remis / lu / échec dans crm_wa_messages
+        try { if (await recordStatus(waCrm, s)) continue; } catch (e) { console.error("crm_wa statut", String(e)); }
         const statut = ({ sent: "envoye", delivered: "delivre", read: "lu", failed: "echec" } as Record<string, string>)[s.status];
         if (statut) await db().from("ai_messages").update({ statut }).eq("canal", "whatsapp").eq("external_id", s.id);
       }
       for (const m of (v.messages ?? []) as WaMsg[]) {
         const name = v.contacts?.find((c: any) => c.wa_id === m.from)?.profile?.name as string | undefined;
-        EdgeRuntime.waitUntil(handleInbound(m, name));
+        // Réponse à un message du CRM (moins de 7 jours) : enregistrée pour un humain, l'agent IA n'intervient pas. Sinon : circuit des agents.
+        let traite = false;
+        try { traite = await routeInbound(waCrm, m, name); } catch (e) { console.error("crm_wa entrant", String(e)); }
+        if (!traite) EdgeRuntime.waitUntil(handleInbound(m, name));
       }
     }
   }
