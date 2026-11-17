@@ -186,6 +186,7 @@ function renderTabs() {
 }
 async function go(tab) {
   if (!visibleTabs().some((t) => t.id === tab)) tab = "office";
+  if (tab !== S.tab) govDirty = false;
   S.tab = tab; history.replaceState(null, "", `#${tab}`);
   try { if (LOADERS[tab]) await LOADERS[tab](); } catch (e) { toast(e.message, "bad"); }
   render();
@@ -204,7 +205,9 @@ function renderChips() {
   $("#who").textContent = `${S.op.nom} · ${S.op.role}`;
 }
 
+let govDirty = false;   // limites saisies mais pas encore enregistrées : un rafraîchissement automatique ne doit pas les effacer
 function render(soft = false) {
+  if (soft && S.tab === "gov" && govDirty) { renderChips(); return; }
   renderTabs(); renderChips();
   const main = $("#main");
   if (S.tab !== "office") S.office?.setActive(false);
@@ -494,6 +497,24 @@ function renderGov(main) {
       toast(f.type.value === "recharge" ? "Recharge enregistrée" : "Solde constaté enregistré", "ok"); await loadCore(); render();
     } catch (err) { toast(err.message, "bad"); }
   };
+  // Chaque case et chaque liste de « Autorisations » s'enregistre dès qu'on la change (aucun bouton à retrouver plus bas) ; les limites chiffrées gardent leur bouton.
+  const AUTO = { "g-actif": (el) => ({ actif: el.checked }), "g-auto": (el) => ({ creation_autonome: el.checked }), "g-ext": (el) => ({ validation_outils_externes: el.checked }),
+    "g-consent": (el) => ({ consentement_requis: el.checked }), "g-comm": (el) => ({ communication_externe: el.value }), "g-model": (el) => ({ modele: el.value }), "g-model-op": (el) => ({ modele_operationnel: el.value || null }) };
+  for (const [id, mk] of Object.entries(AUTO)) {
+    const el = $("#" + id); if (!el) continue;
+    el.onchange = async () => {
+      const patch = mk(el), avant = S.gov[Object.keys(patch)[0]];
+      const annuler = () => { if (el.type === "checkbox") el.checked = !!avant; else el.value = avant ?? ""; };
+      if (id === "g-actif" && !el.checked && !confirm("Mettre l'entreprise virtuelle en pause générale ? Aucun agent n'agira tant que vous ne l'aurez pas réactivée.")) return annuler();
+      if (id === "g-comm" && el.value === "autonome" && !confirm("Les agents enverront leurs messages SANS votre validation. Continuer ?")) return annuler();
+      try {
+        const rows = await q(S.sb.from("ai_governance").update(patch).eq("id", 1).select("id"));
+        if (!rows?.length) throw new Error("Enregistrement refusé : ce réglage est réservé à la direction");
+        Object.assign(S.gov, patch); toast("Enregistré", "ok"); renderChips();
+      } catch (err) { toast(err.message, "bad"); annuler(); }
+    };
+  }
+  $("#gov-form").oninput = () => { govDirty = true; };
   $("#gov-form").onsubmit = async (e) => {
     e.preventDefault();
     const patch = { actif: $("#g-actif").checked, creation_autonome: $("#g-auto").checked, validation_outils_externes: $("#g-ext").checked, communication_externe: $("#g-comm").value, modele: $("#g-model").value };
@@ -504,7 +525,11 @@ function renderGov(main) {
       if (!Number.isFinite(v) || v < mn || v > mx) { toast(`Valeur invalide : ${k}`, "bad"); return; }
       patch[k] = v;
     }
-    try { await q(S.sb.from("ai_governance").update(patch).eq("id", 1)); toast("Gouvernance enregistrée", "ok"); await loadCore(); render(); }
+    try {
+      const rows = await q(S.sb.from("ai_governance").update(patch).eq("id", 1).select("id"));
+      if (!rows?.length) throw new Error("Enregistrement refusé : ce réglage est réservé à la direction");
+      govDirty = false; toast("Gouvernance enregistrée", "ok"); await loadCore(); render();
+    }
     catch (err) { toast(err.message, "bad"); }
   };
 }
