@@ -16157,7 +16157,7 @@ function emailAnalyse(raw){
     return {ok:false,emails:[],principal:'',problemes:probl,sure,confirmer};
   }
   if(!uniques.length){ probl.push({code:'invalide',texte:'E-mail invalide « '+brut.slice(0,40)+' »',sure:false}); return {ok:false,emails:[],principal:'',problemes:probl,sure,confirmer}; }
-  // reste de texte hors adresses (« Dg cetp@gmail.com », « info programmes@… ») : l'adresse trouvée est peut-être tronquée
+  // reste de texte hors adresses (« Dg dupont@exemple-test.org », « info programmes@… ») : l'adresse trouvée est peut-être tronquée
   const reste = brut.replace(_EMAIL_FRAG,' ').replace(/mailto:|[\s\/;,|<>()]+|\bou\b|\bet\b/gi,'');
   const valides=[], suspects=[];
   uniques.forEach(m=>{
@@ -16249,7 +16249,7 @@ function contactsRender(){
     +'<div style="font-size:12px;color:var(--muted);margin-bottom:12px">Les agents ne valent que par vos coordonnées. <b>Joignable</b> = mobile 01 / 05 / 07 (WhatsApp) ou e-mail à la syntaxe correcte. L’existence réelle d’un numéro ou d’une boîte ne se prouve que par un échange : marquez « Vérifié » une fiche dont vous avez eu confirmation.</div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'+tile(B.n,'prospects')+tile(pc(B.joignables,B.n),'joignables ('+B.joignables+')','var(--success)')+tile(pc(B.wa,B.n),'mobile / WhatsApp ('+B.wa+')')+tile(pc(B.mail,B.n),'e-mail valide ('+B.mail+')')+tile(B.fixe,'fixe seulement','var(--warning)')+tile(B.aucun,'sans contact','var(--danger)')+tile(B.verifies,'vérifiés')+'</div>'
     +'<div style="overflow-x:auto;margin-bottom:12px"><table class="client-table" style="min-width:420px"><thead><tr><th>Secteur</th><th style="text-align:right">Prospects</th><th style="text-align:right">Mobile</th><th style="text-align:right">E-mail</th><th style="text-align:right">Joignables</th><th style="text-align:right">Sans contact</th></tr></thead><tbody>'
-      +B.secteurs.map(o=>'<tr><td>'+esc(o.secteur)+'</td><td style="text-align:right">'+o.n+'</td><td style="text-align:right">'+o.wa+'</td><td style="text-align:right">'+o.mail+'</td><td style="text-align:right">'+o.joignable+' ('+pc(o.joignable,o.n)+')</td><td style="text-align:right">'+o.aucun+'</td></tr>').join('')+'</tbody></table></div>'
+      +B.secteurs.map(o=>'<tr><td>'+esc(o.secteur)+'</td><td style="text-align:right">'+o.n+'</td><td style="text-align:right">'+o.wa+'</td><td style="text-align:right">'+o.mail+'</td><td style="text-align:right;white-space:nowrap">'+o.joignable+' ('+pc(o.joignable,o.n)+')</td><td style="text-align:right">'+o.aucun+'</td></tr>').join('')+'</tbody></table></div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
       +(B.corrigeables?'<button class="btn btn-primary btn-sm" onclick="contactsToutCorriger()">⚡ Appliquer les '+B.corrigeables+' corrections sûres</button>':'<span style="font-size:12px;color:var(--success);font-weight:600">✅ Aucune correction mécanique en attente</span>')
       +'<button class="btn btn-outline btn-sm" onclick="contactsExport()">📥 Exporter les fiches à compléter (CSV)</button></div>'

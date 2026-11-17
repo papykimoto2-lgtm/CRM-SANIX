@@ -18,11 +18,11 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     let r = await E("info@abc.ci"); ok(r.ok && r.codes.length === 0 && !("email" in r.sure), "adresse correcte : valide, rien à corriger");
     r = await E("  INFO@ABC.CI "); ok(r.ok && r.sure.email === "info@abc.ci", "espaces et majuscules : corrigé en minuscules");
     r = await E("marc@gmial.com"); ok(r.ok && r.sure.email === "marc@gmail.com" && r.codes.includes("faute"), "faute de frappe connue (gmial.com) : corrigée");
-    r = await E("info@batinet.cl"); ok(!r.ok && r.confirmer.email === "info@batinet.ci" && !("email" in r.sure), "domaine .cl : refusé, « .ci » proposé à confirmer, jamais appliqué seul");
-    r = await E("https://ivoirrapid.ci"); ok(!r.ok && r.codes.includes("site") && r.sure.email === "" && r.sure.noteSite === "https://ivoirrapid.ci", "site web saisi comme e-mail : retiré du champ e-mail et gardé dans les notes");
+    r = await E("contact@societe-exemple.cl"); ok(!r.ok && r.confirmer.email === "contact@societe-exemple.ci" && !("email" in r.sure), "domaine .cl : refusé, « .ci » proposé à confirmer, jamais appliqué seul");
+    r = await E("https://www.societe-exemple.ci"); ok(!r.ok && r.codes.includes("site") && r.sure.email === "" && r.sure.noteSite === "https://www.societe-exemple.ci", "site web saisi comme e-mail : retiré du champ e-mail et gardé dans les notes");
     r = await E("a@x.com / b@y.org"); ok(r.ok && r.principal === "a@x.com" && r.sure.noteEmails[0] === "b@y.org", "deux adresses : la première reste, la seconde va dans les notes");
-    r = await E("Dg cetp@gmail.com"); ok(!r.ok && r.confirmer.email === "cetp@gmail.com" && !("email" in r.sure), "texte parasite : adresse proposée à confirmer, pas appliquée");
-    r = await E("mixta@cotedivoire@mixtafrica.com"); ok(!r.ok && r.confirmer.email === "cotedivoire@mixtafrica.com", "deux « @ » : proposition à confirmer");
+    r = await E("Dg dupont@exemple-test.org"); ok(!r.ok && r.confirmer.email === "dupont@exemple-test.org" && !("email" in r.sure), "texte parasite : adresse proposée à confirmer, pas appliquée");
+    r = await E("ventes@abidjan@societe-exemple.ci"); ok(!r.ok && r.confirmer.email === "abidjan@societe-exemple.ci", "deux « @ » : proposition à confirmer");
     r = await E("bidon"); ok(!r.ok && r.codes.includes("invalide"), "texte sans adresse : invalide");
     r = await E("test@example.com"); ok(!r.ok && r.codes.includes("factice"), "adresse factice : refusée");
     r = await E(""); ok(r.vide && !r.ok, "champ vide");
@@ -41,7 +41,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     console.log("▶ Écran de revue");
     const nb = await page.evaluate(() => {
       const mk = (id, nom, secteur, phone, email) => ({ id, nom, statut: "prospect", secteur, phone, email, notes: "", created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-      CLIENTS.push(mk(990001, "P Mobile", "Industrie", "07 07 90 49 19", ""), mk(990002, "P Fixe", "Santé", "22 52 24 59 / 22 42 33 32", ""), mk(990003, "P CL", "Immobilier", "", "info@batinet.cl"),
+      CLIENTS.push(mk(990001, "P Mobile", "Industrie", "07 07 90 49 19", ""), mk(990002, "P Fixe", "Santé", "22 52 24 59 / 22 42 33 32", ""), mk(990003, "P CL", "Immobilier", "", "contact@societe-exemple.cl"),
         mk(990004, "P Double", "Immobilier", "0505050505", "a@x.com / b@y.org"), mk(990005, "P Rien", "Santé", "", ""));
       openContactsModal(); const m = document.getElementById("modal-contacts");
       return { visible: !m.classList.contains("hidden"), t: m.innerText.replace(/\s+/g, " ") };
@@ -54,10 +54,10 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     const ap = await page.evaluate(() => { const g = (id) => CLIENTS.find((x) => x.id === id); return { p1: g(990001).phone, p4: g(990004).email, n4: g(990004).notes, p3: g(990003).email, p2: g(990002).phone }; });
     ok(ap.p1 === "+2250707904919", "corrections sûres appliquées : numéro standardisé");
     ok(ap.p4 === "a@x.com" && ap.n4.includes("Autres e-mails : b@y.org"), "deux e-mails : le second est conservé dans les notes, rien n'est perdu");
-    ok(ap.p3 === "info@batinet.cl", "l'e-mail en .cl n'est PAS modifié sans confirmation");
+    ok(ap.p3 === "contact@societe-exemple.cl", "l'e-mail en .cl n'est PAS modifié sans confirmation");
     ok(ap.p2 === "22 52 24 59 / 22 42 33 32", "les deux fixes (indécidables) restent tels quels");
     await page.evaluate(() => contactConfirmer(990003));
-    ok((await page.evaluate(() => CLIENTS.find((x) => x.id === 990003).email)) === "info@batinet.ci", "« Accepter » applique la proposition .ci après confirmation");
+    ok((await page.evaluate(() => CLIENTS.find((x) => x.id === 990003).email)) === "contact@societe-exemple.ci", "« Accepter » applique la proposition .ci après confirmation");
     await page.evaluate(() => contactVerifie(990001));
     ok(/^\d{4}-\d{2}-\d{2}$/.test(await page.evaluate(() => CLIENTS.find((x) => x.id === 990001).contactVerifie)), "« Vérifié » date la dernière confirmation du contact");
     const filt = await page.evaluate(() => { document.getElementById("cf-contact").value = "injoignable"; return getFilteredClients().map((c) => c.nom).filter((n) => /^P /.test(n)); });
