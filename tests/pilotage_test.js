@@ -75,6 +75,9 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.evaluate(() => navigate("budget")); await page.click('[data-tab="actions"]');
     ok((await page.locator("#view-budget").innerText()).includes("Relancer 20 prospects Santé"), "données conservées après rechargement");
     ok(errors.length === 0, "aucune erreur JavaScript" + (errors.length ? " : " + errors.join(" | ") : ""));
+    console.log("▶ Chiffre d'affaires réalisé : même repli HT que le CRM");
+    const rl = await page.evaluate(() => SanixPilotage.calc.realise([{ date: "2026-11-05", statut: "livree", ttc: 118000 }, { date: "2026-11-06", statut: "en_cours", htNet: 200000, ttc: 236000 }, { date: "2026-11-07", statut: "livree", ttc: 50000, sansTva: true }, { date: "2026-11-08", statut: "brouillon", htNet: 9e6, ttc: 9e6 }]));
+    ok(rl["2026-11"] === 100000 + 200000 + 50000, "commande ancienne sans HT : 118 000 TTC → 100 000 HT ; sans TVA : 50 000 ; brouillon exclu (obtenu " + rl["2026-11"] + ")");
     console.log("\nTous les contrôles du module Budget sont passés.");
   } finally { await browser.close(); server.close && server.close(); }
 })().catch((e) => { console.error(e.message || e); process.exit(1); });

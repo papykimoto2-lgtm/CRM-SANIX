@@ -1,5 +1,6 @@
 /* SANIX CRM — Journal des paiements d'une commande (sans interface, testable sous Node).
-   Une commande porte une liste `paiements` : { id, date (AAAA-MM-JJ), montant (FCFA), mode, ref (n° de transaction, facultatif), estimee, recu }.
+   Une commande porte une liste `paiements` : { id, date (AAAA-MM-JJ), montant (FCFA), mode, ref (n° de transaction, facultatif), estimee, recu, maj (horodatage de la dernière modification), supprime }.
+   Un paiement supprimé n'est pas retiré de la liste : il est marqué `supprime` (tombstone) pour que la fusion entre appareils ne le ressuscite pas ; la liste lue (`liste`) l'ignore.
    Le champ historique `acompte` n'est plus saisi : c'est le TOTAL des paiements, recalculé à chaque changement (`recalculer`).
    Une commande ancienne qui n'a qu'un acompte est lue comme un paiement unique « mode non précisé », daté de la vente (date estimée).
    Règles : montant entier > 0 ; jamais plus que le reste dû ; pas de date future ; commande confirmée (ni brouillon ni annulée).
@@ -21,7 +22,7 @@
   /** Paiements d'une commande (les lignes sans montant sont ignorées). Ancienne commande : son acompte devient un paiement « estimé ». */
   function liste(c) {
     if (!c) return [];
-    if (Array.isArray(c.paiements)) return c.paiements.filter(function (p) { return p && num(p.montant) > 0; });
+    if (Array.isArray(c.paiements)) return c.paiements.filter(function (p) { return p && !p.supprime && num(p.montant) > 0; });
     return num(c.acompte) > 0 ? [{ id: "p_" + c.id + "_0", date: c.date || "", montant: num(c.acompte), mode: "inconnu", estimee: true }] : [];
   }
   function total(c) { return liste(c).reduce(function (t, p) { return t + num(p.montant); }, 0); }
@@ -47,15 +48,15 @@
   /** Ajoute un paiement ; renvoie { ok, paiement } ou { ok:false, erreur, msg } sans rien modifier. */
   function ajouter(c, p, o) {
     var v = valider(c, p, o); if (!v.ok) return v;
-    var l = figer(c), np = { id: p.id || "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: p.date, montant: Math.round(num(p.montant)), mode: mode(p.mode), ref: String(p.ref || "").slice(0, 60) };
+    var l = figer(c), np = { id: p.id || "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: p.date, montant: Math.round(num(p.montant)), mode: mode(p.mode), ref: String(p.ref || "").slice(0, 60), maj: new Date().toISOString() };
     l.push(np); recalculer(c); return { ok: true, paiement: np };
   }
   function modifier(c, id, patch, o) {
-    var l = figer(c), p = l.filter(function (x) { return x.id === id; })[0]; if (!p) return { ok: false, erreur: "introuvable", msg: "Paiement introuvable." };
+    var l = figer(c), p = l.filter(function (x) { return x.id === id && !x.supprime; })[0]; if (!p) return { ok: false, erreur: "introuvable", msg: "Paiement introuvable." };
     var cand = Object.assign({}, p, patch), v = valider(c, cand, Object.assign({}, o, { exclure: id })); if (!v.ok) return v;
-    p.date = cand.date; p.montant = Math.round(num(cand.montant)); p.mode = mode(cand.mode); p.ref = String(cand.ref || "").slice(0, 60); delete p.estimee; recalculer(c); return { ok: true, paiement: p };
+    p.date = cand.date; p.montant = Math.round(num(cand.montant)); p.mode = mode(cand.mode); p.ref = String(cand.ref || "").slice(0, 60); p.maj = new Date().toISOString(); delete p.estimee; recalculer(c); return { ok: true, paiement: p };
   }
-  function supprimer(c, id) { var l = figer(c), n = l.length; c.paiements = l.filter(function (x) { return x.id !== id; }); recalculer(c); return c.paiements.length < n; }
+  function supprimer(c, id) { var l = figer(c), p = l.filter(function (x) { return x.id === id && !x.supprime; })[0]; if (!p) return false; p.supprime = true; p.maj = new Date().toISOString(); recalculer(c); return true; }
 
   /** Écritures comptables : une par paiement, à sa date, au compte de son mode, plafonnées au TTC (les versements en trop ne créent pas de créance négative). */
   function ecritures(c) {

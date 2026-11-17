@@ -46,10 +46,31 @@
   var fnv = function (s) { var h = 0x811c9dc5; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0).toString(36) + s.length.toString(36); };
   var stable = function (o) { return JSON.stringify(o, function (k, v) { return v && typeof v === 'object' && !Array.isArray(v) ? Object.keys(v).sort().reduce(function (a, kk) { a[kk] = v[kk]; return a; }, {}) : v; }); };
   var jget = function (k) { try { var r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch (e) { return null; } };
-  var jset = function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } };
+  var jsetAlerte = 0;
+  var jset = function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { if (Date.now() - jsetAlerte > 30000) { jsetAlerte = Date.now(); try { showToast('🛑 Stockage du navigateur plein : les modifications en attente risquent d\'être perdues. Exportez une sauvegarde.', 9000); } catch (x) {} } return false; } };
   var cfg = function () { try { return typeof SB_CONFIG !== 'undefined' && SB_CONFIG && SB_CONFIG.url && SB_CONFIG.key ? SB_CONFIG : null; } catch (e) { return null; } };
   var session = function () { try { var s = JSON.parse(sessionStorage.getItem(AIS_TOK) || 'null'); return s && s.exp > Date.now() + 30000 ? s : null; } catch (e) { return null; } };
   var toast = function (m) { try { showToast(m); } catch (e) {} };
+  // Renouvellement de la session opérateur : le jeton d'accès dure 1 h ; le jeton de renouvellement (gardé dans ce navigateur) en obtient un nouveau sans retaper le mot de passe.
+  var REFRESH_KEY = 'sanix_ais_refresh', refreshing = null;
+  var renewSession = function () {
+    if (session()) return Promise.resolve(true);
+    if (refreshing) return refreshing;
+    var c = cfg(), r = jget(REFRESH_KEY); if (!c || !r || !r.r) return Promise.resolve(false);
+    refreshing = fetch(c.url + '/auth/v1/token?grant_type=refresh_token', { method: 'POST', headers: { apikey: c.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: r.r }) })
+      .then(function (res) { return res.json().then(function (j) { return { ok: res.ok, status: res.status, j: j }; }); })
+      .then(function (x) {
+        if (x.ok && x.j && x.j.access_token) {
+          try { sessionStorage.setItem(AIS_TOK, JSON.stringify({ t: x.j.access_token, exp: Date.now() + (x.j.expires_in || 3600) * 1000, email: r.email || (x.j.user && x.j.user.email) || '' })); } catch (e) {}
+          if (x.j.refresh_token) jset(REFRESH_KEY, { r: x.j.refresh_token, email: r.email });            // le jeton tourne à chaque renouvellement
+          return true;
+        }
+        if (x.status === 400 || x.status === 401) { try { localStorage.removeItem(REFRESH_KEY); } catch (e) {} }   // jeton refusé : reconnexion manuelle nécessaire
+        return false;
+      }, function () { return false; })                                                            // réseau absent : on réessaiera au prochain passage
+      .then(function (ok) { refreshing = null; return ok; });
+    return refreshing;
+  };
 
   // ── État persistant ──────────────────────────────────────────────────────────
   var state = jget(STATE_KEY) || { device: 'dev-' + rnd(10), cursor: 0, init: false, ver: {}, hash: {}, lastOk: null, lastErr: null, lastPull: null };
@@ -375,6 +396,7 @@
   }
   function sync() {
     if (!ready) return Promise.resolve(false);
+    if (!session() && cfg()) return renewSession().then(function (ok) { if (ok && session()) return sync(); lastMode = 'login'; emit(); return false; });
     if (!session() || !cfg()) { lastMode = cfg() ? 'login' : 'off'; emit(); return Promise.resolve(false); }
     if (backend === 'absent' && Date.now() - backendAt < 300000) { lastMode = 'absent'; emit(); return Promise.resolve(false); }
     ORDER.forEach(function (e) { scan(e); });
@@ -387,7 +409,16 @@
     return { mode: lastMode, pending: pendingCount(), lastOk: state.lastOk, lastErr: state.lastErr, cursor: state.cursor, init: state.init, device: state.device, session: !!session(), configured: !!cfg(), online: navigator.onLine,
       backend: backend, counters: counters, suspicious: suspiciousInfo, rejected: Object.keys(outbox).filter(function (k) { return outbox[k].attempts > 0; }).map(function (k) { return { key: k, error: outbox[k].last_error, attempts: outbox[k].attempts }; }) };
   }
+  // Bandeau d'alerte : des modifications attendent d'être envoyées parce que la session est fermée.
+  function majBanniere() {
+    var s = status(), n = s.pending, el = document.getElementById('sync-alerte');
+    var afficher = !!(s.configured && s.mode === 'login' && n > 0);
+    if (!afficher) { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement('div'); el.id = 'sync-alerte'; el.setAttribute('role', 'alert'); el.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9500;background:#B45309;color:#fff;padding:10px 16px;font-size:13px;font-weight:600;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap'; document.body.appendChild(el); }
+    el.innerHTML = '<span>⚠️ ' + n + ' modification' + (n > 1 ? 's' : '') + ' non envoyée' + (n > 1 ? 's' : '') + ' au serveur : reconnectez-vous pour les sauvegarder.</span><button class="btn btn-sm" style="background:#fff;color:#92400E" onclick="navigate(\'aisales\',null)">Se reconnecter</button>';
+  }
   function updatePillFromStatus() {
+    try { majBanniere(); } catch (e) {}
     if (typeof updatePill !== 'function') return;
     var s = status(), n = s.pending;
     if (!s.configured) return;
@@ -551,7 +582,7 @@
   var boot = setInterval(function () { start(); if (ready) clearInterval(boot); }, 400);
 
   window.SanixCrmSync = {
-    version: 1, available: function () { return !!(cfg() && session() && backend !== 'absent'); }, rpcAux: function (name, body) { return rpc(name, body, 20000, true); }, status: status, syncNow: function () { backend = 'unknown'; return sync(); }, flush: flush, pull: pull, scan: function (e) { return e ? scan(e) : ORDER.map(scan); },
+    renewSession: renewSession, version: 1, available: function () { return !!(cfg() && session() && backend !== 'absent'); }, rpcAux: function (name, body) { return rpc(name, body, 20000, true); }, status: status, syncNow: function () { backend = 'unknown'; return sync(); }, flush: flush, pull: pull, scan: function (e) { return e ? scan(e) : ORDER.map(scan); },
     openPanel: openPanel, exportBackup: exportBackup, backup: backup, delegate: delegate, claim: claim, clientPanel: clientPanel, onChange: function (f) { listeners.push(f); },
     confirmDeletes: function () { suspiciousInfo = null; var save = allowDeletes; ORDER.forEach(function (e) { var known = state.hash[e] || {}, arr = STORES[e].get(), have = {}; arr.forEach(function (o) { have[ridOf(e, o)] = 1; }); Object.keys(known).forEach(function (rid) { if (!have[rid]) queue(e, rid, 'delete', 'x', { client_ts: new Date().toISOString() }); }); }); persistOutbox(); kick(0); emit(); },
     restoreFromServer: function () { suspiciousInfo = null; state.cursor = 0; ORDER.forEach(function (e) { var known = state.hash[e] || {}, have = {}; STORES[e].get().forEach(function (o) { have[ridOf(e, o)] = 1; }); Object.keys(known).forEach(function (rid) { if (!have[rid]) { delete known[rid]; delete state.ver[e + ':' + rid]; } }); }); persistState(); kick(0); emit(); },

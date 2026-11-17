@@ -394,7 +394,7 @@
       const ht = pos(c.htNet), ttc = pos(c.ttc) || ht, verse = Math.min(ttc, pos(c.acompte)), reste = ttc - verse, d = String(c.date || '').slice(0, 10);
       const pk = cle(c.logiciel); if (pk) { const pl = pls[pk] || (pls[pk] = { cle: pk, nom: c.logiciel, n: 0, ht: 0 }); pl.n++; pl.ht += ht; }
       r.n++; r.factureHT += ht; r.factureTTC += ttc; r.encaisse += verse; r.creance += reste;
-      if (Array.isArray(c.paiements)) r.natPay += Math.min(verse, c.paiements.filter((q) => q && q.mode === 'nature').reduce((t, q) => t + pos(q.montant), 0));     // règlements en nature saisis dans le journal des paiements
+      if (Array.isArray(c.paiements)) r.natPay += Math.min(verse, c.paiements.filter((q) => q && !q.supprime && q.mode === 'nature').reduce((t, q) => t + pos(q.montant), 0));     // règlements en nature saisis dans le journal des paiements
       if (RECURRENT.test(c.typeLicence || '')) r.recurrent += ht;
       if (d && (!r.derniere || d > r.derniere)) r.derniere = d;
       if (d.slice(0, 7) >= depuis) { r.ht12 += ht; r.n12++; }
