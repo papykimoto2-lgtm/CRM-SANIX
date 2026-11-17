@@ -180,6 +180,31 @@ const KEY = Buffer.alloc(32, 7).toString("base64");
   S.mails.push({ id: "mX", client_rid: null, to_email: "refus@x.ci", subject: "S", body: "b", status: "echec", error: "Gmail a refusé l'envoi : Daily limit", sent_at: new Date(T).toISOString() });
   const refus = await G.sendMail(D, op, { to: "refus@x.ci", subject: "Reessai", body: "b" }); ok(!!refus.id, "un échec d'envoi côté Gmail (quota…) ne bloque pas l'adresse : seul un retour « non distribué » compte");
 
+  console.log("▶ Rapports de direction envoyés par Gmail");
+  {
+  const u8 = (t) => new TextEncoder().encode(t), dec = (b64) => Buffer.from(b64.replace(/\r\n/g, ""), "base64");
+  const decodeRaw = (raw) => Buffer.from(raw, "base64url").toString("utf8");
+  const mono = G.buildMimeHtml({ from: "sanix@gmail.com", fromName: "SANIX AI", to: "papy@x.ci", subject: "Rapport journalier — 17 novembre", html: "<h1>Bilan é</h1>" });
+  ok(/^From: "(=\?UTF-8\?B\?[^?]+\?=|SANIX AI)"/.test(mono) && /Content-Type: text\/html; charset=UTF-8/.test(mono) && !/multipart/.test(mono) && dec(mono.split("\r\n\r\n")[1]).toString("utf8") === "<h1>Bilan é</h1>", "rapport sans pièce jointe : une seule partie HTML (UTF-8, base64)");
+  const multi = G.buildMimeHtml({ from: "sanix@gmail.com", to: "papy@x.ci", subject: "Rapport", html: "<p>ok</p>", attachments: [{ filename: "../Rapport 17 nov.pdf", content: u8("%PDF-1.4 contenu") }], boundary: "BND" });
+  ok(/Content-Type: multipart\/mixed; boundary="BND"/.test(multi) && multi.includes('filename="Rapport_17_nov.pdf"') && !/\.\.\//.test(multi), "avec PDF : multipart/mixed, nom de fichier nettoyé (aucun chemin)");
+  const partPdf = multi.split("--BND").find((x) => /application\/octet-stream/.test(x));
+  ok(dec(partPdf.split("\r\n\r\n")[1].trim()).toString("utf8") === "%PDF-1.4 contenu" && multi.trimEnd().endsWith("--BND--"), "la pièce jointe se relit à l'identique et le message est bien clos");
+  let injH = null; try { G.buildMimeHtml({ from: "a@b.ci", to: "x@y.ci", subject: "ok\r\nBcc: z@z.ci", html: "x" }); } catch (e) { injH = e; } ok(injH && injH.status === 400, "injection d'en-tête dans l'objet : refusée");
+  const nbMails0 = S.mails.length, nbInter0 = S.inter.length; calls.length = 0; GOOGLE.sendOk = true;
+  const rap = await G.sendSystemMail(D, { to: "Papy@X.ci", subject: "Rapport journalier", html: "<p>Résumé</p>", attachments: [{ filename: "rapport.pdf", content: u8("PDF") }], from_name: "SANIX AI Virtual Company" });
+  const env1 = calls.find((c) => c.url.endsWith("/messages/send")), msg1 = decodeRaw(JSON.parse(env1.init.body).raw);
+  ok(!!rap.id && /^Authorization/i.test("Authorization") && env1.init.headers.Authorization === "Bearer AT2" && /^From: .*<sanix@gmail\.com>/m.test(msg1) && /^To: Papy@X\.ci/m.test(msg1) && /multipart\/mixed/.test(msg1), "rapport envoyé par le Gmail connecté, avec son PDF, depuis l'adresse du compte");
+  ok(S.mails.length === nbMails0 && S.inter.length === nbInter0, "le rapport n'entre pas dans le journal des e-mails de prospects (ni relance, ni statistiques, ni fiche)");
+  let e1 = null; try { await G.sendSystemMail(D, { to: "pas-une-adresse", subject: "R", html: "x" }); } catch (e) { e1 = e; } ok(e1 && e1.status === 400, "destinataire invalide : refusé avant tout appel à Google");
+  let e2 = null; try { await G.sendSystemMail(D, { to: "a@x.ci", subject: "R", html: "x", attachments: [{ filename: "gros.bin", content: new Uint8Array(21 * 1024 * 1024) }] }); } catch (e) { e2 = e; } ok(e2 && e2.status === 413, "pièce jointe trop volumineuse : refusée (413)");
+  GOOGLE.sendOk = false; let e3 = null; try { await G.sendSystemMail(D, { to: "a@x.ci", subject: "R", html: "x" }); } catch (e) { e3 = e; } GOOGLE.sendOk = true;
+  ok(e3 && e3.status === 409 && /Gmail a refusé/.test(e3.message), "Gmail refuse l'envoi (quota, accès) : erreur claire, sans exception brute");
+  const sansCompte = { ...D, store: { ...store, getAccount: async () => null } }; let e4 = null; try { await G.sendSystemMail(sansCompte, { to: "a@x.ci", subject: "R", html: "x" }); } catch (e) { e4 = e; }
+  ok(e4 && e4.status === 409 && /pas connecté/.test(e4.message), "Gmail non connecté : refus explicite");
+
+  }
+
   console.log("▶ Accès retiré par l'utilisateur");
   GOOGLE.refreshOk = false; await store.insertMail({ client_rid: null, to_email: "z@x.ci", subject: "Z", body: "b", sent_by: "x", sent_by_user: null, gmail_message_id: "g", gmail_thread_id: "thB", status: "envoye", error: null, replied_at: null, reply_from: null, relance_apres_jours: 4, last_checked_at: null });
   let rv = null; try { await G.syncReplies(D); } catch (e) { rv = e; }

@@ -2856,6 +2856,189 @@ async function docToPdf(d) {
   return await pdf.save();
 }
 
+// functions/_shared/gmail.ts
+var SCOPE_LECTURE = "https://www.googleapis.com/auth/gmail.readonly";
+var GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.send " + SCOPE_LECTURE;
+var GmailError = class extends Error {
+  status;
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+};
+function b64url(data) {
+  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function fromB64url(s) {
+  const t = s.replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(t + "=".repeat((4 - t.length % 4) % 4));
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+}
+var std64 = (bytes) => {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+};
+async function aesKey(keyB64) {
+  const raw = fromB64url(keyB64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""));
+  if (raw.length !== 32) throw new GmailError(500, "GMAIL_TOKEN_KEY doit contenir 32 octets (base64)");
+  return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+async function decryptToken(enc, keyB64) {
+  const [v, iv, ct] = enc.split(".");
+  if (v !== "v1" || !iv || !ct) throw new GmailError(500, "Jeton illisible");
+  try {
+    return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromB64url(iv) }, await aesKey(keyB64), fromB64url(ct)));
+  } catch {
+    throw new GmailError(500, "Jeton illisible : la cl\xE9 de chiffrement a chang\xE9, reconnectez Gmail");
+  }
+}
+var validEmail = (s) => /^[^@\s<>()",;:\\]+@[^@\s<>()",;:\\]+\.[^@\s<>()",;:\\]{2,}$/.test(s) && s.length <= 254;
+var headerSafe = (s) => !/[\r\n\0]/.test(s);
+function encodeWord(s) {
+  if (/^[\x20-\x7e]*$/.test(s)) return s;
+  const parts = [];
+  let cur = "";
+  for (const ch of s) {
+    if (new TextEncoder().encode(cur + ch).length > 42) {
+      parts.push(cur);
+      cur = "";
+    }
+    cur += ch;
+  }
+  if (cur) parts.push(cur);
+  return parts.map((p) => "=?UTF-8?B?" + std64(new TextEncoder().encode(p)) + "?=").join("\r\n ");
+}
+var wrap76 = (b642) => b642.replace(/(.{76})/g, "$1\r\n");
+var safeFile = (n2) => String(n2 ?? "").replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^\.+/, "").slice(0, 80) || "piece-jointe";
+function buildMimeHtml(o) {
+  for (const v of [o.from, o.fromName ?? "", o.to, o.subject]) if (!headerSafe(v)) throw new GmailError(400, "Caract\xE8re interdit dans l'en-t\xEAte");
+  if (!validEmail(o.to)) throw new GmailError(400, "Adresse du destinataire invalide");
+  const name = o.fromName ? `"${encodeWord(o.fromName.replace(/["\\]/g, ""))}" <${o.from}>` : o.from;
+  const head = [`From: ${name}`, `To: ${o.to}`, `Subject: ${encodeWord(o.subject)}`, "MIME-Version: 1.0"];
+  const html = wrap76(std64(new TextEncoder().encode(o.html)));
+  const atts = o.attachments ?? [];
+  if (!atts.length) return [...head, "Content-Type: text/html; charset=UTF-8", "Content-Transfer-Encoding: base64", "", html].join("\r\n");
+  const b = o.boundary ?? "sx" + b64url(crypto.getRandomValues(new Uint8Array(12)));
+  const parts = [`--${b}`, "Content-Type: text/html; charset=UTF-8", "Content-Transfer-Encoding: base64", "", html];
+  for (const a of atts) {
+    const f = safeFile(a.filename);
+    parts.push(`--${b}`, `Content-Type: application/octet-stream; name="${f}"`, `Content-Disposition: attachment; filename="${f}"`, "Content-Transfer-Encoding: base64", "", wrap76(std64(a.content)));
+  }
+  parts.push(`--${b}--`, "");
+  return [...head, `Content-Type: multipart/mixed; boundary="${b}"`, "", ...parts].join("\r\n");
+}
+var MAX_MAIL_OCTETS = 20 * 1024 * 1024;
+async function sendSystemMail(d, m) {
+  const to = String(m.to ?? "").trim(), subject = String(m.subject ?? "").replace(/[\r\n]+/g, " ").trim().slice(0, 300);
+  if (!validEmail(to)) throw new GmailError(400, "Adresse du destinataire invalide");
+  if (!subject) throw new GmailError(400, "Objet vide");
+  if ((m.attachments ?? []).reduce((t, a) => t + a.content.length, 0) + m.html.length > MAX_MAIL_OCTETS) throw new GmailError(413, "Message trop volumineux pour Gmail");
+  const { token, email } = await accessToken(d);
+  const fromName = String(m.from_name ?? "").replace(/[\r\n"\\]/g, " ").trim().slice(0, 80) || void 0;
+  const raw = b64url(buildMimeHtml({ from: email, fromName, to, subject, html: m.html, attachments: m.attachments }));
+  const r = await d.fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ raw }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.id) throw new GmailError(r.status === 401 || r.status === 403 ? 409 : 502, "Gmail a refus\xE9 l'envoi : " + String(j?.error?.message || r.status).slice(0, 300));
+  return { id: String(j.id) };
+}
+async function formPost(d, url, form) {
+  return d.fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(form).toString() });
+}
+async function accessToken(d) {
+  const acc = await d.store.getAccount();
+  if (!acc) throw new GmailError(409, "Gmail n'est pas connect\xE9");
+  const refresh = await decryptToken(acc.token_enc, d.env("GMAIL_TOKEN_KEY"));
+  const r = await formPost(d, "https://oauth2.googleapis.com/token", { client_id: d.env("GOOGLE_CLIENT_ID"), client_secret: d.env("GOOGLE_CLIENT_SECRET"), refresh_token: refresh, grant_type: "refresh_token" });
+  const t = await r.json().catch(() => ({}));
+  if (!r.ok || !t.access_token) {
+    if (t.error === "invalid_grant") {
+      await d.store.markAccountError("Acc\xE8s Gmail retir\xE9 ou expir\xE9 : reconnectez Gmail");
+      throw new GmailError(409, "Acc\xE8s Gmail retir\xE9 ou expir\xE9 : reconnectez Gmail");
+    }
+    throw new GmailError(502, "Google indisponible (" + (t.error || r.status) + ")");
+  }
+  if (acc.status !== "connecte") await d.store.markAccountError(null);
+  return { token: t.access_token, email: acc.email };
+}
+
+// functions/_shared/gmail_store.ts
+var store = {
+  async getAccount() {
+    const { data } = await db().from("crm_mail_account").select("email, token_enc, status, scopes").eq("id", 1).maybeSingle();
+    return data ?? null;
+  },
+  async saveAccount(a) {
+    const { error } = await db().from("crm_mail_account").upsert({ id: 1, email: a.email, token_enc: a.token_enc, scopes: a.scopes, connected_by: a.connected_by, status: "connecte", last_error: null, connected_at: (/* @__PURE__ */ new Date()).toISOString(), updated_at: (/* @__PURE__ */ new Date()).toISOString() });
+    if (error) throw new GmailError(500, "Enregistrement impossible : " + error.message);
+  },
+  async markAccountError(msg) {
+    await db().from("crm_mail_account").update({ status: msg ? "erreur" : "connecte", last_error: msg, updated_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", 1);
+  },
+  async deleteAccount() {
+    await db().from("crm_mail_account").delete().eq("id", 1);
+  },
+  async insertMail(m) {
+    const { data, error } = await db().from("crm_mails").insert(m).select("id").single();
+    if (error) throw new GmailError(500, "Journal des e-mails indisponible : " + error.message);
+    return data.id;
+  },
+  async pendingMails(sinceIso, limit) {
+    const { data } = await db().from("crm_mails").select("*").eq("status", "envoye").not("gmail_thread_id", "is", null).gte("sent_at", sinceIso).order("last_checked_at", { ascending: true, nullsFirst: true }).limit(limit);
+    return data ?? [];
+  },
+  async updateMail(id, patch) {
+    await db().from("crm_mails").update(patch).eq("id", id);
+  },
+  async countSentSince(sinceIso) {
+    const { count } = await db().from("crm_mails").select("id", { count: "exact", head: true }).neq("status", "echec").gte("sent_at", sinceIso);
+    return count ?? 0;
+  },
+  async recentDuplicate(toEmail, subject, sinceIso) {
+    const { count } = await db().from("crm_mails").select("id", { count: "exact", head: true }).eq("to_email", toEmail).eq("subject", subject).neq("status", "echec").gte("sent_at", sinceIso);
+    return (count ?? 0) > 0;
+  },
+  async recentBounce(toEmail, sinceIso) {
+    const { count } = await db().from("crm_mails").select("id", { count: "exact", head: true }).eq("to_email", toEmail).eq("status", "echec").ilike("error", "%distribu%").gte("sent_at", sinceIso);
+    return (count ?? 0) > 0;
+  },
+  async saveReplies(mailId, replies) {
+    if (!replies.length) return;
+    const { error } = await db().from("crm_mail_replies").upsert(replies.map((r) => ({ mail_id: mailId, ...r })), { onConflict: "gmail_message_id", ignoreDuplicates: true });
+    if (error) throw new GmailError(500, "R\xE9ponses non enregistr\xE9es : " + error.message);
+  },
+  async repliedWithoutText(sinceIso, checkedBeforeIso, limit) {
+    const { data } = await db().from("crm_mails").select("*, crm_mail_replies(id)").eq("status", "repondu").not("gmail_thread_id", "is", null).gte("sent_at", sinceIso).order("sent_at", { ascending: false }).limit(200);
+    return (data ?? []).filter((m) => !(m.crm_mail_replies ?? []).length && (!m.last_checked_at || m.last_checked_at < checkedBeforeIso)).slice(0, limit).map(({ crm_mail_replies: _r, ...m }) => m);
+  },
+  async addInteraction(clientRid, interaction) {
+    const { data } = await db().from("crm_records").select("rid").eq("entity", "clients").eq("rid", clientRid).is("deleted_at", null).maybeSingle();
+    if (!data) return;
+    await db().rpc("crm_put", { p_entity: "clients", p_rid: clientRid, p_patch: { interactions: [interaction] }, p_origin: "ia", p_actor: "gmail", p_protect: false, p_base: null, p_client_ts: null, p_natural: false });
+  }
+};
+async function tokenKey() {
+  const explicit = Deno.env.get("GMAIL_TOKEN_KEY");
+  if (explicit) return explicit;
+  const base = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  if (!base) return "";
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(base + ":crm-gmail-token-key")));
+  let bin = "";
+  for (const b of h) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+var _deps = null;
+async function gmailDeps() {
+  if (!_deps) {
+    const key = await tokenKey();
+    _deps = { fetch: (u, i) => fetch(u, i), now: () => /* @__PURE__ */ new Date(), env: (n2) => n2 === "GMAIL_TOKEN_KEY" ? key : Deno.env.get(n2) ?? "", store };
+  }
+  return _deps;
+}
+
 // functions/_shared/reports/mailer.ts
 function b64(bytes) {
   let s = "";
@@ -2864,7 +3047,7 @@ function b64(bytes) {
 }
 async function sendMail(m) {
   const key = env("RESEND_API_KEY", false), from = env("EMAIL_FROM", false);
-  if (!key || !from) return { ok: false, nonConfigure: true, error: "E-mail non configur\xE9 (RESEND_API_KEY, EMAIL_FROM)" };
+  if (!key || !from) return await viaGmail(m);
   try {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -2883,6 +3066,18 @@ async function sendMail(m) {
     return r.ok ? { ok: true, id: j?.id } : { ok: false, error: `Resend ${r.status}: ${j?.message ?? "erreur"}` };
   } catch (e) {
     return { ok: false, error: errMsg(e) };
+  }
+}
+async function viaGmail(m) {
+  const NON = "E-mail non configur\xE9 : connectez Gmail dans le CRM (Param\xE9trage \u2192 Relances) ou renseignez RESEND_API_KEY et EMAIL_FROM";
+  try {
+    const d = await gmailDeps();
+    const acc = await d.store.getAccount();
+    if (!acc || acc.status !== "connecte") return { ok: false, nonConfigure: true, error: NON };
+    const r = await sendSystemMail(d, { to: m.to, subject: m.subject, html: m.html, attachments: m.attachments, from_name: "SANIX AI Virtual Company" });
+    return { ok: true, id: r.id };
+  } catch (e) {
+    return { ok: false, error: "Gmail : " + errMsg(e) };
   }
 }
 
