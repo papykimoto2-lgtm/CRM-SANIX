@@ -27,6 +27,7 @@ try{var _t=localStorage.getItem("sanix_theme");if(_t&&_t!=="turquoise")document.
 <script src="shared/paiements.js" defer></script>
 <script src="shared/strategie.js" defer></script>
 <script src="shared/afaire.js" defer></script>
+<script src="shared/bureau.js" defer></script>
 <style>
 :root{
   /* Charte ANGEL'S GROUP : turquoise profond, fonds clairs bleutés, police système */
@@ -1285,6 +1286,11 @@ input[type=checkbox],input[type=radio]{accent-color:var(--primary)}
     <!-- ══ VIEW: DIRECTEUR COMMERCIAL IA ══ -->
     <div id="view-budget" class="hidden fade-in"></div>
     <div id="view-financement" class="hidden fade-in"></div>
+
+    <div id="view-bureau" class="hidden fade-in">
+      <div class="ban"><div class="ban-deco"></div><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start"><div><h1 class="page-title">🏢 Bureau du jour</h1><p class="page-sub" id="bureau-phrase">Chargement…</p></div><button class="btn btn-outline btn-sm" style="background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.4)" onclick="initBureau(true)">🔄 Actualiser</button></div></div>
+      <div id="bureau-body"></div>
+    </div>
 
     <div id="view-aisales" class="hidden fade-in">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px">
@@ -5795,6 +5801,96 @@ function notifPanelRender(){
 setInterval(()=>{ if(document.visibilityState==='visible' && typeof currentUser!=='undefined' && currentUser && gmailConnecte()) gmailSync(); },5*60e3);
 setTimeout(()=>{ if(typeof currentUser!=='undefined' && currentUser) gmailRefresh().then(()=>{ notifBadgeMaj(); gmailSync(); }); },9000);
 
+
+// ═══════════════════════════════════════════════════════════════
+//  BUREAU DU JOUR — ce qui demande votre action, ce que les agents ont fait (moteur : shared/bureau.js)
+// ═══════════════════════════════════════════════════════════════
+let _bureauEnCours = null;
+async function bureauCharger(){
+  const j0=new Date(); j0.setHours(0,0,0,0); const debut=j0.toISOString(), h48=new Date(Date.now()-48*36e5).toISOString();
+  const essai=async(p)=>{ try{ return await aisApi(p); }catch(e){ return undefined; } };
+  const [agents,ouvertes,terminees,incidents,validations,gov,actions]=await Promise.all([
+    essai('/rest/v1/ai_agents?select=id,nom,fonction,etat&archived_at=is.null&limit=100'),
+    essai('/rest/v1/ai_agent_tasks?select=id,agent_id,titre,statut,rapport,updated_at&statut=not.in.(terminee,annulee)&order=updated_at.desc&limit=30'),
+    essai('/rest/v1/ai_agent_tasks?select=id,agent_id,titre,statut,rapport,finished_at&finished_at=gte.'+encodeURIComponent(debut)+'&order=finished_at.desc&limit=30'),
+    essai('/rest/v1/ai_incidents?select=gravite,type,message,created_at,agent_id&created_at=gte.'+encodeURIComponent(h48)+'&order=created_at.desc&limit=100'),
+    essai('/rest/v1/ai_approvals?select=id,type,motif,created_at,ai_prospects(entreprise)&statut=eq.en_attente&order=created_at.asc&limit=20'),
+    essai('/rest/v1/ai_governance?select=actif,budget_jour_usd,modele,modele_operationnel&id=eq.1'),
+    essai('/rest/v1/ai_actions?select=cout_usd&at=gte.'+encodeURIComponent(debut)+'&limit=1000')]);
+  const session=Array.isArray(agents);
+  try{ await gmailRefresh(); }catch(e){}
+  const connecte=gmailConnecte(), aujourdhui=new Date().toISOString().slice(0,10);
+  const echecs=connecte?_gmail.mails.filter(m=>m.status==='echec' && /distribu/i.test(m.error||'')):[];
+  const renv=connecte?gmailRenvoyables():[], renvIds=new Set(renv.map(r=>r.m.id));
+  const aCorriger=new Set(echecs.filter(m=>!renvIds.has(m.id)).map(m=>m.client_rid||m.to_email)).size;
+  return {
+    brut:{agents:agents||[],validations:validations||[]},
+    R:SanixBureau.construire({ session, agents:agents||[], tachesOuvertes:ouvertes||[], tachesTerminees:terminees||[], incidents:incidents||[],
+      validations:(validations||[]).map(v=>({id:v.id,type:v.type,entreprise:v.ai_prospects&&v.ai_prospects.entreprise})),
+      gouvernance:Array.isArray(gov)&&gov[0]?gov[0]:null, coutJour:Array.isArray(actions)?actions.reduce((t,a)=>t+(Number(a.cout_usd)||0),0):null,
+      mails:connecte?_gmail.mails:[], renvoyables:renv.map(r=>({id:r.m.id,nom:r.c.nom})), mailsNouveaux:connecte?gmailAlertes().filter(a=>a.nouveau).length:0,
+      adressesACorriger:aCorriger, afaire:afaireDonnees(),
+      interactionsJour:CLIENTS.reduce((t,c)=>t+(c.interactions||[]).filter(i=>String(i.date||'').slice(0,10)===aujourdhui).length,0) })
+  };
+}
+async function initBureau(force){
+  const body=document.getElementById('bureau-body'); if(!body) return;
+  if(_bureauEnCours) return _bureauEnCours;
+  if(!body.innerHTML) body.innerHTML='<div class="card" style="padding:18px;color:var(--muted)">Chargement du bureau…</div>';
+  _bureauEnCours=(async()=>{ try{ const d=await bureauCharger(); bureauRender(d.R,d.brut); }catch(e){ body.innerHTML='<div class="card" style="padding:18px;color:var(--danger)">⚠️ '+_dEsc(e.message||'Chargement impossible')+'</div>'; } _bureauEnCours=null; })();
+  return _bureauEnCours;
+}
+function bureauAction(a){
+  if(!a) return; const t=a.type;
+  if(t==='cloche') return notifToggle(window.event);
+  if(t==='renvoyer') return courrierRenvoyer(a.mailId);
+  if(t==='afaire'){ navigate('pipeline',null); setTimeout(()=>{ try{ pipeMode('afaire',true); }catch(e){} },150); return; }
+  if(t==='contacts'){ navigate('clients',null); setTimeout(()=>{ try{ openContactsModal(); }catch(e){} },250); return; }
+  if(t==='agents'||t==='validations') return navigate('aisales',null);
+}
+async function bureauDecide(id,ok){ await aisDecide(id,ok); initBureau(true); }
+function bureauRender(R,brut){
+  const E=_dEsc, ph=document.getElementById('bureau-phrase'); if(ph) ph.textContent=R.phrase;
+  const carte=(titre,corps,extra)=>'<div class="card" style="padding:14px 16px;margin-bottom:14px"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px"><b style="font-size:14px">'+titre+'</b>'+(extra||'')+'</div>'+corps+'</div>';
+  const A=R.agents; let h='';
+  // 1. Santé des agents
+  if(A.connecte){
+    const couleur=R.alertes.some(a=>a.niveau==='critique')?'var(--danger)':(A.suspendus?'var(--warning)':'var(--success)');
+    h+=carte('🤖 Agents <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+couleur+';margin-left:4px"></span>',
+      '<div style="font-size:13px">'+A.actifs+' actif'+(A.actifs>1?'s':'')+' · '+A.suspendus+' suspendu'+(A.suspendus>1?'s':'')+' · '+A.total+' au total'+(A.enPause?' · <b style="color:var(--danger)">entreprise en pause</b>':'')+'</div>'
+      +(R.alertes.length?'<div style="margin-top:8px">'+R.alertes.slice(0,4).map(a=>'<div style="font-size:12px;padding:5px 0;border-top:1px solid var(--border);overflow-wrap:anywhere;color:'+(a.niveau==='critique'?'var(--danger)':'var(--warning)')+'">'+(a.niveau==='critique'?'🚨 ':'⚠️ ')+E(a.texte)+(a.nb>1?' <b>('+a.nb+' fois en 24 h)</b>':'')+(a.detail?'<div style="color:var(--muted);font-size:11px">'+E(histNoteLisible(a.detail))+'</div>':'')+'</div>').join('')+'</div>':'<div style="font-size:12px;color:var(--success);margin-top:6px">✅ Aucun incident ces dernières 24 h.</div>'),
+      '<button class="btn btn-outline btn-sm" style="font-size:11px" onclick="navigate(\'aisales\',null)">Ouvrir les agents</button>');
+  } else {
+    h+=carte('🤖 Agents','<div style="font-size:12px;color:var(--muted)">Connectez l\'agent IA (session opérateur) pour voir l\'activité, les validations et la santé des agents. Les actions du CRM ci-dessous restent à jour.</div>','<button class="btn btn-outline btn-sm" style="font-size:11px" onclick="navigate(\'aisales\',null)">Connecter</button>');
+  }
+  // 2. À faire par vous
+  const ligne=x=>{
+    const couleur=x.niveau==='urgent'?'var(--danger)':(x.niveau==='info'?'var(--muted)':'var(--primary)');
+    let extra='';
+    if(x.id==='validations') extra=(brut.validations||[]).slice(0,5).map(v=>'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 0 0 30px;font-size:12px"><span style="flex:1;min-width:140px;overflow-wrap:anywhere">'+E(v.type||'')+(v.ai_prospects&&v.ai_prospects.entreprise?' — '+E(v.ai_prospects.entreprise):'')+(v.motif?' · '+E(String(v.motif).slice(0,80)):'')+'</span><button class="btn btn-primary btn-sm" style="font-size:11px" onclick="bureauDecide(\''+E(v.id)+'\',true)">✔ Approuver</button><button class="btn btn-outline btn-sm" style="font-size:11px" onclick="bureauDecide(\''+E(v.id)+'\',false)">✖ Refuser</button></div>').join('');
+    const bouton=x.id==='validations'?'':'<button class="btn btn-outline btn-sm" style="font-size:11px" onclick=\'bureauAction('+JSON.stringify(x.action).replace(/'/g,"&#39;")+')\'>Ouvrir</button>';
+    return '<div style="padding:9px 0;border-top:1px solid var(--border)"><div style="display:flex;gap:10px;align-items:flex-start"><span style="font-size:18px;flex-shrink:0;width:22px;text-align:center">'+x.ico+'</span><div style="flex:1;min-width:0;overflow-wrap:anywhere"><div style="font-weight:700;font-size:13px;color:'+couleur+'">'+E(x.titre)+'</div>'+(x.detail&&x.id!=='validations'?'<div style="font-size:11px;color:var(--muted);margin-top:1px">'+E(x.detail)+'</div>':'')+'</div>'+bouton+'</div>'+extra+'</div>';
+  };
+  h+=carte('👤 À faire par vous <span class="badge '+(R.total?'badge-danger':'badge-success')+'" style="margin-left:6px">'+R.total+'</span>',R.pourVous.length?R.pourVous.map(ligne).join(''):'<div style="padding:10px 0;color:var(--success);font-size:13px">✅ Rien à traiter : tout est à jour.</div>');
+  // 3. Travail des agents
+  if(A.connecte){
+    const t=R.activite, l=(x,ico)=>'<div style="padding:6px 0;border-top:1px solid var(--border);font-size:12px;overflow-wrap:anywhere"><span>'+ico+'</span> <b>'+E(x.agent)+'</b> : '+E(x.titre)+(x.rapport?'<div style="color:var(--muted);font-size:11px;margin-top:1px">'+E(histNoteLisible(x.rapport))+'</div>':'')+'</div>';
+    const corps=(t.terminees.length?'<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin:2px 0">Terminé aujourd\'hui ('+t.terminees.length+')</div>'+t.terminees.slice(0,6).map(x=>l(x,'✅')).join(''):'<div style="font-size:12px;color:var(--muted)">Aucune mission terminée aujourd\'hui.</div>')
+      +(t.bloquees.length?'<div style="font-size:11px;font-weight:700;color:var(--danger);text-transform:uppercase;margin:10px 0 2px">Bloqué ('+t.bloquees.length+')</div>'+t.bloquees.slice(0,5).map(x=>l(x,'🚧')).join(''):'')
+      +(t.enCours.length?'<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin:10px 0 2px">En cours ('+t.enCours.length+')</div>'+t.enCours.slice(0,5).map(x=>l(x,'⏳')).join(''):'');
+    h+=carte('🧾 Ce que les agents ont fait',corps);
+  }
+  // 4. Activité du jour
+  const c=R.commercial, tuile=(v,lib,col)=>'<div style="flex:1;min-width:105px;background:var(--surface2);border-radius:var(--r-sm);padding:9px 11px"><div style="font-family:var(--font-h);font-weight:800;font-size:20px;color:'+(col||'var(--text)')+'">'+v+'</div><div style="font-size:11px;color:var(--muted)">'+lib+'</div></div>';
+  h+=carte('📊 Activité du jour','<div style="display:flex;gap:8px;flex-wrap:wrap">'+tuile(c.envoyesJour,'e-mails envoyés')+tuile(c.reponsesJour,'réponses (24 h)',c.reponsesJour?'var(--success)':'')+tuile(c.sansReponse,'sans réponse',c.sansReponse?'var(--warning)':'')+tuile(c.nonDistribues,'non distribués',c.nonDistribues?'var(--danger)':'')+tuile(c.interactionsJour,'échanges notés')+tuile(c.rdv,'rendez-vous')+'</div>');
+  // 5. Coût IA
+  if(R.cout.budget!==null){
+    const pct=R.cout.pct===null?null:Math.min(100,R.cout.pct), co=pct!==null&&pct>=90?'var(--danger)':(pct!==null&&pct>=70?'var(--warning)':'var(--success)');
+    h+=carte('💵 Coût IA du jour','<div style="font-size:13px">'+(R.cout.jour===null?'Coût indisponible':R.cout.jour.toFixed(2).replace('.',',')+' $')+' sur un budget de '+R.cout.budget.toFixed(2).replace('.',',')+' $ par jour'+(R.cout.pct!==null?' ('+R.cout.pct+' %)':'')+'</div>'+(pct!==null?'<div style="height:8px;background:var(--surface2);border-radius:4px;margin:8px 0;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+co+'"></div></div>':'')+'<div style="font-size:11px;color:var(--muted)">Modèle des directeurs : '+E(R.cout.modele||'—')+(R.cout.modeleOperationnel?' · agents d\'exécution : '+E(R.cout.modeleOperationnel):'')+'</div>');
+  }
+  document.getElementById('bureau-body').innerHTML=h;
+}
+
 /** Retour de Google (?gmail=ok | erreur) : message, puis nettoyage de l'adresse. */
 (function(){
   let p; try{ p=new URLSearchParams(location.search); }catch(e){ return; } const r=p.get('gmail'); if(!r) return;
@@ -5835,7 +5931,7 @@ const ACTIVITIES = [];
 //  Chaque groupe = 1 entrée de menu + barre d'onglets vers les vues d'origine
 // ═══════════════════════════════════════
 const NAV_GROUPS = {
-  accueil:   {views:[['dashboard','🏠 Tableau de bord'],['agenda','📅 Agenda du jour']], badges:['sb-agenda-badge']},
+  accueil:   {views:[['dashboard','🏠 Tableau de bord'],['bureau','🏢 Bureau du jour'],['agenda','📅 Agenda du jour']], badges:['sb-agenda-badge']},
   trouver:   {views:[['clients','👤 Clients & Prospects'],['carte','🗺️ Carte'],['rapports','📋 Rapports terrain'],['journal','📝 Journal & PV']], badges:['sb-prospects-badge','sb-rapports-badge']},
   convaincre:{views:[['marketing','🎯 Moteur Marketing'],['messagerie','💬 Messagerie'],['logiciels','💻 Catalogue'],['presentations','🎬 Démos']], badges:['sb-pres-badge']},
   ventes:    {views:[['pipeline','🎯 Pipeline'],['qualification','✅ Qualification'],['strategie','🎯 Stratégie par logiciel'],['conversion','🚀 Relances prioritaires'],['commandes','🛒 Commandes'],['contrats','📝 Contrats']], badges:['sb-conv-badge','sb-cmd-badge','sb-contrat-badge']},
@@ -6169,7 +6265,7 @@ function navigate(view, el) {
   }
   if(el && el.classList && el.classList.contains('sb-item')) el.classList.add('active');
   document.getElementById('topbar-title').textContent = {
-    dashboard:'Tableau de bord',budget:'Budget & plan d\'actions',pipeline:'Pipeline Commercial',clients:'Clients & Prospects',
+    dashboard:'Tableau de bord',bureau:'Bureau du jour',budget:'Budget & plan d\'actions',pipeline:'Pipeline Commercial',clients:'Clients & Prospects',
     intel:'CRM Intelligence',agenda:'Agenda intelligent',marketing:'Moteur Marketing',journal:'Journal & PV de contact',direction:'Direction & Cockpit',cockpit:'Cockpit IA',aisales:'Directeur commercial IA',conversion:'Moteur de Conversion',logiciels:'Catalogue Logiciels',equipe:'Équipe & Apporteurs',apporteurs:'Apporteurs d\'affaires',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
     planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
     parametrage:'Paramétrage',apresvente:'Après-vente & fidélisation',qualification:'Qualification des prospects',strategie:'Stratégie par logiciel',
@@ -6189,6 +6285,7 @@ function navigate(view, el) {
   if(view === 'strategie') setTimeout(()=>{ try{ initStrategie(); }catch(e){ console.error(e); } }, 30);
   if(view === 'cockpit') setTimeout(initCockpit, 50);
   if(view === 'aisales') setTimeout(initAiSales, 50);
+  if(view === 'bureau') setTimeout(()=>{ try{ initBureau(); }catch(e){ console.error(e); } }, 30);
   if(view === 'budget') setTimeout(()=>{ try{ initPilotage(); }catch(e){ console.error(e); } }, 30);
   if(view === 'financement') setTimeout(()=>{ try{ initFinancement(); }catch(e){ console.error(e); } }, 30);
   if(view === 'direction'){ setTimeout(initIntel, 70); setTimeout(initDirection, 50); setTimeout(initCockpit, 60); const _ck=document.getElementById('view-cockpit'); if(_ck) _ck.classList.remove('hidden'); }
@@ -9041,8 +9138,8 @@ const ROLE_BG = {
   apporteur:'#FFFBEB'
 };
 const PERMISSIONS = {
-  super_admin:['qualification','strategie','budget','financement','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports','users','parametrage','parametres'],
-  manager:    ['qualification','strategie','budget','financement','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports'],
+  super_admin:['bureau','qualification','strategie','budget','financement','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports','users','parametrage','parametres'],
+  manager:    ['bureau','qualification','strategie','budget','financement','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports'],
   commercial: ['qualification','strategie','journal','dashboard','pipeline','clients','logiciels','messagerie','carte','rapports'],
   apporteur:  ['pipeline','clients','messagerie','rapports'],
 };
@@ -11731,6 +11828,7 @@ document.addEventListener('keydown',e=>{
 });
 // ─── Notes explicatives (une par onglet) ───
 const NOTES_VUES = {
+  bureau:{quoi:"Une seule page pour la journée : ce qui demande votre action, ce que les agents ont fait, l'état de l'entreprise IA et l'activité e-mail.",pts:["« À faire par vous » liste d'abord les urgences (validations d'agents, réponses reçues, e-mails à renvoyer), puis le reste de la journée. Chaque ligne ouvre l'écran qui permet de la traiter.","La partie agents demande la connexion de l'agent IA (session opérateur) : sans elle, seules les actions du CRM s'affichent, rien n'est inventé.","Une pastille rouge signale un problème d'agents (clé IA absente, agents suspendus…). Le coût IA du jour se compare au budget fixé dans la gouvernance."]},
   dashboard:{quoi:"Vue d'ensemble de l'activité : chiffre d'affaires, entonnoir de transformation, santé du pipeline, relances à faire et échéances de licences.",pts:["Le chiffre d'affaires est celui des commandes confirmées, en cours ou livrées (hors taxes).","« Prospects à relancer » et « Licences & échéances » sont les deux listes à traiter chaque jour.","Le bouton Actualiser recalcule les chiffres à partir des données du CRM."]},
   pipeline:{quoi:"Suivi des opportunités commerciales, de Prospect à Gagné ou Perdu.",pts:["Étapes : Prospect, Contact, Démo, Proposition, Négociation, Gagné, Perdu. Faites avancer une fiche à chaque événement réel.","Un montant ne compte comme prévision qu'à partir du devis : avant, la fiche est « non chiffrée ».","Une fiche gagnée doit avoir sa commande dans l'onglet Commandes : seul un paiement enregistré fait une vente.","Le bouton « À faire aujourd'hui » affiche la liste du jour : rendez-vous, argent à encaisser, affaires à relancer (les plus en retard d'abord) et 5 premiers contacts. « Fait » ou « Contacté » fait sortir une ligne de la liste."]},
   qualification:{quoi:"Qualification rapide des prospects : un clic dit où en est chacun et le fait avancer dans le pipeline.",pts:["Boutons : Contacté, Démo faite, Devis envoyé, Négociation. On n'avance jamais en arrière.","Le bouton Devis envoyé demande le montant du devis : c'est lui qui rend la fiche chiffrée.","Les lignes cochées se traitent en lot (marquer contactés, démo faite, attribuer à un commercial)."]},
