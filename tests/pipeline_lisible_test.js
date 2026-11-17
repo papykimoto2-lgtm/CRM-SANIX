@@ -1,0 +1,66 @@
+// SANIX CRM Pro : pipeline lisible (entonnoir, carte « À qualifier », cartes compactes, Gagné/Perdu repliés). node pipeline_lisible_test.js
+const { chromium } = require("playwright");
+const { start } = require("../company/tests/server.js");
+const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  ✓ " + m); };
+(async () => {
+  const server = await start(4431), browser = await chromium.launch();
+  try {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 1000 } });
+    await ctx.route(/^https?:\/\/(?!localhost)/, (r) => r.abort());
+    await require("./helpers/crm_fixture.js").installer(ctx);
+    await ctx.addInitScript(() => { class Chart { constructor() {} update() {} destroy() {} resize() {} static register() {} } Chart.defaults = { font: {}, plugins: { legend: { labels: {} } } }; window.Chart = Chart; });
+    const page = await ctx.newPage(), errors = []; page.on("pageerror", (e) => errors.push(e.message)); page.on("dialog", (d) => d.accept());
+    await page.goto("http://localhost:4431/index.html"); await page.waitForTimeout(900);
+    await page.evaluate(() => { currentUser = USERS.find((u) => u.role === "super_admin"); enterApp(currentUser); }); await page.waitForTimeout(1300);
+    await page.waitForFunction(() => CLIENTS.filter((c) => c.statut === "prospect").length >= 500, null, { timeout: 15000 });
+    const iso = (j) => new Date(Date.now() - j * 864e5).toISOString();
+    await page.evaluate((isoJ) => {
+      const t = Date.now(); const mk = (id, client, stage, j, valeur) => DEALS.push({ id, client, logiciel: "ImmoSuite ERP", stage, valeur: valeur || 0, commercial: "Alice Martin", color: "#0e7490", date: "01/11/2026", history: [{ date: new Date(t - j * 864e5).toISOString(), type: "stage_change", note: "x" }] });
+      mk(80001, "Affaire Contact récente", "contact", 2, 0); mk(80002, "Affaire Contact ancienne", "contact", 12, 0); mk(80003, "Affaire Démo", "demo", 1, 0);
+      mk(80004, "Affaire Proposition", "proposition", 3, 3500000);
+      for (let i = 0; i < 8; i++) mk(81000 + i, "Gagnée " + i, "gagne", i + 1, 400000);
+      for (let i = 0; i < 7; i++) mk(82000 + i, "Perdue " + i, "perdu", i + 1, 0);
+    });
+    await page.evaluate(() => { COMMANDES.length = 0; COMMANDES.push({ id: "c1", ref: "CMD-T-1", client: "Gagnée 0", date: "2026-11-01", logiciel: "ImmoSuite ERP", htNet: 3389831, ttc: 3389831, statut: "en_cours", sansTva: true }); navigate("pipeline", null); }); await page.waitForTimeout(600);
+    const $ = (f) => page.evaluate(f);
+    console.log("▶ Carte « À qualifier »");
+    const b = await $(() => { const c = document.getElementById("col-prospect"); return { n: +c.querySelector(".stage-count").textContent, top: c.querySelectorAll(".pipe-top").length, cartes: document.querySelectorAll("#kanban-board .deal-card").length, texte: c.innerText.replace(/\s+/g, " ") }; });
+    ok(b.n >= 400 && b.top === 10, "prospects à froid regroupés (" + b.n + ") avec 10 en tête");
+    ok(b.texte.includes("Ouvrir la qualification") && b.texte.includes("10 à traiter en premier"), "bouton vers l'écran Qualification et libellé du classement");
+    ok(b.cartes < 40, "aucune des centaines de cartes prospect dans le tableau (" + b.cartes + " cartes)");
+    const premiers = await $(() => [...document.querySelectorAll("#col-prospect .pipe-top")].map((x) => x.querySelector(".pipe-top-val").textContent));
+    ok(premiers[0] !== "—", "tri par valeur : le premier a une valeur (" + premiers.slice(0, 3).join(", ") + ")");
+    console.log("▶ Entonnoir");
+    const f = await $(() => [...document.querySelectorAll("#pipeline-bar .pipe-step")].map((x) => ({ l: x.querySelector(".l").textContent, n: +x.querySelector(".n").textContent, t: x.querySelector(".t").textContent })));
+    const get = (l) => f.find((x) => x.l.startsWith(l));
+    ok(get("Contact").n >= 2 && get("Démo").n === 1 && get("Proposition").n === 1 && get("Perdues").n === 7, "un chiffre par étape : contact, démo, proposition, perdues (7)");
+    ok(/→ \d+ % passent/.test(get("Prospect").t), "taux de passage affiché entre les étapes");
+    console.log("▶ Cartes compactes");
+    const card = await $(() => { const c = document.getElementById("deal-80002"); return { chip: c.querySelector(".deal-chip").textContent, age: c.querySelector(".deal-age").textContent, warn: c.querySelector(".deal-age").classList.contains("deal-age-warn"), nonChiffre: c.innerText.includes("non chiffré"), boutons: c.querySelectorAll(".deal-footer button").length, h: c.getBoundingClientRect().height }; });
+    ok(card.chip === "ImmoSuite ERP" && card.nonChiffre, "carte : logiciel en pastille et « non chiffré »");
+    ok(card.warn && card.age.includes("12"), "affaire sans action depuis 12 jours : badge d'alerte rouge (" + card.age + ")");
+    ok(!(await $(() => document.getElementById("deal-80001").querySelector(".deal-age").classList.contains("deal-age-warn"))), "affaire récente (2 jours) : pas d'alerte");
+    ok(card.h < 110, "carte compacte : " + Math.round(card.h) + " px de haut");
+    await page.click("#deal-80002 .deal-menu-btn");
+    ok(await $(() => document.getElementById("dm-80002").classList.contains("open") && document.querySelectorAll("#dm-80002 button").length === 3), "menu ⋯ : Historique, Modifier, Supprimer");
+    await page.click("#deal-80004 .deal-menu-btn");
+    ok(await $(() => !document.getElementById("dm-80002").classList.contains("open") && document.getElementById("dm-80004").classList.contains("open")), "un seul menu ouvert à la fois");
+    await page.mouse.click(10, 10);
+    ok(await $(() => document.querySelectorAll(".deal-menu.open").length === 0), "clic ailleurs : menu refermé");
+    console.log("▶ Gagné et Perdu repliés");
+    let g = await $(() => ({ cartes: document.querySelectorAll("#cards-gagne .deal-card").length, n: document.querySelector("#col-gagne .stage-count").textContent, sous: document.querySelector("#col-gagne .pipe-sous").innerText.replace(/[  ]/g, " "), bouton: document.querySelector("#cards-gagne > button") ? document.querySelector("#cards-gagne > button").innerText : "" }));
+    ok(g.cartes === 5 && g.n === "8" && g.bouton === "Voir les 3 autres", "Gagné : 5 dernières affaires sur 8, bouton « Voir les 3 autres »");
+    ok(g.sous.includes("CA réalisé (commandes)") && g.sous.includes("3 389 831"), "Gagné : CA réalisé = chiffre d'affaires des commandes (3 389 831), pas la somme des fiches");
+    const ordre = await $(() => [...document.querySelectorAll("#cards-gagne .deal-name")].map((x) => x.textContent));
+    ok(ordre[0] === "Gagnée 0" && ordre[4] === "Gagnée 4", "les plus récentes d'abord");
+    await page.click("#cards-gagne > button"); await page.waitForTimeout(150);
+    ok(await $(() => document.querySelectorAll("#cards-gagne .deal-card").length === 8 && document.querySelector("#cards-gagne > button").innerText === "Réduire"), "« Voir les autres » : les 8 affaires, bouton « Réduire »");
+    ok(await $(() => document.querySelectorAll("#cards-perdu .deal-card").length === 5), "Perdu : 5 affaires sur 7");
+    console.log("▶ Total du pipeline");
+    const tot = await $(() => document.getElementById("pipeline-total").textContent.replace(/[  ]/g, " "));
+    ok(tot.startsWith("3 500 000 FCFA") && tot.includes("3 non chiffrés"), "pipeline ouvert : 3 500 000 chiffrés, 3 non chiffrés (hors prospects à froid et affaires gagnées) — " + tot);
+    ok(errors.length === 0, "aucune erreur JavaScript " + errors.slice(0, 2).join("|"));
+    await page.screenshot({ path: "/tmp/claude-0/-home-user-CRM-SANIX/fda489a8-65a8-578c-bff6-b00bf4b09a64/scratchpad/pipeline.png" });
+    console.log("\nPipeline lisible : TOUT EST OK");
+  } catch (e) { console.error(e.message); process.exitCode = 1; } finally { await browser.close(); server.close && server.close(); setTimeout(() => process.exit(process.exitCode || 0), 100); }
+})();

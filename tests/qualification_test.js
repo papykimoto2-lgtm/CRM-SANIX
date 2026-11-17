@@ -36,7 +36,7 @@ let fails = 0; const ok = (c, m) => { console.log((c ? "OK  " : "ÉCHEC ") + m);
   const col = await page.evaluate(() => document.getElementById("col-proposition").innerText.replace(/\s+/g, " "));
   ok(/1250k FCFA chiffrés/.test(col) && /1/.test(col), "pipeline : colonne Proposition = 1250k chiffrés -> " + col.slice(0, 60));
   const non = await page.evaluate(() => document.getElementById("pipeline-total").textContent);
-  ok(/non chiffrés/.test(non), "pipeline : les autres restent non chiffrés -> " + non);
+  ok(/^1.250.000 FCFA/.test(non) && !/non chiffré/.test(non), "pipeline : seul le devis compte (1 250 000), les autres prospects restent dans « À qualifier » sans montant -> " + non);
   // 3) devis sans montant refusé
   await page.evaluate(() => navigate("qualification", null)); await page.waitForTimeout(500);
   const id2 = await page.evaluate(() => +document.querySelector("#ql-list .ql-row").dataset.id);

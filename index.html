@@ -171,6 +171,20 @@ input,textarea,select{font-family:var(--font-b);outline:none}
 }
 
 /* ─── PIPELINE ─────────────────────────────────────── */
+.pipe-funnel{display:flex;gap:8px;overflow-x:auto;margin-bottom:16px;padding-bottom:2px}
+.pipe-step{flex:1;min-width:118px;background:var(--surface);border:1px solid var(--border);border-top:4px solid var(--c);border-radius:var(--r-sm);padding:9px 12px}
+.pipe-step .n{font-size:24px;font-weight:800;line-height:1.1}.pipe-step .l{font-size:11.5px;font-weight:700}.pipe-step .t{font-size:10.5px;color:var(--muted);margin-top:2px}
+.pipe-backlog{min-width:250px;max-width:270px;border-style:dashed}.pipe-backlog-body{padding:10px}
+.pipe-top{display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:5px 6px;border-radius:6px;cursor:pointer}.pipe-top:hover{background:var(--primary-l)}
+.pipe-top-nom{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pipe-top-val{font-weight:700;color:var(--primary);flex-shrink:0}
+.pipe-sous{padding:6px 12px 0;font-size:10.5px;color:var(--muted)}
+.deal-slim{padding:9px 10px}.deal-slim .deal-top{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px}
+.deal-chip{font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;max-width:calc(100% - 28px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.deal-menu-btn{cursor:pointer;font-weight:800;padding:0 6px;border-radius:6px;color:var(--muted);user-select:none}.deal-menu-btn:hover{background:var(--surface2)}
+.deal-menu{display:none;position:absolute;right:8px;top:30px;z-index:20;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:var(--sh-md);padding:4px;min-width:140px}
+.deal-menu.open{display:block}.deal-menu button{display:block;width:100%;text-align:left;background:none;border:none;padding:6px 8px;font-size:12px;border-radius:6px;cursor:pointer;color:var(--text)}.deal-menu button:hover{background:var(--surface2)}.deal-menu .danger{color:var(--danger)}
+.deal-slim .deal-name{font-size:13px;font-weight:700;margin:0 0 6px}
+.deal-age{font-size:10px;color:var(--muted);background:var(--surface2);border-radius:8px;padding:1px 6px}.deal-age-warn{color:var(--danger);background:var(--danger-l);font-weight:700}
 .pipeline-bar{display:flex;gap:0;margin-bottom:20px;border-radius:var(--r-sm);overflow:hidden;height:32px}
 .pipeline-seg{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#fff;transition:flex .5s;cursor:pointer;gap:4px}
 .kanban-board{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;min-height:600px}
@@ -1221,7 +1235,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--primary)}
       <p class="page-sub">Gestion et suivi des opportunités commerciales</p>
 
       <!-- Pipeline bar -->
-      <div class="pipeline-bar" id="pipeline-bar"></div>
+      <div class="pipe-funnel" id="pipeline-bar"></div>
 
       <!-- Filters -->
       <div class="flex items-center gap-3" style="margin-bottom:16px;flex-wrap:wrap">
@@ -1237,7 +1251,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--primary)}
         </select>
         <button class="btn btn-primary btn-sm" onclick="openNewDeal()">+ Ajouter deal</button>
         <div style="margin-left:auto" class="flex gap-2">
-          <span class="chip">💰 Total chiffré : <strong id="pipeline-total">0 FCFA</strong></span>
+          <span class="chip">💰 Pipeline ouvert chiffré : <strong id="pipeline-total">0 FCFA</strong></span>
         </div>
       </div>
 
@@ -6266,24 +6280,62 @@ function initDashboard360() {
 // ═══════════════════════════════════════
 function initPipeline() {
   syncProspectsToPipeline();
-  // Pipeline bar
-  const counts = {};
-  STAGES.forEach(s=>{ counts[s.id]=DEALS.filter(d=>d.stage===s.id).length; });
-  const total = Object.values(counts).reduce((a,b)=>a+b,0);
-  const bar = document.getElementById('pipeline-bar');
-  bar.innerHTML = STAGES.map(s=>{
-    const pct = total>0?((counts[s.id]/total)*100).toFixed(0):0;
-    return `<div class="pipeline-seg" style="flex:${counts[s.id]||0.2};background:${s.color}" title="${s.label}: ${counts[s.id]}">${pct>8?counts[s.id]:''}${pct>15?' '+s.label:''}</div>`;
-  }).join('');
+  _pipeFunnel(DEALS);
   renderKanban(_pipelineFiltered());
   updatePipelineTotal(_pipelineFiltered());
 }
-// Affichage du kanban pour une liste d'affaires donnée (filtrée ou non)
+// Entonnoir : un chiffre par étape et le taux de passage « a atteint cette étape ou au-delà » (les affaires perdues n'y comptent pas).
+function _pipeFunnel(deals){
+  const el=document.getElementById('pipeline-bar'); if(!el) return;
+  const E=_dEsc, etapes=STAGES.filter(s=>s.id!=='perdu'), ids=etapes.map(s=>s.id), vivantes=deals.filter(d=>d.stage!=='perdu');
+  const rang=d=>ids.indexOf(d.stage);
+  const atteint=k=>vivantes.filter(d=>rang(d)>=k).length;
+  const perdus=deals.filter(d=>d.stage==='perdu').length;
+  el.innerHTML=etapes.map((s,k)=>{
+    const n=vivantes.filter(d=>d.stage===s.id).length, suivant=k<etapes.length-1?atteint(k+1):null, base=atteint(k);
+    const taux=(suivant!==null&&base>=5)?Math.round(suivant/base*100):null;       // en dessous de 5 affaires, un pourcentage n'a pas de sens
+    return `<div class="pipe-step" style="--c:${s.color}" title="${E(s.label)} : ${n} affaire${n>1?'s':''}"><div class="n">${n}</div><div class="l">${E(s.label)}</div>${taux!==null?`<div class="t">→ ${taux} % passent à l'étape suivante</div>`:`<div class="t">${suivant!==null?'trop peu pour un taux':'&nbsp;'}</div>`}</div>`;
+  }).join('')+(perdus?`<div class="pipe-step" style="--c:#6B7280" title="Affaires perdues"><div class="n">${perdus}</div><div class="l">Perdues</div><div class="t">&nbsp;</div></div>`:'');
+}
+const _PIPE_FERMEES={gagne:true,perdu:true}, _PIPE_APERCU=5;
+let _pipeTout={};
+function pipeVoirTout(stage){ _pipeTout[stage]=!_pipeTout[stage]; applyPipelineFilters(); }
+// Ancienneté d'une affaire : jours depuis la dernière trace dans l'historique (sinon depuis sa date).
+function _dealAgeJours(d){
+  let t=NaN; const h=d.history||[];
+  if(h.length&&h[h.length-1].date) t=Date.parse(h[h.length-1].date);
+  if(isNaN(t)&&d.date){ const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(d.date); t=m?Date.UTC(+m[3],+m[2]-1,+m[1]):Date.parse(d.date); }
+  return isNaN(t)?null:Math.max(0,Math.floor((Date.now()-t)/864e5));
+}
+function _pipeDateDeal(d){ const h=d.history||[]; const t=h.length?Date.parse(h[h.length-1].date):NaN; return isNaN(t)?0:t; }
+// Affichage du kanban : les prospects à froid sont regroupés dans une carte « À qualifier » ; Gagné et Perdu montrent les 5 dernières affaires.
 function renderKanban(list) {
-  const board = document.getElementById('kanban-board');
-  board.innerHTML = STAGES.map(s=>{
-    const sDeals = list.filter(d=>d.stage===s.id);
-    const total = sDeals.reduce((a,d)=>a+(d.valeur||0),0);
+  const board = document.getElementById('kanban-board'), E=_dEsc;
+  const prospects=list.filter(d=>d.stage==='prospect');
+  const logFiltre=(document.getElementById('filter-logiciel')||{}).value||'';
+  let html='';
+  if(STAGES.some(s=>s.id==='prospect')){
+    const clients=prospects.map(d=>CLIENTS.find(c=>c.id===d.clientId)||CLIENTS.find(c=>c.nom===d.client)).filter(Boolean);
+    const top=clients.map(c=>({c,v:valeurFiche(c),k:qlCompletude(c)})).sort((a,b)=>b.v-a.v||b.k-a.k||String(a.c.nom).localeCompare(String(b.c.nom))).slice(0,10);
+    html+=`<div class="kanban-col pipe-backlog" id="col-prospect" ondragover="event.preventDefault();this.classList.add('drag-active')" ondragleave="this.classList.remove('drag-active')" ondrop="dropDeal(event,'prospect')">
+      <div class="kanban-col-header"><div class="flex items-center gap-2"><div class="stage-dot" style="background:#94A3B8"></div><span class="stage-label">À qualifier</span></div><span class="stage-count">${prospects.length}</span></div>
+      <div class="pipe-backlog-body"><div style="font-size:12px;color:var(--muted);margin-bottom:8px">Prospects à froid, pas encore contactés. Qualifiez-les en lot dans l'écran dédié.</div>
+        <button class="btn btn-primary btn-sm" style="width:100%;margin-bottom:10px" onclick="navigate('qualification',null)">✅ Ouvrir la qualification</button>
+        <div style="font-size:11px;font-weight:700;margin-bottom:4px">10 à traiter en premier</div>
+        ${top.map(x=>`<div class="pipe-top" onclick="showClientDetail(${x.c.id})" title="Ouvrir la fiche"><span class="pipe-top-nom">${E(x.c.nom)}</span><span class="pipe-top-val">${x.v>0?(x.v/1000).toFixed(0)+'k':'—'}</span></div>`).join('')||'<div class="muted" style="font-size:12px">Aucun prospect</div>'}
+        <div class="muted" style="font-size:10.5px;margin-top:6px">Classés par valeur au catalogue, puis par fiche la mieux renseignée.</div>
+      </div></div>`;
+  }
+  html+=STAGES.filter(s=>s.id!=='prospect').map(s=>{
+    let sDeals = list.filter(d=>d.stage===s.id);
+    const ferme=_PIPE_FERMEES[s.id], total = sDeals.reduce((a,d)=>a+(d.valeur||0),0);
+    let reste=0;
+    if(ferme){ sDeals=sDeals.slice().sort((a,b)=>_pipeDateDeal(b)-_pipeDateDeal(a)); if(!_pipeTout[s.id]&&sDeals.length>_PIPE_APERCU){ reste=sDeals.length-_PIPE_APERCU; sDeals=sDeals.slice(0,_PIPE_APERCU); } }
+    const nTotal=list.filter(d=>d.stage===s.id).length;
+    let sous='';
+    if(s.id==='gagne'){ const ca=caCmd(c=>!logFiltre||c.logiciel===logFiltre); sous=`<div class="pipe-sous">💰 CA réalisé (commandes) : <b>${ca.toLocaleString('fr-FR')} FCFA</b></div>`; }
+    else if(total>0) sous=`<div class="pipe-sous">💰 ${(total/1000).toFixed(0)}k FCFA chiffrés</div>`;
+    else if(nTotal) sous=`<div class="pipe-sous">Montants non chiffrés</div>`;
     return `
     <div class="kanban-col" id="col-${s.id}" 
       ondragover="event.preventDefault();this.classList.add('drag-active')"
@@ -6292,42 +6344,43 @@ function renderKanban(list) {
       <div class="kanban-col-header">
         <div class="flex items-center gap-2">
           <div class="stage-dot" style="background:${s.color}"></div>
-          <span class="stage-label">${s.label}</span>
+          <span class="stage-label">${E(s.label)}</span>
         </div>
-        <span class="stage-count">${sDeals.length}</span>
+        <span class="stage-count">${nTotal}</span>
       </div>
-      ${total>0?`<div style="padding:6px 10px 0;font-size:10px;color:var(--muted)">💰 ${(total/1000).toFixed(0)}k FCFA chiffrés</div>`:(sDeals.length?`<div style="padding:6px 10px 0;font-size:10px;color:var(--muted)">💰 aucun montant chiffré</div>`:'')}
-      <div class="kanban-cards" id="cards-${s.id}" data-paginate="more" data-pg-item=".deal-card" data-pg-size="20">
+      ${sous}
+      <div class="kanban-cards" id="cards-${s.id}">
         ${sDeals.map(d=>dealCard(d)).join('')}
+        ${ferme&&(reste>0||_pipeTout[s.id])?`<button class="btn btn-outline btn-sm" style="width:100%" onclick="pipeVoirTout('${s.id}')">${_pipeTout[s.id]?'Réduire':'Voir les '+reste+' autres'}</button>`:''}
         <div class="drop-zone">Déposer ici</div>
       </div>
     </div>`;
   }).join('');
+  board.innerHTML=html;
 }
+function toggleDealMenu(id,ev){
+  ev.stopPropagation();
+  const m=document.getElementById('dm-'+id), ouvert=m&&m.classList.contains('open');
+  document.querySelectorAll('.deal-menu.open').forEach(x=>x.classList.remove('open'));
+  if(m&&!ouvert) m.classList.add('open');
+}
+document.addEventListener('click',()=>{ document.querySelectorAll('.deal-menu.open').forEach(x=>x.classList.remove('open')); });
 function dealCard(d) {
-  const ini = (d.commercial||'?').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
-  const logTag = (d.logiciel||'—').split(' ')[0];
+  const E=_dEsc, ini = (d.commercial||'?').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+  const log=LOGICIELS.find(l=>l.nom===d.logiciel), coul=(log&&log.color)||d.color||'#0e7490', nomLog=(d.logiciel||'Sans logiciel');
   const linkedClient = d.clientId ? CLIENTS.find(c=>c.id===d.clientId) : CLIENTS.find(c=>c.nom===d.client);
-  const geoTag = linkedClient&&linkedClient.lat&&linkedClient.lng?`<span style="font-size:9px;background:var(--teal-l);color:var(--teal);padding:1px 5px;border-radius:8px;font-weight:600">📍 GPS</span>`:'';
-  const crmTag = linkedClient?`<span style="font-size:9px;background:var(--primary-l);color:var(--primary);padding:1px 5px;border-radius:8px;font-weight:600" title="Lié à la fiche CRM">🔗 CRM</span>`:'';
+  const age=_dealAgeJours(d), ouverte=!_PIPE_FERMEES[d.stage];
+  const badge=(age!==null&&ouverte)?(age>7?`<span class="deal-age deal-age-warn" title="Aucune action depuis ${age} jours">⚠ ${age} j</span>`:`<span class="deal-age" title="Dernière action il y a ${age} jour${age>1?'s':''}">${age} j</span>`):'';
+  const montant=d.valeur>0?`<span class="deal-val">${(d.valeur/1000).toFixed(0)}k FCFA</span>`:`<span class="deal-val" style="color:var(--muted);font-weight:600" title="Montant non chiffré : à saisir (⋯ Modifier)">non chiffré</span>`;
+  const nom=linkedClient?`<div class="deal-name" onclick="event.stopPropagation();showClientDetail(${linkedClient.id})" style="cursor:pointer" title="Ouvrir la fiche">${E(d.client)}</div>`:`<div class="deal-name" onclick="event.stopPropagation();editDeal(${d.id})" style="cursor:pointer" title="Modifier">${E(d.client)}</div>`;
   return `
-  <div class="deal-card" draggable="true" id="deal-${d.id}"
-    ondragstart="startDrag(event,${d.id})"
-    ondragend="endDrag(event)">
-    <div class="deal-tag" style="background:${d.color||'#0e7490'}22;color:${d.color||'#0e7490'}">${logTag}</div>
-    <div class="deal-name" ${linkedClient?`onclick="event.stopPropagation();showClientDetail(${linkedClient.id})" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Ouvrir fiche CRM"`:''}>${d.client}</div>
-    <div class="deal-sub">📅 ${d.date||''}</div>
-    <div style="display:flex;gap:4px;flex-wrap:wrap;margin:4px 0">${crmTag}${geoTag}</div>
-    <div class="deal-footer">
-      ${d.valeur>0?`<span class="deal-val">${(d.valeur/1000).toFixed(0)}k FCFA</span>`:`<span class="deal-val" style="color:var(--muted);font-weight:600" title="Montant non chiffré : à saisir (✏️ Modifier)">${d.valeurEst>0?`non chiffré <small>(cat. ${(d.valeurEst/1000).toFixed(0)}k)</small>`:'non chiffré'}</span>`}
-      ${d.commercial?`<div class="deal-avatar" style="background:${d.color||'#0e7490'}" title="${d.commercial}">${ini}</div>`:`<div class="deal-avatar" style="background:var(--muted)" title="Commercial non attribué">–</div>`}
-    </div>
-    <!-- Actions CRUD -->
-    <div style="display:flex;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)" onclick="event.stopPropagation()">
-      <button onclick="openDealHistory(${d.id})" style="padding:4px 8px;font-size:11px;font-weight:600;background:var(--teal-l);color:var(--teal);border:1px solid rgba(13,148,136,.3);border-radius:6px;cursor:pointer;position:relative" title="Historique échanges">📋${(d.history&&d.history.length)?`<span style='position:absolute;top:-4px;right:-4px;width:15px;height:15px;background:var(--teal);color:#fff;border-radius:50%;font-size:9px;font-weight:700;line-height:15px;text-align:center'>${d.history.length}</span>`:''}</button>
-      <button onclick="editDeal(${d.id})" style="flex:1;padding:4px 6px;font-size:11px;font-weight:600;background:var(--primary-l);color:var(--primary);border:1px solid rgba(14,116,144,.3);border-radius:6px;cursor:pointer;font-family:var(--font-b)">✏️ Modifier</button>
-      <button onclick="deleteDeal(${d.id})" style="padding:4px 8px;font-size:11px;background:var(--danger-l);color:var(--danger);border:1px solid rgba(220,38,38,.3);border-radius:6px;cursor:pointer" title="Supprimer">🗑</button>
-    </div>
+  <div class="deal-card deal-slim" draggable="true" id="deal-${d.id}" ondragstart="startDrag(event,${d.id})" ondragend="endDrag(event)">
+    <div class="deal-top"><span class="deal-chip" style="background:${coul}22;color:${coul}" title="${E(nomLog)}">${E(nomLog)}</span>
+      <span class="deal-menu-btn" onclick="toggleDealMenu(${d.id},event)" title="Actions" role="button" aria-label="Actions">⋯</span></div>
+    <div class="deal-menu" id="dm-${d.id}" onclick="event.stopPropagation()">
+      <button onclick="openDealHistory(${d.id})">📋 Historique</button><button onclick="editDeal(${d.id})">✏️ Modifier</button><button class="danger" onclick="deleteDeal(${d.id})">🗑 Supprimer</button></div>
+    ${nom}
+    <div class="deal-footer">${montant}${badge}${d.commercial?`<div class="deal-avatar" style="background:${coul}" title="${E(d.commercial)}">${ini}</div>`:`<div class="deal-avatar" style="background:var(--muted)" title="Commercial non attribué">?</div>`}</div>
   </div>`;
 }
 let draggedId = null;
@@ -8458,8 +8511,10 @@ function applyPipelineFilters() {
 function filterPipeline(sel) { applyPipelineFilters(); }
 function filterByLogiciel(sel) { applyPipelineFilters(); }
 function updatePipelineTotal(deals) {
-  const total = deals.reduce((s,d)=>s+(d.valeur||0),0);
-  const nonChiffres = deals.filter(d=>!(d.valeur>0) && d.stage!=='perdu').length;
+  // Pipeline ouvert : affaires engagées (ni prospects à froid, ni gagnées, ni perdues). Le chiffre d'affaires réalisé est celui des commandes.
+  const ouvertes = deals.filter(d=>d.stage!=='prospect'&&d.stage!=='gagne'&&d.stage!=='perdu');
+  const total = ouvertes.reduce((s,d)=>s+(d.valeur||0),0);
+  const nonChiffres = ouvertes.filter(d=>!(d.valeur>0)).length;
   const el = document.getElementById('pipeline-total');
   if(el) el.textContent = total.toLocaleString('fr-FR')+' FCFA'+(nonChiffres?' · '+nonChiffres+' non chiffré'+(nonChiffres>1?'s':''):'');
 }
