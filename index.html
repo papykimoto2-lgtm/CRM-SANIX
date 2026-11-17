@@ -26,6 +26,7 @@ try{var _t=localStorage.getItem("sanix_theme");if(_t&&_t!=="turquoise")document.
 <script src="shared/renouvellements.js" defer></script>
 <script src="shared/paiements.js" defer></script>
 <script src="shared/strategie.js" defer></script>
+<script src="shared/afaire.js" defer></script>
 <style>
 :root{
   /* Charte ANGEL'S GROUP : turquoise profond, fonds clairs bleutés, police système */
@@ -1233,12 +1234,16 @@ input[type=checkbox],input[type=radio]{accent-color:var(--primary)}
     <div id="view-pipeline" class="hidden fade-in">
       <h1 class="page-title">Pipeline Commercial</h1>
       <p class="page-sub">Gestion et suivi des opportunités commerciales</p>
+      <div class="flex gap-2" style="margin-bottom:12px;flex-wrap:wrap" id="pipe-mode-bar">
+        <button class="btn btn-sm" id="pipe-mode-tableau" onclick="pipeMode('tableau')">📋 Tableau</button>
+        <button class="btn btn-sm" id="pipe-mode-afaire" onclick="pipeMode('afaire')">✅ À faire aujourd'hui <span id="pipe-afaire-n" class="badge badge-muted" style="margin-left:4px">0</span></button>
+      </div>
 
       <!-- Pipeline bar -->
       <div class="pipe-funnel" id="pipeline-bar"></div>
 
       <!-- Filters -->
-      <div class="flex items-center gap-3" style="margin-bottom:16px;flex-wrap:wrap">
+      <div class="flex items-center gap-3" id="pipe-filtres" style="margin-bottom:16px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:0 10px;height:36px">
           <span style="color:var(--muted)">🔍</span>
           <input type="text" id="filter-search" placeholder="Client, logiciel, commercial..." style="border:none;background:none;font-size:13px;width:190px;color:var(--text)" oninput="applyPipelineFilters()">
@@ -1257,6 +1262,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--primary)}
 
       <!-- Kanban Board -->
       <div class="kanban-board" id="kanban-board"></div>
+      <div id="pipeline-afaire" class="hidden"></div>
     </div>
 
     <!-- ══ VIEW: CLIENTS ══ -->
@@ -6283,7 +6289,78 @@ function initPipeline() {
   _pipeFunnel(DEALS);
   renderKanban(_pipelineFiltered());
   updatePipelineTotal(_pipelineFiltered());
+  pipeMode(pipeModeActuel(), true);
 }
+// ─── À faire aujourd'hui : la liste du jour, triée par urgence ───
+function pipeModeActuel(){ try{ return localStorage.getItem('sanix_crm_pipe_mode')==='afaire'?'afaire':'tableau'; }catch(e){ return 'tableau'; } }
+function pipeMode(m, sansMemoire){
+  if(!sansMemoire){ try{ localStorage.setItem('sanix_crm_pipe_mode',m); }catch(e){} }
+  const af=m==='afaire';
+  const b=document.getElementById('kanban-board'), a=document.getElementById('pipeline-afaire'), t=document.getElementById('pipe-mode-tableau'), f=document.getElementById('pipe-mode-afaire');
+  if(b) b.classList.toggle('hidden',af); if(a) a.classList.toggle('hidden',!af);
+  const fl=document.getElementById('pipe-filtres'); if(fl) fl.classList.toggle('hidden',af);
+  if(t) t.className='btn btn-sm '+(af?'btn-outline':'btn-primary'); if(f) f.className='btn btn-sm '+(af?'btn-primary':'btn-outline');
+  const R=afaireDonnees(), n=document.getElementById('pipe-afaire-n'); if(n){ n.textContent=R.total; n.className='badge '+(R.total?'badge-danger':'badge-muted'); }
+  if(af) afaireRender(R);
+}
+function afaireDonnees(){
+  if(!window.SanixAFaire) return {date:'',rdv:[],argent:[],echeances:[],relances:[],relancesAutres:0,contacts:[],total:0,aEncaisser:0};
+  return SanixAFaire.construire({ clients:CLIENTS, commandes:COMMANDES, rdvs:(typeof RDVS!=='undefined'?RDVS:[]), echeances:renouvListe(),
+    f:{ etape:c=>aiGetEtape(c), nba:c=>convNBA(c), valeur:c=>valeurFiche(c), perdu:c=>qlIsPerdu(c), completude:c=>qlCompletude(c),
+        reste:c=>SanixPaiements.reste(c), dernierPaiement:c=>{ const l=SanixPaiements.liste(c).map(p=>p.date).filter(Boolean).sort(); return l.length?l[l.length-1]:null; } } });
+}
+function afaireRender(R){
+  R=R||afaireDonnees(); const el=document.getElementById('pipeline-afaire'); if(!el) return;
+  const E=_dEsc, M=n=>Math.round(n).toLocaleString('fr-FR'), q=x=>JSON.stringify(x).replace(/"/g,'&quot;');
+  const bloc=(ico,titre,sous,items,vide)=>`<div class="card" style="margin-bottom:14px;padding:14px 16px"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px"><b style="font-size:14px">${ico} ${titre}</b><span class="muted" style="font-size:12px">${sous||''}</span></div>${items.length?items.join(''):`<div class="muted" style="font-size:13px">${vide}</div>`}</div>`;
+  const ligne=(tete,detail,boutons,badge)=>`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--border)"><div style="flex:1;min-width:190px"><div style="font-weight:700;font-size:13px">${tete}${badge||''}</div><div class="muted" style="font-size:12px">${detail}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap">${boutons}</div></div>`;
+  const bt=(txt,fn,prim)=>`<button class="btn ${prim?'btn-primary':'btn-outline'} btn-sm" onclick="${fn}">${txt}</button>`;
+  const tag=(t,c)=>` <span class="deal-age ${c||''}" style="margin-left:6px">${t}</span>`;
+  const rdv=R.rdv.map(r=>ligne(`${E(r.heure)} · ${E(r.client)}`,`${E(r.type)}${r.lieu?' · '+E(r.lieu):''}${r.visio?' · visio':''}`,r.clientId?bt('Ouvrir la fiche',`showClientDetail(${r.clientId})`):'' ));
+  const argent=R.argent.map(a=>ligne(`${E(a.client)} · ${M(a.reste)} FCFA`,`${E(a.ref||'')} · reste dû sur ${M(a.ttc)} · ${a.jours===null?'':a.jours+' j depuis le dernier paiement ou la commande'}`,
+    bt('📲 Relancer',`afaireRelancerPaiement(${q(a.id)})`)+bt('💶 Paiement reçu',`openPaiement(${q(a.id)})`,true),
+    a.urgence==='haute'?tag('⚠ en retard','deal-age-warn'):a.urgence==='moyenne'?tag('à surveiller'):''));
+  const ech=R.echeances.map(e=>ligne(`${E(e.client)} · ${E(e.logiciel)}`,`Renouvellement ${E(e.palier||'')} · échéance ${E(e.due)} · ${M(e.montantHT||0)} FCFA HT`,bt('Ouvrir Après-vente',"navigate('apresvente',null)")));
+  const rel=R.relances.map(x=>ligne(`${E(x.nom)}`,`${E(x.label)} · ${E(x.logiciel)} · ${x.valeur>0?M(x.valeur)+' FCFA':'non chiffré'}${x.jours!==null?' · dernier contact il y a '+x.jours+' j':''}`,
+    bt('📲 WhatsApp',`afaireRelancerProspect(${x.id})`)+bt('✅ Fait',`afaireFait(${x.id})`,true)+bt('Fiche',`showClientDetail(${x.id})`),x.retard>0?tag('⚠ '+x.retard+' j de retard','deal-age-warn'):''));
+  const con=R.contacts.map(x=>ligne(`${E(x.nom)}`,`${E(x.logiciel)} · ${x.valeur>0?M(x.valeur)+' FCFA au catalogue':''} · ${E(x.phone)}`,
+    `<a class="btn btn-outline btn-sm" href="tel:${E(String(x.phone).replace(/[^+\d]/g,''))}">📞 Appeler</a>`+bt('✅ Contacté',`afaireContacte(${x.id})`,true)+bt('Fiche',`showClientDetail(${x.id})`)));
+  el.innerHTML=`<div class="stats-grid" style="margin-bottom:14px">
+      <div class="stat-card"><div class="stat-val">${R.total}</div><div class="stat-label">Actions aujourd'hui</div></div>
+      <div class="stat-card"><div class="stat-val">${M(R.aEncaisser)}</div><div class="stat-label">FCFA à encaisser</div></div>
+      <div class="stat-card"><div class="stat-val">${R.rdv.length}</div><div class="stat-label">Rendez-vous</div></div>
+      <div class="stat-card"><div class="stat-val">${R.relances.length+R.relancesAutres}</div><div class="stat-label">Affaires à relancer</div></div></div>`
+    +bloc('📅','Rendez-vous du jour','',rdv,'Aucun rendez-vous aujourd\'hui.')
+    +bloc('💶','Argent à encaisser',R.argent.length?M(R.aEncaisser)+' FCFA':'',argent,'Aucun reste dû sur vos commandes. ✅')
+    +(R.echeances.length?bloc('🔁','Renouvellements à relancer','',ech,''):'')
+    +bloc('🤝','Affaires à relancer',R.relancesAutres?`${R.relances.length} affichées, ${R.relancesAutres} autres`:'',rel,'Aucune affaire engagée à relancer.')
+    +bloc('📞','Premiers contacts à passer','les 5 prospects les mieux valorisés',con,'Aucun prospect à contacter.');
+}
+function _afaireClient(id){ return CLIENTS.find(c=>c.id===id); }
+function afaireRelancerProspect(id){
+  const c=_afaireClient(id); if(!c) return;
+  waOuvrir(c.phone, relanceBuildMsg(c, aiGetEtape(c), 'wa'));
+}
+function afaireRelancerPaiement(cmdId){
+  const c=COMMANDES.find(x=>x.id===cmdId); if(!c) return; const cl=CLIENTS.find(x=>(x.nom||'').toLowerCase().trim()===(c.client||'').toLowerCase().trim());
+  const soc=(typeof relanceCfg==='function'&&relanceCfg().societe)||'SANIX', reste=SanixPaiements.reste(c);
+  const msg=`Bonjour ${c.client}, nous revenons vers vous au sujet de la commande ${c.ref||''} : il reste ${Math.round(reste).toLocaleString('fr-FR')} FCFA à régler sur ${Math.round(c.ttc||0).toLocaleString('fr-FR')} FCFA. Pouvez-vous nous indiquer la date de votre prochain règlement ? Merci. ${soc}`;
+  if(!cl||!cl.phone){ showToast('❌ Pas de téléphone sur la fiche de '+c.client); return; }
+  waOuvrir(cl.phone,msg);
+}
+// « Fait » : note la relance sur la fiche (elle sort de la liste jusqu'à la prochaine échéance de la cadence).
+function afaireFait(id){
+  const c=_afaireClient(id); if(!c) return;
+  if(!c.interactions) c.interactions=[];
+  c.interactions.push({date:new Date().toISOString(),type:'Relance',note:"Relance faite (À faire aujourd'hui)",etape:aiGetEtape(c),ico:'🔁'});
+  c.updated_at=new Date().toISOString(); saveStore('clients'); pipeMode('afaire',true); showToast('✅ Relance enregistrée — '+c.nom);
+}
+function afaireContacte(id){
+  const c=_afaireClient(id); if(!c) return;
+  if(qlAvancer(c,1,0,true)){ saveStore('clients'); saveStore('deals'); }
+  pipeMode('afaire',true); showToast('📞 '+c.nom+' : marqué contacté');
+}
+
 // Entonnoir : un chiffre par étape et le taux de passage « a atteint cette étape ou au-delà » (les affaires perdues n'y comptent pas).
 function _pipeFunnel(deals){
   const el=document.getElementById('pipeline-bar'); if(!el) return;
@@ -10173,6 +10250,7 @@ function _apresPaiement(cmdId){
   const ed=document.getElementById('cmd-edit-id'), mod=document.getElementById('modal-commande');
   if(ed&&mod&&!mod.classList.contains('hidden')&&ed.value===cmdId){ const c=COMMANDES.find(x=>x.id===cmdId); const a=document.getElementById('cmd-acompte'); if(a&&c) a.value=SanixPaiements.total(c)||''; try{ cmdCalcTTC(); }catch(e){} cmdPaiementsBox(cmdId); }
   try{ initCommandes(); }catch(e){} try{ initApresVente(); }catch(e){} try{ updateSidebarNotifications(); }catch(e){}
+  try{ const af=document.getElementById('pipeline-afaire'); if(af&&typeof pipeMode==='function') pipeMode(pipeModeActuel(),true); }catch(e){}   // la liste du jour suit les paiements
 }
 // Reçu de paiement : numéro REC-AAAA-NNN attribué à la première impression (compteur mémorisé), jamais réutilisé. Ne tient pas lieu de facture.
 function imprimerRecu(cmdId,pid){
@@ -11274,7 +11352,7 @@ document.addEventListener('keydown',e=>{
 // ─── Notes explicatives (une par onglet) ───
 const NOTES_VUES = {
   dashboard:{quoi:"Vue d'ensemble de l'activité : chiffre d'affaires, entonnoir de transformation, santé du pipeline, relances à faire et échéances de licences.",pts:["Le chiffre d'affaires est celui des commandes confirmées, en cours ou livrées (hors taxes).","« Prospects à relancer » et « Licences & échéances » sont les deux listes à traiter chaque jour.","Le bouton Actualiser recalcule les chiffres à partir des données du CRM."]},
-  pipeline:{quoi:"Suivi des opportunités commerciales, de Prospect à Gagné ou Perdu.",pts:["Étapes : Prospect, Contact, Démo, Proposition, Négociation, Gagné, Perdu. Faites avancer une fiche à chaque événement réel.","Un montant ne compte comme prévision qu'à partir du devis : avant, la fiche est « non chiffrée ».","Une fiche gagnée doit avoir sa commande dans l'onglet Commandes : seul un paiement enregistré fait une vente."]},
+  pipeline:{quoi:"Suivi des opportunités commerciales, de Prospect à Gagné ou Perdu.",pts:["Étapes : Prospect, Contact, Démo, Proposition, Négociation, Gagné, Perdu. Faites avancer une fiche à chaque événement réel.","Un montant ne compte comme prévision qu'à partir du devis : avant, la fiche est « non chiffrée ».","Une fiche gagnée doit avoir sa commande dans l'onglet Commandes : seul un paiement enregistré fait une vente.","Le bouton « À faire aujourd'hui » affiche la liste du jour : rendez-vous, argent à encaisser, affaires à relancer (les plus en retard d'abord) et 5 premiers contacts. « Fait » ou « Contacté » fait sortir une ligne de la liste."]},
   qualification:{quoi:"Qualification rapide des prospects : un clic dit où en est chacun et le fait avancer dans le pipeline.",pts:["Boutons : Contacté, Démo faite, Devis envoyé, Négociation. On n'avance jamais en arrière.","Le bouton Devis envoyé demande le montant du devis : c'est lui qui rend la fiche chiffrée.","Les lignes cochées se traitent en lot (marquer contactés, démo faite, attribuer à un commercial)."]},
   conversion:{quoi:"Relances prioritaires : l'action suivante à faire pour chaque prospect, classée par score.",pts:["Commencez par le haut de la liste : ce sont les prospects les plus susceptibles de signer.","Chaque action réalisée alimente l'historique de la fiche et le suivi hebdomadaire de l'onglet Stratégie."]},
   strategie:null,
