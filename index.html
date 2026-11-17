@@ -12147,16 +12147,29 @@ function cokCloseDate(c){
   const dt = new Date(base.getTime()+rest*86400000);
   return dt.toLocaleDateString('fr-FR',{day:'2-digit',month:'short'});
 }
-// Reco logiciel par secteur (via catalogue)
+// Reco logiciel : respecte d'abord le logiciel déjà attribué quand il convient au secteur ; sinon, au sein du secteur, choisit
+// d'après les mots du nom, des notes et des besoins, puis d'après ce que vendent déjà les autres fiches (jamais « le plus cher »).
+const COK_SECTEUR_REPLI = {Logistique:'Distribution',Restauration:'Commerce',Services:'Commerce','Éducation':'Commerce'};
+const COK_MOTS_LOGICIEL = {
+  'Sanix AluExpert ERP': /\b(alu|aluminium|menuis|vitr|fa[cç]ade|inox|fen[eê]tre|volet|garde-?corps|mur rideau|m[eé]tallique|charpente|baie)/i,
+  'SANIX Factory 4.0': /\b(usine|production|sachet|plastique|agro-?alimentaire|fabrication|manufactur|conditionnement|emballage)/i
+};
+function cokLogicielsDuSecteur(secteur){
+  const actifs = LOGICIELS.filter(l=>l.actif!==false), cible = secteur || 'Autre';
+  let m = actifs.filter(l=>l.cat===cible);
+  if(!m.length && COK_SECTEUR_REPLI[cible]) m = actifs.filter(l=>l.cat===COK_SECTEUR_REPLI[cible]);
+  return m;
+}
 function cokBestLogiciel(c){
-  const actifs = LOGICIELS.filter(l=>l.actif!==false);
-  const fallback = {Logistique:'Distribution',Restauration:'Commerce',Services:'Commerce','Éducation':'Commerce'};
-  const cible = c.secteur || 'Autre';
-  let matchs = actifs.filter(l=>l.cat===cible);
-  if(!matchs.length && fallback[cible]) matchs = actifs.filter(l=>l.cat===fallback[cible]);
+  const matchs = cokLogicielsDuSecteur(c.secteur);
+  const deja = LOGICIELS.find(l=>l.actif!==false && l.nom===c.logiciel);
+  if(deja && (!matchs.length || matchs.some(l=>l.nom===deja.nom))) return deja;     // le logiciel attribué convient : on ne le remplace pas
   if(!matchs.length) return null;
-  matchs.sort((a,b)=>(b.prixNum||0)-(a.prixNum||0));
-  return matchs[0];
+  if(matchs.length===1) return matchs[0];
+  const texte = [c.nom,c.notes,c.besoins,c.adresse].filter(Boolean).join(' ');
+  const pop = {}; CLIENTS.forEach(x=>{ if(x.secteur===c.secteur && x.logiciel) pop[x.logiciel]=(pop[x.logiciel]||0)+1; });
+  const sc = l => (COK_MOTS_LOGICIEL[l.nom] && COK_MOTS_LOGICIEL[l.nom].test(texte) ? 1000 : 0) + (pop[l.nom]||0);
+  return matchs.slice().sort((a,b)=>sc(b)-sc(a) || (a.prixNum||0)-(b.prixNum||0))[0];
 }
 
 function initCockpit(){ cokRender(); }
@@ -16110,14 +16123,18 @@ function importGuessSecteur(nom, phone) {
   if(n.includes('distrib')||n.includes('commerce')||n.includes('store')||n.includes('market')) return 'Distribution';
   if(n.includes('agri')||n.includes('cacao')||n.includes('café')||n.includes('palm')) return 'Agriculture';
   if(n.includes('pharma')||n.includes('clinic')||n.includes('hopital')||n.includes('sante')) return 'Santé';
-  if(n.includes('factory')||n.includes('usine')||n.includes('industrie')||n.includes('sachet')) return 'Industrie';
+  if(n.includes('factory')||n.includes('usine')||n.includes('industrie')||n.includes('sachet')||/\b(alu|aluminium|menuis|vitr|inox)/.test(n)) return 'Industrie';
   return 'Autre';
 }
 
-function importGuessLogiciel(secteur) {
+function importGuessLogiciel(secteur, texte) {
+  if(secteur==='Industrie'){                      // deux logiciels dans ce secteur : le nom de l'entreprise tranche, AluExpert par défaut
+    if(COK_MOTS_LOGICIEL['SANIX Factory 4.0'].test(texte||'') && !COK_MOTS_LOGICIEL['Sanix AluExpert ERP'].test(texte||'')) return 'SANIX Factory 4.0';
+    return 'Sanix AluExpert ERP';
+  }
   const map = {
     'Aviculture':'Angel\'s Agro','Immobilier':'ImmoSuite ERP','Distribution':'DistriPro ERP',
-    'Agriculture':'Menko Agro','Santé':'MediCore Suite','Industrie':'SANIX Factory 4.0',
+    'Agriculture':'Menko Agro','Santé':'MediCore Suite',
     'Commerce':'SANIX EasyStock'
   };
   return map[secteur]||'';
@@ -16131,7 +16148,7 @@ function importContactsToClients(contacts, source='Import') {
     // Doublon : même téléphone
     if(CLIENTS.find(x=>importNormalizePhone(x.phone)===phone)) { skipped++; return; }
     const secteur  = c.secteur || importGuessSecteur(c.nom,'');
-    const logiciel = c.logiciel || importGuessLogiciel(secteur);
+    const logiciel = c.logiciel || importGuessLogiciel(secteur, c.nom);
     const newId = Math.max(0,...CLIENTS.map(x=>x.id||0))+1+added;
     CLIENTS.push({
       id:newId, nom:c.nom.trim(), phone, email:c.email||'',
@@ -16193,7 +16210,7 @@ function importRapideParse() {
     const nom     = parts[0]||'';
     const phone   = parts[1]||'';
     const secteur = parts[2] ? (parts[2].charAt(0).toUpperCase()+parts[2].slice(1)) : importGuessSecteur(nom,'');
-    const logiciel= parts[3]||importGuessLogiciel(secteur);
+    const logiciel= parts[3]||importGuessLogiciel(secteur, nom);
     return {nom, phone, secteur, logiciel};
   }).filter(c=>c.nom||c.phone);
 }
@@ -16244,7 +16261,7 @@ function vcfParseText(text) {
     if(!nom&&!phone) return;
     const displayNom = nom || org || phone;
     const secteur = importGuessSecteur(displayNom,'');
-    contacts.push({nom:displayNom, phone, email, adresse:adr, secteur, logiciel:importGuessLogiciel(secteur)});
+    contacts.push({nom:displayNom, phone, email, adresse:adr, secteur, logiciel:importGuessLogiciel(secteur, displayNom)});
   });
   _importPending = contacts;
   document.getElementById('vcf-parse-status').innerHTML =
@@ -16294,7 +16311,7 @@ function csvContactsParseText(text) {
     const adr   = iAdr>=0?cols[iAdr]:'';
     if(!nom&&!phone) return;
     const secteur = importGuessSecteur(nom,'');
-    contacts.push({nom:nom||phone, phone, email, adresse:adr, secteur, logiciel:importGuessLogiciel(secteur)});
+    contacts.push({nom:nom||phone, phone, email, adresse:adr, secteur, logiciel:importGuessLogiciel(secteur, nom)});
   });
   _importPending = contacts;
   document.getElementById('csv-contacts-status').innerHTML =
@@ -16336,7 +16353,7 @@ function parseWAListe() {
     const phone = phoneMatch[1].trim();
     const nom   = line.replace(phoneMatch[0],'').replace(/[:·\-]/g,'').trim() || 'Contact WhatsApp';
     const secteur  = importGuessSecteur(nom,'');
-    return {nom, phone, secteur, logiciel:importGuessLogiciel(secteur)};
+    return {nom, phone, secteur, logiciel:importGuessLogiciel(secteur, nom)};
   }).filter(Boolean);
   _importPending = contacts;
   document.getElementById('wa-liste-count').textContent = contacts.length+' numéro(s) détecté(s)';
