@@ -125,6 +125,137 @@
     "Signature et cachet :"
   ].join("\n");
 
+
+  /* ───── Formes de licence ─────
+     utilisation  : le client utilise le logiciel pour ses propres activités (le modèle en 14 articles ci-dessus) ;
+     exploitation : un partenaire commercialise ou exploite le logiciel auprès de ses propres clients, selon un périmètre défini ;
+     exclusive    : un partenaire bénéficie d'une exclusivité définie sur un territoire, un marché ou un secteur.
+     Les deux modèles « partenaire » protègent le code source, la commercialisation, les revenus, les clients, les évolutions et la résiliation, et prévoient les conditions
+     d'hébergement, de disponibilité, de sauvegarde, de réversibilité et de données personnelles. Ce sont des modèles de départ : à faire relire par un juriste. */
+  var FORMES = {
+    utilisation:  { cle: "utilisation",  ico: "👤", court: "Utilisation",              lib: "Licence d'utilisation",             contrepartie: "CLIENT",     sousTitre: "Licence d'exploitation de logiciel",
+                    desc: "Le client utilise le logiciel pour ses propres activités." },
+    exploitation: { cle: "exploitation", ico: "🤝", court: "Exploitation commerciale", lib: "Licence d'exploitation commerciale", contrepartie: "PARTENAIRE", sousTitre: "Licence d'exploitation commerciale",
+                    desc: "Le partenaire commercialise ou exploite le logiciel auprès de ses propres clients, selon un périmètre défini." },
+    exclusive:    { cle: "exclusive",    ico: "⭐", court: "Exclusive",                lib: "Licence exclusive",                  contrepartie: "PARTENAIRE", sousTitre: "Licence exclusive",
+                    desc: "Un partenaire bénéficie d'une exclusivité définie sur un territoire, un marché ou un secteur." }
+  };
+  function forme(cle) { return FORMES[cle] || FORMES.utilisation; }
+
+  var PARTIES = function (titre) {
+    return [
+      titre, "", "ENTRE LES SOUSSIGNÉS :", "",
+      "{concedant}, ci-après dénommée « LE CONCÉDANT ».", "", "D'UNE PART,", "", "ET", "",
+      "{partenaire}, société [forme juridique], dont le siège social est situé à {adresse_partenaire}, immatriculée au RCCM sous le numéro [Numéro], représentée par {representant_partenaire}, agissant en qualité de [Fonction], ci-après dénommée « LE PARTENAIRE ».",
+      "", "D'AUTRE PART.", "", "Les parties conviennent de ce qui suit :", ""
+    ];
+  };
+  var CONFIDENTIALITE = ["Les parties s'engagent à préserver la confidentialité des informations techniques, commerciales, financières et stratégiques échangées dans le cadre du présent contrat.", "Cette obligation demeure applicable après la fin du contrat."];
+  var RESPONSABILITE = [
+    "Chaque partie répond de ses propres obligations contractuelles.",
+    "Le Concédant ne répond pas des engagements pris par le Partenaire envers ses clients au-delà de ce que prévoient le présent contrat et la documentation officielle du logiciel.",
+    "Le Concédant ne saurait être tenu responsable des dommages résultant notamment :",
+    "* D'une mauvaise utilisation du logiciel.", "* D'une intervention non autorisée.", "* D'une défaillance d'un équipement ou service tiers.", "* D'une indisponibilité imputable à un prestataire externe.",
+    "Cette limitation ne s'applique pas aux responsabilités auxquelles la loi interdit de déroger."
+  ];
+  var FIN = ["", "FAIT À {ville}, LE {date}", "", "LE CONCÉDANT", "{concedant_nom}", "Nom :", "Signature et cachet :", "", "LE PARTENAIRE", "{partenaire}", "Nom :", "Signature et cachet :"];
+
+  /** Articles du modèle « partenaire » ; l'exclusivité ajoute un article d'objectifs et remplace le périmètre. */
+  function articlesPartenaire(excl) {
+    var A = [];
+    A.push(["OBJET DU CONTRAT", [
+      "Le présent contrat a pour objet de définir les conditions dans lesquelles le Concédant autorise le Partenaire à commercialiser et à exploiter, auprès de ses propres clients et dans le périmètre défini ci-après, le logiciel dénommé :",
+      "{logiciel}",
+      "Le Partenaire ne devient en aucun cas propriétaire du logiciel : il bénéficie d'un droit de commercialisation et d'exploitation, dans les limites du présent contrat."]]);
+    A.push(["PROPRIÉTÉ INTELLECTUELLE ET CODE SOURCE", [
+      "Le logiciel, son architecture, son code source, ses bases de données structurantes, ses interfaces, ses algorithmes, sa documentation technique et ses évolutions demeurent la propriété exclusive du Concédant.",
+      "Le code source n'est en aucun cas remis au Partenaire. Le présent contrat ne constitue pas une cession de propriété intellectuelle.",
+      "Le Partenaire s'interdit notamment :",
+      "* De copier, décompiler, procéder à une ingénierie inverse ou extraire le code source, sauf disposition légale contraire.",
+      "* De modifier, adapter ou faire développer par un tiers des éléments du logiciel sans autorisation écrite du Concédant.",
+      "* De déposer, à son nom, une marque, un nom de domaine ou un droit portant sur le logiciel ou sur les signes distinctifs du Concédant.",
+      "* De supprimer ou d'altérer les mentions de propriété intellectuelle.",
+      "* De revendiquer la propriété du logiciel ou de ses composants."]]);
+    A.push(excl
+      ? ["PÉRIMÈTRE ET EXCLUSIVITÉ", [
+          "La licence est accordée à titre exclusif, personnel et non cessible, pour le territoire suivant : {territoire}, et pour le marché ou secteur suivant : [Marché / secteur].",
+          "Pendant la durée du contrat, le Concédant s'interdit de désigner un autre partenaire ou distributeur pour commercialiser le logiciel sur ce périmètre. Il conserve le droit de poursuivre sa relation avec les clients déjà existants à la date de signature : [Liste des clients réservés ou « aucun »].",
+          "Le Partenaire s'interdit, sur ce périmètre, de commercialiser un logiciel concurrent du logiciel objet du présent contrat, sauf accord écrit du Concédant.",
+          "L'exclusivité ne s'étend pas au-delà de ce périmètre. Toute extension fera l'objet d'un avenant."]]
+      : ["PÉRIMÈTRE DE LA LICENCE", [
+          "La licence est accordée à titre non exclusif, personnel et non cessible, pour le territoire suivant : {territoire}, et pour le marché ou secteur suivant : [Marché / secteur].",
+          "Le Partenaire peut proposer à ses clients des licences d'utilisation du logiciel, dans les conditions prévues au présent contrat.",
+          "Le Concédant reste libre de commercialiser le logiciel lui-même ou par l'intermédiaire d'autres partenaires.",
+          "Toute extension du périmètre fera l'objet d'un avenant."]]);
+    if (excl) A.push(["OBJECTIFS ET MAINTIEN DE L'EXCLUSIVITÉ", [
+      "En contrepartie de l'exclusivité, le Partenaire s'engage à atteindre l'objectif minimal suivant : [Objectif minimal annuel : nombre de licences ou chiffre d'affaires].",
+      "Si cet objectif n'est pas atteint, le Concédant peut, après mise en demeure restée sans effet pendant trente (30) jours, convertir la licence en licence non exclusive ou résilier le contrat.",
+      "Le Partenaire rend compte de son activité au Concédant selon la périodicité suivante : [Périodicité]."]]);
+    A.push(["DURÉE", [
+      "Le présent contrat est conclu pour [une durée de 12 mois renouvelable / une durée indéterminée / autre].",
+      "Il prend effet à compter de sa date de signature.",
+      "Les conditions de renouvellement sont définies entre les parties."]]);
+    A.push(["CONDITIONS FINANCIÈRES ET REDEVANCES", [
+      "En contrepartie du droit de commercialisation, le Partenaire s'engage à verser au Concédant :",
+      "* Pour chaque licence vendue : {redevance}.",
+      "* Droit d'entrée éventuel : [Montant] FCFA.",
+      "* Maintenance et assistance de second niveau : [Conditions].",
+      "Les sommes dues sont réglées selon les modalités suivantes : [Échéancier / délai de paiement].",
+      "Le Partenaire transmet au Concédant, [chaque mois / chaque trimestre], un état des licences vendues. Le Concédant peut contrôler ces états sur pièces.",
+      "Tout retard de paiement autorise le Concédant à suspendre la fourniture des licences et de l'assistance, après mise en demeure restée sans effet pendant quinze (15) jours."]]);
+    A.push(["CONDITIONS DE COMMERCIALISATION", [
+      "Le Partenaire commercialise le logiciel sous sa responsabilité, dans le respect de la loi et des conditions tarifaires minimales fixées par le Concédant.",
+      "Il s'interdit de prendre, au nom du Concédant, des engagements, garanties ou promesses non prévus par le présent contrat ou par la documentation officielle du logiciel.",
+      "Chaque client final accepte les conditions d'utilisation du Concédant ; le contrat avec le client final est conclu [au nom du Concédant / au nom du Partenaire, dans le respect des conditions d'utilisation du Concédant].",
+      "Le Partenaire n'utilise la dénomination, la marque et les supports du logiciel que dans les conditions approuvées par le Concédant."]]);
+    A.push(["CLIENTS ET PORTEFEUILLE CLIENTS", [
+      "Le Partenaire communique au Concédant l'identité des clients finaux auxquels il vend une licence, afin d'assurer l'activation, la maintenance et la traçabilité des licences.",
+      "Les clients finaux ainsi apportés sont [rattachés au Partenaire pour la durée du contrat / des clients communs aux deux parties]. Les règles de gestion du portefeuille clients sont les suivantes : [Règles].",
+      "Chaque partie s'interdit de détourner à son profit exclusif les clients de l'autre apportés dans le cadre du présent contrat, pendant sa durée et pendant [Durée] après son terme."]]);
+    A.push(["ÉVOLUTIONS ET DÉVELOPPEMENTS SPÉCIFIQUES", [
+      "Les mises à jour et améliorations génériques du logiciel demeurent la propriété exclusive du Concédant, y compris lorsqu'elles résultent de suggestions du Partenaire.",
+      "Les développements spécifiques demandés par le Partenaire ou par ses clients font l'objet d'un devis et d'un avenant écrits ; sauf disposition contraire de cet avenant, ils restent la propriété du Concédant, le Partenaire ou le client final disposant d'un droit d'usage."]]);
+    A.push(["MAINTENANCE ET ASSISTANCE", [
+      "Le Partenaire assure l'assistance de premier niveau auprès de ses clients (prise en charge, qualification et résolution des demandes courantes).",
+      "Le Concédant assure, selon les conditions convenues, la maintenance corrective, les mises à jour techniques et l'assistance de second niveau."]]);
+    A.push(["HÉBERGEMENT, DISPONIBILITÉ, SAUVEGARDE, RÉVERSIBILITÉ ET DONNÉES PERSONNELLES", [
+      "Lorsque le logiciel est fourni en mode hébergé ou synchronisé (SaaS), les conditions suivantes s'appliquent :",
+      "* Hébergement : [Hébergeur et lieu d'hébergement].",
+      "* Disponibilité : [Niveau de disponibilité et plages de maintenance].",
+      "* Sauvegarde : [Fréquence et durée de conservation des sauvegardes].",
+      "* Réversibilité : à la fin du contrat, les données des clients finaux sont restituées dans un format exploitable, dans un délai de [Délai] jours.",
+      "* Données personnelles : chaque partie respecte la réglementation applicable en matière de protection des données à caractère personnel. Le Concédant agit [en qualité de sous-traitant / de responsable de traitement] et met en œuvre des mesures de sécurité appropriées ; les modalités détaillées font l'objet d'une annexe."]]);
+    A.push(["CONFIDENTIALITÉ", CONFIDENTIALITE]);
+    A.push(["LIMITATION DE RESPONSABILITÉ", RESPONSABILITE]);
+    A.push(["RÉSILIATION ET FIN DU CONTRAT", [
+      "En cas de manquement grave à ses obligations par l'une des parties, le contrat pourra être résilié après mise en demeure restée sans effet pendant trente (30) jours, sauf urgence ou disposition légale contraire.",
+      "À la fin du contrat, quelle qu'en soit la cause, le Partenaire cesse de commercialiser le logiciel et de se prévaloir de sa qualité de partenaire du Concédant. Il ne peut en aucun cas s'approprier le logiciel, son code, sa documentation ni ses évolutions.",
+      "Les licences déjà vendues à des clients finaux demeurent valables dans les conditions prévues à leur contrat ; leur maintenance est assurée [par le Concédant / selon les modalités suivantes : …] pendant une période de transition de [Durée].",
+      "Les sommes restant dues demeurent exigibles."]]);
+    A.push(["INDÉPENDANCE DES PARTIES", [
+      "Le présent contrat ne crée aucune relation de société, de partenariat capitalistique, de mandat général ou de relation de travail entre les parties.",
+      "Le Partenaire agit en son nom et pour son compte : il n'est ni mandataire, ni agent, ni salarié du Concédant. Chaque partie conserve son indépendance juridique et commerciale."]]);
+    A.push(["DROIT APPLICABLE ET RÈGLEMENT DES LITIGES", [
+      "Le présent contrat est soumis au droit applicable en République de Côte d'Ivoire, notamment aux textes pertinents de l'OAPI et aux dispositions applicables du droit OHADA.",
+      "Tout différend fera prioritairement l'objet d'une tentative de règlement amiable.",
+      "À défaut d'accord, les juridictions compétentes de Côte d'Ivoire seront saisies, sous réserve des règles impératives de compétence."]]);
+    A.push(["DISPOSITIONS FINALES", [
+      "Toute modification du présent contrat devra faire l'objet d'un avenant écrit signé par les deux parties.",
+      "Le présent contrat est établi en deux exemplaires originaux."]]);
+    return A;
+  }
+  function modelePartenaire(excl) {
+    var L = PARTIES(excl ? "CONTRAT DE LICENCE EXCLUSIVE DE LOGICIEL" : "CONTRAT DE LICENCE D'EXPLOITATION COMMERCIALE DE LOGICIEL");
+    articlesPartenaire(excl).forEach(function (a, i) {
+      L.push("ARTICLE " + (i + 1) + " – " + a[0]); a[1].forEach(function (l) { L.push(l); }); L.push("");
+    });
+    L.pop();
+    return L.concat(FIN).join("\n");
+  }
+  var MODELES = { utilisation: MODELE, exploitation: modelePartenaire(false), exclusive: modelePartenaire(true) };
+  /** Modèle de contrat selon la forme de licence (utilisation par défaut). */
+  function modele(cle) { return MODELES[cle] || MODELE; }
+
   var s = function (v) { return v == null ? "" : String(v).trim(); };
 
   /** Identité du Concédant : le nom, puis la forme juridique / le capital / le RCCM SEULEMENT s'ils sont renseignés, puis le siège et le représentant. */
@@ -178,6 +309,6 @@
     return i >= 0 ? t.slice(0, i).replace(/\s+$/, "") : t.replace(/\s+$/, "");
   }
 
-  var API = { MODELE: MODELE, corps: corps, concedant: concedant, duree: duree, remplir: remplir, restants: restants, enHtml: enHtml };
+  var API = { MODELE: MODELE, MODELES: MODELES, modele: modele, FORMES: FORMES, forme: forme, corps: corps, concedant: concedant, duree: duree, remplir: remplir, restants: restants, enHtml: enHtml };
   G.SanixContrat = API; if (typeof module !== "undefined" && module.exports) module.exports = API;
 })(typeof window !== "undefined" ? window : globalThis);
