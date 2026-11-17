@@ -36,8 +36,14 @@
 
     var contacts = (o.clients || []).filter(function (c) { return c && c.statut === "prospect" && !(f.perdu && f.perdu(c)) && num(f.etape ? f.etape(c) : 0) === 0 && String(c.phone || "").trim(); })
       .map(function (c) { return { id: c.id, nom: c.nom, logiciel: c.logiciel || "", valeur: f.valeur ? f.valeur(c) : num(c.valeur), phone: c.phone, k: f.completude ? f.completude(c) : 0 }; })
-      .sort(function (a, b) { return b.valeur - a.valeur || b.k - a.k || String(a.nom).localeCompare(String(b.nom)); })
-      .slice(0, lim.contacts);
+      .sort(function (a, b) { return b.valeur - a.valeur || b.k - a.k || String(a.nom).localeCompare(String(b.nom)); });
+    // Variété : un prospect par logiciel d'abord (le mieux classé de chacun), puis on complète avec les suivants — sinon le logiciel le plus cher occupe toute la liste.
+    if (lim.variete !== false) {
+      var vus = {}, choisis = [];
+      contacts.forEach(function (x) { var k = x.logiciel || ""; if (choisis.length < lim.contacts && !vus[k]) { vus[k] = 1; choisis.push(x); } });
+      contacts.forEach(function (x) { if (choisis.length < lim.contacts && choisis.indexOf(x) < 0) choisis.push(x); });
+      contacts = contacts.filter(function (x) { return choisis.indexOf(x) >= 0; });
+    } else contacts = contacts.slice(0, lim.contacts);
 
     // E-mails envoyés par le CRM (Gmail) restés sans réponse au-delà de leur délai de relance.
     var mails = (o.mails || []).filter(function (m) { return m && m.status === "envoye"; })
