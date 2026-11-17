@@ -8477,11 +8477,11 @@ function showClientDetail(id) {
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">📋 Historique (${interactions.length})</div>
         ${daysSinceLast!==null?`<span style="font-size:10px;color:${daysSinceLast>7?'var(--danger)':daysSinceLast>3?'var(--warning)':'var(--success)'};font-weight:600">Dernier contact : J-${daysSinceLast}</span>`:''}
       </div>
-      <div style="max-height:90px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-sm)">
-        ${interactions.length?interactions.slice(-5).reverse().map(x=>`
+      <div style="max-height:280px;overflow-y:auto;overflow-x:hidden;border:1px solid var(--border);border-radius:var(--r-sm)">
+        ${interactions.length?interactions.slice(-8).reverse().map(x=>`
           <div style="display:flex;gap:8px;align-items:flex-start;padding:6px 10px;border-bottom:1px solid var(--border);font-size:11px">
             <span style="flex-shrink:0">${x.ico||'💬'}</span>
-            <div style="flex:1"><span style="font-weight:600">${_dEsc(x.type)}</span> — ${_dEsc(x.note||'')}</div>
+            <div style="flex:1;min-width:0;overflow-wrap:anywhere"><span style="font-weight:600">${_dEsc(x.type)}</span> — ${_dEsc(histNoteLisible(x.note||''))}</div>
             <span style="color:var(--muted);font-size:10px;flex-shrink:0">${new Date(x.date).toLocaleDateString('fr-FR')}</span>
           </div>`).join(''):
           '<div style="padding:10px;text-align:center;color:var(--muted);font-size:11px">Aucune interaction enregistrée</div>'}
@@ -12055,6 +12055,16 @@ function relanceSaveConfig(){
 // ═══════════════════════════════════════════════════════════
 function _stageFromEtape(e){ return ['prospect','contact','demo','proposition','negociation'][Math.min(e,4)] || 'prospect'; }
 
+const _STAGE_HIST = {prospect:'Prospect',contact:'Contact',demo:'Démo',proposition:'Proposition',negociation:'Négociation',gagne:'Gagné ✓',perdu:'Perdu ✗'};
+// Trace dans l'historique d'une fiche pipeline un changement d'étape fait automatiquement (le suivi hebdomadaire de la stratégie lit ces lignes).
+// La date est celle du dernier échange qui a fait avancer le prospect, pas celle de la synchronisation.
+function _dealTraceEtape(deal, prev, stage, c, label){
+  if(!deal || prev===stage) return;
+  if(!deal.history) deal.history=[];
+  let date=new Date().toISOString();
+  if(c && stage!=='gagne'){ const et=aiGetEtape(c); const it=(c.interactions||[]).filter(x=>(x.etape||0)===et && x.date).sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0]; if(it) date=it.date; }
+  deal.history.push({date, type:'stage_change', ico:'🔄', label:label||'Étape mise à jour', note:(_STAGE_HIST[prev]||prev)+' → '+(_STAGE_HIST[stage]||stage), resultat:'', commercial:deal.commercial||''});
+}
 function _dealPrixCatalogue(nom){ return (LOGICIELS.find(l=>l.nom===nom)||{}).prixNum || 0; }
 // Montant « réel » d'un prospect : la valeur de sa fiche ne compte que si un devis existe (étape Proposition ou Négociation).
 // Avant cela, la valeur de la fiche (souvent un montant de remplissage identique pour tous) n'est qu'un potentiel :
@@ -12081,7 +12091,7 @@ function syncProspectsToPipeline(){
       });
       changed=true;
     } else if(deal.fromProspect && deal.stage!==stage && deal.stage!=='gagne' && deal.stage!=='perdu'){
-      deal.stage=stage; changed=true;
+      _dealTraceEtape(deal, deal.stage, stage, c); deal.stage=stage; changed=true;
     }
     // Montant : seule une valeur réelle (fiche client ou saisie) compte dans le pipeline ; le prix catalogue n'est qu'une estimation à part.
     if(deal && deal.fromProspect && !deal.valeurSaisie && deal.stage!=='gagne'){
@@ -12100,14 +12110,14 @@ function syncDealForClient(clientId){
   const c=CLIENTS.find(x=>x.id===clientId); if(!c) return;
   let deal=DEALS.find(d=>d.clientId===clientId);
   if(c.statut==='client'){
-    if(deal){ deal.stage='gagne'; }
+    if(deal){ _dealTraceEtape(deal, deal.stage, 'gagne', c, 'Converti en client'); deal.stage='gagne'; }
     else { const nid=DEALS.length?Math.max(...DEALS.map(d=>parseInt(d.id)||0))+1:1;
       DEALS.push({id:nid,client:c.nom,clientId:c.id,logiciel:c.logiciel||'',valeur:c.valeur||0,commercial:c.commercial||'',stage:'gagne',notes:c.notes||'',color:'#10B981',date:new Date().toLocaleDateString('fr-FR'),fromProspect:true,history:[]}); }
     saveStore('deals'); return;
   }
   if(!deal){ syncProspectsToPipeline(); return; }
   if(deal.fromProspect && deal.stage!=='gagne' && deal.stage!=='perdu'){
-    deal.stage=_stageFromEtape(aiGetEtape(c)); saveStore('deals');
+    { const ns=_stageFromEtape(aiGetEtape(c)); _dealTraceEtape(deal, deal.stage, ns, c); deal.stage=ns; } saveStore('deals');
   }
 }
 
@@ -14981,6 +14991,17 @@ function generateDoc() {
 }
 
 // ─── GÉNÉRATEURS DE MODÈLES ──────────────
+// Note d'historique lisible : les messages bruts d'une API (JSON d'erreur) deviennent une phrase claire.
+function histNoteLisible(n){
+  n=String(n==null?'':n);
+  if(/credit balance is too low/i.test(n)) return "Crédit Anthropic insuffisant : rechargez le compte (Plans & Billing). L'agent IA n'a pas pu travailler.";
+  if(/rate.?limit|\b429\b/i.test(n) && /error/i.test(n)) return "Limite de requêtes Anthropic atteinte : nouvelle tentative plus tard.";
+  if(/overloaded|\b529\b/i.test(n) && /error/i.test(n)) return "Service Anthropic surchargé : nouvelle tentative plus tard.";
+  if(/authentication_error|invalid x-api-key|\b401\b/i.test(n) && /error/i.test(n)) return "Clé API Anthropic invalide ou expirée : à remplacer.";
+  const m=/[“”"]message[“”"]\s*:\s*[“”"]([^“”"]{3,240})/.exec(n);
+  if(m && /^\s*\d{3}\s*\{/.test(n)) return m[1];
+  return n;
+}
 function _dEsc(t){ return String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function _docOrgLines(){
   const c = CONFIG;
