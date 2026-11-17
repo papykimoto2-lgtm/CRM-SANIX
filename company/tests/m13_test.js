@@ -318,6 +318,12 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
     ok(await ev(page, () => { const o = window.__vc.office, d = o.deskPoints(); return d.length > 3 && d.every((p) => !o.walkable(p.x, p.z)); }), "les bureaux sont des obstacles");
     // boutons de marche (souris / tactile)
     await ev(page, () => window.__vc.office.setView("immersive", "commercial"));   // retour au point de départ, face à la pièce (la marche aléatoire a pu finir contre un mur)
+    const dege = await ev(page, () => {   // un passage dégagé : 4 unités libres vers le nord, quel que soit l'agencement des bureaux
+      const o = window.__vc.office;
+      for (let x = -34; x <= 34; x += 1) for (let z = -40; z <= 40; z += 1) if ([0, 1, 2, 3, 4].every((k) => o.walkable(x, z - k))) return o.placeVisitor(x, z, 0);
+      return false;
+    });
+    ok(dege, "un passage dégagé est trouvé pour tester les boutons");
     await page.locator("[data-imm=f]").scrollIntoViewIfNeeded();
     const bf = await page.locator("[data-imm=f]").boundingBox(); const J0 = await ev(page, () => window.__vc.office.immersive);
     ok(await ev(page, (b) => { const e = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2); return !!e && e.dataset?.imm === "f"; }, bf), "le bouton ▲ est bien visible et cliquable à l'écran");
