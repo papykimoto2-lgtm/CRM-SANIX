@@ -629,10 +629,10 @@ export async function createOffice(container, hooks = {}) {
   // ─────────────────────────── caméra immersive ───────────────────────────
   // Visite à hauteur d'homme : on marche dans les couloirs et les bureaux (glisser = regarder ; Z Q S D / flèches = avancer ; Maj = courir ; Échap = quitter).
   // Déplacements limités aux pièces, aux portes et aux couloirs ; les bureaux sont des obstacles.
-  const EYE = 1.62, IMM_FOV = 66, ORBIT_FOV = 40, WALK = 2.6, RUN = 5, MARGIN = 0.45;
+  const IMM_EYE = 1.62, IMM_FOV = 66, IMM_ORBIT_FOV = 40, IMM_WALK = 2.6, IMM_RUN = 5, IMM_MARGIN = 0.45;   // noms préfixés : « WALK » désigne déjà la vitesse des agents
   const imm = { on: false, x: 0, z: 0, yaw: 0, pitch: -0.04, keys: new Set(), run: false, prev: null };
   function walkRects() {
-    const R = [], rooms = S.rooms, m = MARGIN; if (!rooms.length) return R;
+    const R = [], rooms = S.rooms, m = IMM_MARGIN; if (!rooms.length) return R;
     const minX = Math.min(...rooms.map((r) => r.x - r.w / 2)), maxX = Math.max(...rooms.map((r) => r.x + r.w / 2));
     const minZ = Math.min(...rooms.map((r) => r.z - r.d / 2)), maxZ = Math.max(...rooms.map((r) => r.z + r.d / 2));
     for (const r of rooms) {
@@ -668,20 +668,20 @@ export async function createOffice(container, hooks = {}) {
   function leaveImmersive() {
     if (!imm.on) return;
     imm.on = false; imm.keys.clear();
-    camera.fov = ORBIT_FOV; camera.near = 0.5; camera.updateProjectionMatrix();
+    camera.fov = IMM_ORBIT_FOV; camera.near = 0.5; camera.updateProjectionMatrix();
   }
   function immMove(dt) {
     const k = imm.keys, turn = (k.has("tr") ? 1 : 0) - (k.has("tl") ? 1 : 0);
     if (turn) imm.yaw += turn * 1.6 * dt;
     const f = (k.has("f") ? 1 : 0) - (k.has("b") ? 1 : 0), sd = (k.has("r") ? 1 : 0) - (k.has("l") ? 1 : 0); if (!f && !sd) return;
     const sy = Math.sin(imm.yaw), cy = Math.cos(imm.yaw); let vx = sy * f + cy * sd, vz = -cy * f + sy * sd; const n = Math.hypot(vx, vz) || 1;
-    const d = (imm.run ? RUN : WALK) * dt; vx = (vx / n) * d; vz = (vz / n) * d;
+    const d = (imm.run ? IMM_RUN : IMM_WALK) * dt; vx = (vx / n) * d; vz = (vz / n) * d;
     const nx = imm.x + vx, nz = imm.z + vz;
     if (walkable(nx, nz)) { imm.x = nx; imm.z = nz; } else if (walkable(nx, imm.z)) imm.x = nx; else if (walkable(imm.x, nz)) imm.z = nz;   // on glisse le long des obstacles
   }
   function immNudge(d) { const sy = Math.sin(imm.yaw), cy = Math.cos(imm.yaw), nx = imm.x + sy * d, nz = imm.z - cy * d; if (walkable(nx, nz)) { imm.x = nx; imm.z = nz; } else if (walkable(nx, imm.z)) imm.x = nx; else if (walkable(imm.x, nz)) imm.z = nz; }
   function applyImmersive() {
-    camera.position.set(imm.x, EYE, imm.z); camera.rotation.order = "YXZ"; camera.rotation.set(imm.pitch, -imm.yaw, 0);
+    camera.position.set(imm.x, IMM_EYE, imm.z); camera.rotation.order = "YXZ"; camera.rotation.set(imm.pitch, -imm.yaw, 0);
     orbit.tx = imm.x; orbit.tz = imm.z; orbit.r = 30; orbit.ty = 0;       // zone d'ombres, taille des icônes et étiquettes « proches » suivent le visiteur
   }
   const IMM_KEYS = { KeyW: "f", ArrowUp: "f", KeyS: "b", ArrowDown: "b", KeyA: "l", KeyD: "r", ArrowLeft: "tl", KeyQ: "tl", ArrowRight: "tr", KeyE: "tr" };   // touches physiques : Z Q S D sur un clavier AZERTY
