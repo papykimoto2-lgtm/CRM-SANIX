@@ -555,6 +555,7 @@ export async function createOffice(container, hooks = {}) {
 
   function step(dt) {
     simMs += dt * 1000;
+    if (imm.on) immMove(dt);
     if (viewMode === "exterior" && !userMoved && !reduced) goal.theta += dt * 0.1;   // tour lent autour du bâtiment ; s'arrête dès que l'on touche à la caméra
     // création progressive des avatars
     spawnQueued(Q.perFrame);
@@ -625,6 +626,77 @@ export async function createOffice(container, hooks = {}) {
   function setWallMode(m) { if (!WALL_MODES.includes(m) || m === wallMode) return; wallMode = m; for (const w of S.walls) wallLook(w); if (!running) renderOnce(); hooks.onDisplay?.({ walls: wallMode, labels: labelMode }); }
   function setLabelMode(m) { if (!LABEL_MODES.includes(m) || m === labelMode) return; labelMode = m; labelFrame = 0; if (!running) renderOnce(); hooks.onDisplay?.({ walls: wallMode, labels: labelMode }); }
 
+  // ─────────────────────────── caméra immersive ───────────────────────────
+  // Visite à hauteur d'homme : on marche dans les couloirs et les bureaux (glisser = regarder ; Z Q S D / flèches = avancer ; Maj = courir ; Échap = quitter).
+  // Déplacements limités aux pièces, aux portes et aux couloirs ; les bureaux sont des obstacles.
+  const EYE = 1.62, IMM_FOV = 66, ORBIT_FOV = 40, WALK = 2.6, RUN = 5, MARGIN = 0.45;
+  const imm = { on: false, x: 0, z: 0, yaw: 0, pitch: -0.04, keys: new Set(), run: false, prev: null };
+  function walkRects() {
+    const R = [], rooms = S.rooms, m = MARGIN; if (!rooms.length) return R;
+    const minX = Math.min(...rooms.map((r) => r.x - r.w / 2)), maxX = Math.max(...rooms.map((r) => r.x + r.w / 2));
+    const minZ = Math.min(...rooms.map((r) => r.z - r.d / 2)), maxZ = Math.max(...rooms.map((r) => r.z + r.d / 2));
+    for (const r of rooms) {
+      R.push([r.x - r.w / 2 + m, r.x + r.w / 2 - m, r.z - r.d / 2 + m, r.z + r.d / 2 - m]);                          // intérieur de la pièce
+      R.push([r.x - 1.25, r.x + 1.25, r.z + r.d / 2 - m - 0.05, r.z + r.d / 2 + m + 0.05]);                          // porte de la cloison sud
+    }
+    S.rowSouth.forEach((zs, i) => { if (i < S.rowSouth.length - 1) R.push([minX + m, maxX - m, zs + m, zs + GAP - m]); });   // couloirs entre les rangées
+    const cols = [...new Set(rooms.map((r) => r.x))].sort((a, b) => a - b);
+    for (let i = 0; i < cols.length - 1; i++) R.push([cols[i] + ROOM_W / 2 + m, cols[i + 1] - ROOM_W / 2 - m, minZ + m, maxZ - m]);   // allées entre les colonnes
+    return R;
+  }
+  function blocked(x, z) {
+    for (const sl of S.slotOf.values()) {
+      if (Math.abs(x - sl.deskX) < 0.95 + 0.25 && Math.abs(z - sl.deskZ) < 0.6 + 0.25) return true;                       // bureau
+      if (Math.abs(x - sl.x) < 0.5 + 0.2 && Math.abs(z - sl.z) < 0.5 + 0.2) return true;                                 // fauteuil
+    }
+    return false;
+  }
+  const walkable = (x, z) => walkRects().some((q) => x >= q[0] && x <= q[1] && z >= q[2] && z <= q[3]) && !blocked(x, z);
+  function freeSpot(x, z) {
+    if (walkable(x, z)) return { x, z };
+    for (let k = 1; k <= 14; k++) for (const [dx, dz] of [[k, 0], [-k, 0], [0, k], [0, -k], [k, k], [-k, k], [k, -k], [-k, -k]]) { const nx = x + dx * 0.5, nz = z + dz * 0.5; if (walkable(nx, nz)) return { x: nx, z: nz }; }
+    return { x, z };
+  }
+  function enterImmersive(roomId) {
+    if (!S.rooms.length) return false;
+    if (!imm.on) imm.prev = { mode: viewMode === "immersive" ? "general" : viewMode, arg: viewArg };
+    const room = S.byRoom.get(roomId) ?? S.byRoom.get("direction") ?? S.rooms[0], p = freeSpot(room.x, room.z + room.d / 2 - 1.1);
+    Object.assign(imm, { on: true, x: p.x, z: p.z, yaw: 0, pitch: -0.04, run: false }); imm.keys.clear();
+    camera.fov = IMM_FOV; camera.near = 0.1; camera.rotation.order = "YXZ"; camera.updateProjectionMatrix();
+    followId = null; return true;
+  }
+  function leaveImmersive() {
+    if (!imm.on) return;
+    imm.on = false; imm.keys.clear();
+    camera.fov = ORBIT_FOV; camera.near = 0.5; camera.updateProjectionMatrix();
+  }
+  function immMove(dt) {
+    const k = imm.keys, turn = (k.has("tr") ? 1 : 0) - (k.has("tl") ? 1 : 0);
+    if (turn) imm.yaw += turn * 1.6 * dt;
+    const f = (k.has("f") ? 1 : 0) - (k.has("b") ? 1 : 0), sd = (k.has("r") ? 1 : 0) - (k.has("l") ? 1 : 0); if (!f && !sd) return;
+    const sy = Math.sin(imm.yaw), cy = Math.cos(imm.yaw); let vx = sy * f + cy * sd, vz = -cy * f + sy * sd; const n = Math.hypot(vx, vz) || 1;
+    const d = (imm.run ? RUN : WALK) * dt; vx = (vx / n) * d; vz = (vz / n) * d;
+    const nx = imm.x + vx, nz = imm.z + vz;
+    if (walkable(nx, nz)) { imm.x = nx; imm.z = nz; } else if (walkable(nx, imm.z)) imm.x = nx; else if (walkable(imm.x, nz)) imm.z = nz;   // on glisse le long des obstacles
+  }
+  function immNudge(d) { const sy = Math.sin(imm.yaw), cy = Math.cos(imm.yaw), nx = imm.x + sy * d, nz = imm.z - cy * d; if (walkable(nx, nz)) { imm.x = nx; imm.z = nz; } else if (walkable(nx, imm.z)) imm.x = nx; else if (walkable(imm.x, nz)) imm.z = nz; }
+  function applyImmersive() {
+    camera.position.set(imm.x, EYE, imm.z); camera.rotation.order = "YXZ"; camera.rotation.set(imm.pitch, -imm.yaw, 0);
+    orbit.tx = imm.x; orbit.tz = imm.z; orbit.r = 30; orbit.ty = 0;       // zone d'ombres, taille des icônes et étiquettes « proches » suivent le visiteur
+  }
+  const IMM_KEYS = { KeyW: "f", ArrowUp: "f", KeyS: "b", ArrowDown: "b", KeyA: "l", KeyD: "r", ArrowLeft: "tl", KeyQ: "tl", ArrowRight: "tr", KeyE: "tr" };   // touches physiques : Z Q S D sur un clavier AZERTY
+  const typing = (e) => /^(INPUT|SELECT|TEXTAREA)$/.test(e.target?.tagName ?? "") || e.target?.isContentEditable;
+  window.addEventListener("keydown", (e) => {
+    if (!imm.on || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "Escape") { exitVisit(); e.preventDefault(); return; }
+    const a = IMM_KEYS[e.code]; if (!a) { if (e.key === "Shift") imm.run = true; return; }
+    imm.keys.add(a); imm.run = e.shiftKey; e.preventDefault();
+  });
+  window.addEventListener("keyup", (e) => { if (!imm.on) return; const a = IMM_KEYS[e.code]; if (a) imm.keys.delete(a); if (e.key === "Shift") imm.run = false; });
+  window.addEventListener("blur", () => { imm.keys.clear(); imm.run = false; });
+  const exitVisit = () => { const p = imm.prev ?? { mode: "general", arg: null }; setView(p.mode, p.arg ?? undefined); };   // retour à la vue d'avant la visite
+  const setMove = (a, on) => { if (!imm.on) return; if (on) imm.keys.add(a); else imm.keys.delete(a); };
+
   // ─────────────────────────── caméra ───────────────────────────
   const orbit = { tx: 0, ty: 0, tz: 0, theta: 0, phi: 0.86, r: 80 }, goal = { ...orbit };
   function fitPoints(pts, phi = 0.86, theta = 0) {
@@ -640,6 +712,7 @@ export async function createOffice(container, hooks = {}) {
   }
   const roomPts = (r) => [{ x: r.x - r.w / 2, z: r.z - r.d / 2 }, { x: r.x + r.w / 2, z: r.z - r.d / 2 }, { x: r.x - r.w / 2, z: r.z + r.d / 2 }, { x: r.x + r.w / 2, z: r.z + r.d / 2 }];   // 4 coins : la caméra est en 3/4
   function applyView() {
+    if (viewMode === "immersive") return;
     const rooms = S.rooms; if (!rooms.length) return;
     let t = null;
     if (viewMode === "general") t = fitPoints(rooms.flatMap(roomPts), 0.92, 0.42);
@@ -667,6 +740,7 @@ export async function createOffice(container, hooks = {}) {
     if (reduced) Object.assign(orbit, goal);
   }
   function applyCamera() {
+    if (imm.on) { applyImmersive(); return; }
     for (const k of ["tx", "ty", "tz", "theta", "phi", "r"]) orbit[k] += (goal[k] - orbit[k]) * (reduced ? 1 : 0.14);
     const { phi, theta, r } = orbit;
     camera.position.set(orbit.tx + r * Math.sin(phi) * Math.sin(theta), orbit.ty + r * Math.cos(phi), orbit.tz + r * Math.sin(phi) * Math.cos(theta)); camera.lookAt(orbit.tx, orbit.ty, orbit.tz);
@@ -684,8 +758,8 @@ export async function createOffice(container, hooks = {}) {
     const p = pointers.get(e.pointerId);
     if (!p) { const id = agentAt(e); if (id !== hovered) { hovered = id; dom.style.cursor = id ? "pointer" : "grab"; } return; }
     const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
-    if (pointers.size === 1) { if (p.button === 2 || p.shift) pan(dx, dy); else { goal.theta -= dx * 0.006; goal.phi = clampN(goal.phi - dy * 0.005, 0.2, 1.45); } }
-    else if (pointers.size === 2) {
+    if (pointers.size === 1) { if (imm.on) { imm.yaw -= dx * 0.005; imm.pitch = clampN(imm.pitch + dy * 0.004, -1.1, 1.1); } else if (p.button === 2 || p.shift) pan(dx, dy); else { goal.theta -= dx * 0.006; goal.phi = clampN(goal.phi - dy * 0.005, 0.2, 1.45); } }
+    else if (pointers.size === 2 && !imm.on) {
       const [a, b] = [...pointers.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
       goal.r = clampN(goal.r * (lastPinch / Math.max(d, 1)), 6, 140); lastPinch = d;
     }
@@ -696,7 +770,7 @@ export async function createOffice(container, hooks = {}) {
     if (!pointers.size) downAt = null;
   };
   dom.addEventListener("pointerup", up); dom.addEventListener("pointercancel", (e) => pointers.delete(e.pointerId));
-  dom.addEventListener("wheel", (e) => { e.preventDefault(); userMoved = true; goal.r = clampN(goal.r * (1 + Math.sign(e.deltaY) * 0.1), 6, 140); }, { passive: false });
+  dom.addEventListener("wheel", (e) => { e.preventDefault(); if (imm.on) { immNudge(e.deltaY < 0 ? 0.9 : -0.9); return; } userMoved = true; goal.r = clampN(goal.r * (1 + Math.sign(e.deltaY) * 0.1), 6, 140); }, { passive: false });
   dom.addEventListener("dblclick", (e) => pick(e, true));
   function pan(dx, dy) {
     followId = null; viewMode = "free"; goal.ty = 0; hooks.onView?.({ mode: "free" });
@@ -705,6 +779,7 @@ export async function createOffice(container, hooks = {}) {
   }
   dom.tabIndex = 0;
   dom.addEventListener("keydown", (e) => {
+    if (imm.on) return;   // en visite, les touches sont gérées par la fenêtre (marche, Échap)
     const k = e.key;
     if (k === "ArrowLeft") goal.theta += 0.12; else if (k === "ArrowRight") goal.theta -= 0.12; else if (k === "ArrowUp") goal.phi = clampN(goal.phi - 0.08, 0.2, 1.45); else if (k === "ArrowDown") goal.phi = clampN(goal.phi + 0.08, 0.2, 1.45);
     else if (k === "+" || k === "=") goal.r = clampN(goal.r * 0.9, 6, 140); else if (k === "-") goal.r = clampN(goal.r * 1.1, 6, 140);
@@ -720,7 +795,7 @@ export async function createOffice(container, hooks = {}) {
   function pick(e, focus) { const id = agentAt(e); select(id, focus && !!id); hooks.onSelect?.(id); }
   function select(id, focus = false) {
     selectedId = id;
-    if (id && focus) { const av = avatars.get(id); if (av) { viewMode = "free"; followId = null; hooks.onView?.({ mode: "free" }); goal.tx = av.root.position.x; goal.tz = av.root.position.z; goal.r = Math.min(goal.r, 24); } }
+    if (id && focus && !imm.on) { const av = avatars.get(id); if (av) { viewMode = "free"; followId = null; hooks.onView?.({ mode: "free" }); goal.tx = av.root.position.x; goal.tz = av.root.position.z; goal.r = Math.min(goal.r, 24); } }
   }
 
   // ─────────────────────────── liens hiérarchiques, plaques, bulles ───────────────────────────
@@ -768,7 +843,7 @@ export async function createOffice(container, hooks = {}) {
     const low = orbit.phi > 1.18;
     for (const w of S.walls) {
       const outside = (camera.position.x - w.x) * w.nx + (camera.position.z - w.z) * w.nz > 0;
-      const target = wallMode === "bas" ? 0.16 : wallMode === "verre" ? 1 : (outside || low ? 0.16 : 1); w.s += (target - w.s) * Math.min(1, dt * 7); w.g.scale.y = Math.max(0.1, w.s);
+      const target = wallMode === "bas" ? 0.16 : wallMode === "verre" ? 1 : (imm.on ? 1 : (outside || low ? 0.16 : 1)); w.s += (target - w.s) * Math.min(1, dt * 7); w.g.scale.y = Math.max(0.1, w.s);
     }
   };
   let lastFrameT = 0;
@@ -864,6 +939,7 @@ export async function createOffice(container, hooks = {}) {
   }
   function setMeetings(ms) { data.meetings = ms; drawBoard(); reconcileAll(); }
   function setView(mode, arg, opts = {}) {
+    if (mode === "immersive") { if (!enterImmersive(arg)) return; } else leaveImmersive();
     followId = null; viewMode = mode; viewArg = arg ?? null; viewOpts = opts; userMoved = false; activityView = mode === "activity";
     if (mode === "follow") { select(arg, false); }
     applyView(); assignDetail(); hooks.onView?.({ mode, arg });
@@ -880,7 +956,7 @@ export async function createOffice(container, hooks = {}) {
     queue.push(...agents); hooks.onQuality?.(name);
   }
   const resetView = () => setView("general");
-  const zoom = (dir) => { userMoved = true; goal.r = clampN(goal.r * (dir > 0 ? 1.25 : 0.8), 6, 140); };
+  const zoom = (dir) => { if (imm.on) { immNudge(dir < 0 ? 1.2 : -1.2); return; } userMoved = true; goal.r = clampN(goal.r * (dir > 0 ? 1.25 : 0.8), 6, 140); };
   function setActive(v) { active = v; if (v) { w = Math.max(1, container.clientWidth); h = Math.max(1, container.clientHeight); renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); start(); renderOnce(); } else stop(); }
   function dispose() { stop(); ro.disconnect(); io?.disconnect(); disposeStatic(); for (const id of [...avatars.keys()]) removeAvatar(id); renderer.dispose(); dom.remove(); labels.remove(); }
   const screenPositionOf = (id) => { const av = avatars.get(id); if (!av) return null; V.set(av.root.position.x, 1.3 * av.S, av.root.position.z).project(camera); return { x: (V.x * 0.5 + 0.5) * w, y: (-V.y * 0.5 + 0.5) * h, visible: V.z < 1 }; };
@@ -901,12 +977,12 @@ export async function createOffice(container, hooks = {}) {
   const now = () => new Date(wallNow()).toISOString();
 
   start();
-  const getView = () => ({ mode: viewMode, arg: viewArg, orbit: viewMode === "free" ? { tx: goal.tx, tz: goal.tz, r: goal.r, phi: goal.phi, theta: goal.theta } : null });
+  const getView = () => viewMode === "immersive" ? { mode: imm.prev?.mode ?? "general", arg: imm.prev?.arg ?? null, orbit: null } : ({ mode: viewMode, arg: viewArg, orbit: viewMode === "free" ? { tx: goal.tx, tz: goal.tz, r: goal.r, phi: goal.phi, theta: goal.theta } : null }));
   function restoreView(v) {
     if (!v || typeof v.mode !== "string") return;
     if (v.mode === "free" && v.orbit) { viewMode = "free"; viewArg = null; userMoved = true; for (const k of ["tx", "tz", "r", "phi", "theta"]) if (Number.isFinite(v.orbit[k])) goal[k] = v.orbit[k]; hooks.onView?.({ mode: "free" }); }
     else if (v.mode !== "follow") setView(v.mode, v.arg ?? undefined);
   }
-  return { orbitTheta: () => orbit.theta, get _camera() { return camera; }, setWallMode, setLabelMode, getView, restoreView, get display() { return { walls: wallMode, labels: labelMode }; }, update, patchAgent, pushEvent, setMeetings, select: (id, f) => select(id, f), setView, resetView, zoom, setQuality, setActive, dispose, element: dom, screenPositionOf, advance, inspect, desk, collides, stats, board, feedLines, now, has,
+  return { deskPoints: () => [...S.slotOf.values()].map((q) => ({ x: q.deskX, z: q.deskZ })), setMove, exitVisit, get immersive() { return { on: imm.on, x: imm.x, z: imm.z, yaw: imm.yaw, pitch: imm.pitch, fov: camera.fov }; }, walkable, orbitTheta: () => orbit.theta, get _camera() { return camera; }, setWallMode, setLabelMode, getView, restoreView, get display() { return { walls: wallMode, labels: labelMode }; }, update, patchAgent, pushEvent, setMeetings, select: (id, f) => select(id, f), setView, resetView, zoom, setQuality, setActive, dispose, element: dom, screenPositionOf, advance, inspect, desk, collides, stats, board, feedLines, now, has,
     settleCamera: () => { Object.assign(orbit, goal); renderOnce(); }, get quality() { return qName; }, get _scene() { return scene; }, get view() { return { mode: viewMode, arg: viewArg, follow: followId }; } };
 }

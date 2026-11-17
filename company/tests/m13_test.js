@@ -291,6 +291,49 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
     await ev(page, () => { const o = window.__vc.office; o.setView("general"); });
     await ev(page, () => { const m = JSON.parse(localStorage.getItem("sanix_company_cam")); window.__vc.office.restoreView(m.view); });
     ok((await ev(page, () => window.__vc.office.view)).mode === "aerial", "la vue retenue est reprise");
+    console.log("▶ Caméra immersive");
+    await page.selectOption("#view-sel", "dept:commercial"); await page.waitForTimeout(150);
+    await page.selectOption("#view-sel", "immersive"); await page.waitForTimeout(250);
+    const I0 = await ev(page, () => ({ v: window.__vc.office.view, i: window.__vc.office.immersive }));
+    ok(I0.v.mode === "immersive" && I0.i.on && I0.i.fov > 60, "vue immersive : caméra à hauteur d'homme, champ de vision élargi");
+    ok(await page.locator("#imm-pad").isVisible() && (await page.locator("#imm-pad").innerText()).includes("Quitter la visite"), "commandes de visite affichées (marche, rotation, quitter)");
+    ok(await ev(page, () => { const o = window.__vc.office, i = o.immersive; return o.walkable(i.x, i.z); }), "le visiteur démarre sur un emplacement praticable");
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+    await ev(page, () => { const o = window.__vc.office; o.setMove("f", true); o.advance(1); o.setMove("f", false); });
+    const I1 = await ev(page, () => window.__vc.office.immersive);
+    ok(dist(I0.i, I1) > 1.5, `marche vers l'avant (${dist(I0.i, I1).toFixed(1)} unités en 1 s)`);
+    await ev(page, () => { const o = window.__vc.office; o.setMove("tr", true); o.advance(1); o.setMove("tr", false); });
+    ok(Math.abs((await ev(page, () => window.__vc.office.immersive)).yaw - I1.yaw) > 1, "rotation à droite");
+    // marche aléatoire déterministe : le visiteur ne sort jamais des pièces, des portes et des couloirs
+    const sorti = await ev(page, () => {
+      const o = window.__vc.office; let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647, bad = [];
+      for (let n = 0; n < 60; n++) {
+        const a = ["f", "b", "l", "r", "tl", "tr"].filter(() => rnd() > 0.55); a.forEach((k) => o.setMove(k, true)); o.advance(0.4 + rnd() * 3, false);
+        ["f", "b", "l", "r", "tl", "tr"].forEach((k) => o.setMove(k, false));
+        const i = o.immersive; if (!o.walkable(i.x, i.z)) bad.push([i.x.toFixed(1), i.z.toFixed(1)]);
+      }
+      return bad;
+    });
+    ok(sorti.length === 0, `60 trajets aléatoires : jamais dans un mur ni hors du bâtiment (${sorti.length} sortie(s))`);
+    ok(await ev(page, () => { const o = window.__vc.office, d = o.deskPoints(); return d.length > 3 && d.every((p) => !o.walkable(p.x, p.z)); }), "les bureaux sont des obstacles");
+    // boutons de marche (souris / tactile)
+    const bf = await page.locator("[data-imm=f]").boundingBox(); const J0 = await ev(page, () => window.__vc.office.immersive);
+    await page.mouse.move(bf.x + bf.width / 2, bf.y + bf.height / 2); await page.mouse.down();
+    await ev(page, () => window.__vc.office.advance(1)); const J1 = await ev(page, () => window.__vc.office.immersive);
+    await page.mouse.up(); await ev(page, () => window.__vc.office.advance(1)); const J2 = await ev(page, () => window.__vc.office.immersive);
+    ok(dist(J0, J1) > 0.8 && dist(J1, J2) < 0.01, "bouton ▲ : avance tant qu'il est enfoncé, s'arrête quand on le relâche");
+    await page.click("[data-act=save-view]"); await page.waitForTimeout(100);
+    ok((await ev(page, () => JSON.parse(localStorage.getItem("sanix_company_cam") || "{}"))).view?.mode !== "immersive", "« Retenir » ne mémorise jamais la visite : on garde la vue d'avant");
+    ok(await ev(page, () => document.activeElement?.tagName !== "SELECT"), "après le choix dans la liste, le clavier est rendu à la scène (la liste ne capte plus les flèches)");
+    await page.keyboard.down("KeyW"); await ev(page, () => window.__vc.office.advance(1)); await page.keyboard.up("KeyW");
+    ok(dist(J2, await ev(page, () => window.__vc.office.immersive)) > 1, "touche Z (physique W) : le visiteur avance au clavier");
+    await page.keyboard.press("Escape"); await page.waitForTimeout(250);
+    const I2 = await ev(page, () => ({ v: window.__vc.office.view, i: window.__vc.office.immersive }));
+    ok(I2.v.mode === "dept" && I2.v.arg === "commercial" && !I2.i.on && I2.i.fov < 45, "Échap : retour à la vue d'avant (département) et au champ de vision normal");
+    ok(!(await page.locator("#imm-pad").isVisible()), "commandes de visite masquées");
+    await page.selectOption("#view-sel", "immersive"); await page.waitForTimeout(200);
+    await page.click("[data-act=imm-exit]"); await page.waitForTimeout(200);
+    ok(!(await ev(page, () => window.__vc.office.immersive)).on, "bouton « Quitter la visite »");
     await page.selectOption("#view-sel", "general");
     const r0 = await ev(page, () => window.__vc.office.view); await page.locator("[data-act=zoom][data-d='-1']").click();
     ok(true, "zoom, rotation et déplacement disponibles (boutons, souris, tactile, clavier)");
