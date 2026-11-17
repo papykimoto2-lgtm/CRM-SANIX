@@ -5646,6 +5646,32 @@ function gmailAdresseMorte(email){
   const e=String(email||'').trim().toLowerCase(); if(!e) return null; const lim=Date.now()-30*864e5;
   return _gmail.mails.find(m=>String(m.to_email||'').toLowerCase()===e && m.status==='echec' && /distribu/i.test(m.error||'') && new Date(m.last_checked_at||m.sent_at).getTime()>=lim)||null;
 }
+
+/** E-mails revenus « non distribués » dont la fiche a depuis une AUTRE adresse (corrigée), valide, non rejetée, et pas déjà renvoyée avec le même objet. */
+function gmailRenvoyables(clientId){
+  const out=[];
+  _gmail.mails.forEach(m=>{
+    if(m.status!=='echec' || !/distribu/i.test(m.error||'')) return;
+    const c=CLIENTS.find(x=>x._rid && x._rid===m.client_rid); if(!c || (clientId && c.id!==clientId)) return;
+    const nouvelle=emailAnalyse(c.email||'').principal; if(!nouvelle || nouvelle===String(m.to_email).toLowerCase()) return;
+    if(gmailAdresseMorte(nouvelle)) return;
+    if(_gmail.mails.some(x=>x.status!=='echec' && x.subject===m.subject && String(x.to_email).toLowerCase()===nouvelle && new Date(x.sent_at)>=new Date(m.sent_at))) return;
+    out.push({m,c,nouvelle});
+  });
+  return out;
+}
+/** Rouvre le dernier e-mail non distribué, avec l'adresse corrigée de la fiche, dans l'éditeur d'envoi : il reste à cliquer sur « Envoyer maintenant ». */
+async function courrierRenvoyer(mailId){
+  const m=_gmail.mails.find(x=>x.id===mailId); if(!m) return;
+  const c=CLIENTS.find(x=>x._rid && x._rid===m.client_rid); if(!c){ showToast('❌ Fiche introuvable'); return; }
+  let corps=m.body; if(!corps){ try{ const r=await aisApi('/rest/v1/crm_mails?select=body&id=eq.'+encodeURIComponent(m.id)); corps=r&&r[0]&&r[0].body; }catch(e){} }
+  if(!corps){ showToast('❌ Texte de l’e-mail introuvable'); return; }
+  openCourrierModal(c.id);
+  window._courrierEx.forEach(e=>{ e.conseille=false; });
+  window._courrierEx.unshift({id:'renvoi',titre:'Renvoi du dernier e-mail',quand:'Même message, adresse corrigée',objet:m.subject,corps,conseille:true});
+  if(gmailConnecte()) courrierEcrire(0); else courrierRender();
+}
+
 function gmailLigneMail(m){
   const E=_dEsc, d=x=>new Date(x).toLocaleDateString('fr-FR'), j=_joursDepuis(m.sent_at), att=m.status==='envoye' && j>=(m.relance_apres_jours||4);
   const st = m.status==='repondu' ? '<span style="color:var(--success);font-weight:600">✅ Répondu le '+d(m.replied_at)+'</span>'
@@ -5689,7 +5715,7 @@ async function gmailReglageRender(){
 async function gmailFicheRender(id){
   const h=document.getElementById('gmail-fiche-host'); if(!h) return;
   id=id||h.dataset.cid; const c=CLIENTS.find(x=>x.id===Number(id)); if(!c) return; h.dataset.cid=c.id;
-  const dessiner=()=>{ const l=gmailMailsDe(c).slice(0,4); h.innerHTML=l.length?'<div style="margin-bottom:12px"><div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">✉️ E-mails envoyés ('+gmailMailsDe(c).length+')</div><div style="font-size:12px;border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px">'+l.map(gmailLigneMail).join('')+(gmailAttente(c)?'<button class="btn btn-primary btn-sm" style="font-size:11px;margin:4px 0" onclick="openCourrierModal('+c.id+')">✉️ Relancer par e-mail</button>':'')+'</div></div>':''; };
+  const dessiner=()=>{ const l=gmailMailsDe(c).slice(0,4); h.innerHTML=l.length?'<div style="margin-bottom:12px"><div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">✉️ E-mails envoyés ('+gmailMailsDe(c).length+')</div><div style="font-size:12px;border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px">'+l.map(gmailLigneMail).join('')+(gmailAttente(c)?'<button class="btn btn-primary btn-sm" style="font-size:11px;margin:4px 0" onclick="openCourrierModal('+c.id+')">✉️ Relancer par e-mail</button>':'')+gmailRenvoyables(c.id).map(r=>'<button class="btn btn-primary btn-sm" style="font-size:11px;margin:4px 4px 4px 0" onclick="courrierRenvoyer(\''+r.m.id+'\')">↻ Renvoyer à '+_dEsc(r.nouvelle)+'</button>').join('')+'</div></div>':''; };
   dessiner(); if(!_gmail.etat || Date.now()-_gmail.charge>60000){ await gmailRefresh(); dessiner(); }
   gmailSync();
 }
@@ -5756,7 +5782,7 @@ function notifPanelRender(){
     h+='<div style="padding:4px 14px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">✉️ E-mails</div>';
     h+=mails.map(a=>a.type==='reponse'
       ? ligne('📩','<span class="notif-rep">'+E(a.nom)+' a répondu</span>',E(a.m.subject)+' · '+_ilya(a.quand),ouvrir(a),a.nouveau)
-      : ligne('⚠️','<span class="notif-ech">E-mail non distribué : '+E(a.nom)+'</span>','Adresse '+E(a.m.to_email)+' à vérifier · '+_ilya(a.quand),ouvrir(a),a.nouveau)).join('');
+      : (()=>{ const rv=gmailRenvoyables().find(r=>r.m.id===a.m.id); return rv ? ligne('↻','<span class="notif-ech">Adresse corrigée : renvoyer à '+E(a.nom)+'</span>','Nouvelle adresse '+E(rv.nouvelle)+' · cliquez pour renvoyer le même e-mail',"document.getElementById('notif-panel').classList.add('hidden');courrierRenvoyer('"+a.m.id+"')",a.nouveau) : ligne('⚠️','<span class="notif-ech">E-mail non distribué : '+E(a.nom)+'</span>','Adresse '+E(a.m.to_email)+' à vérifier · '+_ilya(a.quand),ouvrir(a),a.nouveau); })()).join('');
   } else if(gmailConnecte()) h+='<div style="padding:8px 14px;font-size:12px;color:var(--muted)">📭 Aucune réponse reçue ces '+_NOTIF_JOURS+' derniers jours.</div>';
   if(autres.length){
     h+='<div style="padding:8px 14px 4px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">À surveiller</div>';
