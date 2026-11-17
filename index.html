@@ -337,6 +337,8 @@ select.form-input{cursor:pointer}
 
 /* ─── QR MODAL ─────────────────────────────────────── */
 .modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:center;justify-content:center}
+/* La fiche contact reste SOUS les fenêtres qu'elle ouvre (WhatsApp, Relancer, Devis, Contrat…) : elles étaient déclarées avant elle dans la page, au même niveau, donc cachées derrière. */
+#modal-client-detail{z-index:900}
 .modal-box{background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--sh-lg);padding:28px;max-width:420px;width:90%;position:relative;max-height:92vh;overflow-y:auto;overscroll-behavior:contain}   /* une fenêtre plus haute que l'écran défile au lieu d'être coupée */
 .modal-close{position:absolute;top:16px;right:16px;width:28px;height:28px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;transition:all .15s}
 .modal-close:hover{background:#EF4444;color:#fff;border-color:transparent;transform:rotate(90deg)}
