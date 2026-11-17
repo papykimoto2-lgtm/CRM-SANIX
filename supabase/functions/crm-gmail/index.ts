@@ -10,7 +10,7 @@ import { connectUrl, disconnect, GmailError, handleCallback, sendMail, syncRepli
 
 const store: Store = {
   async getAccount() {
-    const { data } = await db().from("crm_mail_account").select("email, token_enc, status").eq("id", 1).maybeSingle();
+    const { data } = await db().from("crm_mail_account").select("email, token_enc, status, scopes").eq("id", 1).maybeSingle();
     return data ?? null;
   },
   async saveAccount(a) {
@@ -42,6 +42,15 @@ const store: Store = {
   async recentBounce(toEmail, sinceIso) {
     const { count } = await db().from("crm_mails").select("id", { count: "exact", head: true }).eq("to_email", toEmail).eq("status", "echec").ilike("error", "%distribu%").gte("sent_at", sinceIso);
     return (count ?? 0) > 0;
+  },
+  async saveReplies(mailId, replies) {
+    if (!replies.length) return;
+    const { error } = await db().from("crm_mail_replies").upsert(replies.map((r) => ({ mail_id: mailId, ...r })), { onConflict: "gmail_message_id", ignoreDuplicates: true });
+    if (error) throw new GmailError(500, "Réponses non enregistrées : " + error.message);
+  },
+  async repliedWithoutText(sinceIso, checkedBeforeIso, limit) {
+    const { data } = await db().from("crm_mails").select("*, crm_mail_replies(id)").eq("status", "repondu").not("gmail_thread_id", "is", null).gte("sent_at", sinceIso).order("sent_at", { ascending: false }).limit(200);
+    return (data ?? []).filter((m: any) => !(m.crm_mail_replies ?? []).length && (!m.last_checked_at || m.last_checked_at < checkedBeforeIso)).slice(0, limit).map(({ crm_mail_replies: _r, ...m }: any) => m) as MailRow[];
   },
   async addInteraction(clientRid, interaction) {
     // Jamais de création de fiche : on n'écrit que sur une fiche cliente qui existe déjà.

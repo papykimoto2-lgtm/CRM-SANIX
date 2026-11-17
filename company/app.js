@@ -530,6 +530,7 @@ const ACT = {
   "sales-refresh": (el) => SALES.salesAction(el),
   "sales-more": (el) => SALES.salesAction(el),
   "sales-vue": (el) => SALES.salesAction(el),
+  "sales-conv": (el) => SALES.salesAction(el),
   "cost-refresh": (el) => COST.costAction(el),
   "sales-qualify": (el) => SALES.salesAction(el),
   "sales-contact": (el) => SALES.salesAction(el),

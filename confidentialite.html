@@ -28,14 +28,14 @@
   <p>Avec votre accord explicite, l'application demande deux autorisations à Google :</p>
   <ul>
     <li><b>Envoyer des e-mails</b> (<code>gmail.send</code>) : pour envoyer, depuis votre adresse Gmail, les messages que vous avez relus et validés dans l'application.</li>
-    <li><b>Consulter les métadonnées des messages</b> (<code>gmail.metadata</code>) : uniquement les en-têtes (expéditeur et date) des conversations ouvertes par l'application elle-même, pour détecter une réponse du destinataire ou un retour d'erreur de distribution.</li>
+    <li><b>Lire les messages</b> (<code>gmail.readonly</code>, lecture seule) : uniquement les conversations ouvertes par l'application elle-même (dont elle a conservé l'identifiant à l'envoi), pour détecter une réponse du destinataire, afficher le texte de cette réponse dans la fiche du prospect et repérer un retour d'erreur de distribution.</li>
   </ul>
-  <p>Ces autorisations <b>ne permettent pas</b> de lire le contenu des messages reçus, ni le reste de votre boîte. Aucun message n'est envoyé sans une action explicite de l'utilisateur (bouton « Envoyer maintenant »), et jamais en masse.</p>
+  <p>Google ne propose pas d'autorisation limitée à certaines conversations : l'application s'impose elle-même cette limite et <b>ne lit, ne modifie et ne supprime rien d'autre</b> dans votre boîte (aucun accès en écriture n'est demandé). Aucun message n'est envoyé sans une action explicite de l'utilisateur (bouton « Envoyer maintenant »), et jamais en masse.</p>
 
   <h2>3. Ce qui est conservé</h2>
   <ul>
     <li>L'adresse Gmail connectée et un jeton d'accès durable, <b>chiffré</b> (AES-256) sur nos serveurs et illisible depuis le navigateur.</li>
-    <li>Un journal des e-mails envoyés par l'application : destinataire, objet, texte envoyé, date, auteur, état (envoyé, répondu, non distribué).</li>
+    <li>Un journal des e-mails envoyés par l'application : destinataire, objet, texte envoyé, date, auteur, état (envoyé, répondu, non distribué), et le texte des réponses reçues à ces e-mails (sans l'historique cité), lisible uniquement par l'équipe connectée.</li>
     <li>Dans la fiche du prospect concerné : une mention « e-mail envoyé » ou « réponse reçue ».</li>
   </ul>
 

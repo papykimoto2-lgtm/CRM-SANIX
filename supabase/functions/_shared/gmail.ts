@@ -4,10 +4,12 @@
 //
 // Droits demandés à Google (le strict nécessaire) :
 //   • gmail.send     — envoyer un message ;
-//   • gmail.metadata — lire les EN-TÊTES (expéditeur, date) des fils que le CRM a lui-même ouverts, pour savoir si le prospect a répondu.
-//   Le contenu des e-mails reçus n'est JAMAIS lu : ces droits ne le permettent pas.
+//   • gmail.readonly — lire les fils que le CRM a lui-même ouverts (expéditeur, date et TEXTE des réponses) : savoir si le prospect a répondu et lire sa réponse.
+//   Le CRM ne lit QUE ces fils (identifiants conservés à l'envoi) : jamais le reste de la boîte. Une connexion plus ancienne (envoi + en-têtes seulement) continue de
+//   fonctionner : elle détecte les réponses sans en lire le texte, jusqu'à la reconnexion de Gmail.
 
-export const GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.metadata";
+export const SCOPE_LECTURE = "https://www.googleapis.com/auth/gmail.readonly";
+export const GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.send " + SCOPE_LECTURE;
 export const LIMITE_PAR_JOUR = 100;          // plafond d'envois par 24 h (Gmail : 500 pour un compte gratuit) : protège d'une boucle ou d'une erreur
 export const JOURS_SUIVI = 45;
 export const JOURS_ADRESSE_MORTE = 30;       // une adresse qui a renvoyé « non distribué » est refusée pendant 30 jours               // au-delà, un e-mail sans réponse n'est plus surveillé
@@ -22,7 +24,8 @@ export type MailRow = {
   gmail_message_id: string | null; gmail_thread_id: string | null; status: "envoye" | "repondu" | "echec"; error: string | null;
   sent_at?: string; replied_at: string | null; reply_from: string | null; relance_apres_jours: number; last_checked_at: string | null;
 };
-export type MailAccount = { email: string; token_enc: string; status: string };
+export type MailAccount = { email: string; token_enc: string; status: string; scopes?: string | null };
+export type ReplyRow = { gmail_message_id: string; from_email: string | null; received_at: string; body: string };
 
 export type Store = {
   getAccount(): Promise<MailAccount | null>;
@@ -37,6 +40,10 @@ export type Store = {
   /** Un e-mail récent à cette adresse est revenu « non distribué » (adresse inexistante ou boîte pleine). */
   recentBounce(toEmail: string, sinceIso: string): Promise<boolean>;
   addInteraction(clientRid: string, interaction: Record<string, unknown>): Promise<void>;
+  /** Enregistre le texte des réponses d'un e-mail (sans doublon : un message Gmail n'est enregistré qu'une fois). */
+  saveReplies(mailId: string, replies: ReplyRow[]): Promise<void>;
+  /** E-mails déjà marqués « répondu » dont le texte n'a pas été lu (reconnexion tardive), non vérifiés depuis `checkedBeforeIso`. */
+  repliedWithoutText(sinceIso: string, checkedBeforeIso: string, limit: number): Promise<MailRow[]>;
 };
 export type Deps = {
   fetch: (url: string, init?: any) => Promise<{ ok: boolean; status: number; json(): Promise<any>; text(): Promise<string> }>;
@@ -151,6 +158,59 @@ export function analyseThread(thread: any, myEmail: string, destinataire?: strin
   return { replied: false, bounced: false };
 }
 
+// ───────────────────────── Texte des réponses ─────────────────────────
+const decode = (data?: string): string => { try { return new TextDecoder().decode(fromB64url(String(data ?? ""))); } catch { return ""; } };
+const findPart = (p: any, mime: string): string | null => {
+  if (!p) return null;
+  if (String(p.mimeType).toLowerCase() === mime && p.body?.data) return decode(p.body.data);
+  for (const c of Array.isArray(p.parts) ? p.parts : []) { const r = findPart(c, mime); if (r !== null) return r; }
+  return null;
+};
+const htmlToText = (h: string): string => h.replace(/<(style|script)[\s\S]*?<\/\1>/gi, "").replace(/<br\s*\/?>|<\/(p|div|tr|li)>/gi, "\n").replace(/<[^>]+>/g, "")
+  .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+/** Texte brut d'un message Gmail (partie text/plain, sinon text/html nettoyé). */
+export function textOf(payload: any): string {
+  let t = findPart(payload, "text/plain");
+  if (t === null) { const h = findPart(payload, "text/html"); t = h === null ? "" : htmlToText(h); }
+  return t.replace(/\r\n?/g, "\n");
+}
+/** Ne garde que ce que le prospect a écrit : coupe à « Le … a écrit : » / « On … wrote: » / « Message d'origine », retire les lignes citées (« > »). */
+export function retirerCitations(texte: string): string {
+  const lignes = String(texte ?? "").replace(/\r\n?/g, "\n").split("\n"), out: string[] = [];
+  const coupe = /^\s*(Le\s.{3,300}(a\s)?écrit\s*:\s*$|On\s.{3,300}wrote:\s*$|-{2,}\s*(Original Message|Message d.origine|Forwarded message|Message transmis)|_{8,}\s*$|De\s*:\s.+@|From\s*:\s.+@)/i;
+  for (let i = 0; i < lignes.length; i++) {
+    const l = lignes[i];
+    if (coupe.test(l) || (/^\s*(Le|On)\s/i.test(l) && coupe.test(l + " " + (lignes[i + 1] ?? "").trim()))) break;   // l'introduction de la citation peut être coupée sur deux lignes
+    if (/^\s*>/.test(l)) continue;
+    out.push(l);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, 20000);
+}
+/** Réponses d'un fil : messages d'un autre expéditeur que nous, postérieurs au premier message, hors retours d'erreur. */
+export function extractReplies(thread: any, myEmail: string): ReplyRow[] {
+  const me = myEmail.toLowerCase(), msgs: any[] = Array.isArray(thread?.messages) ? thread.messages : [], first = msgs.length ? Number(msgs[0].internalDate) || 0 : 0, out: ReplyRow[] = [];
+  for (const m of msgs.slice(1)) {
+    const h = (m?.payload?.headers ?? []).find((x: any) => String(x.name).toLowerCase() === "from");
+    if (!h || !m.id) continue;
+    const from = addressOf(String(h.value)); if (!from || from === me || /^(mailer-daemon|postmaster)@/.test(from)) continue;
+    const t = Number(m.internalDate) || 0; if (first && t && t < first) continue;
+    const brut = textOf(m.payload), body = retirerCitations(brut) || brut.trim().slice(0, 20000);
+    out.push({ gmail_message_id: String(m.id), from_email: from, received_at: t ? new Date(t).toISOString() : new Date().toISOString(), body: body || "(message sans texte)" });
+  }
+  return out;
+}
+const lecturePermise = (acc: MailAccount) => String(acc.scopes ?? "").includes(SCOPE_LECTURE);
+/** Lit le fil en entier (droit de lecture requis) et enregistre le texte des réponses ; renvoie leur nombre. Un échec n'interrompt pas le suivi. */
+async function lireReponses(d: Deps, token: string, m: MailRow, email: string): Promise<number> {
+  try {
+    const r = await d.fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(String(m.gmail_thread_id))}?format=full`, { headers: { Authorization: "Bearer " + token } });
+    if (!r.ok) return 0;
+    const reps = extractReplies(await r.json(), email);
+    if (reps.length) await d.store.saveReplies(m.id!, reps);
+    return reps.length;
+  } catch { return 0; }
+}
+
 // ───────────────────────── Google ─────────────────────────
 async function formPost(d: Deps, url: string, form: Record<string, string>) {
   return d.fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(form).toString() });
@@ -177,7 +237,7 @@ export async function handleCallback(d: Deps, params: URLSearchParams): Promise<
     const t = await r.json().catch(() => ({}));
     if (!r.ok || !t.access_token) return back(false, "Google a refusé le code (" + (t.error_description || t.error || r.status) + ")");
     const granted = String(t.scope || "");
-    for (const need of GMAIL_SCOPES.split(" ")) if (!granted.includes(need)) return back(false, "Il faut accepter les deux autorisations demandées (envoi et en-têtes)");
+    for (const need of GMAIL_SCOPES.split(" ")) if (!granted.includes(need)) return back(false, "Il faut accepter les deux autorisations demandées (envoi et lecture des réponses)");
     if (!t.refresh_token) return back(false, "Google n'a pas remis de jeton durable : retirez l'accès du CRM dans votre compte Google puis recommencez");
     const p = await d.fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", { headers: { Authorization: "Bearer " + t.access_token } });
     const prof = await p.json().catch(() => ({}));
@@ -233,14 +293,16 @@ export async function sendMail(d: Deps, op: { user_id: string; nom: string }, i:
 }
 
 // ───────────────────────── Suivi des réponses ─────────────────────────
-export async function syncReplies(d: Deps): Promise<{ verifies: number; reponses: number; echecs: number }> {
+export async function syncReplies(d: Deps): Promise<{ verifies: number; reponses: number; echecs: number; lues: number }> {
   const acc = await d.store.getAccount();
-  if (!acc || acc.status !== "connecte") return { verifies: 0, reponses: 0, echecs: 0 };
-  const since = new Date(d.now().getTime() - JOURS_SUIVI * 86400e3).toISOString();
+  if (!acc || acc.status !== "connecte") return { verifies: 0, reponses: 0, echecs: 0, lues: 0 };
+  const since = new Date(d.now().getTime() - JOURS_SUIVI * 86400e3).toISOString(), lecture = lecturePermise(acc);
   const pending = (await d.store.pendingMails(since, 60)).filter((m) => m.gmail_thread_id);
-  if (!pending.length) return { verifies: 0, reponses: 0, echecs: 0 };
+  const rattrapage = lecture ? (await d.store.repliedWithoutText(since, new Date(d.now().getTime() - 6 * 3600e3).toISOString(), 20)).filter((m) => m.gmail_thread_id) : [];
+  if (!pending.length && !rattrapage.length) return { verifies: 0, reponses: 0, echecs: 0, lues: 0 };
   const { token, email } = await accessToken(d);
-  let verifies = 0, reponses = 0, echecs = 0;
+  let verifies = 0, reponses = 0, echecs = 0, lues = 0;
+  for (const m of rattrapage) { lues += await lireReponses(d, token, m, email); await d.store.updateMail(m.id!, { last_checked_at: d.now().toISOString() }).catch(() => {}); }
   for (const m of pending) {
     try {
       const r = await d.fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(String(m.gmail_thread_id))}?format=metadata&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=X-Failed-Recipients`, { headers: { Authorization: "Bearer " + token } });
@@ -249,6 +311,7 @@ export async function syncReplies(d: Deps): Promise<{ verifies: number; reponses
       const a = analyseThread(await r.json(), email, m.to_email); verifies++;
       if (a.replied) {
         await d.store.updateMail(m.id!, { status: "repondu", replied_at: a.at ?? d.now().toISOString(), reply_from: a.from ?? null, last_checked_at: d.now().toISOString() }); reponses++;
+        if (lecture) lues += await lireReponses(d, token, m, email);
         if (m.client_rid) await d.store.addInteraction(m.client_rid, { date: a.at ?? d.now().toISOString(), type: "Réponse reçue par e-mail", note: "Réponse de " + (a.from ?? "le prospect") + " à : " + m.subject, etape: 1, ico: "📩", source: "gmail" }).catch(() => {});
       } else if (a.bounced) {
         await d.store.updateMail(m.id!, { status: "echec", error: "Non distribué (retour Gmail) : adresse inexistante ou boîte pleine", last_checked_at: d.now().toISOString() }); echecs++;
@@ -256,7 +319,7 @@ export async function syncReplies(d: Deps): Promise<{ verifies: number; reponses
       } else await d.store.updateMail(m.id!, { last_checked_at: d.now().toISOString() });
     } catch { /* un fil en erreur ne bloque pas les autres */ }
   }
-  return { verifies, reponses, echecs };
+  return { verifies, reponses, echecs, lues };
 }
 
 export async function disconnect(d: Deps): Promise<void> {
