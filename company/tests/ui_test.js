@@ -150,7 +150,7 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     ok((await page.locator("#main tbody tr").count()) === 3, "nouveau prospect visible dans la liste");
     console.log("▶ Commercial : vues Pipeline, Rendez-vous, Offres, Conversations");
     const vue = async (v) => { await page.click(`[data-act=sales-vue][data-vue=${v}]`); await page.waitForTimeout(250); };
-    ok((await page.locator("[data-act=sales-vue]").count()) === 5 && (await page.locator("[data-act=sales-vue][data-vue=prospects]").getAttribute("aria-selected")) === "true", "5 vues proposées, « Prospects » active par défaut");
+    ok((await page.locator("[data-act=sales-vue]").count()) === 6 && (await page.locator("[data-act=sales-vue][data-vue=prospects]").getAttribute("aria-selected")) === "true", "6 vues proposées, « Prospects » active par défaut");
     await vue("pipeline");
     ok((await page.locator(".pipe-col").count()) === 16, "pipeline : une colonne par étape (16)");
     ok((await page.locator('.pipe-col[data-stage=rdv_propose]').innerText()).includes("Express Colis"), "pipeline : la carte du prospect est dans la colonne de son étape");
