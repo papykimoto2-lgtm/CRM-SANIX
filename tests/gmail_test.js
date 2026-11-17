@@ -12,6 +12,7 @@ const KEY = Buffer.alloc(32, 7).toString("base64");
     deleteAccount: async () => { S.account = null; }, insertMail: async (m) => { const id = "m" + (S.mails.length + 1); S.mails.push({ ...m, id, sent_at: new Date(T).toISOString() }); return id; },
     pendingMails: async (since) => S.mails.filter((m) => m.status === "envoye" && m.sent_at > since), updateMail: async (id, p) => { Object.assign(S.mails.find((m) => m.id === id), p); },
     countSentSince: async () => S.mails.length, recentDuplicate: async (to, subj, since) => S.mails.some((m) => m.to_email === to && m.subject === subj && m.sent_at > since),
+    recentBounce: async (to) => S.mails.some((m) => m.to_email === to && m.status === "echec" && /distribu/i.test(m.error || "")),
     addInteraction: async (rid, i) => { S.inter.push({ rid, ...i }); }
   };
   // — faux Google —
@@ -115,8 +116,34 @@ const KEY = Buffer.alloc(32, 7).toString("base64");
   ok(calls.filter((c) => c.url.includes("/threads/")).every((c) => /format=metadata/.test(c.url) && !/format=full|format=raw/.test(c.url)), "seuls les en-têtes sont demandés à Gmail (format=metadata) : le contenu des e-mails n'est jamais lu");
   const sy2 = await G.syncReplies(D);
   ok(sy2.reponses === 0, "relancé : une réponse déjà notée n'est pas comptée deux fois");
+  console.log("▶ Retour d'erreur d'un AUTRE message du même fil (cas ABRI 2000)");
+  const rb = (rcpt, t) => ({ internalDate: String(t), payload: { headers: [{ name: "From", value: "Mail Delivery Subsystem <mailer-daemon@googlemail.com>" }].concat(rcpt ? [{ name: "X-Failed-Recipients", value: rcpt }] : []) } });
+  const A = (msgs, dest) => G.analyseThread({ messages: msgs }, "sanix@gmail.com", dest);
+  ok(A([msg("sanix@gmail.com", 1), rb("abri@avisio.cl", 2)], "abri@avisio.ci").bounced === false, "retour d'erreur pour avisio.cl dans le fil d'un message envoyé à avisio.ci : IGNORÉ (ce n'est pas le même destinataire)");
+  ok(A([msg("sanix@gmail.com", 1), rb("ABRI@avisio.ci", 2)], "abri@avisio.ci").bounced === true, "retour d'erreur visant bien ce destinataire (casse différente) : retenu");
+  ok(A([msg("sanix@gmail.com", 1), msg("sanix@gmail.com", 2), rb("abri@avisio.cl", 3), rb("abri@avisio.ci", 4)], "abri@avisio.ci").bounced === true, "deux retours dans le fil : on retient celui qui concerne ce destinataire");
+  ok(A([msg("sanix@gmail.com", 1), rb("a@x.ci, abri@avisio.ci", 2)], "abri@avisio.ci").bounced === true, "plusieurs adresses en échec dans l'en-tête : retenu si la nôtre y figure");
+  ok(A([msg("sanix@gmail.com", 1), rb("", 2)], "abri@avisio.ci").bounced === true, "retour sans en-tête dans un fil de 2 messages (le nôtre et le retour) : retenu");
+  ok(A([msg("sanix@gmail.com", 1), msg("sanix@gmail.com", 2), rb("", 3)], "abri@avisio.ci").bounced === false, "retour sans en-tête dans un fil plus fourni : ambigu, ignoré (on ne bloque pas une adresse peut-être valide)");
+  ok(A([msg("sanix@gmail.com", 1), rb("abri@avisio.cl", 2), msg("Marc <marc@promo.ci>", 3)], "abri@avisio.ci").replied === true, "une vraie réponse arrivée après un retour d'erreur étranger est bien détectée");
+  S.mails.push(...[["thE", "e@avisio.ci"], ["thF", "f@avisio.ci"]].map(([th, to], i) => ({ id: "mE" + i, client_rid: null, to_email: to, subject: "Suite à notre échange", body: "b", sent_by: "x", sent_by_user: null, gmail_message_id: "g" + th, gmail_thread_id: th, status: "envoye", error: null, replied_at: null, reply_from: null, relance_apres_jours: 4, last_checked_at: null, sent_at: new Date(T).toISOString() })));
+  GOOGLE.threads.thE = { messages: [msg("sanix@gmail.com", T - 5e6), rb("ancienne@avisio.cl", T - 4e6)] };
+  GOOGLE.threads.thF = { messages: [msg("sanix@gmail.com", T - 5e6), rb("f@avisio.ci", T - 4e6)] };
+  const sy3 = await G.syncReplies(D);
+  ok(S.mails.find((m) => m.id === "mE0").status === "envoye" && S.mails.find((m) => m.id === "mF1" || m.id === "mE1").status === "echec", "synchronisation : l'e-mail dont le fil contient le retour d'une AUTRE adresse reste « envoyé » ; celui dont le retour le concerne passe « échec »");
+  ok(!calls.filter((c) => c.url.includes("/threads/")).some((c) => !/metadataHeaders=X-Failed-Recipients/.test(c.url)), "Gmail est interrogé pour l'en-tête du destinataire en échec (en-têtes seulement, jamais le contenu)");
   const own = G.analyseThread({ messages: [msg("sanix@gmail.com", 1), msg("SANIX@gmail.com", 2)] }, "sanix@gmail.com");
   ok(!own.replied, "un message de vous-même dans le fil n'est pas pris pour une réponse");
+
+  console.log("▶ Adresse déjà revenue en erreur");
+  let mort = null; try { await G.sendMail(D, op, { client_rid: "c_C", to: "C@x.ci", subject: "Nouvel essai", body: "Bonjour" }); } catch (e) { mort = e; }
+  ok(mort && mort.status === 409 && /déjà renvoyé une erreur/.test(mort.message), "adresse dont l'e-mail précédent est revenu « non distribué » : envoi refusé par le serveur (409)");
+  ok(!calls.some((c) => c.url.endsWith("/messages/send") && /Nouvel essai/.test(String(c.init && c.init.body))), "rien n'est envoyé à Gmail dans ce cas");
+  const okMail = await G.sendMail(D, op, { client_rid: "c_C", to: "corrigee@x.ci", subject: "Nouvel essai", body: "Bonjour" });
+  ok(!!okMail.id, "la même fiche, avec une adresse corrigée : l'envoi passe");
+  const autre = S.mails.find((m) => m.status === "echec" && m.to_email === "C@x.ci"); ok(!!autre, "l'adresse refusée garde son statut d'échec dans le journal");
+  S.mails.push({ id: "mX", client_rid: null, to_email: "refus@x.ci", subject: "S", body: "b", status: "echec", error: "Gmail a refusé l'envoi : Daily limit", sent_at: new Date(T).toISOString() });
+  const refus = await G.sendMail(D, op, { to: "refus@x.ci", subject: "Reessai", body: "b" }); ok(!!refus.id, "un échec d'envoi côté Gmail (quota…) ne bloque pas l'adresse : seul un retour « non distribué » compte");
 
   console.log("▶ Accès retiré par l'utilisateur");
   GOOGLE.refreshOk = false; await store.insertMail({ client_rid: null, to_email: "z@x.ci", subject: "Z", body: "b", sent_by: "x", sent_by_user: null, gmail_message_id: "g", gmail_thread_id: "thB", status: "envoye", error: null, replied_at: null, reply_from: null, relance_apres_jours: 4, last_checked_at: null });

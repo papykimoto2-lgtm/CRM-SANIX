@@ -9,7 +9,8 @@
 
 export const GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.metadata";
 export const LIMITE_PAR_JOUR = 100;          // plafond d'envois par 24 h (Gmail : 500 pour un compte gratuit) : protège d'une boucle ou d'une erreur
-export const JOURS_SUIVI = 45;               // au-delà, un e-mail sans réponse n'est plus surveillé
+export const JOURS_SUIVI = 45;
+export const JOURS_ADRESSE_MORTE = 30;       // une adresse qui a renvoyé « non distribué » est refusée pendant 30 jours               // au-delà, un e-mail sans réponse n'est plus surveillé
 
 export class GmailError extends Error {
   status: number;
@@ -33,6 +34,8 @@ export type Store = {
   updateMail(id: string, patch: Partial<MailRow>): Promise<void>;
   countSentSince(sinceIso: string): Promise<number>;
   recentDuplicate(toEmail: string, subject: string, sinceIso: string): Promise<boolean>;
+  /** Un e-mail récent à cette adresse est revenu « non distribué » (adresse inexistante ou boîte pleine). */
+  recentBounce(toEmail: string, sinceIso: string): Promise<boolean>;
   addInteraction(clientRid: string, interaction: Record<string, unknown>): Promise<void>;
 };
 export type Deps = {
@@ -117,8 +120,19 @@ export function buildMime(o: { from: string; fromName?: string; to: string; subj
 
 // ───────────────────────── Lecture d'un fil (en-têtes seulement) ─────────────────────────
 export const addressOf = (header: string): string => { const m = /<([^>]+)>/.exec(header) ?? /([^\s<>"]+@[^\s<>"]+)/.exec(header); return (m ? m[1] : header).trim().toLowerCase(); };
-export function analyseThread(thread: any, myEmail: string): { replied: boolean; bounced: boolean; from?: string; at?: string } {
-  const me = myEmail.toLowerCase(), msgs: any[] = Array.isArray(thread?.messages) ? thread.messages : [];
+/** Adresses citées dans l'en-tête X-Failed-Recipients d'un retour d'erreur (Gmail y met le destinataire en échec). */
+const failedRecipients = (m: any): string[] => {
+  const h = (m?.payload?.headers ?? []).find((x: any) => String(x.name).toLowerCase() === "x-failed-recipients");
+  return h ? String(h.value).split(/[,;\s]+/).map((a) => addressOf(a)).filter(Boolean) : [];
+};
+/**
+ * Y a-t-il eu une réponse (ou un retour d'erreur) à CE message ? `destinataire` = adresse à laquelle il a été envoyé.
+ * Gmail range dans un même fil des messages qui ont le même objet : un retour d'erreur concernant un AUTRE destinataire
+ * (par exemple un essai précédent à une adresse fautive) peut s'y trouver. Un retour d'erreur ne compte donc que s'il vise bien ce
+ * destinataire ; sans l'en-tête qui l'indique, il n'est retenu que dans un fil de deux messages (le nôtre et le retour), jamais dans un fil plus fourni.
+ */
+export function analyseThread(thread: any, myEmail: string, destinataire?: string): { replied: boolean; bounced: boolean; from?: string; at?: string } {
+  const me = myEmail.toLowerCase(), dest = destinataire ? destinataire.toLowerCase() : "", msgs: any[] = Array.isArray(thread?.messages) ? thread.messages : [];
   const first = msgs.length ? Number(msgs[0].internalDate) || 0 : 0;
   for (const m of msgs.slice(1)) {
     const h = (m?.payload?.headers ?? []).find((x: any) => String(x.name).toLowerCase() === "from");
@@ -127,7 +141,12 @@ export function analyseThread(thread: any, myEmail: string): { replied: boolean;
     if (!from || from === me) continue;
     const t = Number(m.internalDate) || 0; if (first && t && t < first) continue;
     const at = t ? new Date(t).toISOString() : undefined;
-    return /^(mailer-daemon|postmaster)@/.test(from) ? { replied: false, bounced: true, from, at } : { replied: true, bounced: false, from, at };
+    if (/^(mailer-daemon|postmaster)@/.test(from)) {
+      const cibles = failedRecipients(m);
+      if (cibles.length ? (dest && !cibles.includes(dest)) : msgs.length > 2) continue;      // retour d'erreur pour un autre message : ignoré
+      return { replied: false, bounced: true, from, at };
+    }
+    return { replied: true, bounced: false, from, at };
   }
   return { replied: false, bounced: false };
 }
@@ -195,6 +214,7 @@ export async function sendMail(d: Deps, op: { user_id: string; nom: string }, i:
   const now = d.now();
   if (await d.store.countSentSince(new Date(now.getTime() - 24 * 3600e3).toISOString()) >= LIMITE_PAR_JOUR) throw new GmailError(429, `Plafond de ${LIMITE_PAR_JOUR} e-mails par 24 h atteint`);
   if (await d.store.recentDuplicate(to, subject, new Date(now.getTime() - 120e3).toISOString())) throw new GmailError(409, "Cet e-mail vient déjà d'être envoyé à ce destinataire");
+  if (await d.store.recentBounce(to, new Date(now.getTime() - JOURS_ADRESSE_MORTE * 86400e3).toISOString())) throw new GmailError(409, "Cette adresse a déjà renvoyé une erreur de distribution (adresse inexistante ou boîte pleine) : corrigez-la avant de réécrire");
   const { token, email } = await accessToken(d);
   const fromName = String(i.from_name ?? "").replace(/[\r\n"\\]/g, " ").trim().slice(0, 80) || undefined;
   const raw = b64url(buildMime({ from: email, fromName, to, subject, text: body }));
@@ -223,10 +243,10 @@ export async function syncReplies(d: Deps): Promise<{ verifies: number; reponses
   let verifies = 0, reponses = 0, echecs = 0;
   for (const m of pending) {
     try {
-      const r = await d.fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(String(m.gmail_thread_id))}?format=metadata&metadataHeaders=From&metadataHeaders=Date`, { headers: { Authorization: "Bearer " + token } });
+      const r = await d.fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(String(m.gmail_thread_id))}?format=metadata&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=X-Failed-Recipients`, { headers: { Authorization: "Bearer " + token } });
       if (r.status === 404) { await d.store.updateMail(m.id!, { last_checked_at: d.now().toISOString() }); continue; }
       if (!r.ok) continue;
-      const a = analyseThread(await r.json(), email); verifies++;
+      const a = analyseThread(await r.json(), email, m.to_email); verifies++;
       if (a.replied) {
         await d.store.updateMail(m.id!, { status: "repondu", replied_at: a.at ?? d.now().toISOString(), reply_from: a.from ?? null, last_checked_at: d.now().toISOString() }); reponses++;
         if (m.client_rid) await d.store.addInteraction(m.client_rid, { date: a.at ?? d.now().toISOString(), type: "Réponse reçue par e-mail", note: "Réponse de " + (a.from ?? "le prospect") + " à : " + m.subject, etape: 1, ico: "📩", source: "gmail" }).catch(() => {});

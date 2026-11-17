@@ -5540,6 +5540,7 @@ function courrierRender(){
   const esc=t=>String(t==null?'':t).replace(/[&<>"]/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[x])), g=courrierSignataire(), q=contactQualite(c), ed=window._courrierEdit;
   const alerte = !String(c.email||'').trim() ? '⚠️ Aucune adresse e-mail sur cette fiche : copiez le courrier et envoyez-le depuis votre messagerie, ou demandez l’adresse au prospect.'
     : !q.mail ? '⚠️ L’adresse enregistrée <b>'+esc(c.email)+'</b> semble incorrecte'+(q.confirmer.email?' (proposition : <b>'+esc(q.confirmer.email)+'</b>)':'')+'. Confirmez-la avec le prospect avant d’envoyer.' : '';
+  const morte = gmailAdresseMorte(c.email);
   const direct = gmailConnecte();
   const ligneGmail = direct ? '<div style="background:#ECFDF5;color:#065F46;border-radius:var(--r-sm);padding:7px 10px;font-size:12px;margin-bottom:10px">✅ Envoi direct depuis <b>'+esc(_gmail.etat.email)+'</b> : le suivi des réponses est automatique.</div>'
     : _gmail.etat && _gmail.etat.hors_session ? '<div style="background:var(--surface2);border-radius:var(--r-sm);padding:7px 10px;font-size:12px;margin-bottom:10px;color:var(--muted)">📧 Envoi depuis votre messagerie. Pour envoyer d’ici et suivre les réponses : connectez l’agent IA (session opérateur), puis Gmail dans Réglages.</div>'
@@ -5568,7 +5569,8 @@ function courrierRender(){
     '<div style="font-family:var(--font-h);font-weight:800;font-size:18px;margin-bottom:2px">✉️ Exemples de courrier — '+esc(c.nom)+'</div>'
     +'<div style="font-size:12px;color:var(--muted);margin-bottom:10px">À : '+(c.email?esc(c.email):'—')+' · Signé : <b>'+esc(g.nom)+'</b>'+(g.poste?', '+esc(g.poste):'')+' · '+esc(g.tel||'')+' · '+esc(g.email||'')+' <span style="opacity:.8">(compte connecté)</span></div>'
     +ligneGmail+histo
-    +(alerte?'<div style="background:#FEF3C7;color:#92400E;border-radius:var(--r-sm);padding:8px 10px;font-size:12px;margin-bottom:10px">'+alerte+'</div>':'')
+    +(morte?'<div id="courrier-morte" style="background:#FEE2E2;color:#991B1B;border-radius:var(--r-sm);padding:8px 10px;font-size:12px;margin-bottom:10px">⛔ Un e-mail envoyé à <b>'+esc(c.email)+'</b> est <b>revenu en erreur</b> le '+new Date(morte.last_checked_at||morte.sent_at).toLocaleDateString('fr-FR')+' (adresse inexistante ou boîte pleine). Demandez la bonne adresse au prospect et corrigez la fiche : l\'envoi direct est bloqué tant que l\'adresse reste la même.</div>':'')
+    +(alerte&&!morte?'<div style="background:#FEF3C7;color:#92400E;border-radius:var(--r-sm);padding:8px 10px;font-size:12px;margin-bottom:10px">'+alerte+'</div>':'')
     +'<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Complétez les passages entre [crochets] avant d’envoyer. Chaque courrier se termine par votre signature.</div>'
     +window._courrierEx.map(carte).join('');
   if(ed!==null) courrierVerifie();
@@ -5579,7 +5581,7 @@ function courrierAnnuler(){ window._courrierEdit=null; courrierRender(); }
 function courrierVerifie(){
   const b=document.getElementById('cg-envoyer'), msg=document.getElementById('cg-msg'); if(!b||!msg) return;
   const a=(document.getElementById('cg-a').value||'').trim(), t=(document.getElementById('cg-objet').value||'')+'\n'+(document.getElementById('cg-corps').value||'');
-  let m=''; if(!emailAnalyse(a).ok) m='Adresse du destinataire invalide ou incertaine.'; else if(/\[[^\]\n]{2,}\]/.test(t)) m='Il reste un passage entre [crochets] à compléter.';
+  let m=''; if(!emailAnalyse(a).ok) m='Adresse du destinataire invalide ou incertaine.'; else if(gmailAdresseMorte(emailAnalyse(a).principal)) m='Cet e-mail est déjà revenu en erreur à cette adresse : saisissez la bonne adresse.'; else if(/\[[^\]\n]{2,}\]/.test(t)) m='Il reste un passage entre [crochets] à compléter.';
   msg.textContent=m; b.disabled=!!m;
 }
 async function courrierEnvoyerGmail(i){
@@ -5637,6 +5639,11 @@ const _joursDepuis=d=>Math.floor((Date.now()-new Date(d))/864e5);
 /** Dernier e-mail envoyé à ce prospect, resté sans réponse au-delà du délai de relance (ou null). */
 function gmailAttente(c){
   return gmailMailsDe(c).filter(m=>m.status==='envoye').map(m=>({m,j:_joursDepuis(m.sent_at)})).filter(x=>x.j>=(x.m.relance_apres_jours||4) && x.j<=45).sort((a,b)=>b.j-a.j)[0]||null;
+}
+/** E-mail déjà revenu « non distribué » à cette adresse dans les 30 derniers jours (adresse inexistante ou boîte pleine), ou null. */
+function gmailAdresseMorte(email){
+  const e=String(email||'').trim().toLowerCase(); if(!e) return null; const lim=Date.now()-30*864e5;
+  return _gmail.mails.find(m=>String(m.to_email||'').toLowerCase()===e && m.status==='echec' && /distribu/i.test(m.error||'') && new Date(m.last_checked_at||m.sent_at).getTime()>=lim)||null;
 }
 function gmailLigneMail(m){
   const E=_dEsc, d=x=>new Date(x).toLocaleDateString('fr-FR'), j=_joursDepuis(m.sent_at), att=m.status==='envoye' && j>=(m.relance_apres_jours||4);
@@ -16502,7 +16509,9 @@ function contactQualite(c){
   if(em.vide){ probl.push({code:'noemail',texte:'Pas d’e-mail',sure:false,info:true}); }
   else em.problemes.forEach(x=>probl.push(x));
   Object.assign(sure, em.sure); Object.assign(confirmer, em.confirmer);
-  const wa = !!tel.ok, mail = em.ok;
+  const rebond = (typeof gmailAdresseMorte==='function' && !em.vide) ? gmailAdresseMorte(c.email) : null;
+  if(rebond) probl.push({code:'rebond',texte:'E-mail revenu en erreur le '+new Date(rebond.last_checked_at||rebond.sent_at).toLocaleDateString('fr-FR')+' : adresse inexistante ou boîte pleine, à corriger',sure:false});
+  const wa = !!tel.ok, mail = em.ok && !rebond;
   const niveau = wa&&mail ? 'complet' : (wa||mail) ? 'joignable' : (tel.kind==='fixe') ? 'fixe' : 'aucun';
   return {tel,em,wa,mail,niveau,niveauTel,problemes:probl,sure,confirmer,corrigeable:Object.keys(sure).length>0};
 }

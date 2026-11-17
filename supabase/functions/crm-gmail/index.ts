@@ -39,6 +39,10 @@ const store: Store = {
     const { count } = await db().from("crm_mails").select("id", { count: "exact", head: true }).eq("to_email", toEmail).eq("subject", subject).neq("status", "echec").gte("sent_at", sinceIso);
     return (count ?? 0) > 0;
   },
+  async recentBounce(toEmail, sinceIso) {
+    const { count } = await db().from("crm_mails").select("id", { count: "exact", head: true }).eq("to_email", toEmail).eq("status", "echec").ilike("error", "%distribu%").gte("sent_at", sinceIso);
+    return (count ?? 0) > 0;
+  },
   async addInteraction(clientRid, interaction) {
     // Jamais de création de fiche : on n'écrit que sur une fiche cliente qui existe déjà.
     const { data } = await db().from("crm_records").select("rid").eq("entity", "clients").eq("rid", clientRid).is("deleted_at", null).maybeSingle();
