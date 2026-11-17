@@ -318,7 +318,9 @@ const plusH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
     ok(await ev(page, () => { const o = window.__vc.office, d = o.deskPoints(); return d.length > 3 && d.every((p) => !o.walkable(p.x, p.z)); }), "les bureaux sont des obstacles");
     // boutons de marche (souris / tactile)
     await ev(page, () => window.__vc.office.setView("immersive", "commercial"));   // retour au point de départ, face à la pièce (la marche aléatoire a pu finir contre un mur)
+    await page.locator("[data-imm=f]").scrollIntoViewIfNeeded();
     const bf = await page.locator("[data-imm=f]").boundingBox(); const J0 = await ev(page, () => window.__vc.office.immersive);
+    ok(await ev(page, (b) => { const e = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2); return !!e && e.dataset?.imm === "f"; }, bf), "le bouton ▲ est bien visible et cliquable à l'écran");
     await page.mouse.move(bf.x + bf.width / 2, bf.y + bf.height / 2); await page.mouse.down();
     await ev(page, () => window.__vc.office.advance(1)); const J1 = await ev(page, () => window.__vc.office.immersive);
     await page.mouse.up(); await ev(page, () => window.__vc.office.advance(1)); const J2 = await ev(page, () => window.__vc.office.immersive);
