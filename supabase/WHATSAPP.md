@@ -14,7 +14,26 @@ Une fois configuré : dans **Campagnes & Démos → Messagerie → WhatsApp**, l
 | **Limites** | Plafond de 150 messages par 24 h dans le CRM (le palier de départ de Meta est de 250 destinataires par jour) ; un même modèle n'est jamais renvoyé au même numéro dans les 24 h. |
 | **Conservation** | Le CRM conserve le texte des messages envoyés **et des réponses reçues** (lisibles par les seuls opérateurs connectés). Le jeton Meta reste sur le serveur et n'apparaît jamais dans le navigateur. |
 
+## Prérequis : à réunir AVANT de commencer (sinon l'envoi direct reste bloqué)
+Meta affiche « Compte restreint : avant de pouvoir envoyer des messages, vous devrez faire vérifier votre entreprise ». **La vérification de l'entreprise est obligatoire** pour écrire à de vrais prospects ; le numéro de test de Meta (5 destinataires vérifiés, gratuit) ne sert qu'à essayer.
+
+| À préparer | Pourquoi |
+|---|---|
+| **Une entreprise enregistrée**, avec son **nom légal exact** | Meta compare le nom, l'adresse et le téléphone saisis aux documents fournis. Un nom différent est refusé. |
+| **Un document officiel** au nom de l'entreprise (registre de commerce, document fiscal d'existence, statuts, ou facture / relevé bancaire à son nom et à son adresse : Meta affiche la liste acceptée pour votre pays) | preuve de l'existence de l'entreprise |
+| **Un nom de domaine à vous** (ex. `sanixafrica.com`) et, idéalement, une adresse e-mail à ce nom | Meta vérifie en général la propriété du domaine ; un sous-domaine partagé comme `*.vercel.app` ne peut pas être prouvé |
+| **Une SIM neuve dédiée** | le numéro relié à l'API ne peut plus servir dans l'application WhatsApp du téléphone |
+| **Un moyen de paiement** relié au compte WhatsApp du numéro | les messages à l'initiative de l'entreprise sont facturés |
+
+Où : Meta Business → **Paramètres → Centre de sécurité → Vérification de l'entreprise → Démarrer la vérification**. L'examen dure de quelques heures à plusieurs jours.
+
+En attendant, le CRM fonctionne sans l'API : **WhatsApp un par un** (le chat s'ouvre avec le message prêt) et **e-mails par Gmail**.
+
+**Sécurité du compte Meta** (à faire dès le début, le portefeuille contient la carte bancaire et l'accès à l'API) : activer l'**authentification à deux facteurs pour tout le monde** et ajouter un **second admin** (Centre de sécurité).
+
 ## À faire une seule fois (≈ 1 h de saisie ; l'approbation des modèles par Meta prend de quelques minutes à 1 jour)
+
+**Publier l'application** : tant qu'elle est « Non publiée », Meta n'envoie au CRM que des webhooks de test depuis son tableau de bord : ni les réponses ni les accusés « remis / lu » n'arrivent. Renseigner **Paramètres de l'app → Général** (URL de confidentialité `https://crm-sanix.vercel.app/confidentialite.html`, e-mail de contact, catégorie, icône), puis **Publier**.
 
 Les écrans de Meta changent souvent : suivez les noms des rubriques, pas leur emplacement exact. Documentation officielle : <https://developers.facebook.com/documentation/business-messaging/whatsapp/>
 
