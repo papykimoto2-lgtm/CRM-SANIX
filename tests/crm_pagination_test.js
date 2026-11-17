@@ -44,19 +44,21 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
 
     console.log("▶ Pipeline (kanban)");
     await nav("pipeline");
-    st = await stat("cards-prospect"); ok(st && st.mode === "more" && st.total >= 400 && st.shown === 20, `colonne Prospect : ${st && st.total} affaires, 20 affichées`);
-    const colH = await page.evaluate(() => document.getElementById("cards-prospect").clientHeight);
-    ok(colH < 700, `colonne à défilement interne : ${colH} px`);
-    await page.click('#cards-prospect + .sx-pager button[data-a="more"]'); ok((await stat("cards-prospect")).shown === 40, "« Afficher 20 de plus » : 40 cartes");
+    const back = await page.evaluate(() => { const c = document.getElementById("col-prospect"); return { existe: !!c, n: c ? +c.querySelector(".stage-count").textContent : 0, top: c ? c.querySelectorAll(".pipe-top").length : 0, cartes: document.querySelectorAll("#cards-prospect .deal-card").length, bouton: !!(c && c.querySelector('button[onclick*="qualification"]')) }; });
+    ok(back.existe && back.n >= 400 && back.top === 10 && back.cartes === 0 && back.bouton, `prospects à froid : une carte « À qualifier » (${back.n}), 10 en tête, aucune des centaines de cartes dans le tableau`);
+    const nCartes = await page.evaluate(() => document.querySelectorAll("#kanban-board .deal-card").length);
+    ok(nCartes < 60, `tableau léger : ${nCartes} cartes affichées`);
+    const funnel = await page.evaluate(() => [...document.querySelectorAll("#pipeline-bar .pipe-step")].map((x) => x.querySelector(".l").textContent + ":" + x.querySelector(".n").textContent));
+    ok(funnel.length >= 6 && funnel[0].startsWith("Prospect:"), "entonnoir : un chiffre par étape (" + funnel.join(" · ") + ")");
     const moved = await page.evaluate(() => {
-      const card = [...document.querySelectorAll("#cards-prospect .deal-card")].find((c) => c.getAttribute("data-pg") !== "off"), id = Number(card.id.slice(5));
-      const before = DEALS.filter((d) => d.stage === "prospect").length;
-      startDrag({}, id); dropDeal({ preventDefault() {} }, "perdu");     // « perdu » : le recalage automatique des étapes issues des prospects ne l'écrase pas
-      return { id, before };
+      DEALS.push({ id: 99999, client: "Affaire Test", clientId: null, logiciel: "ImmoSuite ERP", valeur: 0, commercial: "", stage: "contact", notes: "", color: "#0e7490", date: new Date().toLocaleDateString("fr-FR"), history: [] });
+      initPipeline(); const before = DEALS.filter((d) => d.stage === "contact").length;
+      startDrag({}, 99999); dropDeal({ preventDefault() {} }, "perdu");
+      return { before };
     });
     await page.waitForTimeout(400);
-    const after = await page.evaluate((id) => { const c = document.getElementById("deal-" + id); return { inContact: !!c && c.closest("#cards-perdu") !== null, visible: !!c && c.getAttribute("data-pg") !== "off", prospects: DEALS.filter((d) => d.stage === "prospect").length }; }, moved.id);
-    ok(after.inContact && after.visible && after.prospects === moved.before - 1, "glisser-déposer (avant correctif : erreur de récursion infinie) : la carte déposée reste visible dans sa nouvelle colonne");
+    const after = await page.evaluate(() => { const c = document.getElementById("deal-99999"); return { inPerdu: !!c && c.closest("#cards-perdu") !== null, contact: DEALS.filter((d) => d.stage === "contact").length }; });
+    ok(after.inPerdu && after.contact === moved.before - 1, "glisser-déposer : l'affaire déposée apparaît dans sa nouvelle colonne");
 
     console.log("▶ Onglets de section (plus de pile verticale)");
     await nav("direction");
