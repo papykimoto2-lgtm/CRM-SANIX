@@ -37,6 +37,30 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
       await page.screenshot({ path: path.join(OUT, `tab_${id}.png`) });
     }
 
+    console.log("▶ Coûts IA");
+    await tab(page, "cost"); await page.waitForTimeout(250);
+    ok((await page.locator("#main").innerText()).includes("n'est pas encore appliquée"), "migration absente : message clair au lieu d'une erreur");
+    await page.evaluate(() => {
+      const jours = []; for (let i = 29; i >= 0; i--) { const d = new Date(Date.now() - i * 864e5).toISOString().slice(0, 10); jours.push({ jour: d, cout_usd: i === 0 ? 2.5 : i === 3 ? 4 : 0, appels: i === 0 ? 5 : i === 3 ? 8 : 0, erreurs: i === 3 ? 2 : 0 }); }
+      window.__FIX.rpc.ai_cost_center = { jours_periode: 30, jour_usd: 2.5, mois_usd: 40, periode_usd: 6.5, prevision_fin_mois_usd: 80, budget_jour_usd: 5, budget_mois_usd: 50, jours,
+        agents: [{ agent_id: "a1", nom: "IA Alpha <b>x</b>", fonction: "Prospection", etat: "actif", activite: "disponible", cout_usd: 5, appels: 9, erreurs: 2, tokens_in: 12000, tokens_out: 3000, derniere_activite: new Date().toISOString() },
+                 { agent_id: "a2", nom: "IA Beta", fonction: "Support", etat: "suspendu", activite: "disponible", cout_usd: 1.5, appels: 4, erreurs: 0, tokens_in: 500, tokens_out: 100, derniere_activite: null }],
+        modeles: [{ modele: "claude-opus-5-5", cout_usd: 6, appels: 10, erreurs: 2 }, { modele: "claude-haiku-5-5", cout_usd: 0.5, appels: 3, erreurs: 0 }],
+        disponibilite: { actif: 24, suspendu: 1 }, incidents_periode: { critique: 1, info: 2 },
+        incidents: [{ id: 1, gravite: "critique", type: "api_anthropic", message: "Crédit épuisé", agent: "IA Alpha", at: new Date().toISOString() }] };
+    });
+    await page.click("[data-act=cost-refresh]"); await page.waitForTimeout(250);
+    const ct = await page.locator("#main").innerText();
+    ok(ct.includes("2.50 $") && ct.includes("40.00 $") && ct.includes("6.50 $"), "indicateurs : aujourd'hui, mois, période");
+    ok(ct.includes("prévision 80.00 $") && ct.includes("au-dessus du budget mensuel de 50 $"), "prévision de fin de mois et alerte de dépassement du budget");
+    ok((await page.locator(".cost-bars > div").count()) === 30, "courbe : un jour = une barre (30)");
+    ok((await page.locator("#main tbody tr").count()) === 4 && ct.includes("IA Alpha <b>x</b>") && (await page.locator("#main tbody b b").count()) === 0, "tableau par collaborateur (4 lignes avec les modèles), texte échappé");
+    ok(ct.includes("Suspendus : IA Beta") && ct.includes("Actif · 24"), "disponibilité des agents et agents suspendus");
+    ok(ct.includes("claude-opus-5-5") && ct.includes("Crédit épuisé") && ct.includes("Critique"), "répartition par modèle et incidents récents");
+    await page.selectOption("#cost-days", "7"); await page.waitForTimeout(250);
+    ok((await page.evaluate(() => window.__CALLS.filter((c) => c.rpc === "ai_cost_center").pop().days)) === 7, "changement de période : nouvelle lecture sur 7 jours");
+    ok((await page.locator("#toast .bad").count()) === 0, "onglet Coûts IA : aucune erreur");
+
     console.log("▶ Bureau du Président");
     await tab(page, "exec");
     ok((await page.locator(".msg").count()) === 2, "conversation existante affichée");
@@ -124,6 +148,30 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     await page.fill("#sales-new-form input[name=entreprise]", "Nouveau Test SARL"); await page.click("#sales-new-form button[type=submit]"); await page.waitForTimeout(400);
     ok((await page.evaluate(() => window.__Q.some((q) => q.table === "ai_prospects" && q.op === "insert" && q.payload.includes("entreprise") && q.payload.includes("owner_id")))), "création d'un prospect rattaché à son opérateur");
     ok((await page.locator("#main tbody tr").count()) === 3, "nouveau prospect visible dans la liste");
+    console.log("▶ Commercial : vues Pipeline, Rendez-vous, Offres, Conversations");
+    const vue = async (v) => { await page.click(`[data-act=sales-vue][data-vue=${v}]`); await page.waitForTimeout(250); };
+    ok((await page.locator("[data-act=sales-vue]").count()) === 5 && (await page.locator("[data-act=sales-vue][data-vue=prospects]").getAttribute("aria-selected")) === "true", "5 vues proposées, « Prospects » active par défaut");
+    await vue("pipeline");
+    ok((await page.locator(".pipe-col").count()) === 16, "pipeline : une colonne par étape (16)");
+    ok((await page.locator('.pipe-col[data-stage=rdv_propose]').innerText()).includes("Express Colis"), "pipeline : la carte du prospect est dans la colonne de son étape");
+    await page.locator('.pipe-col[data-stage=rdv_propose] .pipe-card', { hasText: "Express Colis" }).locator("select[data-sales-stage]").selectOption("rdv_confirme"); await page.waitForTimeout(300);
+    ok((await page.locator('.pipe-col[data-stage=rdv_confirme]').innerText()).includes("Express Colis"), "pipeline : changement d'étape depuis la carte, la carte change de colonne");
+    await page.fill("#sales-q", "alpha"); await page.waitForTimeout(150);
+    ok((await page.locator(".pipe-card").count()) === 1, "pipeline : filtre de recherche sur les cartes");
+    await page.fill("#sales-q", "");
+    await vue("rdv");
+    ok((await page.locator("#main tbody tr").count()) === 1 && (await page.locator("#main tbody").innerText()).includes("Express Colis") && (await page.locator("#main tbody").innerText()).includes("RDV confirmé"), "rendez-vous : prospect à l'étape RDV listé avec son étape");
+    await page.locator("#main tbody [data-act=sales-open]").first().click(); await page.waitForSelector("#modal:not([hidden]) #sales-link-form");
+    ok(true, "rendez-vous : « Ouvrir » affiche le dossier du prospect"); await page.keyboard.press("Escape");
+    await vue("offres");
+    ok((await page.locator("#main").innerText()).includes("Aucune offre") && (await page.locator("#sales-offre option").count()) === 8, "offres : vue vide propre + filtre par statut");
+    await vue("conversations");
+    ok((await page.locator("#main .card .pv").count()) >= 1 && (await page.locator("#main").innerText()).includes("pouvez-vous"), "conversations : échanges de tous les prospects");
+    await page.selectOption("#sales-canal", "email"); await page.waitForTimeout(150);
+    ok((await page.locator("#main .card .pv").count()) === 0, "conversations : filtre par canal");
+    await page.selectOption("#sales-canal", "");
+    await vue("prospects");
+    ok((await page.locator("#main tbody tr").count()) === 3, "retour à la vue Prospects");
     ok((await page.locator("#toast .bad").count()) === 0, "onglet Commercial : aucune erreur pendant les actions");
     await page.evaluate(() => { for (let i = 0; i < 70; i++) window.__emit("ai_prospects", "INSERT", { id: crypto.randomUUID(), entreprise: `Prospect lot ${i}`, stage: "identifie", score: 10, potentiel_fcfa: 1000, updated_at: new Date().toISOString() }); });
     await page.click("[data-act=sales-refresh]"); await page.waitForTimeout(500);
