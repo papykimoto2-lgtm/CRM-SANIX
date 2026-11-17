@@ -123,6 +123,7 @@ input,textarea,select{font-family:var(--font-b);outline:none}
 .btn-danger{background:var(--danger);color:#fff}
 .topbar-actions{display:flex;align-items:center;gap:8px}
 .notif-btn{width:36px;height:36px;border-radius:var(--r-sm);background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;position:relative;cursor:pointer}
+.notif-count{position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--danger);color:#fff;font-size:10px;font-weight:800;line-height:17px;text-align:center;border:2px solid #fff;box-sizing:content-box}
 .notif-dot{width:8px;height:8px;background:var(--danger);border-radius:50%;position:absolute;top:6px;right:6px;border:2px solid #fff}
 .hamburger{display:none;width:36px;height:36px;background:transparent;border:1px solid var(--border);border-radius:var(--r-sm);align-items:center;justify-content:center;font-size:18px;cursor:pointer}
 
@@ -1107,7 +1108,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--primary)}
       <div id="sync-pill" class="sync-pill offline" onclick="navigate('parametrage',null);setTimeout(()=>paramTab('sync',document.querySelector('#param-tabs .tab:nth-child(3)')),200)" title="Statut synchronisation">
         <span id="sync-icon">📶</span><span id="sync-label">Local</span>
       </div>
-      <div class="notif-btn">🔔<div class="notif-dot"></div></div>
+      <div class="notif-btn" role="button" tabindex="0" aria-label="Notifications" onclick="notifToggle(event)" onkeydown="if(event.key==='Enter')notifToggle(event)">🔔<div class="notif-dot"></div></div>
       <button class="btn btn-outline btn-sm tb-param" onclick="navigate('parametrage',null)" title="Paramètres">⚙️</button>
       <button class="btn btn-primary fab" onclick="openNewDeal()">＋ Nouveau deal</button>
     </div>
@@ -5621,8 +5622,10 @@ async function gmailRefresh(force){
   _gmail.enCours=(async()=>{
     try{
       const etat=await aisApi('/rest/v1/rpc/crm_mail_state',{method:'POST',body:'{}'});
-      let mails=[]; if(etat && etat.connecte!==undefined) mails=(await aisApi('/rest/v1/crm_mails?select=id,client_rid,to_email,subject,status,sent_at,replied_at,reply_from,relance_apres_jours,sent_by,error&order=sent_at.desc&limit=300'))||[];
+      let mails=[]; if(etat && etat.connecte!==undefined) mails=(await aisApi('/rest/v1/crm_mails?select=id,client_rid,to_email,subject,status,sent_at,replied_at,reply_from,relance_apres_jours,sent_by,error,last_checked_at&order=sent_at.desc&limit=300'))||[];
+      const avant={}; _gmail.mails.forEach(m=>{ avant[m.id]=m.status; });
       _gmail.etat=etat||{connecte:false}; _gmail.mails=mails;
+      if(_gmail.charge) try{ gmailNouvelles(avant); }catch(e){}
     }catch(e){ _gmail.etat=_gmail.etat||{connecte:false,hors_session:/session|Connectez/i.test(e.message)}; _gmail.erreurChargement=e.message; }
     _gmail.charge=Date.now(); _gmail.enCours=null; return _gmail;
   })();
@@ -5683,6 +5686,81 @@ async function gmailFicheRender(id){
   gmailSync();
 }
 (function(){ const o=window.showClientDetail; if(typeof o!=='function') return; window.showClientDetail=function(id){ const r=o.apply(this,arguments); try{ gmailFicheRender(id); }catch(e){} return r; }; })();
+
+// ═══════════════════════════════════════════════════════════════
+//  CLOCHE — réponses reçues et e-mails non distribués (Gmail), puis les autres alertes du CRM
+// ═══════════════════════════════════════════════════════════════
+const _NOTIF_VU='sanix_crm_notif_vu', _NOTIF_JOURS=14;
+function _notifVu(){ try{ return localStorage.getItem(_NOTIF_VU)||''; }catch(e){ return ''; } }
+function _ilya(d){ const m=Math.round((Date.now()-new Date(d))/6e4); if(isNaN(m)) return ''; if(m<2) return "à l'instant"; if(m<60) return 'il y a '+m+' min'; if(m<1440) return 'il y a '+Math.round(m/60)+' h'; const j=Math.round(m/1440); return 'il y a '+j+' j'; }
+/** Réponses reçues et e-mails non distribués des 14 derniers jours, les plus récents d'abord ; « nouveau » = pas encore vu dans la cloche. */
+function gmailAlertes(vuRef){
+  const vu=vuRef!==undefined?vuRef:_notifVu(), lim=Date.now()-_NOTIF_JOURS*864e5, out=[];
+  _gmail.mails.forEach(m=>{
+    const cl=CLIENTS.find(c=>c._rid && c._rid===m.client_rid);
+    const base={m,clientId:cl?cl.id:null,nom:cl?cl.nom:m.to_email};
+    if(m.status==='repondu' && m.replied_at && new Date(m.replied_at).getTime()>=lim) out.push({...base,type:'reponse',quand:m.replied_at,nouveau:!vu||m.replied_at>vu});
+    else if(m.status==='echec' && m.error && /distribu/i.test(m.error)){ const q=m.last_checked_at||m.sent_at; if(new Date(q).getTime()>=lim) out.push({...base,type:'echec',quand:q,nouveau:!vu||q>vu}); }
+  });
+  return out.sort((a,b)=>String(b.quand).localeCompare(String(a.quand)));
+}
+/** Compteur rouge sur la cloche = alertes e-mail pas encore vues. */
+function notifBadgeMaj(){
+  const b=document.querySelector('.notif-btn'); if(!b) return;
+  const n=gmailConnecte()?gmailAlertes().filter(a=>a.nouveau).length:0;
+  let c=b.querySelector('.notif-count');
+  if(n>0){ if(!c){ c=document.createElement('span'); c.className='notif-count'; b.appendChild(c); } c.textContent=n>9?'9+':String(n); const d=b.querySelector('.notif-dot'); if(d) d.style.display='none'; b.setAttribute('aria-label','Notifications : '+n+' nouvelle'+(n>1?'s':'')); }
+  else if(c) c.remove();
+}
+/** Une réponse vient d'arriver pendant l'utilisation : message à l'écran. */
+function gmailNouvelles(avant){
+  const neuves=_gmail.mails.filter(m=>m.status==='repondu' && avant[m.id]==='envoye');
+  neuves.forEach(m=>{ const cl=CLIENTS.find(c=>c._rid && c._rid===m.client_rid); showToast('📩 '+(cl?cl.nom:m.to_email)+' a répondu à votre e-mail'); });
+  const ech=_gmail.mails.filter(m=>m.status==='echec' && avant[m.id]==='envoye' && /distribu/i.test(m.error||''));
+  ech.forEach(m=>{ const cl=CLIENTS.find(c=>c._rid && c._rid===m.client_rid); showToast('⚠️ E-mail non distribué à '+(cl?cl.nom:m.to_email)); });
+  if(neuves.length||ech.length){ notifBadgeMaj(); const p=document.getElementById('notif-panel'); if(p && !p.classList.contains('hidden')) notifPanelRender(); }
+}
+function notifToggle(ev){
+  if(ev) ev.stopPropagation();
+  let p=document.getElementById('notif-panel');
+  if(p && !p.classList.contains('hidden')){ p.classList.add('hidden'); return; }
+  if(!p){
+    p=document.createElement('div'); p.id='notif-panel'; p.className='hidden'; p.setAttribute('role','dialog'); p.setAttribute('aria-label','Notifications');
+    p.style.cssText='position:fixed;top:58px;right:12px;width:min(380px,calc(100vw - 24px));max-height:min(70vh,560px);overflow-y:auto;overflow-x:hidden;background:var(--surface,#fff);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.25);z-index:9500;padding:6px 0';
+    document.body.appendChild(p);
+    document.addEventListener('click',e=>{ const q=document.getElementById('notif-panel'); if(q && !q.classList.contains('hidden') && !q.contains(e.target) && !e.target.closest('.notif-btn')) q.classList.add('hidden'); });
+    document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ const q=document.getElementById('notif-panel'); if(q) q.classList.add('hidden'); } });
+  }
+  p._vuAvant=_notifVu(); notifPanelRender(); p.classList.remove('hidden');
+  gmailRefresh().then(()=>{ if(!p.classList.contains('hidden')) notifPanelRender(); }).then(()=>gmailSync());
+  try{ localStorage.setItem(_NOTIF_VU,new Date().toISOString()); }catch(e){}          // ouvrir la cloche = avoir vu ; les lignes « nouveau » restent surlignées le temps de cet affichage
+  setTimeout(notifBadgeMaj,50);
+}
+function notifPanelRender(){
+  const p=document.getElementById('notif-panel'); if(!p) return; const E=_dEsc;
+  const mails=gmailConnecte()?gmailAlertes(p._vuAvant!==undefined?p._vuAvant:_notifVu()):[];
+  if(typeof buildNotifications==='function') try{ buildNotifications(); }catch(e){}
+  const autres=(typeof _notifications!=='undefined'?_notifications:[]).slice(0,8);
+  const ligne=(ico,titre,sous,go,nouveau)=>'<div role="button" tabindex="0" onclick="'+go+'" style="display:flex;gap:10px;align-items:flex-start;padding:9px 14px;cursor:pointer;border-top:1px solid var(--border);'+(nouveau?'background:#ECFDF5;':'')+'"><span style="font-size:16px;flex-shrink:0">'+ico+'</span><div style="min-width:0;flex:1;overflow-wrap:anywhere"><div style="font-size:13px;font-weight:'+(nouveau?'700':'600')+'">'+titre+'</div>'+(sous?'<div style="font-size:11px;color:var(--muted);margin-top:1px">'+sous+'</div>':'')+'</div></div>';
+  const ouvrir=a=>a.clientId?"document.getElementById('notif-panel').classList.add('hidden');showClientDetail("+a.clientId+")":"document.getElementById('notif-panel').classList.add('hidden')";
+  let h='<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px 6px"><b style="font-size:14px">🔔 Notifications</b><button onclick="document.getElementById(\'notif-panel\').classList.add(\'hidden\')" aria-label="Fermer" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--muted)">✕</button></div>';
+  if(mails.length){
+    h+='<div style="padding:4px 14px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">✉️ E-mails</div>';
+    h+=mails.map(a=>a.type==='reponse'
+      ? ligne('📩','<span class="notif-rep">'+E(a.nom)+' a répondu</span>',E(a.m.subject)+' · '+_ilya(a.quand),ouvrir(a),a.nouveau)
+      : ligne('⚠️','<span class="notif-ech">E-mail non distribué : '+E(a.nom)+'</span>','Adresse '+E(a.m.to_email)+' à vérifier · '+_ilya(a.quand),ouvrir(a),a.nouveau)).join('');
+  } else if(gmailConnecte()) h+='<div style="padding:8px 14px;font-size:12px;color:var(--muted)">📭 Aucune réponse reçue ces '+_NOTIF_JOURS+' derniers jours.</div>';
+  if(autres.length){
+    h+='<div style="padding:8px 14px 4px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">À surveiller</div>';
+    h+=autres.map(n=>ligne(n.ico,E(n.msg),'', "document.getElementById('notif-panel').classList.add('hidden');navigate('"+n.module+"',null)",false)).join('');
+  }
+  if(!mails.length && !autres.length) h+='<div style="padding:18px 14px;text-align:center;color:var(--success);font-size:13px">✅ Rien à signaler</div>';
+  p.innerHTML=h;
+}
+// Vérification régulière des réponses tant que le CRM est ouvert (en plus du planificateur du serveur, toutes les 15 min).
+setInterval(()=>{ if(document.visibilityState==='visible' && typeof currentUser!=='undefined' && currentUser && gmailConnecte()) gmailSync(); },5*60e3);
+setTimeout(()=>{ if(typeof currentUser!=='undefined' && currentUser) gmailRefresh().then(()=>{ notifBadgeMaj(); gmailSync(); }); },9000);
+
 /** Retour de Google (?gmail=ok | erreur) : message, puis nettoyage de l'adresse. */
 (function(){
   let p; try{ p=new URLSearchParams(location.search); }catch(e){ return; } const r=p.get('gmail'); if(!r) return;
@@ -6203,6 +6281,7 @@ function updateSidebarNotifications() {
   const sbLic = document.getElementById('sb-lic-badge');
   if(sbLic) { sbLic.textContent=licUrgent; sbLic.style.display=licUrgent>0?'':'none'; }
 
+  try{ notifBadgeMaj(); }catch(e){}
   return {total, critical};
 }
 
