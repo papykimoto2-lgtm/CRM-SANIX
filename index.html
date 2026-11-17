@@ -2993,7 +2993,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
           <p style="margin:0 0 8px"><b>À quoi ça sert.</b> Décider où passer votre temps de prospection : sur les logiciels dont une fiche du pipeline rapporte le plus, et suivre chaque semaine si vous tenez vos objectifs.</p>
           <ul style="margin:0 0 8px;padding-left:20px">
             <li><b>Fiche</b> : une opportunité du pipeline (un client et un logiciel). Les doublons et les fiches perdues ne comptent pas.</li>
-            <li><b>CA HT</b> : chiffre d'affaires hors taxes des commandes confirmées, en cours ou livrées. Les brouillons, annulations et renouvellements sont exclus.</li>
+            <li><b>CA HT</b> : chiffre d'affaires hors taxes des commandes confirmées, en cours ou livrées. Les brouillons, annulations et renouvellements sont exclus de cet écran (le CA total du tableau de bord, lui, compte aussi les renouvellements facturés).</li>
             <li><b>CA par fiche</b> = CA HT ÷ nombre de fiches du logiciel. C'est ce que rapporte en moyenne un prospect travaillé : plus il est élevé, plus le logiciel mérite de temps. C'est la colonne qui classe les lignes.</li>
             <li><b>Conversion</b> = fiches gagnées ÷ fiches du logiciel.</li>
             <li><b>Prix catalogue</b> : prix de la licence au catalogue. Un tiret signifie que le logiciel n'est pas (ou plus) dans le catalogue.</li>
@@ -5993,7 +5993,8 @@ function initDashboard360() {
   const nbDealsActifs = DEALS.filter(d=>d.stage!=='gagne'&&d.stage!=='perdu').length;
   const nbGagnes      = DEALS.filter(d=>d.stage==='gagne').length;
   const nbPerdus      = DEALS.filter(d=>d.stage==='perdu').length;
-  const tauxConv      = DEALS.length>0?Math.round(nbGagnes/DEALS.length*100):0;
+  const _nbCli=CLIENTS.filter(c=>c.statut==='client').length, _nbPro=CLIENTS.filter(c=>c.statut==='prospect').length;
+  const tauxConv      = (_nbCli+_nbPro)>0?Math.round(_nbCli/(_nbCli+_nbPro)*100):0;       // même définition partout : clients ÷ (clients + prospects)
   const nbLicences    = LICENCES.filter(l=>l.statut==='active').length;
   const nbContrats    = CONTRATS.filter(c=>c.statut==='signe'||c.statut==='en_cours').length;
   const nbPres        = PRESENTATIONS.filter(p=>p.statut==='planifiee').length;
@@ -6082,10 +6083,10 @@ function initDashboard360() {
   if(santeEl){
     const dealsParStage={};
     STAGES.forEach(s=>{dealsParStage[s.id]={n:DEALS.filter(d=>d.stage===s.id).length,label:s.label,color:s.color};});
-    const valeurGagnable=DEALS.filter(d=>d.stage!=='perdu').reduce((s,d)=>s+(d.valeur||0),0);
+    const valeurGagnable=DEALS.filter(d=>d.stage!=='perdu'&&d.stage!=='gagne'&&d.stage!=='prospect').reduce((s,d)=>s+(d.valeur||0),0);   // affaires engagées chiffrées : ni gagnées (déjà dans le CA) ni prospects à froid
     santeEl.innerHTML=`
       <div style="margin-bottom:10px;padding:8px;background:var(--success-l);border-radius:var(--r-sm);text-align:center">
-        <div style="font-size:10px;color:var(--muted);font-weight:600">Valeur gagnable</div>
+        <div style="font-size:10px;color:var(--muted);font-weight:600">Pipeline ouvert chiffré</div>
         <div style="font-weight:800;font-size:18px;color:var(--success)">${fv(valeurGagnable)} FCFA</div>
       </div>
       ${Object.entries(dealsParStage).filter(([k])=>k!=='gagne'&&k!=='perdu').map(([k,s])=>`
@@ -6286,7 +6287,7 @@ function initDashboard360() {
 // ═══════════════════════════════════════
 function initPipeline() {
   syncProspectsToPipeline();
-  _pipeFunnel(DEALS);
+  _pipeFunnel(DEALS.filter(d=>!_dealOrphelin(d)));
   renderKanban(_pipelineFiltered());
   updatePipelineTotal(_pipelineFiltered());
   pipeMode(pipeModeActuel(), true);
@@ -6865,7 +6866,7 @@ function updateLogPreview() {
 // Recalcule l'écran affiché (après une synchronisation ou un changement de catalogue).
 function rafraichirVueCourante(){
   const v=document.querySelector('[id^="view-"]:not(.hidden)'); if(!v||v.id==='view-note-host') return;
-  const id=v.id.slice(5), F={strategie:'initStrategie',qualification:'qlRender',apresvente:'initApresVente',comptabilite:'initComptabilite',conversion:'initConversion',cockpit:'initCockpit',direction:'initDirection',intel:'initIntel',aisales:'initAiSales'};
+  const id=v.id.slice(5), F={strategie:'initStrategie',qualification:'qlRender',apresvente:'initApresVente',comptabilite:'initComptabilite',conversion:'initConversion',cockpit:'initCockpit',direction:'initDirection',intel:'initIntel',aisales:'initAiSales',commissions:'initCommissions',rapports:'initJournal',journal:'initJournal',agenda:'initAgenda',commandes:'initCommandes',pipeline:'initPipeline',licences:'initLicences',contrats:'initContrats'};
   try{ if(F[id]&&typeof window[F[id]]==='function') window[F[id]](); }catch(e){ console.error(e); }
   try{ if(id==='financement'&&window.SanixFinancement&&window.SanixFinancement.refresh) window.SanixFinancement.refresh(); }catch(e){}
   try{ if(typeof renderClients==='function'&&id==='clients'&&typeof getFilteredClients==='function') renderClients(getFilteredClients()); }catch(e){}
@@ -8468,7 +8469,7 @@ function showClientDetail(id) {
         ${interactions.length?interactions.slice(-5).reverse().map(x=>`
           <div style="display:flex;gap:8px;align-items:flex-start;padding:6px 10px;border-bottom:1px solid var(--border);font-size:11px">
             <span style="flex-shrink:0">${x.ico||'💬'}</span>
-            <div style="flex:1"><span style="font-weight:600">${x.type}</span> — ${x.note||''}</div>
+            <div style="flex:1"><span style="font-weight:600">${_dEsc(x.type)}</span> — ${_dEsc(x.note||'')}</div>
             <span style="color:var(--muted);font-size:10px;flex-shrink:0">${new Date(x.date).toLocaleDateString('fr-FR')}</span>
           </div>`).join(''):
           '<div style="padding:10px;text-align:center;color:var(--muted);font-size:11px">Aucune interaction enregistrée</div>'}
@@ -8571,11 +8572,14 @@ function whatsappClient(id) {
 }
 
 // ─── PIPELINE FILTERS ───────────────────
+// Une affaire née d'un prospect dont la fiche a été supprimée ne compte plus (fiche manquante sur cet appareil ou supprimée ailleurs).
+function _dealOrphelin(d){ return !!(d&&d.fromProspect&&d.clientId&&!CLIENTS.some(c=>c.id===d.clientId)); }
 function _pipelineFiltered() {
   const words = _nrm((document.getElementById('filter-search')||{}).value||'').split(/\s+/).filter(Boolean);
   const com = (document.getElementById('filter-commercial')||{}).value||'';
   const log = (document.getElementById('filter-logiciel')||{}).value||'';
   return DEALS.filter(d=>
+    !_dealOrphelin(d) &&
     (!com || (d.commercial||'').toLowerCase().includes(com.toLowerCase())) &&
     (!log || d.logiciel===log) &&
     (!words.length || words.every(w=>_nrm([d.client,d.logiciel,d.commercial,d.notes].join(' ')).includes(w))));
@@ -9111,8 +9115,14 @@ const LS_STORES = {
   ecritures:     { get:()=>ECRITURES,     set:v=>{ ECRITURES=v; }     },
 };
 
+let _lsAlerteAt=0;
 function lsSave(key, data) {
-  try { localStorage.setItem(LS_PREFIX + key, JSON.stringify(data)); } catch(e) { syncLog('warn','LS write failed: '+e.message); }
+  try { localStorage.setItem(LS_PREFIX + key, JSON.stringify(data)); return true; }
+  catch(e) {
+    syncLog('warn','LS write failed: '+e.message);
+    if(Date.now()-_lsAlerteAt>30000){ _lsAlerteAt=Date.now(); try{ showToast('🛑 Enregistrement impossible : le stockage du navigateur est plein. Exportez une sauvegarde (Paramétrage) et libérez de la place.',9000); }catch(x){} }
+    return false;
+  }
 }
 function lsLoad(key) {
   try { const r = localStorage.getItem(LS_PREFIX + key); return r ? JSON.parse(r) : null; } catch(e) { return null; }
@@ -9228,8 +9238,9 @@ function backupParse(data){
   if(!Object.keys(out).length) throw new Error('aucune donnée reconnue');
   return out;
 }
+const _RESTORE_INTERDITES=['supabase_config','users_data','sync_v1','outbox_v1','config_updated'];   // un fichier de sauvegarde ne doit jamais changer le serveur de synchronisation ni les comptes
 function backupRestore(stores){
-  Object.keys(stores).forEach(k=>{ lsSave(k, stores[k]); if(LS_STORES[k]) lsSave(k+'_updated', Date.now()); });
+  Object.keys(stores).filter(k=>_RESTORE_INTERDITES.indexOf(k)<0&&/^[a-z0-9_]{1,40}$/i.test(k)).forEach(k=>{ lsSave(k, stores[k]); if(LS_STORES[k]) lsSave(k+'_updated', Date.now()); });
 }
 function importJsonPrompt() {
   const inp = document.createElement('input');
@@ -10179,9 +10190,19 @@ function cmdAutoFillPrix() {
   }
 }
 
+// Numéros de commande en double (deux appareils qui numérotent avant de se synchroniser) : signalés, jamais corrigés en silence.
+function cmdRefsEnDouble(){ const vu={}, dbl=[]; COMMANDES.forEach(c=>{ const r=(c.ref||'').trim(); if(!r) return; if(vu[r]&&dbl.indexOf(r)<0) dbl.push(r); vu[r]=1; }); return dbl; }
+function _cmdAlerteDoublons(){
+  const v=document.getElementById('view-commandes'); if(!v) return;
+  let el=document.getElementById('cmd-doublons'); const d=cmdRefsEnDouble();
+  if(!d.length){ if(el) el.remove(); return; }
+  if(!el){ el=document.createElement('div'); el.id='cmd-doublons'; el.className='alert alert-warn'; el.style.marginBottom='12px'; v.insertBefore(el, v.children[2]||null); }
+  el.innerHTML='⚠️ <div><b>Numéro de commande en double : '+d.map(_dEsc).join(', ')+'.</b> Deux documents ne doivent jamais porter le même numéro. Modifiez l\'une des commandes (✏️) pour lui donner un numéro libre avant d\'émettre une facture.</div>';
+}
 function initCommandes() {
   renderCmdStats();
   renderCommandes();
+  try{ _cmdAlerteDoublons(); }catch(e){}
 }
 
 // Reste à payer d'une commande : TTC moins le total versé (jamais négatif).
@@ -17318,8 +17339,8 @@ function dhRenderTimeline(deal) {
       <div class="deal-tl-dot" style="background:${col}"></div>
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
         <div style="flex:1">
-          <div class="deal-tl-title">${h.ico} ${h.label}</div>
-          <div style="font-size:12px;color:var(--text2);margin-top:2px">${h.note}</div>
+          <div class="deal-tl-title">${_dEsc(h.ico)} ${_dEsc(h.label)}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">${_dEsc(h.note)}</div>
           ${h.resultat?`<span style="display:inline-block;margin-top:4px;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:${col}22;color:${col}">${h.resultat}</span>`:''}
           <div class="deal-tl-time">📅 ${dateStr} à ${timeStr}${h.commercial?' · '+h.commercial:''}</div>
         </div>
@@ -17451,15 +17472,18 @@ async function aisLogin(ev){
     const j=await r.json();
     if(!r.ok||!j.access_token) throw new Error(j.error_description||j.msg||'Identifiants invalides');
     sessionStorage.setItem(AIS_TOK, JSON.stringify({t:j.access_token, exp:Date.now()+(j.expires_in||3600)*1000, email}));
+    if(j.refresh_token){ try{ localStorage.setItem('sanix_ais_refresh', JSON.stringify({r:j.refresh_token, email})); }catch(e){} }   // renouvellement automatique de la session
+    try{ if(window.SanixCrmSync) SanixCrmSync.syncNow(); }catch(e){}
     _aisFails=0; showToast('✅ Agent IA connecté'); initAiSales();
   }catch(e){
     if(++_aisFails>=5){ _aisLockUntil=Date.now()+60000; _aisFails=0; }
     showToast('❌ '+e.message);
   }finally{ const p=document.getElementById('ais-pass'); if(p) p.value=''; }
 }
-function aisLogout(){ sessionStorage.removeItem(AIS_TOK); initAiSales(); }
+function aisLogout(){ sessionStorage.removeItem(AIS_TOK); try{ localStorage.removeItem('sanix_ais_refresh'); }catch(e){} initAiSales(); }
 async function aisApi(path, opt={}){
-  const s=aisSession(); if(!s||!SB_CONFIG) throw new Error('Connectez l\'agent IA (session opérateur)');
+  let s=aisSession(); if(!s&&window.SanixCrmSync&&SanixCrmSync.renewSession){ try{ await SanixCrmSync.renewSession(); s=aisSession(); }catch(e){} }
+  if(!s||!SB_CONFIG) throw new Error('Connectez l\'agent IA (session opérateur)');
   const r=await withTimeout(fetch(SB_CONFIG.url+path,{...opt,headers:{apikey:SB_CONFIG.key,Authorization:'Bearer '+s.t,'Content-Type':'application/json',...(opt.headers||{})}}), opt.timeout||15000);
   if(r.status===401){ sessionStorage.removeItem(AIS_TOK); aisRenderConn(); }
   const txt=await r.text(); let j=null; try{ j=txt?JSON.parse(txt):null; }catch(e){}

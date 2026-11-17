@@ -25,21 +25,24 @@ select cron.schedule('ai-company-tick', '* * * * *', $$
   select net.http_post(
     url := 'https://izgpvhwhbrgeagjfhfli.supabase.co/functions/v1/ai-company',
     body := '{"action":"tick"}'::jsonb,
-    headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'ai_cron_secret')))
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'ai_cron_secret')),
+    timeout_milliseconds := 30000)
 $$);
 
 select cron.schedule('ai-company-reports', '*/5 * * * *', $$
   select net.http_post(
     url := 'https://izgpvhwhbrgeagjfhfli.supabase.co/functions/v1/ai-company',
     body := '{"action":"report_tick"}'::jsonb,
-    headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'ai_cron_secret')))
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'ai_cron_secret')),
+    timeout_milliseconds := 30000)
 $$);
 
 select cron.schedule('ai-sales-followups', '*/15 * * * *', $$
   select net.http_post(
     url := 'https://izgpvhwhbrgeagjfhfli.supabase.co/functions/v1/ai-sales-director',
     body := '{"action":"tick"}'::jsonb,
-    headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'ai_cron_secret')))
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'ai_cron_secret')),
+    timeout_milliseconds := 30000)
 $$);
 
 select jobname as "tâche planifiée", schedule as "cadence", active as "active"

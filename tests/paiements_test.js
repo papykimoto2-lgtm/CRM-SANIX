@@ -35,8 +35,11 @@ r = P.modifier(c, idNouveau, { montant: 70000 }, T); ok(!r.ok && r.erreur === "d
 r = P.modifier(c, idNouveau, { montant: 68000, date: "2026-11-14", mode: "mobile_money" }, T); ok(r.ok && c.acompte === 118000 && c.solde === 0 && c.paiements[1].mode === "mobile_money" && c.paiements[1].date === "2026-11-14", "modifier : 68 000 en Mobile Money le 14/11, commande soldée");
 r = P.modifier(c, idAncien, { mode: "virement", date: "2026-11-11" }, T); ok(r.ok && !("estimee" in c.paiements[0]) && c.paiements[0].mode === "virement", "préciser un ancien paiement : la mention « estimée » disparaît");
 eq(P.modifier(c, "inexistant", { montant: 1 }, T).erreur, "introuvable", "paiement inexistant");
-ok(P.supprimer(c, idNouveau) && c.acompte === 50000 && c.solde === 68000 && c.paiements.length === 1, "suppression : acompte 50 000, solde 68 000"); ok(!P.supprimer(c, "inexistant"), "supprimer un paiement inconnu : sans effet");
-ok(P.supprimer(c, idAncien) && c.acompte === 0 && c.solde === 118000 && Array.isArray(c.paiements) && c.paiements.length === 0, "tous supprimés : acompte 0 ; la liste vide est conservée (l'ancien acompte ne réapparaît pas)");
+ok(P.supprimer(c, idNouveau) && c.acompte === 50000 && c.solde === 68000 && P.liste(c).length === 1, "suppression : acompte 50 000, solde 68 000");
+ok(c.paiements.length === 2 && c.paiements.filter((x) => x.id === idNouveau)[0].supprime === true && !!c.paiements.filter((x) => x.id === idNouveau)[0].maj, "le paiement supprimé reste dans la liste, marqué « supprime » avec son horodatage (la fusion entre appareils ne le ressuscite pas)");
+ok(!P.supprimer(c, idNouveau), "un paiement déjà supprimé ne se supprime pas deux fois");
+ok(P.liste(c).every((x) => !x.supprime) && P.total(c) === 50000 && P.ecritures(c).length === 1, "total, reste dû et écritures comptables ignorent le paiement supprimé"); ok(!P.supprimer(c, "inexistant"), "supprimer un paiement inconnu : sans effet");
+ok(P.supprimer(c, idAncien) && c.acompte === 0 && c.solde === 118000 && Array.isArray(c.paiements) && P.liste(c).length === 0, "tous supprimés : acompte 0 ; la liste vide est conservée (l'ancien acompte ne réapparaît pas)");
 
 // Écritures : une par paiement, à sa date, au compte du mode, plafonnées au TTC, triées par date
 c = cmd({ paiements: [{ id: "a", date: "2026-11-15", montant: 50000, mode: "mobile_money" }, { id: "b", date: "2026-11-11", montant: 60000, mode: "especes" }, { id: "c", date: "2026-11-12", montant: 30000, mode: "virement" }] });

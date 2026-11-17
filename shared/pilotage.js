@@ -31,7 +31,8 @@
       var out = {};
       (commandes || []).forEach(function (c) {
         var m = monthOf(c && c.date); if (!m || CA_STATUTS.indexOf(c.statut) < 0) return;
-        out[m] = (out[m] || 0) + num(c.htNet);
+        var ttc = num(c.ttc), ht = num(c.htNet) > 0 ? num(c.htNet) : (c.sansTva ? ttc : Math.round(ttc / 1.18));      // même repli que cmdHT du CRM : une commande ancienne sans HT n'est pas comptée pour 0
+        out[m] = (out[m] || 0) + ht;
       });
       return out;
     },

@@ -492,7 +492,6 @@ var AGENT_STAGES = [
   "negociation",
   "offre_acceptee",
   "contrat_transmis",
-  "paiement_attendu",
   "perdu",
   "en_veille"
 ];

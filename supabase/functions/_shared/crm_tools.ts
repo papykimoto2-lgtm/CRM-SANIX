@@ -7,8 +7,8 @@ import type { Prospect } from "./channels.ts";
 export const AGENT_STAGES = [
   "identifie", "enregistre", "qualifie", "premier_contact", "conversation", "besoin_identifie", "interesse",
   "rdv_propose", "rdv_confirme", "demo_realisee", "offre_transmise", "negociation", "offre_acceptee",
-  "contrat_transmis", "paiement_attendu", "perdu", "en_veille",
-] as const; // contrat_signe, paiement_confirme, marche_gagne : direction uniquement (garde-fou en base)
+  "contrat_transmis", "perdu", "en_veille",
+] as const; // paiement_attendu, contrat_signe, paiement_confirme, marche_gagne, deploiement, client_fidelise : direction uniquement (garde-fou en base : tout ce que le CRM classe « gagné »)
 
 export type CrmCtx = {
   agentLabel: string;
