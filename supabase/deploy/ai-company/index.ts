@@ -287,7 +287,7 @@ async function loadPortfolio() {
 // functions/_shared/channels.ts
 var AI_DISCLOSURE = "Je suis l'assistant commercial virtuel (IA) de SANIX AFRICA ; un conseiller humain peut prendre le relais \xE0 tout moment.";
 var WA_WINDOW_MS = 24 * 3600 * 1e3;
-var GRAPH = "https://graph.facebook.com/v21.0";
+var GRAPH = "https://graph.facebook.com/" + (Deno.env.get("WHATSAPP_GRAPH_VERSION") || "v27.0");
 var whatsappConfigured = () => !!(env("WHATSAPP_TOKEN", false) && env("WHATSAPP_PHONE_NUMBER_ID", false));
 async function sendWhatsApp(p, text2) {
   if (p.opt_out) return { ok: false, statut: "echec", detail: "Prospect d\xE9sinscrit : envoi interdit" };

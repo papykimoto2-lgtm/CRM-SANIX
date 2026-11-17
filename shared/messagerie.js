@@ -12,6 +12,7 @@
     fixe: "Numéro fixe : pas de WhatsApp",
     numero_invalide: "Numéro invalide",
     pas_whatsapp: "Marqué « pas sur WhatsApp »",
+    desinscrit: "A demandé à ne plus être contacté (STOP)",
     sans_email: "Pas d'adresse e-mail",
     email_invalide: "Adresse e-mail invalide ou incertaine",
     email_rebond: "E-mail déjà revenu en erreur à cette adresse",
@@ -19,7 +20,7 @@
   };
 
   /** Contacts → { retenus:[{c, cible}], exclus:{raison:[c]}, nbExclus, total }.
-      ctx : { qualite(c) → {tel:{ok,kind,reason}, em:{ok,principal}, wa, mail}, morte(email) → bool, recent(c, jours) → bool }
+      ctx : { qualite(c) → {tel:{ok,kind,reason}, em:{ok,principal}, wa, mail}, morte(email) → bool, desinscrit(numéro 225…) → bool, recent(c, jours) → bool }
       f   : { statut:'prospect'|'client'|'tous', logiciel, secteur, etape (nombre ou ''), texte, joursSansContact (0 = ne pas exclure) }
       etapeDe(c) → nombre (étape de conversion). */
   function cibler(clients, canal, f, ctx, etapeDe) {
@@ -39,6 +40,7 @@
         else if (qu.tel.kind === "vide" || (!String(c.phone || "").trim())) raison = "sans_numero";
         else if (!qu.wa) raison = qu.tel.kind === "fixe" ? "fixe" : "numero_invalide";
         else if (c.wa === "non") raison = "pas_whatsapp";
+        else if (ctx.desinscrit && ctx.desinscrit(qu.tel.num)) raison = "desinscrit";
         else cible = qu.tel.num;
       } else {
         if (!String(c.email || "").trim()) raison = "sans_email";

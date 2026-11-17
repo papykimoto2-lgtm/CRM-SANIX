@@ -58,4 +58,8 @@ ok(V.total === 0 && V.alertes.length === 0 && V.phrase === "Rien d'urgent : votr
 const I = B.construire({ now: NOW, session: true, agents: [{ id: "a1", nom: "A", etat: "actif" }, { id: "a2", nom: "B", etat: "actif" }, { id: "a3", nom: "C", etat: "actif" }, { id: "a4", nom: "D", etat: "actif" }, { id: "a5", nom: "E", etat: "suspendu" }], afaire: {} });
 ok(I.pourVous[0].id === "suspendus" && I.pourVous[0].niveau === "info", "1 agent suspendu sur 5 : simple information (pas d'alarme)");
 ok(B.libelleIncident("zzz").includes("zzz") && B.libelleIncident("budget").includes("budget"), "incident inconnu : le code est cité, jamais de texte vide");
+// réponses WhatsApp (API) : une ligne urgente, au singulier comme au pluriel, rien si zéro
+const WA1 = B.construire({ now: NOW, session: true, agents: [], waReponses: 1 }), WA3 = B.construire({ now: NOW, session: true, agents: [], waReponses: 3 }), WA0 = B.construire({ now: NOW, session: true, agents: [], waReponses: 0 });
+ok(WA1.pourVous[0].id === "wa_reponses" && WA1.pourVous[0].niveau === "urgent" && WA1.pourVous[0].titre === "1 réponse WhatsApp à lire" && WA1.pourVous[0].action.type === "cloche", "1 réponse WhatsApp : ligne urgente, renvoie vers la cloche");
+ok(WA3.pourVous[0].titre === "3 réponses WhatsApp à lire" && !WA0.pourVous.some((x) => x.id === "wa_reponses"), "pluriel correct ; aucune ligne s'il n'y a rien");
 console.log("Bureau du jour : " + n + " contrôles passés.");

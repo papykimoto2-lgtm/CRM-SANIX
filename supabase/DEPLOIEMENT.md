@@ -35,6 +35,7 @@ Supabase → **Edge Functions** → **Deploy a new function** → **Via Editor**
 | `ai-sales-director` | `supabase/deploy/ai-sales-director/index.ts` | **désactivé** |
 | `whatsapp-webhook` | `supabase/deploy/whatsapp-webhook/index.ts` | **désactivé** |
 | `crm-gmail` (envoi d'e-mails par Gmail, voir `GMAIL.md`) | `supabase/deploy/crm-gmail/index.ts` | **désactivé** |
+| `crm-whatsapp` (envoi WhatsApp par l'API Meta depuis le CRM, voir `WHATSAPP.md`) | `supabase/deploy/crm-whatsapp/index.ts` | **désactivé** |
 
 *Verify JWT désactivé* : chaque fonction authentifie elle-même son appelant (JWT opérateur vérifié par Supabase Auth + ligne `ai_operators` ; secret du planificateur `x-cron-secret` ; signature HMAC de Meta). Le contrôle de la plateforme refuserait les clés « publishable » (qui ne sont pas des JWT).
 

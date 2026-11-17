@@ -33,6 +33,10 @@ ok(r.retenus[0].cible === "2250700000001", "la cible est le numéro prêt pour W
 eq([r.exclus.fixe.length, r.exclus.sans_numero.length, r.exclus.numero_invalide.length, r.exclus.pas_whatsapp.length], [1, 2, 1, 1], "exclus : 1 fixe, 2 sans numéro, 1 invalide, 1 « pas sur WhatsApp »");
 ok(r.total === 8 && r.nbExclus === 5, "8 prospects examinés (le client est écarté), 5 exclus");
 
+r = M.cibler(fiches, "wa", { statut: "prospect" }, Object.assign({}, ctx, { desinscrit: (num) => num === "2250700000001" }), etape);
+ok(r.retenus.length === 0 && r.exclus.desinscrit.length === 3, "désinscrits (STOP) : exclus de WhatsApp avec leur raison");
+ok(M.RAISONS.desinscrit.indexOf("STOP") >= 0, "raison « STOP » en français courant");
+
 console.log("▶ E-mail");
 r = M.cibler(fiches, "email", { statut: "prospect" }, ctx, etape);
 eq(noms(r), ["Bêta", "Gamma", "Delta", "Epsilon", "Iota"], "e-mail : tout prospect avec une adresse valide non rejetée");
