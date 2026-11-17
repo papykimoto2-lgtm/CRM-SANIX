@@ -38,6 +38,44 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     q = await Q({ phone: "", email: "" }); ok(q.niveau === "aucun" && q.codes.includes("notel"), "ni téléphone ni e-mail : sans contact");
     q = await Q({ phone: "12345", email: "" }); ok(q.niveau === "aucun" && q.codes.includes("telinvalide"), "numéro invalide : sans contact");
 
+    console.log("▶ Suggestion de domaine (faute de frappe proche d'un domaine déjà connu)");
+    const sg = await page.evaluate(() => {
+      const mk = (id, email) => CLIENTS.push({ id, nom: "Dom " + id, statut: "prospect", secteur: "Santé", phone: "", email, notes: "", created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+      mk(991001, "pivab@polyclinique-test.ci"); mk(991002, "info@polyclinique-test.ci");             // domaine connu : 2 fiches
+      mk(991003, "solo@unique-solo.ci");                                                              // domaine connu d'une seule fiche
+      const T = (e) => { mk(Math.floor(Math.random() * 1e6) + 2e6, e); const c = CLIENTS[CLIENTS.length - 1]; const q = contactQualite(c); return { conf: q.confirmer.email || null, codes: q.problemes.map((p) => p.code), mail: q.mail }; };
+      const out = {};
+      out.cl = T("abri@polyclinique-tst.cl");              // faute + « .cl » : doit viser le domaine connu, pas seulement « .ci »
+      out.ci = T("abri@polyclinique-tst.ci");              // faute seule
+      out.connu = T("pivab@polyclinique-test.ci");         // le domaine connu lui-même
+      out.loin = T("abri@autredomaine-xyz.ci");            // aucun domaine proche
+      out.solo = T("abri@uniqe-solo.ci");                  // candidat utilisé par 1 seule fiche : trop fragile
+      out.gmail = T("marc@gmial.com");                     // faute de messagerie grand public : traitée par la table des fautes, pas par ce mécanisme
+      out.court = T("a@ab.ci");                            // domaine trop court
+      _gmail.mails = [{ id: "z", to_email: "x@polyclinique-test.ci", status: "echec", error: "Non distribué (retour Gmail)", sent_at: new Date().toISOString() }]; _domIdx = null;
+      out.rejete = T("abri@polyclinique-tst.ci");          // le domaine proche a déjà renvoyé une erreur : on ne le recommande pas
+      _gmail.mails = []; _domIdx = null;
+      return out;
+    });
+    ok(sg.cl.conf === "abri@polyclinique-test.ci" && sg.cl.codes.includes("domaine_proche"), "« polyclinique-tst.cl » : propose le domaine déjà utilisé « polyclinique-test.ci » (pas seulement « .ci »)");
+    ok(sg.ci.conf === "abri@polyclinique-test.ci", "faute de frappe seule (« tst » pour « test ») : même proposition");
+    ok(sg.ci.mail === true, "l'adresse reste utilisable (c'est une suggestion à confirmer, pas un refus)");
+    ok(!sg.connu.conf && !sg.loin.conf, "le domaine connu lui-même et un domaine éloigné : aucune suggestion");
+    ok(!sg.solo.conf, "domaine voisin utilisé par une seule fiche : pas de suggestion (trop incertain)");
+    ok(sg.gmail.conf === null && !sg.gmail.codes.includes("domaine_proche"), "messageries grand public (gmial.com) : pas de suggestion floue, la table des fautes connues s'en charge");
+    const abri = await page.evaluate(() => {
+      const mk = (id, nom, email) => CLIENTS.push({ id, nom, statut: "prospect", secteur: "Immobilier", phone: "", email, notes: "", created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+      mk(992001, "Polyclinique A", "pivab@aviso.ci"); mk(992002, "Polyclinique B", "pivab@aviso.ci"); mk(992003, "ABRI TEST", "abri2000@avisio.cl");
+      const q = contactQualite(CLIENTS.find((c) => c.id === 992003)); return { conf: q.confirmer.email, texte: (q.problemes.find((p) => p.code === "domaine_proche") || {}).texte };
+    });
+    ok(abri.conf === "abri2000@aviso.ci", "cas réel : « abri2000@avisio.cl » → « abri2000@aviso.ci » (le domaine déjà utilisé par 2 fiches)");
+    ok(/avisio\.ci/.test(abri.texte) && /aviso\.ci/.test(abri.texte) && /2 fiches/.test(abri.texte), "le message explique la raison : « avisio.ci » ressemble à « aviso.ci », utilisé par 2 fiches");
+    await page.evaluate(() => { openContactsModal(); }); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => /aviso\.ci/.test(document.getElementById("contacts-body").innerText)), "la revue des contacts affiche cette proposition, avec le bouton « Accepter »");
+    await page.evaluate(() => document.getElementById("modal-contacts").classList.add("hidden"));
+    ok(sg.court.conf === null, "domaine trop court : pas de suggestion");
+    ok(sg.rejete.conf === null, "un domaine dont un e-mail est déjà revenu en erreur n'est jamais recommandé");
+
     console.log("▶ Écran de revue");
     const nb = await page.evaluate(() => {
       const mk = (id, nom, secteur, phone, email) => ({ id, nom, statut: "prospect", secteur, phone, email, notes: "", created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
