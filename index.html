@@ -29,6 +29,7 @@ try{var _t=localStorage.getItem("sanix_theme");if(_t&&_t!=="turquoise")document.
 <script src="shared/afaire.js" defer></script>
 <script src="shared/bureau.js" defer></script>
 <script src="shared/messagerie.js" defer></script>
+<script src="shared/contrat.js" defer></script>
 <style>
 :root{
   /* Charte ANGEL'S GROUP : turquoise profond, fonds clairs bleutés, police système */
@@ -13936,6 +13937,7 @@ const DOCS_KEY='sanix_crm_docs';
 let DOCS={};
 function docsLoad(){ try{ DOCS=lsLoad(DOCS_KEY)||{}; }catch(e){ DOCS={}; } if(typeof DOCS!=='object'||!DOCS) DOCS={}; }
 function docsSave(){ lsSave(DOCS_KEY,DOCS); }
+function dossierContratDefaut(){ const t=document.getElementById('doss-contrat'); if(!t) return; if(t.value.trim() && !confirm('Remplacer le texte actuel par le modèle complet ?')) return; t.value=SanixContrat.MODELE; showToast('📝 Modèle complet inséré : enregistrez pour le conserver'); }
 function docGet(logId){
   if(!DOCS[logId]) DOCS[logId]={presentation:'',videos:'',plaquette:'',pdf:'',demo:'',devis:'',contrat:'',faq:[],tutos:[],versions:[]};
   return DOCS[logId];
@@ -13993,7 +13995,8 @@ function dossierRenderBody(){
     body.innerHTML=`
       <div class="form-group"><label class="form-label">📄 Modèle de devis</label>${ta('doss-devis',d.devis,'Ex. Licence annuelle {logiciel} : {prix} FCFA HT + TVA 18%…',7)}</div>
       <div class="form-group"><label class="form-label">📝 Modèle de contrat / convention</label>${ta('doss-contrat',d.contrat,'Clauses standard, durée, support, propriété intellectuelle…',7)}</div>
-      <div style="font-size:11px;color:var(--muted)">Variables : {logiciel} {prix} {client}. Réutilisables lors de la génération de devis/contrats.</div>`;
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><button class="btn btn-outline btn-sm" onclick="dossierContratDefaut()">📝 Insérer le modèle complet (14 articles)</button></div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.5"><b>Laissez le contrat vide</b> pour utiliser automatiquement le modèle complet (14 articles). Variables : {logiciel} {prix} {total} {client} {date} {ville} {gerant} {societe} {concedant} {licencie} {adresse_licencie} {representant_licencie} {duree} {maintenance}. Ce qui est entre [crochets] reste à compléter à la génération.</div>`;
   }
   else if(_dossTab==='faq'){
     body.innerHTML=`<div id="doss-faq-list">${(d.faq||[]).map((f,i)=>`
@@ -14341,11 +14344,19 @@ function genDocFromDossier(clientId, kind){
   const today=new Date().toLocaleDateString('fr-FR');
   const ref=(kind==='contrat'?'CTR':'DEV')+'-'+new Date().getFullYear()+'-'+String(clientId).padStart(4,'0');
 
-  const fill=s=>(s||'').replace(/{logiciel}/g,log.nom).replace(/{prix}/g,fmt(puHT))
-    .replace(/{client}/g,c.nom).replace(/{effectif}/g,c.effectif||'—')
-    .replace(/{etablissements}/g,sites).replace(/{gerant}/g,r.gerant).replace(/{societe}/g,r.societe||'SANIX Africa')
-    .replace(/{date}/g,today).replace(/{total}/g,fmt(totalHT)).replace(/{tva}/g,fmt(tva)).replace(/{ttc}/g,fmt(ttc));
+  // Variables du contrat : tout ce que le CRM connaît ; le reste reste entre [crochets], surligné, à compléter avant signature.
+  const cfgD=CONFIG||{}, repLic=(typeof fcDestinataire==='function')?fcDestinataire(c):'';
+  const varsContrat={
+    concedant: SanixContrat.concedant({nom:cfgD.raisonSociale||r.societe||'SANIX Africa',forme:cfgD.forme,capital:cfgD.capital,rccm:cfgD.rccm,adresse:cfgD.adresse,representant:r.gerant}),
+    concedant_nom:(cfgD.raisonSociale||r.societe||'SANIX Africa').toUpperCase(),
+    licencie:c.nom, adresse_licencie:c.adresse||'[Adresse]', representant_licencie:(repLic && !/^madame, monsieur$/i.test(repLic))?repLic:'[Nom]',
+    logiciel:log.nom, duree:SanixContrat.duree(log.type_licence), total:fmt(totalHT), maintenance:Number(log.prixMensuel)>0?fmt(log.prixMensuel)+' FCFA par mois':'[Montant] FCFA',
+    ville:((r.ville||'Abidjan').split(',')[0]).trim()||'Abidjan', date:today, prix:fmt(puHT), client:c.nom, effectif:c.effectif||'—', etablissements:sites, gerant:r.gerant, societe:r.societe||'SANIX Africa', tva:fmt(tva), ttc:fmt(ttc)
+  };
+  const fill=s=>SanixContrat.remplir(s||'',varsContrat);
+  const modeleComplet = kind==='contrat' && !tpl.trim();   // pas de modèle propre au logiciel : on utilise le modèle complet (14 articles)
 
+  const mc = modeleComplet ? SanixContrat.enHtml(SanixContrat.remplir(SanixContrat.MODELE,varsContrat),_dEsc) : null;
   const corps = tpl.trim()
     ? `<div style="white-space:pre-wrap;font-size:13px;line-height:1.6">${fill(tpl).replace(/</g,'&lt;')}</div>`
     : `<p style="font-size:13px">Objet : Fourniture de la licence <strong>${log.nom}</strong>.</p>`;
@@ -14371,21 +14382,24 @@ function genDocFromDossier(clientId, kind){
   .modules span{display:inline-block;background:#eff6ff;color:#2563EB;font-size:11px;padding:2px 8px;border-radius:12px;margin:2px}
   .foot{margin-top:40px;font-size:11px;color:#64748b;border-top:1px solid #e2e8f0;padding-top:12px}
   .sign{display:flex;justify-content:space-between;margin-top:50px;font-size:13px}
-  @media print{body{padding:14px}.noprint{display:none}}
+  .ct{text-align:center;font-size:17px;margin:4px 0 18px}.ar{font-size:13px;margin:16px 0 4px}.corps p{margin:4px 0;font-size:13px;line-height:1.55}.corps .c{text-align:center;font-weight:700}
+  .li{margin:2px 0 2px 18px;font-size:13px;line-height:1.5}.bl{height:6px}mark.ph{background:#fef08a;padding:0 2px;border-radius:3px}.corps{outline:none}
+  .warn{background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:16px}.annexe-t{margin:28px 0 4px;font-size:14px}
+  @media print{body{padding:14px}.noprint{display:none}mark.ph{background:none}.annexe-t{break-before:page}}
   </style></head><body>
   <div class="head">${docBrandLeft()}
   <div><div class="doc-title">${titre}</div><div class="ref">N° ${ref} · ${today}</div></div></div>
-  <div class="parties">
+  ${mc?(mc.nbRestants?`<div class="warn noprint">⚠️ <b>${mc.nbRestants} passage${mc.nbRestants>1?'s':''} surligné${mc.nbRestants>1?'s':''} en jaune</b> (entre crochets) ${mc.nbRestants>1?'sont':'est'} à compléter avant signature : cliquez dans le texte pour le modifier, puis imprimez. Faites relire ce contrat par un juriste avant de le faire signer.</div>`:`<div class="warn noprint">✏️ Le texte est modifiable : cliquez dedans pour l'ajuster avant d'imprimer. Faites relire ce contrat par un juriste avant de le faire signer.</div>`)+`<div id="contrat-corps" class="corps" contenteditable="true" spellcheck="false">${mc.html}</div><h3 class="annexe-t">ANNEXE 1 – RÉCAPITULATIF FINANCIER ET FONCTIONNEL</h3>`:`<div class="parties">
     <div class="box"><strong>ÉMETTEUR</strong><br>${r.societe||'SANIX Africa'}<br>${r.gerant}<br>${r.tel1||''}<br>${r.email||''}</div>
     <div class="box"><strong>CLIENT</strong><br>${c.nom}<br>${c.adresse||''}<br>${c.phone||''}<br>${c.email||''}${c.effectif?'<br>Effectif : '+c.effectif:''}</div>
-  </div>
+  </div>`}
   <table><thead><tr><th>Désignation</th><th style="text-align:center">Qté</th><th style="text-align:right">P.U. HT</th><th style="text-align:right">Total HT</th></tr></thead>
   <tbody><tr><td><strong>${log.nom}</strong> — Licence annuelle<br><span style="font-size:11px;color:#64748b">${(log.desc||'').split('.')[0]}</span></td>
   <td style="text-align:center">${sites}</td><td style="text-align:right">${fmt(puHT)}</td><td style="text-align:right">${fmt(totalHT)}</td></tr></tbody></table>
   <div class="tot">Total HT : ${fmt(totalHT)} FCFA<br>TVA 18% : ${fmt(tva)} FCFA<br><strong>Total TTC : ${fmt(ttc)} FCFA</strong></div>
   ${mods.length?`<div style="margin-top:20px"><strong style="font-size:13px">Modules inclus :</strong><div class="modules">${mods.map(m=>`<span>${m}</span>`).join('')}</div></div>`:''}
   ${tpl.trim()?`<div style="margin-top:20px">${corps}</div>`:''}
-  <div class="sign"><div>Le client<br><span style="color:#94a3b8">(signature + cachet)</span></div><div>Pour ${r.societe||'SANIX Africa'}<br>${r.gerant}</div></div>
+  ${mc?'':`<div class="sign"><div>Le client<br><span style="color:#94a3b8">(signature + cachet)</span></div><div>Pour ${r.societe||'SANIX Africa'}<br>${r.gerant}</div></div>`}
   <div class="foot">Document généré par SANIX CRM · ${today}${isDevis?' · Devis valable 30 jours':' · Contrat régi par le droit ivoirien / OHADA'}</div>
   ${docSecurityFooter({type:isDevis?'devis':'contrat',ref:ref,client:c.nom,montant:ttc,date:_ajd()},true)}
   <div class="noprint" style="text-align:center;margin-top:24px"><button onclick="window.print()" style="padding:10px 24px;background:#2563EB;color:#fff;border:0;border-radius:8px;font-size:15px;cursor:pointer">🖨️ Imprimer / Enregistrer en PDF</button></div>
@@ -14396,7 +14410,7 @@ function genDocFromDossier(clientId, kind){
   w.document.write(html); w.document.close();
   // journalise
   if(!c.interactions)c.interactions=[];
-  c.interactions.push({date:new Date().toISOString(),type:(isDevis?'Devis généré':'Contrat généré'),note:`${ref} · ${log.nom} · ${fmt(ttc)} FCFA TTC`,etape:Math.max((typeof aiGetEtape==='function'?aiGetEtape(c):3),3),ico:'📄'});
+  c.interactions.push({date:new Date().toISOString(),type:(isDevis?'Devis généré':'Contrat généré'),note:`${ref} · ${log.nom} · ${fmt(ttc)} FCFA TTC${mc?' · modèle complet':''}`,etape:Math.max((typeof aiGetEtape==='function'?aiGetEtape(c):3),3),ico:'📄'});
   c.updated_at=new Date().toISOString(); saveStore('clients');
   showToast(`📄 ${isDevis?'Devis':'Contrat'} ${ref} généré`);
 }
