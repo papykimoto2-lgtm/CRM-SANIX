@@ -977,7 +977,7 @@ export async function createOffice(container, hooks = {}) {
   const now = () => new Date(wallNow()).toISOString();
 
   start();
-  const getView = () => viewMode === "immersive" ? { mode: imm.prev?.mode ?? "general", arg: imm.prev?.arg ?? null, orbit: null } : ({ mode: viewMode, arg: viewArg, orbit: viewMode === "free" ? { tx: goal.tx, tz: goal.tz, r: goal.r, phi: goal.phi, theta: goal.theta } : null }));
+  const getView = () => viewMode === "immersive" ? { mode: imm.prev?.mode ?? "general", arg: imm.prev?.arg ?? null, orbit: null } : ({ mode: viewMode, arg: viewArg, orbit: viewMode === "free" ? { tx: goal.tx, tz: goal.tz, r: goal.r, phi: goal.phi, theta: goal.theta } : null });
   function restoreView(v) {
     if (!v || typeof v.mode !== "string") return;
     if (v.mode === "free" && v.orbit) { viewMode = "free"; viewArg = null; userMoved = true; for (const k of ["tx", "tz", "r", "phi", "theta"]) if (Number.isFinite(v.orbit[k])) goal[k] = v.orbit[k]; hooks.onView?.({ mode: "free" }); }
