@@ -6,14 +6,16 @@ const KEY = Buffer.alloc(32, 7).toString("base64");
   const ENV = { SUPABASE_URL: "https://proj.supabase.co", GOOGLE_CLIENT_ID: "cid", GOOGLE_CLIENT_SECRET: "csecret", GMAIL_TOKEN_KEY: KEY, APP_URL: "https://crm.exemple.app" };
   let T = Date.parse("2026-11-17T10:00:00Z");
   // — faux stockage —
-  const S = { account: null, mails: [], inter: [], err: undefined };
+  const S = { account: null, mails: [], inter: [], replies: [], err: undefined };
   const store = {
     getAccount: async () => S.account, saveAccount: async (a) => { S.account = { ...a, status: "connecte" }; }, markAccountError: async (m) => { if (S.account) S.account.status = m ? "erreur" : "connecte"; S.err = m; },
     deleteAccount: async () => { S.account = null; }, insertMail: async (m) => { const id = "m" + (S.mails.length + 1); S.mails.push({ ...m, id, sent_at: new Date(T).toISOString() }); return id; },
     pendingMails: async (since) => S.mails.filter((m) => m.status === "envoye" && m.sent_at > since), updateMail: async (id, p) => { Object.assign(S.mails.find((m) => m.id === id), p); },
     countSentSince: async () => S.mails.length, recentDuplicate: async (to, subj, since) => S.mails.some((m) => m.to_email === to && m.subject === subj && m.sent_at > since),
     recentBounce: async (to) => S.mails.some((m) => m.to_email === to && m.status === "echec" && /distribu/i.test(m.error || "")),
-    addInteraction: async (rid, i) => { S.inter.push({ rid, ...i }); }
+    addInteraction: async (rid, i) => { S.inter.push({ rid, ...i }); },
+    saveReplies: async (mailId, rs) => { for (const r of rs) if (!S.replies.some((x) => x.gmail_message_id === r.gmail_message_id)) S.replies.push({ mail_id: mailId, ...r }); },
+    repliedWithoutText: async (since, avant) => S.mails.filter((m) => m.status === "repondu" && m.gmail_thread_id && !S.replies.some((r) => r.mail_id === m.id) && (!m.last_checked_at || m.last_checked_at < avant))
   };
   // — faux Google —
   const calls = []; const GOOGLE = { refreshOk: true, sendOk: true, threads: {}, scope: G.GMAIL_SCOPES, refresh: "REFRESH-TOKEN-SECRET" };
@@ -60,7 +62,7 @@ const KEY = Buffer.alloc(32, 7).toString("base64");
   console.log("▶ Connexion Google");
   const url = new URL(await G.connectUrl(D, "u1"));
   ok(url.hostname === "accounts.google.com" && url.searchParams.get("access_type") === "offline" && url.searchParams.get("prompt") === "consent", "adresse Google : accès durable demandé");
-  ok(url.searchParams.get("scope") === G.GMAIL_SCOPES && !/readonly|modify|compose|mail\.google\.com/.test(url.searchParams.get("scope")), "droits demandés : envoi + en-têtes seulement (jamais la lecture du contenu)");
+  ok(url.searchParams.get("scope") === G.GMAIL_SCOPES && /gmail\.send/.test(G.GMAIL_SCOPES) && /gmail\.readonly/.test(G.GMAIL_SCOPES) && !/modify|compose|mail\.google\.com|metadata/.test(url.searchParams.get("scope")), "droits demandés : envoi + lecture seule (jamais modifier, composer ni accès complet ; pas de droit « en-têtes » qui bloquerait la lecture du texte)");
   ok(url.searchParams.get("redirect_uri") === "https://proj.supabase.co/functions/v1/crm-gmail", "retour vers la fonction du projet");
   const stOk = url.searchParams.get("state");
   let back = await G.handleCallback(D, new URLSearchParams({ code: "MAUVAIS", state: stOk }));
@@ -113,7 +115,7 @@ const KEY = Buffer.alloc(32, 7).toString("base64");
   ok(S.mails[2].status === "echec" && /Non distribué/.test(S.mails[2].error), "retour de Gmail (adresse inexistante) : « échec » avec explication");
   ok(S.inter.some((i) => i.type === "Réponse reçue par e-mail" && i.rid === "c_A" && i.etape === 1) && S.inter.some((i) => i.type === "E-mail non distribué" && i.rid === "c_C"), "fiches mises à jour : réponse reçue, e-mail non distribué");
   ok(!S.inter.some((i) => i.rid === "c_B"), "aucune écriture pour la fiche sans réponse");
-  ok(calls.filter((c) => c.url.includes("/threads/")).every((c) => /format=metadata/.test(c.url) && !/format=full|format=raw/.test(c.url)), "seuls les en-têtes sont demandés à Gmail (format=metadata) : le contenu des e-mails n'est jamais lu");
+  ok(calls.filter((c) => c.url.includes("/threads/") && /format=full/.test(c.url)).length === 1 && calls.filter((c) => c.url.includes("/threads/")).every((c) => /format=metadata/.test(c.url) || /thA\?format=full$/.test(c.url)), "le texte n'est demandé (format=full) que pour le fil qui a reçu une réponse ; tous les autres fils : en-têtes seulement");
   const sy2 = await G.syncReplies(D);
   ok(sy2.reponses === 0, "relancé : une réponse déjà notée n'est pas comptée deux fois");
   console.log("▶ Retour d'erreur d'un AUTRE message du même fil (cas ABRI 2000)");
@@ -131,9 +133,42 @@ const KEY = Buffer.alloc(32, 7).toString("base64");
   GOOGLE.threads.thF = { messages: [msg("sanix@gmail.com", T - 5e6), rb("f@avisio.ci", T - 4e6)] };
   const sy3 = await G.syncReplies(D);
   ok(S.mails.find((m) => m.id === "mE0").status === "envoye" && S.mails.find((m) => m.id === "mF1" || m.id === "mE1").status === "echec", "synchronisation : l'e-mail dont le fil contient le retour d'une AUTRE adresse reste « envoyé » ; celui dont le retour le concerne passe « échec »");
-  ok(!calls.filter((c) => c.url.includes("/threads/")).some((c) => !/metadataHeaders=X-Failed-Recipients/.test(c.url)), "Gmail est interrogé pour l'en-tête du destinataire en échec (en-têtes seulement, jamais le contenu)");
+  ok(!calls.filter((c) => c.url.includes("/threads/") && !/format=full/.test(c.url)).some((c) => !/metadataHeaders=X-Failed-Recipients/.test(c.url)), "Gmail est interrogé pour l'en-tête du destinataire en échec (en-têtes seulement hors fils répondus)");
   const own = G.analyseThread({ messages: [msg("sanix@gmail.com", 1), msg("SANIX@gmail.com", 2)] }, "sanix@gmail.com");
   ok(!own.replied, "un message de vous-même dans le fil n'est pas pris pour une réponse");
+
+  console.log("▶ Texte des réponses");
+  const avantMails = S.mails.map((m) => ({ ...m })), avantInter = [...S.inter], avantScopes = S.account.scopes;
+  const b64 = (t) => Buffer.from(t, "utf8").toString("base64url");
+  const msgT = (id, from, t, plain, html) => ({ id, internalDate: String(t), payload: { mimeType: "multipart/alternative", headers: [{ name: "From", value: from }], parts: [].concat(plain === undefined ? [] : [{ mimeType: "text/plain", body: { data: b64(plain) } }], html === undefined ? [] : [{ mimeType: "text/html", body: { data: b64(html) } }]) } });
+  const cit = "Bonjour,\nOui, une démo mardi me convient.\nCordialement,\nMarc\n\nLe mar. 17 nov. 2026 à 11:08, Sanix <sanix@gmail.com> a écrit :\n> Bonjour Marc,\n> Je vous propose une démonstration.";
+  ok(G.retirerCitations(cit) === "Bonjour,\nOui, une démo mardi me convient.\nCordialement,\nMarc", "citation « Le … a écrit : » et lignes citées retirées : seule la réponse du prospect est gardée");
+  ok(G.retirerCitations("Merci !\n\nOn Tue, Nov 17, 2026 at 11:08 AM Sanix <sanix@gmail.com>\nwrote:\n> hello") === "Merci !", "introduction de citation coupée sur deux lignes (anglais) : retirée");
+  ok(G.retirerCitations("D'accord\n\n-------- Message d'origine --------\nDe : sanix@gmail.com\nObjet : x") === "D'accord", "« Message d'origine » : retiré");
+  const th = { messages: [msgT("p1", "Sanix <sanix@gmail.com>", T - 9e6, "Bonjour Marc"), msgT("r1", "Marc <marc@promo.ci>", T - 5e6, cit), msgT("r2", "marc@promo.ci", T - 4e6, undefined, "<div>Voici <b>mes</b> disponibilités&nbsp;:<br>lundi &amp; mardi</div>"), msgT("bd", "Mail Delivery Subsystem <mailer-daemon@googlemail.com>", T - 3e6, "Delivery failed"), msgT("me", "sanix@gmail.com", T - 2e6, "Ma relance")] };
+  const reps = G.extractReplies(th, "sanix@gmail.com");
+  ok(reps.length === 2 && reps[0].gmail_message_id === "r1" && reps[0].from_email === "marc@promo.ci" && /démo mardi/.test(reps[0].body) && !/a écrit|Je vous propose/.test(reps[0].body), "extraction : réponses du prospect seulement (ni nous, ni retour d'erreur), citation retirée");
+  ok(/Voici mes disponibilités :/.test(reps[1].body) && /lundi & mardi/.test(reps[1].body) && !/<|&amp;|&nbsp;/.test(reps[1].body), "réponse en HTML seul : convertie en texte lisible");
+  ok(G.textOf({ mimeType: "text/plain", body: { data: b64("Éléphant à côté — 100 % OK") } }) === "Éléphant à côté — 100 % OK", "accents et tirets : décodés en UTF-8");
+  S.mails.length = 0; S.inter.length = 0; S.replies.length = 0; calls.length = 0;
+  S.account.scopes = G.GMAIL_SCOPES;
+  await store.insertMail({ client_rid: "c_R", to_email: "marc@promo.ci", subject: "Démo", body: "Bonjour Marc", sent_by: "x", sent_by_user: null, gmail_message_id: "p1", gmail_thread_id: "thR", status: "envoye", error: null, replied_at: null, reply_from: null, relance_apres_jours: 4, last_checked_at: null });
+  GOOGLE.threads = { thR: th };
+  const lec = await G.syncReplies(D);
+  ok(lec.reponses === 1 && lec.lues === 2 && S.replies.length === 2 && S.replies.every((r) => r.mail_id === "m1"), "synchronisation : la réponse est détectée ET son texte enregistré (2 messages du prospect)");
+  const lec2 = await G.syncReplies(D);
+  ok(S.replies.length === 2 && lec2.lues === 0, "relancé : aucun doublon, aucune nouvelle lecture");
+  S.mails.length = 0; S.replies.length = 0; calls.length = 0;
+  S.account.scopes = "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.metadata";
+  await store.insertMail({ client_rid: "c_R", to_email: "marc@promo.ci", subject: "Démo", body: "Bonjour Marc", sent_by: "x", sent_by_user: null, gmail_message_id: "p1", gmail_thread_id: "thR", status: "envoye", error: null, replied_at: null, reply_from: null, relance_apres_jours: 4, last_checked_at: null });
+  const vieux = await G.syncReplies(D);
+  ok(vieux.reponses === 1 && vieux.lues === 0 && S.replies.length === 0 && !calls.some((c) => /format=full/.test(c.url)), "ancienne connexion (en-têtes seulement) : la réponse est détectée, mais le texte n'est ni demandé ni lu");
+  S.account.scopes = G.GMAIL_SCOPES; calls.length = 0; T += 7 * 3600e3;   // 7 h plus tard : délai de 6 h entre deux tentatives de lecture écoulé
+  const rat = await G.syncReplies(D);
+  ok(rat.lues === 2 && S.replies.length === 2, "après reconnexion : les réponses déjà détectées sont rattrapées (texte lu)");
+  const rat2 = await G.syncReplies(D);
+  ok(rat2.lues === 0, "rattrapage fait une fois : pas de relecture inutile");
+  S.mails.length = 0; S.mails.push(...avantMails); S.inter.length = 0; S.inter.push(...avantInter); S.replies.length = 0; S.account.scopes = avantScopes;
 
   console.log("▶ Adresse déjà revenue en erreur");
   let mort = null; try { await G.sendMail(D, op, { client_rid: "c_C", to: "C@x.ci", subject: "Nouvel essai", body: "Bonjour" }); } catch (e) { mort = e; }

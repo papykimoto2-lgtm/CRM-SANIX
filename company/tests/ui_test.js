@@ -179,12 +179,12 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
       const j = (n) => new Date(Date.now() - n * 864e5).toISOString();
       const P = window.__FIX.ai_prospects; P[0].email = "colis@example.test"; P[1].crm_rid = "c_alpha"; P[0].next_action_at = j(2); P[0].relances_sans_reponse = 1;
       window.__FIX.crm_mails = [
-        { id: "m1", client_rid: "c_alpha", to_email: "alpha@example.test", subject: "Présentation", status: "envoye", error: null, sent_at: j(6), replied_at: null, relance_apres_jours: 4 },
-        { id: "m0", client_rid: "c_alpha", to_email: "alpha@example.test", subject: "Premier message", status: "envoye", error: null, sent_at: j(12), replied_at: null, relance_apres_jours: 4 },
-        { id: "m2", client_rid: null, to_email: "colis@example.test", subject: "Offre", status: "envoye", error: null, sent_at: j(1), replied_at: null, relance_apres_jours: 4 },
-        { id: "m3", client_rid: "c_x", to_email: "x@example.test", subject: "Suite", status: "repondu", error: null, sent_at: j(3), replied_at: j(2), relance_apres_jours: 4 },
-        { id: "m4", client_rid: "c_y", to_email: "y@example.test", subject: "Bonjour", status: "echec", error: "Non distribué", sent_at: j(2), replied_at: null, relance_apres_jours: 4 },
-        { id: "m5", client_rid: "c_z", to_email: "z@example.test", subject: "Ancien", status: "envoye", error: null, sent_at: j(60), replied_at: null, relance_apres_jours: 4 }];
+        { id: "m1", body: "Corps de la présentation", client_rid: "c_alpha", to_email: "alpha@example.test", subject: "Présentation", status: "envoye", error: null, sent_at: j(6), replied_at: null, relance_apres_jours: 4 },
+        { id: "m0", body: "Corps du premier message", client_rid: "c_alpha", to_email: "alpha@example.test", subject: "Premier message", status: "envoye", error: null, sent_at: j(12), replied_at: null, relance_apres_jours: 4 },
+        { id: "m2", body: "Corps de l'offre", client_rid: null, to_email: "colis@example.test", subject: "Offre", status: "envoye", error: null, sent_at: j(1), replied_at: null, relance_apres_jours: 4 },
+        { id: "m3", body: "Corps de la suite", client_rid: "c_x", to_email: "x@example.test", subject: "Suite", status: "repondu", error: null, sent_at: j(3), replied_at: j(2), relance_apres_jours: 4 },
+        { id: "m4", body: "Corps de bonjour", client_rid: "c_y", to_email: "y@example.test", subject: "Bonjour", status: "echec", error: "Non distribué", sent_at: j(2), replied_at: null, relance_apres_jours: 4 },
+        { id: "m5", body: "Corps ancien", client_rid: "c_z", to_email: "z@example.test", subject: "Ancien", status: "envoye", error: null, sent_at: j(60), replied_at: null, relance_apres_jours: 4 }];
     });
     await page.click("[data-act=sales-refresh]"); await page.waitForTimeout(300);
     const rt = await page.locator("#main").innerText();
@@ -198,6 +198,26 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     ok((await page.locator("#main tbody tr").first().innerText()).includes("y@example.test") && (await page.locator("#main tbody").first().locator("tr").count()) === 1, "filtre par état");
     await page.selectOption("#sales-relance", "");
     ok(rt.includes("Action prévue dépassée") && (await page.locator("#main tbody").nth(1).innerText()).includes("Express Colis"), "prospects des agents dont l'action prévue est dépassée");
+    console.log("▶ Commercial : lire les e-mails envoyés et les réponses");
+    await page.evaluate(() => { window.__FIX.rpc.crm_mail_state = { connecte: true, lecture_reponses: false }; window.__FIX.crm_mail_replies = []; });
+    await page.click("[data-act=sales-refresh]"); await page.waitForTimeout(300);
+    await page.locator("#main tbody tr", { hasText: "Promoteur Alpha" }).locator("[data-act=sales-conv]").click(); await page.waitForSelector("#modal:not([hidden])");
+    let mt = await page.locator("#modal").innerText();
+    ok(mt.includes("Promoteur Alpha") && mt.includes("2 e-mail(s) envoyé(s)") && mt.indexOf("Premier message") < mt.indexOf("Présentation"), "conversation : les deux e-mails envoyés, du plus ancien au plus récent");
+    ok(mt.includes("Corps du premier message") && mt.includes("Corps de la présentation"), "conversation : le texte complet de chaque e-mail envoyé");
+    await page.keyboard.press("Escape");
+    await page.locator("#main tbody tr", { hasText: "x@example.test" }).locator("[data-act=sales-conv]").click(); await page.waitForSelector("#modal:not([hidden])");
+    mt = await page.locator("#modal").innerText();
+    ok(mt.includes("n'est pas lu") && mt.includes("reconnectez Gmail"), "réponse reçue dont le texte n'est pas lu (ancienne connexion) : consigne pour reconnecter Gmail");
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => { window.__FIX.rpc.crm_mail_state = { connecte: true, lecture_reponses: true };
+      window.__FIX.crm_mail_replies = [{ id: "r1", mail_id: "m3", from_email: "x@example.test", received_at: new Date(Date.now() - 2 * 864e5).toISOString(), body: "Oui, mardi me convient <b>très bien</b>." }]; });
+    await page.click("[data-act=sales-refresh]"); await page.waitForTimeout(300);
+    await page.locator("#main tbody tr", { hasText: "x@example.test" }).locator("[data-act=sales-conv]").click(); await page.waitForSelector("#modal:not([hidden])");
+    mt = await page.locator("#modal").innerText();
+    ok(mt.includes("Oui, mardi me convient <b>très bien</b>.") && mt.includes("1 réponse(s) lue(s)") && mt.indexOf("Corps de la suite") < mt.indexOf("Oui, mardi"), "réponse reçue : son texte est affiché après l'e-mail envoyé, en texte brut (aucun HTML interprété)");
+    ok(!mt.includes("n'est pas lu"), "plus de consigne une fois la lecture autorisée et le texte enregistré");
+    await page.keyboard.press("Escape");
     await vue("prospects");
     ok((await page.locator("#toast .bad").count()) === 0, "onglet Commercial : aucune erreur pendant les actions");
     await page.evaluate(() => { for (let i = 0; i < 70; i++) window.__emit("ai_prospects", "INSERT", { id: crypto.randomUUID(), entreprise: `Prospect lot ${i}`, stage: "identifie", score: 10, potentiel_fcfa: 1000, updated_at: new Date().toISOString() }); });

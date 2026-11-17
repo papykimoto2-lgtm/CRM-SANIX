@@ -73,7 +73,8 @@ function errMsg(e) {
 }
 
 // functions/_shared/gmail.ts
-var GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.metadata";
+var SCOPE_LECTURE = "https://www.googleapis.com/auth/gmail.readonly";
+var GMAIL_SCOPES = "https://www.googleapis.com/auth/gmail.send " + SCOPE_LECTURE;
 var LIMITE_PAR_JOUR = 100;
 var JOURS_SUIVI = 45;
 var JOURS_ADRESSE_MORTE = 30;
@@ -192,6 +193,68 @@ function analyseThread(thread, myEmail, destinataire) {
   }
   return { replied: false, bounced: false };
 }
+var decode = (data) => {
+  try {
+    return new TextDecoder().decode(fromB64url(String(data ?? "")));
+  } catch {
+    return "";
+  }
+};
+var findPart = (p, mime) => {
+  if (!p) return null;
+  if (String(p.mimeType).toLowerCase() === mime && p.body?.data) return decode(p.body.data);
+  for (const c of Array.isArray(p.parts) ? p.parts : []) {
+    const r = findPart(c, mime);
+    if (r !== null) return r;
+  }
+  return null;
+};
+var htmlToText = (h) => h.replace(/<(style|script)[\s\S]*?<\/\1>/gi, "").replace(/<br\s*\/?>|<\/(p|div|tr|li)>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+function textOf(payload) {
+  let t = findPart(payload, "text/plain");
+  if (t === null) {
+    const h = findPart(payload, "text/html");
+    t = h === null ? "" : htmlToText(h);
+  }
+  return t.replace(/\r\n?/g, "\n");
+}
+function retirerCitations(texte) {
+  const lignes = String(texte ?? "").replace(/\r\n?/g, "\n").split("\n"), out = [];
+  const coupe = /^\s*(Le\s.{3,300}(a\s)?écrit\s*:\s*$|On\s.{3,300}wrote:\s*$|-{2,}\s*(Original Message|Message d.origine|Forwarded message|Message transmis)|_{8,}\s*$|De\s*:\s.+@|From\s*:\s.+@)/i;
+  for (let i = 0; i < lignes.length; i++) {
+    const l = lignes[i];
+    if (coupe.test(l) || /^\s*(Le|On)\s/i.test(l) && coupe.test(l + " " + (lignes[i + 1] ?? "").trim())) break;
+    if (/^\s*>/.test(l)) continue;
+    out.push(l);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, 2e4);
+}
+function extractReplies(thread, myEmail) {
+  const me = myEmail.toLowerCase(), msgs = Array.isArray(thread?.messages) ? thread.messages : [], first = msgs.length ? Number(msgs[0].internalDate) || 0 : 0, out = [];
+  for (const m of msgs.slice(1)) {
+    const h = (m?.payload?.headers ?? []).find((x) => String(x.name).toLowerCase() === "from");
+    if (!h || !m.id) continue;
+    const from = addressOf(String(h.value));
+    if (!from || from === me || /^(mailer-daemon|postmaster)@/.test(from)) continue;
+    const t = Number(m.internalDate) || 0;
+    if (first && t && t < first) continue;
+    const brut = textOf(m.payload), body = retirerCitations(brut) || brut.trim().slice(0, 2e4);
+    out.push({ gmail_message_id: String(m.id), from_email: from, received_at: t ? new Date(t).toISOString() : (/* @__PURE__ */ new Date()).toISOString(), body: body || "(message sans texte)" });
+  }
+  return out;
+}
+var lecturePermise = (acc) => String(acc.scopes ?? "").includes(SCOPE_LECTURE);
+async function lireReponses(d, token, m, email) {
+  try {
+    const r = await d.fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(String(m.gmail_thread_id))}?format=full`, { headers: { Authorization: "Bearer " + token } });
+    if (!r.ok) return 0;
+    const reps = extractReplies(await r.json(), email);
+    if (reps.length) await d.store.saveReplies(m.id, reps);
+    return reps.length;
+  } catch {
+    return 0;
+  }
+}
 async function formPost(d, url, form) {
   return d.fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(form).toString() });
 }
@@ -227,7 +290,7 @@ async function handleCallback(d, params) {
     const t = await r.json().catch(() => ({}));
     if (!r.ok || !t.access_token) return back(false, "Google a refus\xE9 le code (" + (t.error_description || t.error || r.status) + ")");
     const granted = String(t.scope || "");
-    for (const need2 of GMAIL_SCOPES.split(" ")) if (!granted.includes(need2)) return back(false, "Il faut accepter les deux autorisations demand\xE9es (envoi et en-t\xEAtes)");
+    for (const need2 of GMAIL_SCOPES.split(" ")) if (!granted.includes(need2)) return back(false, "Il faut accepter les deux autorisations demand\xE9es (envoi et lecture des r\xE9ponses)");
     if (!t.refresh_token) return back(false, "Google n'a pas remis de jeton durable : retirez l'acc\xE8s du CRM dans votre compte Google puis recommencez");
     const p = await d.fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", { headers: { Authorization: "Bearer " + t.access_token } });
     const prof = await p.json().catch(() => ({}));
@@ -297,12 +360,18 @@ async function sendMail(d, op, i) {
 }
 async function syncReplies(d) {
   const acc = await d.store.getAccount();
-  if (!acc || acc.status !== "connecte") return { verifies: 0, reponses: 0, echecs: 0 };
-  const since = new Date(d.now().getTime() - JOURS_SUIVI * 864e5).toISOString();
+  if (!acc || acc.status !== "connecte") return { verifies: 0, reponses: 0, echecs: 0, lues: 0 };
+  const since = new Date(d.now().getTime() - JOURS_SUIVI * 864e5).toISOString(), lecture = lecturePermise(acc);
   const pending = (await d.store.pendingMails(since, 60)).filter((m) => m.gmail_thread_id);
-  if (!pending.length) return { verifies: 0, reponses: 0, echecs: 0 };
+  const rattrapage = lecture ? (await d.store.repliedWithoutText(since, new Date(d.now().getTime() - 6 * 36e5).toISOString(), 20)).filter((m) => m.gmail_thread_id) : [];
+  if (!pending.length && !rattrapage.length) return { verifies: 0, reponses: 0, echecs: 0, lues: 0 };
   const { token, email } = await accessToken(d);
-  let verifies = 0, reponses = 0, echecs = 0;
+  let verifies = 0, reponses = 0, echecs = 0, lues = 0;
+  for (const m of rattrapage) {
+    lues += await lireReponses(d, token, m, email);
+    await d.store.updateMail(m.id, { last_checked_at: d.now().toISOString() }).catch(() => {
+    });
+  }
   for (const m of pending) {
     try {
       const r = await d.fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(String(m.gmail_thread_id))}?format=metadata&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=X-Failed-Recipients`, { headers: { Authorization: "Bearer " + token } });
@@ -316,6 +385,7 @@ async function syncReplies(d) {
       if (a.replied) {
         await d.store.updateMail(m.id, { status: "repondu", replied_at: a.at ?? d.now().toISOString(), reply_from: a.from ?? null, last_checked_at: d.now().toISOString() });
         reponses++;
+        if (lecture) lues += await lireReponses(d, token, m, email);
         if (m.client_rid) await d.store.addInteraction(m.client_rid, { date: a.at ?? d.now().toISOString(), type: "R\xE9ponse re\xE7ue par e-mail", note: "R\xE9ponse de " + (a.from ?? "le prospect") + " \xE0 : " + m.subject, etape: 1, ico: "\u{1F4E9}", source: "gmail" }).catch(() => {
         });
       } else if (a.bounced) {
@@ -327,7 +397,7 @@ async function syncReplies(d) {
     } catch {
     }
   }
-  return { verifies, reponses, echecs };
+  return { verifies, reponses, echecs, lues };
 }
 async function disconnect(d) {
   const acc = await d.store.getAccount();
@@ -344,7 +414,7 @@ async function disconnect(d) {
 // functions/crm-gmail/index.ts
 var store = {
   async getAccount() {
-    const { data } = await db().from("crm_mail_account").select("email, token_enc, status").eq("id", 1).maybeSingle();
+    const { data } = await db().from("crm_mail_account").select("email, token_enc, status, scopes").eq("id", 1).maybeSingle();
     return data ?? null;
   },
   async saveAccount(a) {
@@ -380,6 +450,15 @@ var store = {
   async recentBounce(toEmail, sinceIso) {
     const { count } = await db().from("crm_mails").select("id", { count: "exact", head: true }).eq("to_email", toEmail).eq("status", "echec").ilike("error", "%distribu%").gte("sent_at", sinceIso);
     return (count ?? 0) > 0;
+  },
+  async saveReplies(mailId, replies) {
+    if (!replies.length) return;
+    const { error } = await db().from("crm_mail_replies").upsert(replies.map((r) => ({ mail_id: mailId, ...r })), { onConflict: "gmail_message_id", ignoreDuplicates: true });
+    if (error) throw new GmailError(500, "R\xE9ponses non enregistr\xE9es : " + error.message);
+  },
+  async repliedWithoutText(sinceIso, checkedBeforeIso, limit) {
+    const { data } = await db().from("crm_mails").select("*, crm_mail_replies(id)").eq("status", "repondu").not("gmail_thread_id", "is", null).gte("sent_at", sinceIso).order("sent_at", { ascending: false }).limit(200);
+    return (data ?? []).filter((m) => !(m.crm_mail_replies ?? []).length && (!m.last_checked_at || m.last_checked_at < checkedBeforeIso)).slice(0, limit).map(({ crm_mail_replies: _r, ...m }) => m);
   },
   async addInteraction(clientRid, interaction) {
     const { data } = await db().from("crm_records").select("rid").eq("entity", "clients").eq("rid", clientRid).is("deleted_at", null).maybeSingle();

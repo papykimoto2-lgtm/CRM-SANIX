@@ -2,7 +2,7 @@
 # Migration 20261127000000 (Gmail : compte connecté, journal des e-mails, droits d'accès) sur un PostgreSQL réel.
 # Prérequis : PGHOST / PGPORT / PGUSER (super-utilisateur). Usage : ./gmail_sql_test.sh
 set -euo pipefail
-HERE="$(cd "$(dirname "$0")" && pwd)"; MIG="$HERE/../../migrations/20261127000000_gmail_envoi_suivi.sql"
+HERE="$(cd "$(dirname "$0")" && pwd)"; MIG="$HERE/../../migrations/20261127000000_gmail_envoi_suivi.sql"; MIG2="$HERE/../../migrations/20261129010000_gmail_lecture_reponses.sql"
 P="psql -v ON_ERROR_STOP=1 -q -At -U ${PGUSER:-postgres}"; DB="gm_test_$$"
 bash "$HERE/setup_db.sh" >/dev/null 2>&1
 $P -d postgres -c "create database $DB template vc_tpl" >/dev/null
@@ -16,9 +16,10 @@ refused() { local out; out=$($P -d "$DB" -c "set role authenticated" -c "select 
 q "insert into auth.users(id) values ('$OP'), ('$NOP')" >/dev/null
 q "insert into ai_operators(user_id, nom, role) values ('$OP', 'Opérateur', 'commercial')" >/dev/null
 $P -d "$DB" -f "$MIG" >/dev/null
+$P -d "$DB" -f "$MIG2" >/dev/null
 
-echo "▶ Migration relançable"
-$P -d "$DB" -f "$MIG" >/dev/null 2>&1 && echo "  ✓ deuxième exécution sans erreur" || { echo "  ✗ deuxième exécution"; exit 1; }
+echo "▶ Migrations relançables"
+$P -d "$DB" -f "$MIG" >/dev/null 2>&1 && $P -d "$DB" -f "$MIG2" >/dev/null 2>&1 && echo "  ✓ deuxième exécution sans erreur" || { echo "  ✗ deuxième exécution"; exit 1; }
 
 echo "▶ Le jeton Gmail reste inaccessible depuis le navigateur"
 q "insert into crm_mail_account(email, token_enc) values ('sanix@gmail.com', 'v1.secret.secret')" >/dev/null
@@ -50,4 +51,21 @@ out=$($P -d "$DB" -c "insert into crm_mails(to_email, subject, body, status) val
 echo "▶ À relancer"
 checka "envoyé, sans réponse, délai dépassé : 1 seul e-mail (pas le récent, pas le répondu, pas le trop ancien, pas celui à 10 jours)" "$OP" "select string_agg(subject, ',') from crm_mails_a_relancer()" "Ancien sans réponse"
 checka "non opérateur : liste vide" "$NOP" "select count(*) from crm_mails_a_relancer()" "0"
+echo "▶ Texte des réponses"
+MID=$(q "select id from crm_mails where subject = 'Relance dans 10 jours'")
+q "insert into crm_mail_replies(mail_id, gmail_message_id, from_email, received_at, body) values ('$MID', 'gm-r1', 'marc@promo.ci', now(), 'Oui, mardi me convient.')" >/dev/null
+checka "un opérateur lit les réponses" "$OP" "select body from crm_mail_replies" "Oui, mardi me convient."
+checka "un non-opérateur ne voit rien" "$NOP" "select count(*) from crm_mail_replies" "0"
+refused "personne n'écrit directement une réponse" "$OP" "insert into crm_mail_replies(mail_id, gmail_message_id, received_at, body) values ('$MID','x',now(),'y')" "permission denied"
+out=$($P -d "$DB" -c "insert into crm_mail_replies(mail_id, gmail_message_id, received_at, body) values ('$MID', 'gm-r1', now(), 'doublon')" 2>&1 >/dev/null || true); echo "$out" | grep -q "unique" && echo "  ✓ un même message Gmail n'est enregistré qu'une fois" || { echo "  ✗ doublon accepté : $out"; exit 1; }
+out=$($P -d "$DB" -c "insert into crm_mail_replies(mail_id, gmail_message_id, received_at, body) values ('$MID', 'gm-r2', now(), repeat('x', 20001))" 2>&1 >/dev/null || true); echo "$out" | grep -q "check constraint" && echo "  ✓ texte limité à 20 000 caractères" || { echo "  ✗ texte trop long accepté"; exit 1; }
+q "delete from crm_mails where id = '$MID'" >/dev/null
+check "les réponses disparaissent avec leur e-mail" "select count(*) from crm_mail_replies" "0"
+echo "▶ État de la connexion : droit de lecture"
+q "update crm_mail_account set scopes = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.metadata'" >/dev/null
+checka "ancienne connexion (en-têtes seulement) : lecture des réponses non disponible" "$OP" "select crm_mail_state()->>'lecture_reponses'" "false"
+q "update crm_mail_account set scopes = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly'" >/dev/null
+checka "après reconnexion (envoi + lecture) : lecture des réponses disponible" "$OP" "select crm_mail_state()->>'lecture_reponses'" "true"
+checka "la connexion reste décrite comme avant (adresse, statut du compte)" "$OP" "select (crm_mail_state()->>'email') || '/' || (crm_mail_state()->>'status')" "sanix@gmail.com/erreur"
+
 echo; echo "Gmail (base de données) : TOUT EST OK"

@@ -5705,10 +5705,10 @@ function courrierEnvoyer(i){
 
 // ═══════════════════════════════════════════════════════════════
 //  GMAIL — envoi depuis le CRM par le Gmail de l'entreprise, suivi des réponses (fonction serveur crm-gmail)
-//  Le jeton Google reste chiffré côté serveur ; le CRM ne lit que les en-têtes des fils qu'il a lui-même ouverts.
+//  Le jeton Google reste chiffré côté serveur ; le CRM ne lit que les fils qu'il a lui-même ouverts (réponses des prospects) : jamais le reste de la boîte.
 // ═══════════════════════════════════════════════════════════════
 const _GM_FONC='/functions/v1/crm-gmail';
-const _gmail={etat:null,mails:[],charge:0,enCours:null,sync:0};
+const _gmail={etat:null,mails:[],reponses:[],charge:0,enCours:null,sync:0};
 async function gmailRefresh(force){
   if(!force && _gmail.etat && Date.now()-_gmail.charge<60000) return _gmail;
   if(_gmail.enCours) return _gmail.enCours;
@@ -5716,6 +5716,8 @@ async function gmailRefresh(force){
     try{
       const etat=await aisApi('/rest/v1/rpc/crm_mail_state',{method:'POST',body:'{}'});
       let mails=[]; if(etat && etat.connecte!==undefined) mails=(await aisApi('/rest/v1/crm_mails?select=id,client_rid,to_email,subject,status,sent_at,replied_at,reply_from,relance_apres_jours,sent_by,error,last_checked_at&order=sent_at.desc&limit=300'))||[];
+      let reponses=[]; if(mails.length){ try{ reponses=(await aisApi('/rest/v1/crm_mail_replies?select=id,mail_id,from_email,received_at,body&order=received_at.asc&limit=300'))||[]; }catch(e){ reponses=[]; } }
+      _gmail.reponses=reponses;
       const avant={}; _gmail.mails.forEach(m=>{ avant[m.id]=m.status; });
       _gmail.etat=etat||{connecte:false}; _gmail.mails=mails;
       if(_gmail.charge) try{ gmailNouvelles(avant); }catch(e){}
@@ -5767,7 +5769,25 @@ function gmailLigneMail(m){
   const st = m.status==='repondu' ? '<span style="color:var(--success);font-weight:600">✅ Répondu le '+d(m.replied_at)+'</span>'
     : m.status==='echec' ? '<span style="color:var(--danger);font-weight:600">⚠️ '+E(m.error||'Non distribué')+'</span>'
     : att ? '<span style="color:var(--warning);font-weight:600">⏳ Sans réponse depuis '+j+' j : relance conseillée</span>' : '<span style="color:var(--muted)">⏳ En attente de réponse ('+j+' j)</span>';
-  return '<div style="padding:4px 0;overflow-wrap:anywhere">📤 <b>'+E(m.subject)+'</b> · '+d(m.sent_at)+(m.sent_by?' · '+E(m.sent_by):'')+'<br>'+st+'</div>';
+  const rp=(_gmail.reponses||[]).filter(r=>r.mail_id===m.id), dern=rp[rp.length-1];
+  const ext=dern?'<br><span style="color:var(--text);font-style:italic">💬 « '+E(String(dern.body).replace(/\s+/g,' ').slice(0,140))+(String(dern.body).length>140?'…':'')+' »</span>':'';
+  return '<div style="padding:4px 0;overflow-wrap:anywhere">📤 <b>'+E(m.subject)+'</b> · '+d(m.sent_at)+(m.sent_by?' · '+E(m.sent_by):'')+'<br>'+st+ext+' <a href="#" onclick="gmailLire(\''+E(m.id)+'\');return false" style="font-size:11px">📖 Lire</a></div>';
+}
+/** Lire un e-mail envoyé et les réponses reçues (texte brut : rien n'est interprété comme du HTML). */
+async function gmailLire(id){
+  const E=_dEsc, m0=_gmail.mails.find(x=>x.id===id); if(!m0) return;
+  let m=m0; try{ const r=await aisApi('/rest/v1/crm_mails?id=eq.'+encodeURIComponent(id)+'&select=id,subject,body,to_email,sent_at,sent_by,status,replied_at,reply_from'); if(r&&r[0]) m=r[0]; }catch(e){ showToast('❌ '+e.message,'error'); return; }
+  const rp=(_gmail.reponses||[]).filter(r=>r.mail_id===id), f=x=>new Date(x).toLocaleString('fr-FR');
+  const sansTexte=m.status==='repondu' && !rp.length, lec=_gmail.etat&&_gmail.etat.lecture_reponses;
+  let ov=document.getElementById('modal-gmail-lire'); if(!ov){ ov=document.createElement('div'); ov.id='modal-gmail-lire'; ov.className='modal-overlay hidden'; document.body.appendChild(ov); }
+  ov.style.zIndex=1100;
+  ov.innerHTML='<div class="modal-box" style="max-width:640px"><div class="modal-close" onclick="document.getElementById(\'modal-gmail-lire\').classList.add(\'hidden\')">✕</div>'
+    +'<div style="font-family:var(--font-h);font-weight:800;font-size:17px;margin-bottom:2px">'+E(m.subject)+'</div><div style="font-size:12px;color:var(--muted);margin-bottom:10px">À '+E(m.to_email)+'</div>'
+    +'<div style="border-left:4px solid #6366f1;background:var(--surface2);border-radius:var(--r-sm);padding:8px 10px;margin-bottom:8px"><div style="font-size:11px;color:var(--muted)">📤 Envoyé le '+f(m.sent_at)+(m.sent_by?' par '+E(m.sent_by):'')+'</div><div style="white-space:pre-wrap;font-size:13px;margin-top:4px;overflow-wrap:anywhere">'+E(m.body||'')+'</div></div>'
+    +rp.map(r=>'<div style="border-left:4px solid #22C55E;background:#F0FDF4;border-radius:var(--r-sm);padding:8px 10px;margin:8px 0 8px 18px"><div style="font-size:11px;color:var(--muted)">📩 Réponse de '+E(r.from_email||'')+' le '+f(r.received_at)+'</div><div style="white-space:pre-wrap;font-size:13px;margin-top:4px;overflow-wrap:anywhere">'+E(r.body)+'</div></div>').join('')
+    +(sansTexte?'<div style="background:#FEF3C7;color:#92400E;border-radius:var(--r-sm);padding:8px 10px;font-size:12px;margin-top:8px">'+(lec?'Le texte de la réponse sera lu à la prochaine synchronisation (15 minutes au plus).':'Une réponse est arrivée, mais son texte n’est pas lu : reconnectez Gmail une fois dans les réglages pour autoriser la lecture des réponses.')+'</div>':'')
+    +'</div>';
+  ov.classList.remove('hidden');
 }
 async function gmailSync(force){
   if(!gmailConnecte()) return; if(!force && Date.now()-_gmail.sync<5*60e3) return; _gmail.sync=Date.now();
@@ -5790,9 +5810,10 @@ async function gmailReglageRender(){
   const E=_dEsc; el.innerHTML='<div style="font-size:12px;color:var(--muted)">Vérification…</div>';
   await gmailRefresh(true); const e=_gmail.etat||{};
   const nb=_gmail.mails.length, att=_gmail.mails.filter(m=>m.status==='envoye').length, rep=_gmail.mails.filter(m=>m.status==='repondu').length;
-  const info='<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">Droits demandés à Google : <b>envoyer des e-mails</b> et <b>lire les en-têtes</b> (expéditeur, date) des fils que le CRM a lui-même ouverts, pour savoir si le prospect a répondu. Le contenu de votre boîte n’est jamais lu. Vous pouvez retirer l’accès à tout moment (ici ou dans votre compte Google).</div>';
+  const info='<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">Droits demandés à Google : <b>envoyer des e-mails</b> et <b>lire les réponses</b> de vos prospects, uniquement dans les conversations ouvertes par le CRM. Le reste de votre boîte n’est jamais lu ni modifié. Vous pouvez retirer l’accès à tout moment (ici ou dans votre compte Google).</div>';
   el.innerHTML = e.connecte
     ? '<div style="background:#ECFDF5;color:#065F46;border-radius:var(--r-sm);padding:8px 10px;font-size:13px;margin-bottom:8px">✅ Connecté : <b>'+E(e.email)+'</b></div>'
+      +(e.lecture_reponses===false?'<div style="background:#FEF3C7;color:#92400E;border-radius:var(--r-sm);padding:8px 10px;font-size:12px;margin-bottom:8px">ℹ️ L’accès actuel permet seulement de savoir <b>qu’</b>une réponse est arrivée. Pour <b>lire le texte des réponses</b> dans le CRM, reconnectez Gmail une fois et acceptez la lecture. <button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="gmailConnecter()">🔗 Reconnecter Gmail</button></div>':'')
       +'<div style="font-size:12px;margin-bottom:8px">'+nb+' e-mail'+(nb>1?'s':'')+' envoyé'+(nb>1?'s':'')+' · '+rep+' réponse'+(rep>1?'s':'')+' · '+att+' en attente</div>'
       +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-outline btn-sm" onclick="gmailSync(true).then(()=>{showToast(\'🔄 Réponses vérifiées\');gmailReglageRender();})">🔄 Vérifier les réponses maintenant</button><button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="gmailDeconnecter()">Déconnecter</button></div>'+info
     : e.hors_session

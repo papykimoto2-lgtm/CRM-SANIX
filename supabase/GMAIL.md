@@ -6,7 +6,7 @@ Une fois configuré : dans les **Exemples de courrier**, le bouton **📤 Envoye
 | | |
 |---|---|
 | ✅ Envoie un e-mail **quand vous cliquez** sur « Envoyer maintenant » (après relecture) | ❌ Aucun envoi automatique, aucun envoi en masse |
-| ✅ Lit les **en-têtes** (expéditeur, date) des fils qu'il a lui-même ouverts, pour savoir si le prospect a répondu | ❌ Ne lit **jamais le contenu** de vos e-mails ni le reste de votre boîte (Google ne lui en donne pas le droit) |
+| ✅ Lit les **réponses** (expéditeur, date, **texte**) des seules conversations qu'il a lui-même ouvertes, pour savoir si le prospect a répondu et vous montrer sa réponse | ❌ Ne lit **ni ne modifie** le reste de votre boîte : le CRM n'ouvre que les conversations dont il a gardé l'identifiant à l'envoi. ⚠️ Google ne propose pas de droit « uniquement ces conversations » : l'autorisation `gmail.readonly` donne techniquement accès à la lecture de la boîte, c'est le CRM qui s'impose cette limite |
 | ✅ Plafond de 100 e-mails par 24 h ; refuse le même e-mail envoyé deux fois à la suite | |
 | ✅ Retire l'accès à tout moment : bouton **Déconnecter**, ou <https://myaccount.google.com/permissions> | |
 
@@ -20,7 +20,8 @@ Le jeton Google est **chiffré** (AES-256) dans la base et ne sort jamais du ser
 3. **Écran de consentement OAuth** (ou « Google Auth Platform ») → type d'utilisateur **Externe** → nom de l'application `SANIX CRM`, e-mail d'assistance = votre Gmail.
 4. **Champs d'application (Scopes)** → ajoutez exactement ces deux-là :
    - `https://www.googleapis.com/auth/gmail.send`
-   - `https://www.googleapis.com/auth/gmail.metadata`
+   - `https://www.googleapis.com/auth/gmail.readonly`
+   *(Si vous aviez connecté Gmail avec l'ancien droit `gmail.metadata`, remplacez-le par `gmail.readonly` dans cette liste, puis cliquez sur **Reconnecter Gmail** dans les réglages du CRM : l'envoi continue de fonctionner entre-temps, seule la lecture du texte des réponses attend la reconnexion.)*
 5. **Utilisateurs de test** → ajoutez votre adresse Gmail.
 6. ⚠️ **Publier l'application** (état « En production »). *Sans cela, Google fait expirer l'accès au bout de 7 jours.* Vous serez seul utilisateur : aucune vérification Google n'est nécessaire, mais l'écran de connexion affichera « Google n'a pas validé cette application » → **Paramètres avancés → Accéder à SANIX CRM (non sécurisé)**. C'est normal pour une application personnelle.
 

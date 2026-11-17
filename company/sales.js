@@ -14,7 +14,7 @@ const STAGES = [
 const LABEL = Object.fromEntries(STAGES);
 const money = n => `${num(n)} FCFA`;
 const PAGE=50, MAX_ROWS=1000;   // affichage par pages de 50 ; la base est lue jusqu'à 1 000 prospects
-let prospects=[], products=[], offers=[], messages=[], mails=[], mailsErreur="", selected=null, filter={q:"",stage:"",owner:"",canal:"",offre:"",relance:""}, shown=PAGE, vue="prospects";
+let prospects=[], products=[], offers=[], messages=[], mails=[], mailsErreur="", lectureReponses=null, selected=null, filter={q:"",stage:"",owner:"",canal:"",offre:"",relance:""}, shown=PAGE, vue="prospects";
 const VUES=[["pipeline","🧭 Pipeline"],["prospects","👥 Prospects"],["rdv","📅 Rendez-vous"],["offres","📄 Offres"],["conversations","💬 Conversations"],["relances","🔔 Relances"]];
 const RDV_STAGES=["rdv_propose","rdv_confirme","demo_realisee"];
 const CLOSED=["perdu","en_veille","marche_gagne","client_fidelise"];
@@ -35,6 +35,7 @@ export async function loadRelances() {
   mailsErreur="";
   try { mails=(await q(S.sb.from("crm_mails").select("id,client_rid,to_email,subject,status,error,sent_at,replied_at,relance_apres_jours").order("sent_at",{ascending:false}).limit(500)))??[]; }
   catch(e){ mails=[]; mailsErreur=e.message; }
+  try { lectureReponses=(await q(S.sb.rpc("crm_mail_state")))?.lecture_reponses===true; } catch { lectureReponses=null; }   // null : état inconnu
 }
 /** Derniers échanges, tous prospects confondus (vue Conversations). */
 export async function loadMessages() {
@@ -141,7 +142,7 @@ export function relancesLignes(liste, prospectsListe, now=Date.now()) {
     else if(age>RELANCE_MAX_JOURS) etat="hors_delai";
     else if(now>=echeance){ etat="a_relancer"; retard=Math.floor((now-echeance)/864e5); }
     else etat="a_venir";
-    lignes.push({ cle:m.client_rid||m.to_email, nom:p?.entreprise||m.to_email, prospectId:p?.id??null, email:m.to_email, objet:m.subject, nb, envoi:m.sent_at, repondu:m.replied_at, echeance:etat==="a_relancer"||etat==="a_venir"?new Date(echeance).toISOString():null, etat, retard, erreur:m.error||"" });
+    lignes.push({ cle:m.client_rid||String(m.to_email).toLowerCase(), ids:(liste??[]).filter(x=>(x.client_rid||String(x.to_email).toLowerCase())===(m.client_rid||String(m.to_email).toLowerCase())).map(x=>x.id), nom:p?.entreprise||m.to_email, prospectId:p?.id??null, email:m.to_email, objet:m.subject, nb, envoi:m.sent_at, repondu:m.replied_at, echeance:etat==="a_relancer"||etat==="a_venir"?new Date(echeance).toISOString():null, etat, retard, erreur:m.error||"" });
   }
   const ordre={a_relancer:0,reponse:1,a_venir:2,adresse:3,hors_delai:4};
   return lignes.sort((a,b)=>ordre[a.etat]-ordre[b.etat]||(a.etat==="a_relancer"?b.retard-a.retard:a.echeance&&b.echeance?a.echeance.localeCompare(b.echeance):0));
@@ -165,7 +166,7 @@ function vueRelances(){
       <td class="small">${fmtDT(l.envoi)}<div class="muted">${l.objet}</div></td><td class="num">${l.nb}</td>
       <td>${pill(RELANCE_ETAT[l.etat][0],RELANCE_ETAT[l.etat][1])}${l.etat==="a_relancer"?html`<div class="small muted">retard de ${l.retard} j</div>`:l.etat==="reponse"?html`<div class="small muted">${fmtDT(l.repondu)}</div>`:l.etat==="adresse"?html`<div class="small muted">${l.erreur}</div>`:""}</td>
       <td class="small">${l.echeance?fmtDT(l.echeance):"—"}</td>
-      <td>${l.prospectId?html`<button class="btn sm" type="button" data-act="sales-open" data-id="${l.prospectId}">Ouvrir</button>`:html`<span class="small muted">Fiche dans SANIX CRM</span>`}</td></tr>`.s).join("")||html`<tr><td colspan="6" class="muted">Aucun e-mail envoyé pour l'instant.</td></tr>`.s)}
+      <td style="white-space:nowrap"><button class="btn sm" type="button" data-act="sales-conv" data-cle="${l.cle}">📖 Lire</button> ${l.prospectId?html`<button class="btn sm" type="button" data-act="sales-open" data-id="${l.prospectId}">Ouvrir</button>`:""}</td></tr>`.s).join("")||html`<tr><td colspan="6" class="muted">Aucun e-mail envoyé pour l'instant.</td></tr>`.s)}
     </tbody></table></div>
     <h3 style="margin:16px 0 6px">Prospects suivis par les agents IA</h3>
     <div class="grid g2" style="margin-bottom:8px"><div class="card kpi"><b>${sansContact}</b><span>Jamais contactés par les agents</span></div><div class="card kpi"><b style="${iaRetard.length?"color:var(--danger)":""}">${iaRetard.length}</b><span>Action prévue dépassée</span></div></div>
@@ -256,10 +257,29 @@ async function openProspect(id) {
   };
 }
 
+/** Conversation avec un contact : e-mails envoyés (texte complet) et réponses reçues (texte), du plus ancien au plus récent. */
+async function ouvrirConversation(cle) {
+  const lignes=relancesLignes(mails,prospects), l=lignes.find(x=>x.cle===cle); if(!l) return;
+  let envois=[], reponses=[], erreurLecture="";
+  try { envois=(await q(S.sb.from("crm_mails").select("id,subject,body,to_email,sent_by,sent_at,status,replied_at,reply_from,error").in("id",l.ids).order("sent_at",{ascending:true})))??[]; }
+  catch(e){ toast(e.message,"bad"); return; }
+  try { reponses=(await q(S.sb.from("crm_mail_replies").select("id,mail_id,from_email,received_at,body").in("mail_id",l.ids).order("received_at",{ascending:true})))??[]; }
+  catch(e){ erreurLecture=e.message; }
+  const fil=[...envois.map(m=>({t:m.sent_at,sens:"sortant",m})),...reponses.map(r=>({t:r.received_at,sens:"entrant",r}))].sort((a,b)=>new Date(a.t)-new Date(b.t));
+  const sansTexte=envois.filter(m=>m.status==="repondu"&&!reponses.some(r=>r.mail_id===m.id));
+  const note=sansTexte.length?(lectureReponses===false?"Le texte de "+(sansTexte.length>1?"ces réponses n'est":"cette réponse n'est")+" pas lu : reconnectez Gmail une fois (SANIX CRM → Paramètres → Gmail) pour autoriser la lecture des réponses.":erreurLecture?"Lecture des réponses indisponible : "+erreurLecture:"Le texte de "+(sansTexte.length>1?"ces réponses sera":"cette réponse sera")+" lu à la prochaine synchronisation (15 minutes au plus).") :"";
+  openModal(html`<h3>${l.nom}</h3><p class="small muted">${l.email} · ${envois.length} e-mail(s) envoyé(s) · ${reponses.length} réponse(s) lue(s)</p>
+    ${note?html`<div class="card" style="border-left:4px solid #F59E0B;margin:8px 0">${note}</div>`:""}
+    ${raw(fil.map(x=>x.sens==="sortant"
+      ?html`<div class="card" style="margin:8px 0 8px 0;border-left:4px solid #6366f1"><div class="small muted">📤 Envoyé · ${fmtDT(x.m.sent_at)}${x.m.sent_by?" · "+x.m.sent_by:""}${x.m.status==="echec"?" · échec : "+(x.m.error||""):""}</div><b>${x.m.subject}</b><div class="pv" style="white-space:pre-wrap;margin-top:4px">${x.m.body}</div></div>`.s
+      :html`<div class="card" style="margin:8px 0 8px 24px;border-left:4px solid #22C55E"><div class="small muted">📩 Réponse · ${fmtDT(x.r.received_at)} · ${x.r.from_email||""}</div><div class="pv" style="white-space:pre-wrap;margin-top:4px">${x.r.body}</div></div>`.s).join("")||html`<p class="muted">Aucun message.</p>`.s)}`);
+}
+
 export async function salesAction(el) {
   const id=el.dataset.id;
   if(el.dataset.act==="sales-new") return newProspectForm();
   if(el.dataset.act==="sales-open") return openProspect(id);
+  if(el.dataset.act==="sales-conv") return ouvrirConversation(el.dataset.cle);
   if(el.dataset.act==="sales-refresh"){await loadSales();if(vue==="conversations")await loadMessages();if(vue==="relances")await loadRelances();renderSales($("#main"));return;}
   if(el.dataset.act==="sales-more"){shown+=PAGE;renderSales($("#main"));return;}
   if(el.dataset.act==="sales-vue"){

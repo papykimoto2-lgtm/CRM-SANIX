@@ -21,6 +21,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
         const S = window.__srv, body = opt.body ? JSON.parse(opt.body) : {}; S.appels.push({ path, body });
         if (S.hors) throw new Error("Connectez l'agent IA (session opérateur)");
         if (path.includes("crm_mail_state")) return j(S.etat);
+        if (path.includes("crm_mail_replies")) return j(S.replies || []);
         if (path.includes("/rest/v1/crm_mails")) return j(S.mails);
         if (path.includes("crm-gmail")) {
           if (body.action === "connect_url") { if (S.connectErr) throw new Error(S.connectErr); return { url: "https://accounts.google.com/o/oauth2/v2/auth?state=x" }; }
@@ -111,10 +112,26 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.evaluate(() => { __srv.etat = { connecte: false }; _gmail.charge = 0; });
     await page.evaluate(() => { navigate("relance", null); }).catch(() => {});
     const reg = await page.evaluate(async () => { const h = document.getElementById("gmail-reglage"); if (!h) return null; await gmailReglageRender(); return h.innerText.replace(/\s+/g, " "); });
-    ok(reg && /Connecter Gmail/.test(reg) && /jamais lu/.test(reg), "réglages : bouton « Connecter Gmail » et rappel : le contenu de la boîte n'est jamais lu");
+    ok(reg && /Connecter Gmail/.test(reg) && /jamais lu ni modifié/.test(reg) && /lire les réponses/.test(reg), "réglages : bouton « Connecter Gmail » et droits annoncés : envoyer et lire les réponses, le reste de la boîte jamais lu ni modifié");
     await page.evaluate(() => { __srv.etat = { connecte: true, email: "sanix@gmail.com" }; });
     const reg2 = await page.evaluate(async () => { await gmailReglageRender(); return document.getElementById("gmail-reglage").innerText.replace(/\s+/g, " "); });
     ok(/Connecté : sanix@gmail\.com/.test(reg2) && /3 e-mails envoyés/.test(reg2) && /1 réponse/.test(reg2) && /Déconnecter/.test(reg2), "connecté : adresse, compteurs d'e-mails et de réponses, bouton « Déconnecter »");
+    console.log("▶ Lire les e-mails envoyés et les réponses");
+    ok(!/Reconnecter Gmail/.test(reg2), "accès déjà complet (ou état inconnu) : pas de demande de reconnexion");
+    await page.evaluate(() => { __srv.etat = { connecte: true, email: "sanix@gmail.com", lecture_reponses: false }; });
+    const reg3 = await page.evaluate(async () => { await gmailReglageRender(); return document.getElementById("gmail-reglage").innerText.replace(/\s+/g, " "); });
+    ok(/Reconnecter Gmail/.test(reg3) && /lire le texte des réponses/.test(reg3), "ancienne connexion (sans lecture) : explication et bouton « Reconnecter Gmail »");
+    await page.evaluate(() => { __srv.etat = { connecte: true, email: "sanix@gmail.com", lecture_reponses: true }; __srv.mails = [{ id: "mL1", client_rid: "c_gm1", to_email: "marc@promo.ci", subject: "Démo ImmoSuite", body: "Bonjour Marc,\nUne démo <b>mardi</b> ?", sent_by: "Awa", sent_at: __day(3), status: "repondu", replied_at: __day(2), reply_from: "marc@promo.ci", relance_apres_jours: 4 }]; __srv.replies = [{ id: "r1", mail_id: "mL1", from_email: "marc@promo.ci", received_at: __day(2), body: "Oui, mardi 10 h me convient.\nMarc" }]; });
+    await page.evaluate(async () => { await gmailRefresh(true); });
+    const ligne = await page.evaluate(() => gmailLigneMail(_gmail.mails[0]).replace(/<[^>]+>/g, " ").replace(/\s+/g, " "));
+    ok(/Répondu le/.test(ligne) && /Oui, mardi 10 h me convient\./.test(ligne) && /Lire/.test(ligne), "fiche : la ligne de l'e-mail montre un extrait de la réponse et le lien « Lire »");
+    await page.evaluate(() => gmailLire("mL1")); await page.waitForTimeout(300);
+    const lu = await page.evaluate(() => document.getElementById("modal-gmail-lire").innerText.replace(/\s+/g, " "));
+    ok(/Démo ImmoSuite/.test(lu) && /Une démo <b>mardi<\/b> \?/.test(lu) && /Réponse de marc@promo\.ci/.test(lu) && /Oui, mardi 10 h me convient\./.test(lu) && lu.indexOf("Une démo") < lu.indexOf("Oui, mardi"), "lecture : e-mail envoyé puis réponse, texte brut (le HTML saisi n'est pas interprété)");
+    await page.evaluate(() => { __srv.replies = []; __srv.etat = { connecte: true, email: "sanix@gmail.com", lecture_reponses: false }; });
+    await page.evaluate(async () => { await gmailRefresh(true); gmailLire("mL1"); }); await page.waitForTimeout(300);
+    ok(/n’est pas lu : reconnectez Gmail/.test(await page.evaluate(() => document.getElementById("modal-gmail-lire").innerText.replace(/\s+/g, " "))), "réponse arrivée sans texte lu (ancienne connexion) : consigne claire pour reconnecter");
+    await page.evaluate(() => { document.getElementById("modal-gmail-lire").classList.add("hidden"); __srv.mails = []; __srv.etat = { connecte: true, email: "sanix@gmail.com" }; });
     await page.evaluate(() => gmailDeconnecter()); await page.waitForTimeout(300);
     ok(await page.evaluate(() => !gmailConnecte()), "déconnexion : le CRM repasse en « non connecté »");
     await page.evaluate(() => { __srv.connectErr = "Configuration incomplète : secret « GOOGLE_CLIENT_ID » absent (voir supabase/GMAIL.md)"; });
