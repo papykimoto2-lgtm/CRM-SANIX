@@ -28,6 +28,7 @@ try{var _t=localStorage.getItem("sanix_theme");if(_t&&_t!=="turquoise")document.
 <script src="shared/strategie.js" defer></script>
 <script src="shared/afaire.js" defer></script>
 <script src="shared/bureau.js" defer></script>
+<script src="shared/messagerie.js" defer></script>
 <style>
 :root{
   /* Charte ANGEL'S GROUP : turquoise profond, fonds clairs bleutés, police système */
@@ -305,7 +306,7 @@ textarea.form-input{resize:vertical;min-height:80px}
 select.form-input{cursor:pointer}
 
 /* ─── MESSAGERIE ─────────────────────────────────────── */
-.msg-template{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:12px;cursor:pointer;transition:border-color .2s}
+.msg-template{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:border-color .2s}
 .msg-template:hover{border-color:var(--primary)}
 .msg-template.selected{border-color:var(--primary);background:var(--primary-l)}
 .msg-channel{display:flex;gap:8px;margin-bottom:16px}
@@ -313,6 +314,26 @@ select.form-input{cursor:pointer}
 .channel-btn.wa{color:#25D366}
 .channel-btn.email{color:var(--primary)}
 .channel-btn.active{border-color:var(--primary);background:var(--primary-l)}
+.msg-filtres{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.msg-resume{font-size:12px;margin:10px 0 6px}
+.msg-liste{max-height:230px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-sm)}
+.msg-ligne{display:flex;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--border);font-size:12px;cursor:pointer}
+.msg-ligne:last-child{border-bottom:0}
+.msg-nom{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msg-sous{font-size:11px;color:var(--muted)}
+.msg-vide{text-align:center;color:var(--muted);font-size:12px;padding:16px}
+.msg-excl{margin-top:8px;font-size:12px;background:var(--surface2);border-radius:var(--r-sm);padding:8px 10px}
+.msg-excl summary{cursor:pointer;font-weight:600}
+.msg-excl>div{margin-top:6px}
+.msg-note{font-size:12px;background:var(--surface2);border-radius:var(--r-sm);padding:8px 10px;margin-bottom:4px}
+.msg-note.msg-ok{background:#ECFDF5;color:#065F46}
+.msg-aide{font-size:11px;color:var(--muted);margin-top:6px}
+.msg-apercu{font-size:12px;background:var(--surface2);border-radius:var(--r-sm);padding:10px;margin-top:10px}
+.msg-erreur{font-size:12px;background:#FEF3C7;color:#92400E;border-radius:var(--r-sm);padding:8px 10px;margin-top:8px}
+.msg-file{border:2px solid var(--primary);border-radius:var(--r);padding:12px}
+.msg-hist{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);align-items:flex-start}
+.msg-hist-ico{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.msg-suppr{background:none;border:0;cursor:pointer;font-size:13px;padding:0 2px}
 
 /* ─── QR MODAL ─────────────────────────────────────── */
 .modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:center;justify-content:center}
@@ -2160,49 +2181,63 @@ Seriez-vous disponible pour une démonstration {rdv} ?
 
     <div id="view-messagerie" class="hidden fade-in">
       <h1 class="page-title">Messagerie Commerciale</h1>
-      <p class="page-sub">WhatsApp + Email — Envoi individuel et groupé</p>
+      <p class="page-sub">WhatsApp + e-mail — chaque message est personnalisé pour son destinataire, rien ne part sans votre accord</p>
 
       <div class="grid-2">
         <div>
           <div class="card" style="margin-bottom:16px">
-            <div class="card-header"><span class="card-title">Canal de communication</span></div>
+            <div class="card-header"><span class="card-title">1 · Canal</span></div>
             <div class="msg-channel">
-              <button class="channel-btn wa active" onclick="selectChannel('wa',this)">📱 WhatsApp</button>
-              <button class="channel-btn email" onclick="selectChannel('email',this)">📧 Email</button>
+              <button class="channel-btn wa active" id="msg-ch-wa" onclick="msgCanal('wa')">📱 WhatsApp</button>
+              <button class="channel-btn email" id="msg-ch-email" onclick="msgCanal('email')">📧 Email</button>
             </div>
-            <div class="form-group">
-              <label class="form-label">Destinataires</label>
-              <select class="form-input" id="msg-destinataires" multiple style="height:80px">
-                <option value="all_prospects">Tous les prospects actifs</option>
-                <option value="all_clients">Tous les clients</option>
-              </select>
+            <div id="msg-gmail-ligne"></div>
+          </div>
+
+          <div class="card" style="margin-bottom:16px">
+            <div class="card-header"><span class="card-title">2 · Destinataires</span><span class="badge badge-muted" id="msg-cible-count">0</span></div>
+            <div class="msg-filtres">
+              <div><label class="form-label">Qui</label><select class="form-input" id="msg-f-statut" onchange="msgRender()"><option value="prospect">Prospects</option><option value="client">Clients</option><option value="tous">Prospects et clients</option></select></div>
+              <div><label class="form-label">Logiciel</label><select class="form-input" id="msg-f-logiciel" onchange="msgRender()"></select></div>
+              <div><label class="form-label">Secteur</label><select class="form-input" id="msg-f-secteur" onchange="msgRender()"></select></div>
+              <div><label class="form-label">Étape</label><select class="form-input" id="msg-f-etape" onchange="msgRender()"></select></div>
             </div>
-            <div class="form-group">
-              <label class="form-label">Message</label>
-              <textarea class="form-input" id="msg-text" rows="5" placeholder="Rédigez votre message..."></textarea>
+            <input class="form-input" id="msg-f-texte" placeholder="Nom, ville ou quartier…" oninput="msgRender()" style="margin-top:8px">
+            <label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-top:8px"><input type="checkbox" id="msg-f-recent" checked onchange="msgRender()"> Exclure ceux déjà contactés ces 7 derniers jours</label>
+            <div id="msg-cible-resume" class="msg-resume"></div>
+            <div id="msg-cible-liste"></div>
+            <div id="msg-exclus"></div>
+          </div>
+
+          <div class="card" id="msg-carte-message">
+            <div class="card-header"><span class="card-title">3 · Message</span></div>
+            <div id="msg-objet-wrap" style="display:none;margin-bottom:8px"><label class="form-label">Objet</label><input class="form-input" id="msg-objet" oninput="msgRender()" placeholder="Objet de l'e-mail"></div>
+            <textarea class="form-input" id="msg-text" rows="8" oninput="msgRender()" placeholder="Choisissez un modèle à droite ou rédigez votre message…"></textarea>
+            <div class="msg-aide">Les mots entre accolades, comme <b>{destinataire}</b>, <b>{nom}</b>, <b>{logiciel}</b>, <b>{signature}</b>, sont remplacés pour chaque destinataire.</div>
+            <div id="msg-apercu"></div>
+            <div id="msg-manques"></div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+              <input class="form-input" id="msg-tpl-titre" placeholder="Nom du modèle à enregistrer" style="flex:1;min-width:160px">
+              <button class="btn btn-outline" onclick="msgSauverModele()">💾 Enregistrer comme modèle</button>
             </div>
-            <div class="flex gap-2">
-              <button class="btn btn-primary" onclick="sendMessage()">📤 Envoyer</button>
-              <button class="btn btn-outline" onclick="saveTemplate()">💾 Sauvegarder template</button>
-            </div>
+            <div id="msg-envoi" style="margin-top:12px"></div>
           </div>
         </div>
 
         <div>
           <div class="card" style="margin-bottom:16px">
             <div class="card-header">
-              <span class="card-title">📝 Templates messages</span>
+              <span class="card-title">📝 Modèles de messages</span>
+              <select class="form-input" id="msg-tpl-seg" onchange="msgRenderModeles()" style="width:auto;max-width:55%;font-size:11px"></select>
             </div>
-            <div id="msg-templates"></div>
+            <div id="msg-templates" style="max-height:420px;overflow-y:auto"></div>
           </div>
           <div class="card">
             <div class="card-header">
               <span class="card-title">📜 Historique des envois</span>
               <span class="badge badge-muted" id="msg-hist-count">0</span>
             </div>
-            <div id="msg-history-list" style="max-height:260px;overflow-y:auto">
-              <div style="text-align:center;color:var(--muted);font-size:12px;padding:16px">Aucun message envoyé pour l'instant</div>
-            </div>
+            <div id="msg-history-list" style="max-height:320px;overflow-y:auto"></div>
           </div>
         </div>
       </div>
@@ -5898,11 +5933,12 @@ function bureauRender(R,brut){
   let n=0; const t=setInterval(()=>{ if(typeof currentUser!=='undefined' && currentUser){ clearInterval(t); gmailRefresh(true).then(()=>{ showToast(r==='ok'?'✅ Gmail connecté : vous pouvez envoyer et suivre vos e-mails':'❌ Connexion Gmail : '+(m||'échec'), r==='ok'?undefined:'error'); try{ gmailReglageRender(); }catch(e){} }); } else if(++n>60) clearInterval(t); },500);
 })();
 
+// Modèles généraux : mêmes variables que les messages de premier contact, remplies pour chaque destinataire (aucun {mot} ni numéro factice ne part).
 const MSG_TEMPLATES = [
-  {canal:'wa',titre:'Présentation produit',msg:'Bonjour {prenom},\n\nJe suis {commercial} de SANIX Africa Division Technologies.\nNous développons des logiciels ERP sur mesure pour les entreprises ivoiriennes.\n\nJe souhaiterais vous présenter {logiciel} — la solution idéale pour votre secteur.\n\n📱 Lien démo gratuite : {demo}\n\nDisponible pour un échange cette semaine ?'},
-  {canal:'wa',titre:'Relance prospect',msg:'Bonjour {prenom} 👋\n\nSuite à notre échange du {date}, je voulais savoir si vous aviez pu consulter la démo de {logiciel}.\n\nDes questions ? Je suis disponible.\n\n— {commercial}, SANIX Africa'},
-  {canal:'email',titre:'Proposition commerciale',msg:'Objet : Proposition commerciale — {logiciel}\n\nBonjour {civilite} {nom},\n\nFaisant suite à notre rencontre, je vous adresse en pièce jointe notre proposition commerciale pour le déploiement de {logiciel} au sein de {entreprise}.\n\nMontant : {prix} FCFA HT\nDélai déploiement : 2 semaines\nFormation incluse : Oui\n\nCordialement,\n{commercial}\nSANIX Africa Division Technologies'},
-  {canal:'email',titre:'Invitation démo',msg:'Objet : Invitation — Démo gratuite {logiciel}\n\nBonjour,\n\nNous vous invitons à une démonstration gratuite et sans engagement de {logiciel}.\n\n📅 Durée : 30 min\n🔗 Lien démo : {demo}\n📞 Ou contactez-nous : +225 XX XX XX XX\n\nRépondez à cet email pour fixer un créneau.\n\nCordialement,\nL\'équipe SANIX Africa'},
+  {canal:'wa',titre:'Présentation produit',msg:'{salut} 👋 Je m\'adresse bien à l\'équipe de {nom} ?\n\nJe suis {gerant} de {societe}. Nous développons des logiciels de gestion pour les entreprises ivoiriennes.\n\nJe souhaiterais vous présenter {logiciel}.\n\n{pitch}\n\n{demo_line}Seriez-vous disponible pour un échange {rdv} ?\n\n{signature}'},
+  {canal:'wa',titre:'Relance prospect',msg:'{salut} {destinataire} 👋\n\nJe reviens vers vous au sujet de {logiciel} pour {nom} : avez-vous pu y jeter un œil ?\n\n{demo_line}Je reste disponible pour répondre à vos questions.\n\n{signature}'},
+  {canal:'email',titre:'Proposition commerciale',msg:'Objet : Proposition commerciale — {logiciel} pour {nom}\n\n{salut} {destinataire},\n\nFaisant suite à nos échanges, je vous présente notre proposition commerciale pour le déploiement de {logiciel} au sein de {nom}.\n\nMontant : {prix} FCFA HT\nDélai de déploiement : 2 semaines\nFormation incluse : oui\n\nJe reste à votre disposition pour la commenter ensemble {rdv}.\n\nCordialement,\n{signature}'},
+  {canal:'email',titre:'Invitation démo',msg:'Objet : Invitation — Démonstration gratuite de {logiciel}\n\n{salut} {destinataire},\n\nNous vous invitons à une démonstration gratuite et sans engagement de {logiciel}, adaptée à l\'activité de {nom} : 30 minutes, en visio ou dans vos locaux.\n\n{demo_line}Répondez simplement à cet e-mail pour fixer un créneau {rdv}.\n\nCordialement,\n{signature}'},
 ];
 
 // Premiers contacts : ajoutés en tête de la galerie de la Messagerie
@@ -6273,6 +6309,7 @@ function navigate(view, el) {
     licences:'Licences Attribuées',documents:'Documents & Modèles',comptabilite:'Comptabilité SYSCOHADA',financement:'Financement'
   }[view] || view;
   try{ afficherNote(_orig in NOTES_VUES ? _orig : view); }catch(e){ console.error(e); }
+  if(view==='messagerie'){ try{ initMessagerie(); }catch(e){ console.error(e); } }
   if(view === 'carte') setTimeout(()=>{ initMap(); updateCarteStats(); }, 100);
   if(view === 'clients') setTimeout(_dupUpdateBtn, 300);
   if(view === 'pipeline') setTimeout(()=>{ populatePipelineFilters(); initPipeline(); }, 60);
@@ -8286,69 +8323,248 @@ function submitRapport() {
 }
 
 // ═══════════════════════════════════════
-//  MESSAGERIE
+//  MESSAGERIE — ciblage, personnalisation, envoi réel, historique durable (moteur : shared/messagerie.js)
+//  Rien ne part sans clic : e-mail = Gmail connecté (ou messagerie de l'utilisateur), WhatsApp = un chat à la fois, message prêt.
 // ═══════════════════════════════════════
+const _MSG_PLAFOND = 100;
+const _msg = {canal:'wa', desel:new Set(), file:null, enCours:false, stop:false, tplTexte:'', tplId:'', cible:null, histCharge:false};
+const _msgEsc = t=>String(t==null?'':t).replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
+const _msgG = id=>{ const e=document.getElementById(id); return e?e.value:''; };
+
 function initMessagerie() {
-  document.getElementById('msg-templates').innerHTML = MSG_TEMPLATES.map((t,i)=>`
-    <div class="msg-template" onclick="selectTemplate(${i})">
-      <div class="flex items-center gap-2 justify-between">
-        <div style="font-weight:600;font-size:12px">${t.titre}</div>
-        <span class="badge ${t.canal==='wa'?'badge-success':'badge-primary'}">${t.canal==='wa'?'WhatsApp':'Email'}</span>
-      </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.msg.substring(0,80)}...</div>
-    </div>`).join('');
+  const v=document.getElementById('view-messagerie'); if(!v || v.classList.contains('hidden')) return;
+  if(!_msg.histCharge){ _msg.histCharge=true; const h=lsLoad('msg_history'); window.MSG_HISTORY=Array.isArray(h)?h:[]; }
+  msgOptions('msg-f-logiciel', LOGICIELS.map(l=>[l.nom,l.nom]), 'Tous les logiciels');
+  msgOptions('msg-f-secteur', [...new Set(CLIENTS.map(c=>c.secteur).filter(Boolean))].sort().map(s=>[s,s]), 'Tous les secteurs');
+  msgOptions('msg-f-etape', CONV_ETAPES.map((e,i)=>[String(i),i+' · '+e]), 'Toutes les étapes');
+  const seg=[['','Tous les modèles'],['perso','Mes modèles'],['gen','Modèles généraux']].concat(Object.keys(FIRST_CONTACT_DEFAULT).map(k=>[k,'1er contact — '+FIRST_CONTACT_DEFAULT[k].label.split(' — ')[0]]));
+  msgOptions('msg-tpl-seg', seg.slice(1), seg[0][1]);
+  msgRenderModeles(); msgRender(); renderMsgHistory();
+  gmailRefresh().then(()=>{ if(!v.classList.contains('hidden')) msgRender(); }).catch(()=>{});
 }
-function selectTemplate(i) {
-  document.querySelectorAll('.msg-template').forEach(t=>t.classList.remove('selected'));
-  document.querySelectorAll('.msg-template')[i].classList.add('selected');
-  const _t = MSG_TEMPLATES[i];
-  document.getElementById('msg-text').value = _t.fc ? fcSenderVars(_t.msg).replace(/{demo_line}/g,'').replace(/{pitch}\n*/g,'') : _t.msg;
-}
-function selectChannel(ch, el) {
-  document.querySelectorAll('.channel-btn').forEach(b=>b.classList.remove('active'));
-  el.classList.add('active');
-}
-function sendMessage() {
-  const txt = document.getElementById('msg-text').value;
-  if(!txt.trim()) { alert('Rédigez un message'); return; }
-  // Detect active channel
-  const isWA = document.querySelector('.channel-btn.wa.active') !== null;
-  const chanLabel = isWA ? 'WhatsApp' : 'Email';
-  const chanIco   = isWA ? '💬' : '📧';
-  // Log in messagerie history
-  if(!window.MSG_HISTORY) window.MSG_HISTORY = [];
-  window.MSG_HISTORY.unshift({
-    date: new Date().toISOString(),
-    canal: chanLabel,
-    ico: chanIco,
-    extrait: txt.trim().substring(0,80) + (txt.length>80?'…':''),
-    commercial: (typeof currentUser !== 'undefined' && currentUser) ? currentUser.nom||currentUser.email||'—' : '—'
-  });
-  showToast('✅ Message ' + chanLabel + ' envoyé et enregistré !');
-  renderMsgHistory();
+function msgOptions(id, items, tous){
+  const s=document.getElementById(id); if(!s) return; const v=s.value;
+  s.innerHTML='<option value="">'+_msgEsc(tous)+'</option>'+items.map(([val,lib])=>'<option value="'+_msgEsc(val)+'">'+_msgEsc(lib)+'</option>').join('');
+  s.value=v;
 }
 
-function renderMsgHistory() {
-  const el = document.getElementById('msg-history-list');
-  if(!el) return;
-  const hist = window.MSG_HISTORY || [];
-  if(!hist.length) {
-    el.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:12px;padding:16px">Aucun message envoyé pour l'instant</div>`;
-    return;
-  }
-  const cntEl = document.getElementById('msg-hist-count');
-  if(cntEl) cntEl.textContent = hist.length;
-  el.innerHTML = hist.slice(0,20).map(m=>`
-    <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);align-items:flex-start">
-      <div style="width:30px;height:30px;border-radius:50%;background:${m.canal==='WhatsApp'?'#25D36622':'var(--primary-l)'};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${m.ico}</div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:11px;font-weight:700;color:var(--text2)">${m.canal} · ${m.commercial}</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.extrait}</div>
-      </div>
-      <div style="font-size:10px;color:var(--muted);flex-shrink:0">${new Date(m.date).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
-    </div>`).join('');
+// ── Canal ──
+function msgCanal(ch){
+  if(_msg.file||_msg.enCours){ showToast('⏳ Terminez ou arrêtez l\'envoi en cours avant de changer de canal'); return; }
+  _msg.canal=ch; _msg.desel.clear();
+  document.getElementById('msg-ch-wa').classList.toggle('active', ch==='wa');
+  document.getElementById('msg-ch-email').classList.toggle('active', ch==='email');
+  // le texte d'un modèle de l'autre canal n'a pas de sens ici : on l'efface (un texte écrit à la main est conservé)
+  const t=document.getElementById('msg-text'), o=document.getElementById('msg-objet');
+  if(_msg.tplTexte && t.value===_msg.tplTexte){ t.value=''; o.value=''; _msg.tplTexte=''; _msg.tplId=''; }
+  msgRenderModeles(); msgRender();
 }
-function saveTemplate() { showToast('✅ Template sauvegardé !'); }
+function selectChannel(ch){ msgCanal(ch); }   // ancien nom, conservé
+
+// ── Destinataires ──
+function msgRecent(c, jours){
+  const lim=Date.now()-jours*864e5;
+  if((c.interactions||[]).some(i=>new Date(i.date).getTime()>=lim && /^(relance|message|email\b|whatsapp|sms)/i.test(i.type||''))) return true;
+  return gmailMailsDe(c).some(m=>m.status!=='echec' && new Date(m.sent_at).getTime()>=lim);
+}
+function msgFiltres(){
+  const r=document.getElementById('msg-f-recent');
+  return {statut:_msgG('msg-f-statut')||'prospect', logiciel:_msgG('msg-f-logiciel'), secteur:_msgG('msg-f-secteur'), etape:_msgG('msg-f-etape'), texte:_msgG('msg-f-texte'), joursSansContact:(r&&r.checked)?7:0};
+}
+function msgCiblage(){
+  return SanixMessagerie.cibler(CLIENTS, _msg.canal, msgFiltres(), {qualite:contactQualite, morte:e=>!!gmailAdresseMorte(e), recent:msgRecent}, aiGetEtape);
+}
+const msgSelection = res=>res.retenus.filter(r=>!_msg.desel.has(r.c.id));
+function msgBascule(id){ if(_msg.desel.has(id)) _msg.desel.delete(id); else _msg.desel.add(id); msgRender(); }
+function msgTout(oui){ if(oui) _msg.desel.clear(); else (_msg.cible?_msg.cible.retenus:[]).forEach(r=>_msg.desel.add(r.c.id)); msgRender(); }
+function msgCibleAffiche(r){ return _msg.canal==='wa' ? (waAnalyse(r.c.phone).affiche||r.cible) : r.cible; }
+
+// ── Message personnalisé ──
+function msgRempli(c){ return {objet:fcFill(_msgG('msg-objet'),c).trim(), corps:fcFill(_msgG('msg-text'),c).trim()}; }
+function msgPret(sel){
+  const SM=SanixMessagerie, email=_msg.canal==='email';
+  if(!_msgG('msg-text').trim()) return {ok:false,raison:'Choisissez un modèle ou rédigez votre message.'};
+  if(email && !_msgG('msg-objet').trim()) return {ok:false,raison:'Ajoutez un objet à l\'e-mail.'};
+  if(!sel.length) return {ok:false,raison:'Aucun destinataire sélectionné.'};
+  const m=msgRempli(sel[0].c), manq=SM.manques(m.corps+(email?'\n'+m.objet:''));
+  if(manq.length) return {ok:false,raison:'Il reste à compléter : '+manq.join(', ')+'.',manques:manq};
+  return {ok:true};
+}
+
+function msgRender(){
+  const v=document.getElementById('view-messagerie'); if(!v) return;
+  const SM=SanixMessagerie, email=_msg.canal==='email', res=_msg.cible=msgCiblage(), sel=msgSelection(res);
+  document.getElementById('msg-objet-wrap').style.display=email?'':'none';
+  document.getElementById('msg-cible-count').textContent=sel.length;
+  // synthèse + liste
+  document.getElementById('msg-cible-resume').innerHTML='<b>'+_msgEsc(SM.resume(res,_msg.canal))+'</b> · '+sel.length+' sélectionné'+(sel.length>1?'s':'')
+    +' <button class="btn btn-outline btn-sm" style="font-size:11px;margin-left:6px" onclick="msgTout(true)">Tout cocher</button> <button class="btn btn-outline btn-sm" style="font-size:11px" onclick="msgTout(false)">Tout décocher</button>';
+  const MAX=150;
+  document.getElementById('msg-cible-liste').innerHTML = res.retenus.length
+    ? '<div class="msg-liste">'+res.retenus.slice(0,MAX).map(r=>'<label class="msg-ligne"><input type="checkbox" '+(_msg.desel.has(r.c.id)?'':'checked')+' onchange="msgBascule('+JSON.stringify(r.c.id).replace(/"/g,'&quot;')+')"><span class="msg-nom">'+_msgEsc(r.c.nom)+'</span><span class="msg-sous">'+_msgEsc(msgCibleAffiche(r))+(r.c.logiciel?' · '+_msgEsc(r.c.logiciel):'')+'</span></label>').join('')
+      +(res.retenus.length>MAX?'<div class="msg-sous" style="padding:6px 8px">… et '+(res.retenus.length-MAX)+' autres, inclus dans l\'envoi tant qu\'ils sont cochés.</div>':'')+'</div>'
+    : '<div class="msg-vide">Personne à contacter avec ces critères.</div>';
+  // exclus et pourquoi
+  const ks=Object.keys(res.exclus);
+  document.getElementById('msg-exclus').innerHTML = ks.length
+    ? '<details class="msg-excl"><summary>'+res.nbExclus+' exclu'+(res.nbExclus>1?'s':'')+' — pourquoi ?</summary>'+ks.sort((a,b)=>res.exclus[b].length-res.exclus[a].length).map(k=>'<div><b>'+_msgEsc(SM.RAISONS[k]||k)+'</b> : '+res.exclus[k].length+'<div class="msg-sous">'+res.exclus[k].slice(0,5).map(c=>_msgEsc(c.nom)).join(', ')+(res.exclus[k].length>5?'…':'')+'</div></div>').join('')+'</details>'
+    : '';
+  // ligne Gmail
+  const g=document.getElementById('msg-gmail-ligne');
+  if(!email) g.innerHTML='<div class="msg-note">WhatsApp : chaque chat s\'ouvre avec le message prêt, vous appuyez sur « Envoyer » dans WhatsApp. L\'envoi automatique en masse n\'existe pas : il exposerait votre numéro à un blocage.</div>';
+  else if(gmailConnecte()) g.innerHTML='<div class="msg-note msg-ok">✅ Envoi direct depuis <b>'+_msgEsc(_gmail.etat.email)+'</b> · il reste <b>'+SM.resteGmail(_gmail.mails,Date.now(),_MSG_PLAFOND)+'</b> e-mail(s) à envoyer aujourd\'hui (plafond '+_MSG_PLAFOND+' par 24 h). Les réponses sont suivies automatiquement.</div>';
+  else g.innerHTML='<div class="msg-note">📧 Gmail n\'est pas connecté : les e-mails s\'ouvriront un par un dans votre messagerie. <button class="btn btn-outline btn-sm" style="font-size:11px" onclick="gmailConnecter()">🔗 Connecter Gmail</button></div>';
+  // aperçu + manques
+  const ap=document.getElementById('msg-apercu'), mq=document.getElementById('msg-manques'), p=msgPret(sel);
+  if(sel.length && _msgG('msg-text').trim()){
+    const m=msgRempli(sel[0].c);
+    ap.innerHTML='<div class="msg-apercu"><div class="msg-sous">Aperçu pour <b>'+_msgEsc(sel[0].c.nom)+'</b> :</div>'+(email&&m.objet?'<div><b>Objet :</b> '+_msgEsc(m.objet)+'</div>':'')+'<div style="white-space:pre-wrap;overflow-wrap:anywhere">'+_msgEsc(m.corps)+'</div></div>';
+  } else ap.innerHTML='';
+  mq.innerHTML = (!p.ok && p.manques) ? '<div class="msg-erreur">⚠️ '+_msgEsc(p.raison)+' L\'envoi est bloqué tant que le message n\'est pas complet.</div>' : '';
+  if(!_msg.file && !_msg.enCours) msgEnvoiRender(sel,p);
+}
+function msgEnvoiRender(sel,p){
+  const box=document.getElementById('msg-envoi'), n=sel.length, email=_msg.canal==='email', direct=email&&gmailConnecte();
+  const reste=SanixMessagerie.resteGmail(_gmail.mails,Date.now(),_MSG_PLAFOND);
+  const lib = direct ? '📤 Envoyer '+n+' e-mail'+(n>1?'s':'')+' depuis Gmail' : (email?'📧 Préparer '+n+' e-mail'+(n>1?'s':'')+' (un par un)':'📱 Préparer '+n+' message'+(n>1?'s':'')+' WhatsApp (un par un)');
+  box.innerHTML='<button class="btn btn-primary" id="msg-btn-envoyer" '+(p.ok?'':'disabled')+' onclick="msgEnvoyer()">'+lib+'</button>'
+    +(!p.ok?'<div class="msg-sous" style="margin-top:6px">'+_msgEsc(p.raison)+'</div>':'')
+    +(direct&&n>reste&&p.ok?'<div class="msg-sous" style="margin-top:6px">⚠️ Plafond du jour : seuls '+reste+' e-mail(s) partiront maintenant, les '+(n-reste)+' autres resteront à envoyer demain.</div>':'')
+    +(!email&&n>30?'<div class="msg-sous" style="margin-top:6px">⚠️ Prudence : au-delà d\'une trentaine de premiers messages par jour à des inconnus, WhatsApp peut restreindre un numéro. Préférez des lots plus petits.</div>':'');
+}
+
+// ── Envoi ──
+async function msgEnvoyer(){
+  if(_msg.file||_msg.enCours) return;
+  const res=_msg.cible||msgCiblage(), sel=msgSelection(res), p=msgPret(sel);
+  if(!p.ok){ showToast('❌ '+p.raison,'error'); return; }
+  const SM=SanixMessagerie, email=_msg.canal==='email';
+  const items=sel.map(r=>Object.assign({c:r.c,cible:r.cible},msgRempli(r.c)));
+  const mauvais=items.find(x=>SM.manques(x.corps+(email?'\n'+x.objet:'')).length);   // dernier contrôle, destinataire par destinataire
+  if(mauvais){ showToast('❌ Message incomplet pour '+mauvais.c.nom+' : '+SM.manques(mauvais.corps+'\n'+mauvais.objet).join(', '),'error'); return; }
+  if(email && gmailConnecte()) return msgEnvoiGmail(items);
+  _msg.file={liste:items,i:0,faits:0,passes:0}; msgFileRender();
+}
+async function msgEnvoiGmail(items){
+  const SM=SanixMessagerie, reste=SM.resteGmail(_gmail.mails,Date.now(),_MSG_PLAFOND), l=SM.lot(items.length,reste);
+  if(!l.partent){ showToast('⛔ Plafond de '+_MSG_PLAFOND+' e-mails par 24 h atteint : réessayez plus tard','error'); return; }
+  if(!confirm('Envoyer '+l.partent+' e-mail'+(l.partent>1?'s':'')+' depuis '+_gmail.etat.email+' ?'+(l.restent?'\n\n'+l.restent+' autre(s) resteront à envoyer (plafond du jour).':'')+'\n\nCette action ne peut pas être annulée.')) return;
+  const box=document.getElementById('msg-envoi'), g=courrierSignataire();
+  _msg.enCours=true; _msg.stop=false; let ok=0, ko=0, suite=0;
+  for(let i=0;i<l.partent;i++){
+    if(_msg.stop) break;
+    const x=items[i];
+    box.innerHTML='<div class="msg-note">📤 Envoi en cours : '+(i+1)+' / '+l.partent+' — '+_msgEsc(x.c.nom)+' <button class="btn btn-outline btn-sm" style="font-size:11px;margin-left:8px" onclick="_msg.stop=true">⏹ Arrêter</button></div>';
+    try{
+      await aisApi(_GM_FONC,{method:'POST',body:JSON.stringify({action:'send',client_rid:x.c._rid||null,to:x.cible,subject:x.objet,body:x.corps,from_name:g.nom+(g.societe?' — '+g.societe:''),relance_jours:4}),timeout:45000});
+      ok++; suite=0; msgTrace(x.c,'email','gmail','envoye',x.objet);
+    }catch(e){
+      ko++; suite++; msgTrace(x.c,'email','gmail','echec',x.objet,e.message);
+      if(suite>=3){ showToast('⛔ 3 échecs de suite : envoi interrompu ('+e.message+')','error'); break; }
+    }
+    if(i<l.partent-1) await new Promise(r=>setTimeout(r,1200));
+  }
+  _msg.enCours=false;
+  try{ await gmailRefresh(true); }catch(e){}
+  const arret=_msg.stop; _msg.stop=false;
+  showToast((ko?'⚠️ ':'✅ ')+ok+' e-mail'+(ok>1?'s':'')+' envoyé'+(ok>1?'s':'')+(ko?' · '+ko+' échec'+(ko>1?'s':''):'')+(arret?' · envoi arrêté':''), ko?6000:3500);
+  renderMsgHistory(); msgRender();
+}
+
+// ── File d'envoi un par un (WhatsApp, ou e-mail sans Gmail) ──
+function msgFileRender(){
+  const f=_msg.file, box=document.getElementById('msg-envoi'); if(!f||!box) return;
+  if(f.i>=f.liste.length){
+    box.innerHTML='<div class="msg-note msg-ok">✅ Terminé : '+f.faits+' ouvert'+(f.faits>1?'s':'')+(f.passes?', '+f.passes+' passé'+(f.passes>1?'s':''):'')+'. Chaque envoi est dans l\'historique et sur la fiche du contact.</div>';
+    _msg.file=null; renderMsgHistory(); return;
+  }
+  const x=f.liste[f.i], email=_msg.canal==='email';
+  box.innerHTML='<div class="msg-file"><div class="msg-sous">Message '+(f.i+1)+' sur '+f.liste.length+'</div>'
+    +'<div style="font-weight:700;margin:2px 0">'+_msgEsc(x.c.nom)+' <span class="msg-sous">'+_msgEsc(email?x.cible:(waAnalyse(x.c.phone).affiche||x.cible))+'</span></div>'
+    +(email?'<div style="font-size:12px"><b>Objet :</b> '+_msgEsc(x.objet)+'</div>':'')
+    +'<div class="msg-apercu" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow-y:auto">'+_msgEsc(x.corps)+'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn btn-primary" id="msg-btn-ouvrir" onclick="msgFileOuvrir()">'+(email?'📧 Ouvrir dans ma messagerie':'📱 Ouvrir WhatsApp')+'</button>'
+    +'<button class="btn btn-outline" onclick="msgFilePasser()">⏭ Passer</button><button class="btn btn-outline" onclick="msgFileArreter()">⏹ Arrêter</button></div>'
+    +'<div class="msg-sous" style="margin-top:6px">'+(email?'Votre messagerie s\'ouvre avec le message prêt : envoyez-le, puis revenez ici.':'WhatsApp s\'ouvre avec le message prêt : appuyez sur « Envoyer », puis revenez ici.')+'</div></div>';
+}
+function msgFileOuvrir(){
+  const f=_msg.file; if(!f) return; const x=f.liste[f.i], email=_msg.canal==='email';
+  if(email){
+    window.location.href='mailto:'+encodeURIComponent(x.cible).replace(/%40/g,'@')+'?subject='+encodeURIComponent(x.objet)+'&body='+encodeURIComponent(x.corps);
+  } else {
+    if(!waLink(x.c.phone,'')){ showToast('❌ '+waWhy(x.c.phone),'error'); return; }   // numéro inutilisable : on reste sur ce contact
+    waOuvrir(x.c.phone,x.corps);
+  }
+  msgTrace(x.c,email?'email':'wa',email?'mailto':'wa','ouvert',email?x.objet:x.corps);
+  f.faits++; f.i++; msgFileRender();
+}
+function msgFilePasser(){ const f=_msg.file; if(!f) return; f.passes++; f.i++; msgFileRender(); }
+function msgFileArreter(){ const f=_msg.file; if(!f) return; const n=f.liste.length-f.i; _msg.file=null; showToast('⏹ Envoi arrêté : '+n+' message(s) non traité(s)'); renderMsgHistory(); msgRender(); }
+
+// ── Trace : historique durable + fiche du contact ──
+function msgTrace(c, canal, mode, statut, extrait, erreur){
+  const SM=SanixMessagerie, u=(typeof currentUser!=='undefined'&&currentUser)?(currentUser.nom||currentUser.email||'—'):'—';
+  window.MSG_HISTORY=SM.ajouter(window.MSG_HISTORY||[], SM.ligneHistorique({canal:canal==='wa'?'WhatsApp':'Email',mode:mode,statut:statut,client_id:c.id,nom:c.nom,extrait:extrait,commercial:u,erreur:erreur}), 500);
+  lsSave('msg_history', window.MSG_HISTORY);
+  if(statut==='echec') return;
+  // fiche du contact (le serveur écrit déjà l'interaction pour un envoi Gmail d'une fiche synchronisée)
+  if(mode==='gmail' && c._rid) return;
+  if(!c.interactions) c.interactions=[];
+  const et=aiGetEtape(c);
+  c.interactions.push({date:new Date().toISOString(),type:canal==='wa'?'Message WhatsApp':(mode==='gmail'?'Email (Gmail)':'Email'),note:'Messagerie : '+String(extrait||'').replace(/\s+/g,' ').trim().slice(0,80),etape:Math.max(et,1),ico:'💬'});
+  c.updated_at=new Date().toISOString(); saveStore('clients');
+}
+function renderMsgHistory(){
+  const el=document.getElementById('msg-history-list'); if(!el) return;
+  const hist=window.MSG_HISTORY||[], cnt=document.getElementById('msg-hist-count'); if(cnt) cnt.textContent=hist.length;
+  if(!hist.length){ el.innerHTML='<div class="msg-vide">Aucun message envoyé pour l\'instant</div>'; return; }
+  const ST={envoye:['✅','envoyé'],ouvert:['📱','ouvert, à envoyer dans l\'application'],echec:['❌','échec']};
+  el.innerHTML=hist.slice(0,50).map(m=>{ const s=ST[m.statut]||['•',m.statut||''];
+    return '<div class="msg-hist"><div class="msg-hist-ico" style="background:'+(m.canal==='WhatsApp'?'#25D36622':'var(--primary-l)')+'">'+(m.canal==='WhatsApp'?'💬':'📧')+'</div>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:700;color:var(--text2)">'+_msgEsc(m.nom||'—')+' · '+_msgEsc(m.canal)+' · '+s[0]+' '+_msgEsc(s[1])+'</div>'
+      +'<div class="msg-sous" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_msgEsc(m.erreur||m.extrait)+'</div><div class="msg-sous">par '+_msgEsc(m.commercial)+'</div></div>'
+      +'<div class="msg-sous" style="flex-shrink:0">'+new Date(m.date).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+'</div></div>'; }).join('');
+}
+
+// ── Modèles (livrés + les vôtres) ──
+function msgModeles(){
+  const perso=(CONFIG.messagerieModeles||[]).map(m=>({id:'u'+m.id,rid:m.id,canal:m.canal,titre:m.titre,msg:m.msg,seg:'perso',perso:true}));
+  const base=MSG_TEMPLATES.map((t,i)=>({id:'b'+i,canal:t.canal,titre:t.titre,msg:t.msg,seg:t.fc||'gen'}));
+  const seg=_msgG('msg-tpl-seg');
+  return perso.concat(base).filter(t=>t.canal===_msg.canal && (!seg || t.seg===seg));
+}
+function msgRenderModeles(){
+  const el=document.getElementById('msg-templates'); if(!el) return;
+  const l=msgModeles();
+  el.innerHTML=l.length ? l.map(t=>'<div class="msg-template'+(_msg.tplId===t.id?' selected':'')+'" onclick="msgChoisirModele(\''+t.id+'\')">'
+    +'<div class="flex items-center gap-2 justify-between"><div style="font-weight:600;font-size:12px">'+_msgEsc(t.titre)+'</div><span style="display:flex;gap:6px;align-items:center">'+(t.perso?'<span class="badge badge-muted">Mon modèle</span><button class="msg-suppr" title="Supprimer ce modèle" onclick="event.stopPropagation();msgSupprimerModele(\''+_msgEsc(t.rid)+'\')">🗑</button>':'')+'<span class="badge '+(t.canal==='wa'?'badge-success':'badge-primary')+'">'+(t.canal==='wa'?'WhatsApp':'Email')+'</span></span></div>'
+    +'<div class="msg-sous" style="margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_msgEsc(SanixMessagerie.separerObjet(t.msg).corps.replace(/\s+/g,' ').slice(0,90))+'…</div></div>').join('')
+    : '<div class="msg-vide">Aucun modèle pour ce canal et ce filtre.</div>';
+}
+function msgChoisirModele(id){
+  const t=msgModeles().find(x=>x.id===id); if(!t) return;
+  const s=SanixMessagerie.separerObjet(t.msg);
+  document.getElementById('msg-text').value=s.corps; document.getElementById('msg-objet').value=s.objet;
+  _msg.tplId=id; _msg.tplTexte=s.corps; msgRenderModeles(); msgRender();
+}
+function selectTemplate(i){ const t=MSG_TEMPLATES[i]; if(t) msgChoisirModele('b'+i); }   // ancien nom, conservé
+function msgSauverModele(){
+  const titre=_msgG('msg-tpl-titre').trim(), corps=_msgG('msg-text').trim(), objet=_msgG('msg-objet').trim();
+  if(!corps){ showToast('❌ Rédigez d\'abord un message à enregistrer','error'); return; }
+  if(!titre){ showToast('❌ Donnez un nom au modèle','error'); document.getElementById('msg-tpl-titre').focus(); return; }
+  const msg=_msg.canal==='email'&&objet ? 'Objet : '+objet+'\n\n'+corps : corps;
+  CONFIG.messagerieModeles=(CONFIG.messagerieModeles||[]).concat([{id:'m'+Date.now().toString(36),canal:_msg.canal,titre:titre,msg:msg}]);
+  persistConfig(); document.getElementById('msg-tpl-titre').value=''; msgRenderModeles();
+  showToast('✅ Modèle « '+titre+' » enregistré');
+}
+function saveTemplate(){ msgSauverModele(); }   // ancien nom, conservé
+function msgSupprimerModele(rid){
+  const m=(CONFIG.messagerieModeles||[]).find(x=>x.id===rid); if(!m) return;
+  if(!confirm('Supprimer le modèle « '+m.titre+' » ?')) return;
+  CONFIG.messagerieModeles=CONFIG.messagerieModeles.filter(x=>x.id!==rid); persistConfig();
+  if(_msg.tplId==='u'+rid) _msg.tplId=''; msgRenderModeles();
+}
+function sendMessage(){ msgEnvoyer(); }   // ancien nom, conservé
 
 // ─── DEAL MODAL ─────────────────────────
 // ─── POPULATE DEAL CLIENT SELECT ────────
@@ -10409,8 +10625,10 @@ function initParametres() {
 
 // ─── TOAST ───────────────────────────────
 function showToast(msg, dur=3000) {
+  // 2e argument : durée en ms, ou 'error' (rouge, reste affiché plus longtemps)
+  const erreur = dur==='error'; if(typeof dur!=='number') dur = erreur ? 6000 : 3000;
   const toast = document.createElement('div');
-  toast.style.cssText='position:fixed;bottom:24px;right:24px;background:#0F172A;color:#F8FAFC;padding:10px 18px;border-radius:var(--r-sm);font-size:12px;font-weight:600;z-index:9000;box-shadow:var(--sh-lg);animation:fadeIn .2s ease';
+  toast.style.cssText='position:fixed;bottom:24px;right:24px;background:'+(erreur?'#991B1B':'#0F172A')+';color:#F8FAFC;padding:10px 18px;border-radius:var(--r-sm);font-size:12px;font-weight:600;z-index:9000;box-shadow:var(--sh-lg);animation:fadeIn .2s ease';
   toast.textContent = msg;
   document.body.appendChild(toast);
   setTimeout(()=>{ toast.style.opacity='0'; toast.style.transition='opacity .3s'; setTimeout(()=>toast.remove(),300); }, dur);
