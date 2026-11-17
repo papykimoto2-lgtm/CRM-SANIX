@@ -1,12 +1,14 @@
-// Canaux sortants : WhatsApp Business Cloud API, e-mail (Resend).
+// Canaux sortants : WhatsApp Business Cloud API, e-mail (Resend, sinon le Gmail connecté au CRM).
 // Règles : opt-out bloquant, fenêtre 24 h WhatsApp (hors fenêtre → modèle approuvé Meta uniquement),
 // mention IA au premier contact, lien de désinscription e-mail.
 import { db, env } from "./core.ts";
+import { sendAgentMail } from "./gmail.ts";
+import { gmailDeps } from "./gmail_store.ts";
 
 export type Prospect = {
   id: string; entreprise: string; decideur: string | null; email: string | null;
   whatsapp: string | null; telephone: string | null; phone_norm: string | null;
-  opt_out: boolean; last_inbound_at: string | null; last_outbound_at: string | null; consentement: Record<string, unknown>;
+  opt_out: boolean; crm_rid?: string | null; last_inbound_at: string | null; last_outbound_at: string | null; consentement: Record<string, unknown>;
 };
 
 export const AI_DISCLOSURE =
@@ -61,8 +63,8 @@ export async function sendEmail(p: Prospect, subject: string, text: string): Pro
   if (p.opt_out) return { ok: false, statut: "echec", detail: "Prospect désinscrit : envoi interdit" };
   if (!p.email) return { ok: false, statut: "echec", detail: "Aucune adresse e-mail" };
   const key = env("RESEND_API_KEY", false), from = env("EMAIL_FROM", false);
-  if (!key || !from) return { ok: false, statut: "a_envoyer", detail: "E-mail non configuré : message mis en file" };
   const footer = "\n\n—\nPour ne plus recevoir nos messages, répondez simplement « STOP ».";
+  if (!key || !from) return await sendEmailViaGmail(p, subject, text + footer);
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
@@ -73,6 +75,15 @@ export async function sendEmail(p: Prospect, subject: string, text: string): Pro
   const j = await r.json().catch(() => ({}));
   if (!r.ok) return { ok: false, statut: "echec", detail: `E-mail ${r.status}: ${j?.message ?? "erreur"}` };
   return { ok: true, statut: "envoye", detail: "Envoyé", external_id: j?.id };
+}
+
+/** E-mail d'un agent par le Gmail connecté au CRM (voir gmail.ts → sendAgentMail) : il entre dans le journal du CRM, donc dans « Relances ». */
+async function sendEmailViaGmail(p: Prospect, subject: string, text: string): Promise<SendResult> {
+  try {
+    return await sendAgentMail(await gmailDeps(), { client_rid: p.crm_rid ?? null, to: String(p.email), subject, body: text });
+  } catch (e) {
+    return { ok: false, statut: "echec", detail: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** Premier message sortant du fil ? (pour la mention IA obligatoire) */

@@ -61,3 +61,12 @@ Dans le CRM : **Réglages → Envoi d'e-mails par Gmail → 🔗 Connecter Gmail
 | « Google n'a pas remis de jeton durable » | l'accès avait déjà été accordé | retirer l'accès sur <https://myaccount.google.com/permissions> puis recommencer |
 | « Accès Gmail retiré ou expiré » | accès retiré, ou application restée en « Test » (7 jours) | publier l'application (étape 1.6), puis reconnecter |
 | « Non distribué » sur un e-mail | adresse inexistante ou boîte pleine (retour de Gmail) | corriger l'adresse dans la fiche |
+
+
+## E-mails envoyés par les agents IA
+Quand Resend n'est pas configuré, les e-mails des agents partent par **le même Gmail connecté** :
+- Ils respectent la gouvernance : en mode « validation » (réglage actuel), chaque message attend l'accord du président dans **Validations** ; le consentement du prospect reste exigé.
+- Plafond : **30 e-mails d'agents par 24 h** (en plus des 100 du compte). Au-delà, le message reste en file et part le lendemain.
+- Chaque envoi est inscrit dans le journal des e-mails du CRM (expéditeur « Agent IA ») : il apparaît dans **Relances**, dans la fiche client, et la réponse est lue comme les autres.
+- Une réponse arrête les relances de l'agent (compteur remis à zéro) ; une réponse qui **commence par « STOP »** (ou « désinscription », « ne plus recevoir », « arrêtez ») désinscrit le prospect : plus aucun message automatique.
+- Une adresse déjà revenue « non distribuée » n'est jamais renvoyée ; Gmail non connecté : le message reste en file avec la consigne de connecter Gmail.
