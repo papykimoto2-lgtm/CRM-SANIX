@@ -11190,10 +11190,10 @@ function imprimerRecu(cmdId,pid){
   const an=new Date().getFullYear(); let rec=p.recu;
   if(!rec){ let max=parseInt(lsLoad('rec_compteur_'+an),10)||0; COMMANDES.forEach(o=>(o.paiements||[]).forEach(q=>{ const m=new RegExp('^REC-'+an+'-(\\d+)$').exec(q.recu||''); if(m) max=Math.max(max,parseInt(m[1],10)); }));
     rec='REC-'+an+'-'+String(max+1).padStart(3,'0'); lsSave('rec_compteur_'+an,max+1); if(Array.isArray(c.paiements)){ const q=c.paiements.find(x=>x.id===pid); if(q) q.recu=rec; } saveStore('commandes'); }
-  const E=FAC_EMETTEUR, md=SanixPaiements.MODES[p.mode]||SanixPaiements.MODES.inconnu, fm=n=>(n||0).toLocaleString('fr-FR'), tot=SanixPaiements.total(c), reste=SanixPaiements.reste(c);
+  const E=facEmetteur(), md=SanixPaiements.MODES[p.mode]||SanixPaiements.MODES.inconnu, fm=n=>(n||0).toLocaleString('fr-FR'), tot=SanixPaiements.total(c), reste=SanixPaiements.reste(c);
   const w=window.open('','_blank','width=800,height=900'); if(!w){ showToast('⚠️ Autorisez les popups pour imprimer'); return; }
   w.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Reçu ${_facEsc(rec)} — ${_facEsc(c.client)}</title><style>body{font:14px Arial,sans-serif;color:#111;margin:30px}h1{margin:0;font-size:22px}.b{border:1px solid #999;border-radius:6px;padding:12px;margin:14px 0}table{width:100%;border-collapse:collapse}td{padding:6px 4px;border-bottom:1px solid #ddd}.r{text-align:right}.big{font-size:20px;font-weight:700}.sig{display:flex;justify-content:space-between;margin-top:60px;font-size:12px}.bar{margin-top:20px}@media print{.bar{display:none}}</style></head><body>
-<div style="display:flex;justify-content:space-between"><div><b>${E.nom}</b><br>${E.activite}<br>${E.lieu}, ${E.pays}<br>Tél : ${E.tel}<br>${E.email}${_facMentions()}</div><div style="text-align:right"><h1>REÇU DE PAIEMENT</h1>N° ${_facEsc(rec)}<br>Date : ${_facDateLongue(p.date)}</div></div>
+<div style="display:flex;justify-content:space-between"><div><b>${E.nom}</b><br>${E.activite}${E.adresse?'<br>'+_facEsc(E.adresse):''}${E.tel?'<br>Tél : '+_facEsc(E.tel):''}${E.email?'<br>'+_facEsc(E.email):''}${_facMentions()}</div><div style="text-align:right"><h1>REÇU DE PAIEMENT</h1>N° ${_facEsc(rec)}<br>Date : ${_facDateLongue(p.date)}</div></div>
 <div class="b"><table><tr><td>Reçu de</td><td class="r"><b>${_facEsc(c.client)}</b></td></tr><tr><td>Pour la commande</td><td class="r">${_facEsc(c.ref||'')} — ${_facEsc(c.logiciel||'')}</td></tr><tr><td>Mode de règlement</td><td class="r">${_facEsc(md.lib)}${p.ref?' — réf. '+_facEsc(p.ref):''}</td></tr><tr><td class="big">Montant reçu</td><td class="r big">${fm(p.montant)} FCFA</td></tr></table>
 <p>Arrêté le présent reçu à la somme de <b>${_facSomme(p.montant)}</b>.</p></div>
 <table><tr><td>Total de la commande (TTC)</td><td class="r">${fm(c.ttc)} FCFA</td></tr><tr><td>Total payé à ce jour</td><td class="r">${fm(tot)} FCFA</td></tr><tr><td><b>Reste dû</b></td><td class="r"><b>${fm(reste)} FCFA</b></td></tr></table>
@@ -11387,7 +11387,14 @@ function editCommande(id) { openCommandeModal(id); }
 //  FACTURE — modèle officiel SANIX AFRICA (original + copie, filigrane, cachets, QR code de sécurité)
 //  Générée depuis une commande, ou regroupée pour toutes les commandes d'un client. Avec ou sans TVA.
 // ═══════════════════════════════════════
-const FAC_EMETTEUR = { nom:'SANIX AFRICA SARL', activite:'Division Technologies — ERP industriels', division:'SANIX AFRICA Division Technologies', lieu:'Songon Kassamblé', pays:'Côte d\'Ivoire', tel:'+225 0779181075 / 0140017751', email:'paypikmoto2@gmail.com', court:'SANIX AFRICA' };
+const FAC_EMETTEUR = { nom:'SANIX AFRICA', activite:'Division Technologies — ERP industriels', division:'SANIX AFRICA Division Technologies', court:'SANIX AFRICA' };
+// Émetteur des documents officiels (facture, proforma, reçu, devis, contrat) : une seule source, le Paramétrage → Entreprise (forme juridique, adresse, téléphone, e-mail). Rien de personnel n'est écrit dans le code ;
+// une valeur non renseignée (ou restée à son exemple d'origine) n'est pas imprimée, et « SARL » n'apparaît que si la forme juridique est renseignée.
+function facEmetteur(){
+  const c=CONFIG||{}, t=v=>String(v==null?'':v).trim(), forme=t(c.forme), mail=t(c.email), tel=t(c.tel);
+  return Object.assign({},FAC_EMETTEUR,{ nom:FAC_EMETTEUR.court+(forme?' '+forme:''), adresse:t(c.adresse),
+    email:/^contact@sanix-africa\.ci$/i.test(mail)?'':mail, tel:tel.replace(/\D/g,'').length>=8?tel:'' });
+}
 const FAC_PREFIXE = 'SA-FAC';
 const FAC_DERNIER_NUMERO_INITIAL = 7;      // factures 001 à 007 déjà émises avant la génération dans le CRM
 const FAC_ECHEANCE_JOURS = 7;
@@ -11545,7 +11552,7 @@ function factureDonnees(id, avecTva, groupee){
     : verse>0 ? `Avance reçue : <b>${_facSomme(verse)}</b>. Solde restant dû : <b>${_facSomme(reste)}</b>.`
     : `Aucune avance reçue. Solde restant dû : <b>${_facSomme(reste)}</b>.`;
   const dfr = f.date.split('-').reverse().join('/');
-  const qr = [FAC_EMETTEUR.nom,proforma?'FACTURE PROFORMA (non comptabilisée)':'FACTURE '+f.num,dfr,(clientNom||'').toUpperCase(),'TOTAL '+total+' F','AVANCE '+verse+' F','RESTE '+reste+' F'];
+  const qr = [facEmetteur().nom,proforma?'FACTURE PROFORMA (non comptabilisée)':'FACTURE '+f.num,dfr,(clientNom||'').toUpperCase(),'TOTAL '+total+' F','AVANCE '+verse+' F','RESTE '+reste+' F'];
   return {proforma, num:f.num, date:f.date, client:clientNom, clientLignes, lignes, totaux, info:infos.join(' '), avecTva, taux, total, verse, reste, phrase,
     tampon: proforma?'PROFORMA':reste<=0?'SOLDÉE':verse>0?'AVANCE PERÇUE':'À RÉGLER', qr, empreinte:SXHASH.sha256hex(qr.join('\n')).toUpperCase()};
 }
@@ -11555,7 +11562,7 @@ function _facMentions(){
   return p.length?'<br>'+_facEsc(p.join(' · ')):'';
 }
 function factureHtml(d){
-  const E=d.E||FAC_EMETTEUR, img=`<img src="${FAC_LOGO}" alt="">`;
+  const E=d.E||facEmetteur(), img=`<img src="${FAC_LOGO}" alt="">`;
   let wm=''; for(let a=-4;a<9;a++) for(let b=-3;b<7;b++){ const x=283+a*55-b*153, y=45+a*113+b*85; if(x>-120&&x<640&&y>-60&&y<880) wm+=`<div class="wm" style="left:${x}pt;top:${y}pt">${img}<b>${E.nom}</b><i>DOCUMENT SÉCURISÉ · DIVISION TECHNOLOGIES</i></div>`; }
   const lignes=d.lignes.map(l=>`<tr><td><b>${_facEsc(l.titre)}</b>${l.cat?' ('+_facEsc(l.cat)+')':''}${l.desc||l.gras?'<br>'+_facEsc(l.desc)+(l.gras?' <b>'+_facEsc(l.gras)+'</b>':''):''}</td><td>${l.qte}</td><td>${l.offert?'Offerte':_facMontant(l.pu)}</td><td>${l.remise>0?'− '+_facMontant(l.remise):'—'}</td><td>${_facMontant(l.net)}</td></tr>`).join('');
   const totaux=d.totaux.map(t=>`<tr${t[2]?' class="'+t[2]+'"':''}><td>${t[0]}</td><td>${t[1]}</td></tr>`).join('');
@@ -11563,10 +11570,10 @@ function factureHtml(d){
   const page=tag=>`<section class="page"><div class="wms">${wm}</div>
 <div class="tag">${tag}</div>
 <img class="logo" src="${FAC_LOGO}" alt="">
-<div class="co"><b>${E.nom}</b>${E.activite}<br>${E.lieu}, ${E.pays}<br>Tél / WhatsApp : ${E.tel}<br>Email : ${E.email}${_facMentions()}</div>
+<div class="co"><b>${E.nom}</b>${E.activite}${E.adresse?'<br>'+_facEsc(E.adresse):''}${E.tel?'<br>Tél / WhatsApp : '+_facEsc(E.tel):''}${E.email?'<br>Email : '+_facEsc(E.email):''}${_facMentions()}</div>
 <div class="ti"><h1>${d.devis?'DEVIS':d.proforma?'FACTURE PROFORMA':'FACTURE'}</h1>${d.devis?'N° '+_facEsc(d.num):d.proforma?'Devis valant facture — non comptabilisée':'N° '+_facEsc(d.num)}<br>Date : ${_facDateLongue(d.date)}<br>${d.devis?'Valable jusqu\'au : '+_facDateLongue(_facAjouteJours(d.date,d.validite||30)):'Échéance : '+_facDateLongue(_facAjouteJours(d.date,FAC_ECHEANCE_JOURS))}</div>
 <div class="rule"></div>
-<div class="box b1"><h3>ÉMETTEUR</h3><span class="n">${E.division}</span><br>${E.lieu}<br>${E.tel}<br>${E.email}</div>
+<div class="box b1"><h3>ÉMETTEUR</h3><span class="n">${E.division}</span>${E.adresse?'<br>'+_facEsc(E.adresse):''}${E.tel?'<br>'+_facEsc(E.tel):''}${E.email?'<br>'+_facEsc(E.email):''}</div>
 <div class="box b2"><h3>CLIENT</h3><b>${_facEsc((d.client||'').toUpperCase())}</b>${d.clientLignes.map(l=>'<br>'+_facEsc(l)).join('')}</div>
 <div class="flow">
 <table class="it"><colgroup><col style="width:211.6pt"><col style="width:27pt"><col style="width:99.6pt"><col style="width:78.9pt"><col></colgroup>
@@ -11579,7 +11586,7 @@ function factureHtml(d){
 <p class="mode"><b>Mode de règlement :</b> ${d.devis?'À convenir à la commande':'Comptant'}<br><b>TVA :</b> ${d.avecTva?d.taux+' % incluse dans le total TTC':'Non applicable'}</p>
 </div>
 <div class="paid">${d.tampon}</div>
-<div class="stamp"><div class="in">${img}<div><b class="s1">${E.nom}</b><b class="s2">DIVISION TECHNOLOGIES</b>${E.lieu}, ${E.pays}<br>Tél : ${E.tel}<br>${E.email}</div></div></div>
+<div class="stamp"><div class="in">${img}<div><b class="s1">${E.nom}</b><b class="s2">DIVISION TECHNOLOGIES</b>${E.adresse?_facEsc(E.adresse):''}${E.tel?'<br>Tél : '+_facEsc(E.tel):''}${E.email?'<br>'+_facEsc(E.email):''}</div></div></div>
 <div class="qr">${qrSvg}<div><b>QR code de sécurité</b><br>${d.devis?'Scannez pour lire les données du devis (n°, date, client, total).':'Scannez pour lire les données de la facture (n°, date, client, total, avance, reste).'}<br><span class="mono">Empreinte SHA-256 : ${d.empreinte.slice(0,32)}<br>${d.empreinte.slice(32)}</span><br><i>Toute différence avec le document signale une altération.</i></div></div>
 <div class="sig s-l">Pour ${E.court}<br>(cachet et signature)</div><div class="sig s-r">Pour ${_facEsc((d.client||'').toUpperCase())}<br>(${d.devis?'bon pour accord':'lu et approuvé'})</div>
 </section>`;
@@ -11662,9 +11669,9 @@ function contratOfficielHtml(d){
   const cli=_facEsc((d.client||'').toUpperCase());
   const empreinte=d.empreinte, qrSvg=SXQR.svg(d.qr.concat(['SHA256 '+empreinte.slice(0,32)]).join('\n'),{px:84,border:0});
   const SH={
-    head:`<div class="wms">${wm}</div><div class="tag">EXEMPLAIRE</div><img class="logo" src="${FAC_LOGO}" alt=""><div class="co"><b>${E.nom}</b>${E.activite}<br>${E.lieu}, ${E.pays}<br>Tél / WhatsApp : ${E.tel}<br>Email : ${E.email}${_facMentions()}</div><div class="ti"><h1>CONTRAT</h1>${_facEsc((d.forme||SanixContrat.forme()).sousTitre)}<br>N° ${_facEsc(d.ref)}<br>Date : ${_facDateLongue(d.date)}</div><div class="rule"></div>`,
-    boxes:`<div class="box b1"><h3>ÉMETTEUR</h3><span class="n">${E.division}</span><br>${E.lieu}<br>${E.tel}<br>${E.email}</div><div class="box b2"><h3>${(d.forme||SanixContrat.forme()).contrepartie}</h3><b>${cli}</b>${d.clientLignes.map(l=>'<br>'+_facEsc(l)).join('')}</div>`,
-    foot:`<div class="paid">À SIGNER</div><div class="stamp"><div class="in">${img}<div><b class="s1">${E.nom}</b><b class="s2">DIVISION TECHNOLOGIES</b>${E.lieu}, ${E.pays}<br>Tél : ${E.tel}<br>${E.email}</div></div></div><div class="qr">${qrSvg}<div><b>QR code de sécurité</b><br>Scannez pour lire les données du contrat (n°, date, client, logiciel, montant).<br><span class="mono">Empreinte SHA-256 : ${empreinte.slice(0,32)}<br>${empreinte.slice(32)}</span><br><i>Toute différence avec le document signale une altération.</i></div></div><div class="sig s-l">Pour ${E.court}<br>(cachet et signature)</div><div class="sig s-r">Pour ${cli}<br>(lu et approuvé)</div>`
+    head:`<div class="wms">${wm}</div><div class="tag">EXEMPLAIRE</div><img class="logo" src="${FAC_LOGO}" alt=""><div class="co"><b>${E.nom}</b>${E.activite}${E.adresse?'<br>'+_facEsc(E.adresse):''}${E.tel?'<br>Tél / WhatsApp : '+_facEsc(E.tel):''}${E.email?'<br>Email : '+_facEsc(E.email):''}${_facMentions()}</div><div class="ti"><h1>CONTRAT</h1>${_facEsc((d.forme||SanixContrat.forme()).sousTitre)}<br>N° ${_facEsc(d.ref)}<br>Date : ${_facDateLongue(d.date)}</div><div class="rule"></div>`,
+    boxes:`<div class="box b1"><h3>ÉMETTEUR</h3><span class="n">${E.division}</span>${E.adresse?'<br>'+_facEsc(E.adresse):''}${E.tel?'<br>'+_facEsc(E.tel):''}${E.email?'<br>'+_facEsc(E.email):''}</div><div class="box b2"><h3>${(d.forme||SanixContrat.forme()).contrepartie}</h3><b>${cli}</b>${d.clientLignes.map(l=>'<br>'+_facEsc(l)).join('')}</div>`,
+    foot:`<div class="paid">À SIGNER</div><div class="stamp"><div class="in">${img}<div><b class="s1">${E.nom}</b><b class="s2">DIVISION TECHNOLOGIES</b>${E.adresse?_facEsc(E.adresse):''}${E.tel?'<br>Tél : '+_facEsc(E.tel):''}${E.email?'<br>'+_facEsc(E.email):''}</div></div></div><div class="qr">${qrSvg}<div><b>QR code de sécurité</b><br>Scannez pour lire les données du contrat (n°, date, client, logiciel, montant).<br><span class="mono">Empreinte SHA-256 : ${empreinte.slice(0,32)}<br>${empreinte.slice(32)}</span><br><i>Toute différence avec le document signale une altération.</i></div></div><div class="sig s-l">Pour ${E.court}<br>(cachet et signature)</div><div class="sig s-r">Pour ${cli}<br>(lu et approuvé)</div>`
   };
   const J=x=>JSON.stringify(x).replace(/</g,'\\u003c').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029');
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Contrat ${_facEsc(d.ref)} — ${_facEsc(d.client)}</title><style>${FAC_CSS}${CT_CSS}</style></head><body><div id="pages"></div>
@@ -11703,7 +11710,7 @@ function imprimerBonCommande(id) {
         <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Fournisseur</div>
         <strong>${(CONFIG.raisonSociale||'SANIX Africa Division Technologies')}</strong><br>
         <span style="font-size:11px;color:#555">${CONFIG.adresse||'Songon Kassamblé, Abidjan'}<br>
-        ${CONFIG.tel||''} · ${CONFIG.email||'sanixafrica699@gmail.com'}<br>
+        ${[CONFIG.tel,CONFIG.email].map(v=>String(v||'').trim()).filter(Boolean).join(' · ')}<br>
         ${CONFIG.rccm?'RCCM : '+CONFIG.rccm:''} ${CONFIG.cc?'· NCC : '+CONFIG.cc:''}</span>
       </td>
       <td style="border:1px solid #ccc;padding:10px;background:#f5f7fa;vertical-align:top">
@@ -14502,7 +14509,7 @@ function genDocFromDossier(clientId, kind, opts){
   // Variables du contrat : tout ce que le CRM connaît ; le reste reste entre [crochets], surligné, à compléter avant signature.
   const cfgD=CONFIG||{}, repLic=(typeof fcDestinataire==='function')?fcDestinataire(c):'';
   const varsContrat={
-    concedant: SanixContrat.concedant({nom:cfgD.raisonSociale||r.societe||'SANIX Africa',forme:cfgD.forme,capital:cfgD.capital,rccm:cfgD.rccm,adresse:FAC_EMETTEUR.lieu+', '+FAC_EMETTEUR.pays,representant:r.gerant}),
+    concedant: SanixContrat.concedant({nom:cfgD.raisonSociale||r.societe||'SANIX Africa',forme:cfgD.forme,capital:cfgD.capital,rccm:cfgD.rccm,adresse:facEmetteur().adresse||'[Adresse du siège]',representant:r.gerant}),
     concedant_nom:(cfgD.raisonSociale||r.societe||'SANIX Africa').toUpperCase(),
     licencie:c.nom, adresse_licencie:c.adresse||'[Adresse]', representant_licencie:(repLic && !/^madame, monsieur$/i.test(repLic))?repLic:'[Nom]',
     logiciel:log.nom, duree:SanixContrat.duree(log.type_licence), total:fmt(totalHT), maintenance:Number(log.prixMensuel)>0?fmt(log.prixMensuel)+' FCFA par mois':'[Montant] FCFA',
@@ -14513,7 +14520,7 @@ function genDocFromDossier(clientId, kind, opts){
   const fill=s=>SanixContrat.remplir(s||'',varsContrat);
   const modeleComplet = kind==='contrat' && !tpl.trim();   // pas de modèle propre au logiciel : on utilise le modèle complet (14 articles), dans la page officielle
   if(modeleComplet){
-    const E=Object.assign({},FAC_EMETTEUR,{email:CONFIG.email||FAC_EMETTEUR.email, nom:(CONFIG.forme?FAC_EMETTEUR.nom:FAC_EMETTEUR.nom.replace(/\s+SARL\s*$/i,''))});   // pas de « SARL » tant que la forme juridique n'est pas renseignée
+    const E=facEmetteur();
     const fm=SanixContrat.forme(opts&&opts.forme);
     const texte=SanixContrat.corps(SanixContrat.remplir(SanixContrat.modele(fm.cle),varsContrat));
     const qr=[E.nom,'CONTRAT — '+fm.lib.toUpperCase()+' '+ref,today,(c.nom||'').toUpperCase(),log.nom,'TOTAL TTC '+Math.round(ttc)+' F'];
@@ -14529,7 +14536,7 @@ function genDocFromDossier(clientId, kind, opts){
   }
 
   if(kind!=='contrat'){   // DEVIS : même page officielle que la facture proforma (filigrane, ÉMETTEUR / CLIENT, tampon, QR de sécurité, signatures)
-    const E=Object.assign({},FAC_EMETTEUR,{email:CONFIG.email||FAC_EMETTEUR.email, nom:(CONFIG.forme?FAC_EMETTEUR.nom:FAC_EMETTEUR.nom.replace(/\s+SARL\s*$/i,''))});
+    const E=facEmetteur();
     const mods=(log.modules||'').split(',').map(x=>x.trim()).filter(Boolean);
     const dj=_ajd(), dfr=dj.split('-').reverse().join('/');
     const qr=[E.nom,'DEVIS '+ref,dfr,(c.nom||'').toUpperCase(),log.nom,'TOTAL TTC '+Math.round(ttc)+' F'];

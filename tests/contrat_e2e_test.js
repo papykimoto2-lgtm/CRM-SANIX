@@ -16,7 +16,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
       window.__html = ""; window.open = () => ({ document: { write: (h) => { window.__html = h; }, close() {} } });
       if (!LOGICIELS.find((l) => l.nom === "MediCore Suite")) LOGICIELS.push({ id: "log_medicore", nom: "MediCore Suite", modules: "Portail Patient, Agenda", desc: "ERP hospitalier complet. Autres phrases", prixNum: 1500000, prixMensuel: 60000, type_licence: "Perpetuelle" });
       const l = LOGICIELS.find((x) => x.nom === "MediCore Suite"); l.prixMensuel = 60000; l.type_licence = "Perpetuelle";
-      CONFIG.forme = ""; CONFIG.capital = ""; CONFIG.rccm = ""; CONFIG.email = "papykimoto2@gmail.com";
+      CONFIG.forme = ""; CONFIG.capital = ""; CONFIG.rccm = ""; CONFIG.email = "papykimoto2@gmail.com"; CONFIG.tel = "+225 0779181075"; CONFIG.adresse = "Songon Kassamblé, Côte d'Ivoire";
       CLIENTS.push({ id: 999001, nom: "Clinique Alpha", statut: "prospect", phone: "+2250140017751", email: "", secteur: "Santé", logiciel: "MediCore Suite", adresse: "Cocody, Abidjan", contact: "Dr Alpha", valeur: 1500000, valeurSaisie: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
     });
     const generer = (kind) => page.evaluate((k) => { window.__html = ""; genDocFromDossier(999001, k); return window.__html; }, kind);
@@ -63,7 +63,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(/SANIX AFRICA\b/.test(info.co) && !/SARL/.test(info.co) && !/société de droit ivoirien/i.test(info.ex1) && !/au capital/i.test(info.co + info.ex1), "ni « SARL », ni « société de droit ivoirien », ni capital tant que la forme juridique n'est pas renseignée");
     ok(/papykimoto2@gmail\.com/.test(info.co) && !/paypikmoto2/.test(html), "l'adresse e-mail est celle des réglages (papykimoto2@gmail.com)");
     ok(/Clinique Alpha, société \[forme juridique\]/.test(info.ex1) && /Frais initiaux de licence : 1.500.000 FCFA HT/.test(info.ex1) && /durée indéterminée/.test(info.ex1), "texte rempli depuis la fiche et le catalogue");
-    ok(/dont le siège est situé à Songon Kassamblé, Côte d'Ivoire/.test(info.ex1) && /Songon Kassamblé/.test(info.co), "le siège du Concédant dans le texte est celui du bloc entreprise de la page");
+    ok(/dont le siège est situé à Songon Kassamblé, Côte d'Ivoire/.test(info.ex1) && /Songon Kassamblé/.test(info.co), "le siège du Concédant dans le texte est celui du Paramétrage, identique au bloc entreprise de la page");
 
     console.log("▶ Compléter le texte, puis recomposition");
     await q.click("#bt-ed"); await q.waitForTimeout(200);
