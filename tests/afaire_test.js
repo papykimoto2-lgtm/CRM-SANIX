@@ -76,4 +76,18 @@ ok(!M.mails.some((x) => [2, 4, 5, 6, 7].includes(x.id)), "exclus : trop récent,
 ok(M.mails[0].jours === 10 && M.mails[0].relanceJours === 4 && M.mails[0].sujet === "Sujet 3", "jours écoulés, délai et objet fournis à l'écran");
 ok(M.total === 3, "les e-mails à relancer comptent dans le total des actions du jour");
 ok(A.construire({ now: NOW, clients: [], commandes: [], rdvs: [], echeances: [], f }).mails.length === 0, "sans Gmail connecté : aucun e-mail dans la liste");
+
+// Variété : MediCore (1,5 M au catalogue) ne doit pas occuper toute la liste.
+const catalogue = (id, nom, logiciel, valeur, phone) => ({ id, nom, logiciel, statut: "prospect", valeur, phone: phone === undefined ? "0700000000" : phone, interactions: [] });
+const grands = [catalogue(101, "Clinique A", "MediCore Suite", 1500000), catalogue(102, "Clinique B", "MediCore Suite", 1500000), catalogue(103, "Clinique C", "MediCore Suite", 1500000), catalogue(104, "Clinique D", "MediCore Suite", 1500000),
+  catalogue(105, "Clinique E", "MediCore Suite", 1500000), catalogue(106, "Promoteur", "ImmoSuite ERP", 750000), catalogue(107, "Atelier", "Sanix AluExpert ERP", 600000), catalogue(108, "Coursier", "Angel's Livraison", 600000), catalogue(109, "Clinique sans tel", "MediCore Suite", 9e6, "")];
+const fv = { valeur: (c) => c.valeur, etape: () => 0, completude: () => 0, perdu: () => false };
+const RV = A.construire({ now: NOW, clients: grands, commandes: [], rdvs: [], echeances: [], f: fv });
+ok(RV.contacts.map((x) => x.id).join() === "101,102,106,107,108", "variété : 5 contacts dont un de chaque logiciel (MediCore, ImmoSuite, AluExpert, Angel's), le 5e étant le 2e MediCore ; l'ordre reste par valeur");
+ok(new Set(RV.contacts.map((x) => x.logiciel)).size === 4, "les 4 logiciels sont tous représentés (avant : 5 cliniques MediCore)");
+const RW = A.construire({ now: NOW, clients: grands, commandes: [], rdvs: [], echeances: [], f: fv, limites: { contacts: 2 } });
+ok(RW.contacts.map((x) => x.id).join() === "101,106", "limite 2 : MediCore puis ImmoSuite (pas deux MediCore)");
+const RX = A.construire({ now: NOW, clients: grands, commandes: [], rdvs: [], echeances: [], f: fv, limites: { variete: false } });
+ok(RX.contacts.map((x) => x.id).join() === "101,102,103,104,105", "variete:false rétablit l'ancien classement pur par valeur");
+ok(!RV.contacts.some((x) => x.id === 109), "sans téléphone : toujours exclu, même à 9 M");
 console.log("À faire aujourd'hui : " + n + " contrôles passés.");
