@@ -125,6 +125,43 @@ export function buildMime(o: { from: string; fromName?: string; to: string; subj
   return [`From: ${name}`, `To: ${o.to}`, `Subject: ${encodeWord(o.subject)}`, "MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64", "", body].join("\r\n");
 }
 
+const wrap76 = (b64: string) => b64.replace(/(.{76})/g, "$1\r\n");
+const safeFile = (n: string) => (String(n ?? "").split(/[\\/]/).pop()!.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^\.+/, "").slice(0, 80) || "piece-jointe");
+/** Message HTML avec pièces jointes éventuelles (rapports) : une seule partie HTML, ou « multipart/mixed » (HTML + pièces jointes en base64). */
+export function buildMimeHtml(o: { from: string; fromName?: string; to: string; subject: string; html: string; attachments?: { filename: string; content: Uint8Array }[]; boundary?: string }): string {
+  for (const v of [o.from, o.fromName ?? "", o.to, o.subject]) if (!headerSafe(v)) throw new GmailError(400, "Caractère interdit dans l'en-tête");
+  if (!validEmail(o.to)) throw new GmailError(400, "Adresse du destinataire invalide");
+  const name = o.fromName ? `"${encodeWord(o.fromName.replace(/["\\]/g, ""))}" <${o.from}>` : o.from;
+  const head = [`From: ${name}`, `To: ${o.to}`, `Subject: ${encodeWord(o.subject)}`, "MIME-Version: 1.0"];
+  const html = wrap76(std64(new TextEncoder().encode(o.html)));
+  const atts = o.attachments ?? [];
+  if (!atts.length) return [...head, "Content-Type: text/html; charset=UTF-8", "Content-Transfer-Encoding: base64", "", html].join("\r\n");
+  const b = o.boundary ?? "sx" + b64url(crypto.getRandomValues(new Uint8Array(12)));
+  const parts = [`--${b}`, "Content-Type: text/html; charset=UTF-8", "Content-Transfer-Encoding: base64", "", html];
+  for (const a of atts) {
+    const f = safeFile(a.filename);
+    parts.push(`--${b}`, `Content-Type: application/octet-stream; name="${f}"`, `Content-Disposition: attachment; filename="${f}"`, "Content-Transfer-Encoding: base64", "", wrap76(std64(a.content)));
+  }
+  parts.push(`--${b}--`, "");
+  return [...head, `Content-Type: multipart/mixed; boundary="${b}"`, "", ...parts].join("\r\n");
+}
+const MAX_MAIL_OCTETS = 20 * 1024 * 1024;   // Gmail refuse au-delà de 25 Mo : marge pour l'encodage
+
+/** Envoi d'un e-mail du système (rapports de direction) par le Gmail connecté. N'écrit PAS dans le journal des e-mails de prospects (ni relance, ni statistiques de prospection). */
+export async function sendSystemMail(d: Deps, m: { to: string; subject: string; html: string; attachments?: { filename: string; content: Uint8Array }[]; from_name?: string }): Promise<{ id: string }> {
+  const to = String(m.to ?? "").trim(), subject = String(m.subject ?? "").replace(/[\r\n]+/g, " ").trim().slice(0, 300);
+  if (!validEmail(to)) throw new GmailError(400, "Adresse du destinataire invalide");
+  if (!subject) throw new GmailError(400, "Objet vide");
+  if ((m.attachments ?? []).reduce((t, a) => t + a.content.length, 0) + m.html.length > MAX_MAIL_OCTETS) throw new GmailError(413, "Message trop volumineux pour Gmail");
+  const { token, email } = await accessToken(d);
+  const fromName = String(m.from_name ?? "").replace(/[\r\n"\\]/g, " ").trim().slice(0, 80) || undefined;
+  const raw = b64url(buildMimeHtml({ from: email, fromName, to, subject, html: m.html, attachments: m.attachments }));
+  const r = await d.fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ raw }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.id) throw new GmailError(r.status === 401 || r.status === 403 ? 409 : 502, "Gmail a refusé l'envoi : " + String(j?.error?.message || r.status).slice(0, 300));
+  return { id: String(j.id) };
+}
+
 // ───────────────────────── Lecture d'un fil (en-têtes seulement) ─────────────────────────
 export const addressOf = (header: string): string => { const m = /<([^>]+)>/.exec(header) ?? /([^\s<>"]+@[^\s<>"]+)/.exec(header); return (m ? m[1] : header).trim().toLowerCase(); };
 /** Adresses citées dans l'en-tête X-Failed-Recipients d'un retour d'erreur (Gmail y met le destinataire en échec). */

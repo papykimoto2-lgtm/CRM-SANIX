@@ -165,6 +165,7 @@ function buildMime(o) {
   const body = std64(new TextEncoder().encode(o.text.replace(/\r?\n/g, "\r\n"))).replace(/(.{76})/g, "$1\r\n");
   return [`From: ${name}`, `To: ${o.to}`, `Subject: ${encodeWord(o.subject)}`, "MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64", "", body].join("\r\n");
 }
+var MAX_MAIL_OCTETS = 20 * 1024 * 1024;
 var addressOf = (header) => {
   const m = /<([^>]+)>/.exec(header) ?? /([^\s<>"]+@[^\s<>"]+)/.exec(header);
   return (m ? m[1] : header).trim().toLowerCase();
@@ -411,7 +412,7 @@ async function disconnect(d) {
   await d.store.deleteAccount();
 }
 
-// functions/crm-gmail/index.ts
+// functions/_shared/gmail_store.ts
 var store = {
   async getAccount() {
     const { data } = await db().from("crm_mail_account").select("email, token_enc, status, scopes").eq("id", 1).maybeSingle();
@@ -476,8 +477,17 @@ async function tokenKey() {
   for (const b of h) bin += String.fromCharCode(b);
   return btoa(bin);
 }
-var TOKEN_KEY = await tokenKey();
-var deps = { fetch: (u, i) => fetch(u, i), now: () => /* @__PURE__ */ new Date(), env: (n) => n === "GMAIL_TOKEN_KEY" ? TOKEN_KEY : Deno.env.get(n) ?? "", store };
+var _deps = null;
+async function gmailDeps() {
+  if (!_deps) {
+    const key = await tokenKey();
+    _deps = { fetch: (u, i) => fetch(u, i), now: () => /* @__PURE__ */ new Date(), env: (n) => n === "GMAIL_TOKEN_KEY" ? key : Deno.env.get(n) ?? "", store };
+  }
+  return _deps;
+}
+
+// functions/crm-gmail/index.ts
+var deps = await gmailDeps();
 function fail(req, e) {
   if (e instanceof HttpError || e instanceof GmailError) return json(req, { error: e.message }, e.status);
   console.error("crm-gmail", errMsg(e));

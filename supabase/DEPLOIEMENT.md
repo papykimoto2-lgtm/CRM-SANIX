@@ -48,7 +48,7 @@ Ces fichiers sont générés (`sh supabase/build_functions.sh`, Node requis) : l
 |---|---|---|
 | `ANTHROPIC_API_KEY` | oui | clé de la console Anthropic. **Seul endroit où la saisir** (jamais dans le navigateur ni dans le dépôt). |
 | `CRON_SECRET` | **non** | rien à saisir : `schedule_cron.sql` (§3) garde le secret du planificateur dans le Vault et les fonctions le lisent par `ai_cron_secret()`. Secret Edge facultatif, utilisé seulement en repli (installation sans Vault). |
-| `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO` | pour les rapports par e-mail | envoi via Resend |
+| `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO` | facultatifs : rapports par e-mail via Resend (avec PDF) | sans eux, les rapports partent par le **Gmail connecté** au CRM (Paramétrage → Relances), PDF joint ; sans Gmail connecté non plus, le rapport est généré mais non envoyé |
 | `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_TEMPLATE_FIRST` | pour WhatsApp | API WhatsApp Cloud (webhook : `https://izgpvhwhbrgeagjfhfli.supabase.co/functions/v1/whatsapp-webhook`) |
 | `DEMO_VISIO_URL` | non | lien de visio proposé aux prospects |
 
