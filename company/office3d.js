@@ -237,7 +237,7 @@ export async function createOffice(container, hooks = {}) {
       add(w + (hz ? 0.04 : 0.02), 0.07, d + (hz ? 0.02 : 0.04), TRIM, 0, WALL_H + 0.035, 0);
       const sm = new THREE.Mesh(K.mergeGeos(solid), K.matte); sm.castShadow = Q.shadows; sm.receiveShadow = true; sm.userData.ownGeo = true; wg.add(sm);
       if (pane.length) { const gm = new THREE.Mesh(K.mergeGeos(pane.map((p) => (p.index ? p.toNonIndexed() : p))), glassMat); gm.userData.ownGeo = true; wg.add(gm); }
-      g.add(wg); S.walls.push({ g: wg, nx, nz, x: r.x + x, z: r.z + z, s: 1 });
+      g.add(wg); const wo = { g: wg, sm, nx, nz, x: r.x + x, z: r.z + z, s: 1, glass: null }; S.walls.push(wo); wallLook(wo);
     };
     const windowN = top && r.id !== "direction";
     wall(r.w, 0.25, 0, -r.d / 2, 0, -1, { window: windowN });
@@ -555,6 +555,7 @@ export async function createOffice(container, hooks = {}) {
 
   function step(dt) {
     simMs += dt * 1000;
+    if (viewMode === "exterior" && !userMoved && !reduced) goal.theta += dt * 0.1;   // tour lent autour du bâtiment ; s'arrête dès que l'on touche à la caméra
     // création progressive des avatars
     spawnQueued(Q.perFrame);
     if (simMs - (step.last ?? -1e9) > 1000) { step.last = simMs; reconcileAll(); assignDetail(); }   // échéances de déplacement, pauses détente
@@ -610,6 +611,20 @@ export async function createOffice(container, hooks = {}) {
     });
   }
 
+  // ─────────────────────────── réglages d'affichage : murs et étiquettes ───────────────────────────
+  // murs : « auto » (les murs côté caméra s'abaissent), « bas » (tous abaissés), « verre » (tous à hauteur normale mais translucides : on voit tout l'intérieur).
+  let wallMode = "auto", labelMode = "auto";
+  function wallLook(w) {
+    if (!w.sm) return;
+    if (wallMode === "verre") {
+      if (!w.glass) { w.glass = K.matte.clone(); w.glass.transparent = true; w.glass.opacity = 0.2; w.glass.depthWrite = false; S.ownMats.push(w.glass); }
+      w.sm.material = w.glass; w.sm.castShadow = false;
+    } else { w.sm.material = K.matte; w.sm.castShadow = Q.shadows; }
+  }
+  const WALL_MODES = ["auto", "bas", "verre"], LABEL_MODES = ["auto", "responsables", "toutes", "aucune"];
+  function setWallMode(m) { if (!WALL_MODES.includes(m) || m === wallMode) return; wallMode = m; for (const w of S.walls) wallLook(w); if (!running) renderOnce(); hooks.onDisplay?.({ walls: wallMode, labels: labelMode }); }
+  function setLabelMode(m) { if (!LABEL_MODES.includes(m) || m === labelMode) return; labelMode = m; labelFrame = 0; if (!running) renderOnce(); hooks.onDisplay?.({ walls: wallMode, labels: labelMode }); }
+
   // ─────────────────────────── caméra ───────────────────────────
   const orbit = { tx: 0, ty: 0, tz: 0, theta: 0, phi: 0.86, r: 80 }, goal = { ...orbit };
   function fitPoints(pts, phi = 0.86, theta = 0) {
@@ -628,6 +643,12 @@ export async function createOffice(container, hooks = {}) {
     const rooms = S.rooms; if (!rooms.length) return;
     let t = null;
     if (viewMode === "general") t = fitPoints(rooms.flatMap(roomPts), 0.92, 0.42);
+    else if (viewMode === "aerial") t = fitPoints(rooms.flatMap(roomPts), 0.05, 0);                    // vue aérienne : verticale, toute l'organisation d'un coup
+    else if (viewMode === "iso") t = fitPoints(rooms.flatMap(roomPts), 1.04, 0.62);                    // isométrique douce : moins plongeante que la vue d'ensemble
+    else if (viewMode === "exterior") {                                                                 // extérieure : rotation lente ; le recul couvre tous les angles
+      const pts = rooms.flatMap(roomPts), fits = [0, 0.8, 1.6, 2.4].map((th) => fitPoints(pts, 1.0, th)), cur = Number.isFinite(orbit.theta) ? orbit.theta : 0.42;
+      t = { ...fits[0], r: Math.max(...fits.map((f) => f.r)) * 1.06, phi: 1.0, theta: cur };
+    }
     else if (viewMode === "executive") { const row = rooms.filter((r) => r.row === 0); t = row.length ? fitPoints(row.flatMap(roomPts), 0.95, 0.3) : null; }   // étage de direction : réunion, bureau du directeur, supervision
     else if (viewMode === "dept" || viewMode === "direction" || viewMode === "meeting" || viewMode === "supervision") {
       const id = viewMode === "dept" ? viewArg : viewMode === "meeting" ? "reunion" : viewMode, r = S.byRoom.get(id);
@@ -719,7 +740,7 @@ export async function createOffice(container, hooks = {}) {
       const a = av.agent, sel = av.id === selectedId, hov = av.id === hovered;
       V.set(av.root.position.x, av.top + 0.75, av.root.position.z).project(camera);
       av.sx = (V.x * 0.5 + 0.5) * w; av.sy = (-V.y * 0.5 + 0.5) * h; av.vis = V.z < 1 && Math.abs(V.x) < 1.05 && Math.abs(V.y) < 1.05;
-      av.want = av.vis && (sel || hov || a.niveau <= 2 || near || av.id === followId); av.prio = sel ? 0 : hov ? 1 : a.niveau;
+      av.want = av.vis && (sel || hov || av.id === followId || (labelMode === "auto" ? (a.niveau <= 2 || near) : labelMode === "responsables" ? a.niveau <= 2 : labelMode === "toutes")); av.prio = sel ? 0 : hov ? 1 : a.niveau;
       // bulle de parole
       const b = av.bubble;
       if (b && now > b.until) av.bubble = null;
@@ -747,7 +768,7 @@ export async function createOffice(container, hooks = {}) {
     const low = orbit.phi > 1.18;
     for (const w of S.walls) {
       const outside = (camera.position.x - w.x) * w.nx + (camera.position.z - w.z) * w.nz > 0;
-      const target = outside || low ? 0.16 : 1; w.s += (target - w.s) * Math.min(1, dt * 7); w.g.scale.y = Math.max(0.1, w.s);
+      const target = wallMode === "bas" ? 0.16 : wallMode === "verre" ? 1 : (outside || low ? 0.16 : 1); w.s += (target - w.s) * Math.min(1, dt * 7); w.g.scale.y = Math.max(0.1, w.s);
     }
   };
   let lastFrameT = 0;
@@ -880,6 +901,12 @@ export async function createOffice(container, hooks = {}) {
   const now = () => new Date(wallNow()).toISOString();
 
   start();
-  return { update, patchAgent, pushEvent, setMeetings, select: (id, f) => select(id, f), setView, resetView, zoom, setQuality, setActive, dispose, element: dom, screenPositionOf, advance, inspect, desk, collides, stats, board, feedLines, now, has,
+  const getView = () => ({ mode: viewMode, arg: viewArg, orbit: viewMode === "free" ? { tx: goal.tx, tz: goal.tz, r: goal.r, phi: goal.phi, theta: goal.theta } : null });
+  function restoreView(v) {
+    if (!v || typeof v.mode !== "string") return;
+    if (v.mode === "free" && v.orbit) { viewMode = "free"; viewArg = null; userMoved = true; for (const k of ["tx", "tz", "r", "phi", "theta"]) if (Number.isFinite(v.orbit[k])) goal[k] = v.orbit[k]; hooks.onView?.({ mode: "free" }); }
+    else if (v.mode !== "follow") setView(v.mode, v.arg ?? undefined);
+  }
+  return { orbitTheta: () => orbit.theta, get _camera() { return camera; }, setWallMode, setLabelMode, getView, restoreView, get display() { return { walls: wallMode, labels: labelMode }; }, update, patchAgent, pushEvent, setMeetings, select: (id, f) => select(id, f), setView, resetView, zoom, setQuality, setActive, dispose, element: dom, screenPositionOf, advance, inspect, desk, collides, stats, board, feedLines, now, has,
     settleCamera: () => { Object.assign(orbit, goal); renderOnce(); }, get quality() { return qName; }, get _scene() { return scene; }, get view() { return { mode: viewMode, arg: viewArg, follow: followId }; } };
 }
