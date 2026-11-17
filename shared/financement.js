@@ -594,7 +594,7 @@
   const pad = (n) => (n < 10 ? '0' : '') + n;
   const monthKey = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1);
   const LSK = 'fin_config';
-  const ui = { tab: 'synthese', atelier: null, prevPts: null, liens: {} };
+  const ui = { sub: 'depart', tab: 'synthese', atelier: null, prevPts: null, liens: {} };
   let ov = null, h = null, base = null, res = null;
   const root = () => document.getElementById('view-financement');
   const toast = (m) => { try { showToast(m); } catch (e) { /* hors CRM */ } };
@@ -801,15 +801,18 @@
   function tabSynthese() { return controles() + '<div id="fin-out">' + out() + '</div>'; }
 
   /* — onglet Hypothèses — */
+  /** Sections de l'onglet Hypothèses : [clé, bouton, début du titre du bloc]. Une seule est affichée à la fois (ou « Tout »). */
+  const SECTIONS_HYP = [['depart', '📊 Départ', '📊'], ['logiciels', '📦 Logiciels', '📦'], ['ventes', '🚀 Ventes', '🚀'], ['couts', '💸 Coûts', '💸'], ['infra', '☁️ Infra', '☁️'], ['equipe', '👥 Équipe', '👥'], ['invest', '🏗️ Invest.', '🏗️'], ['capital', '🧾 Capital', '🧾'], ['conditions', '🏦 Conditions', '🏦']];
   function tabHyp() {
     const prodsOn = (h.produits || []).some((p) => pos(p.part) > 0);
-    const c = base, bloc = (titre, corps) => `<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">${titre}</span></div>${corps}</div>`;
+    const c = base, bloc = (titre, corps) => { const sec = SECTIONS_HYP.filter((x) => titre.indexOf(x[2]) === 0)[0]; if (sec && ui.sub !== 'tout' && sec[0] !== ui.sub) return ''; return `<div class="card" style="margin-bottom:16px"><div class="card-header"><span class="card-title">${titre}</span></div>${corps}</div>`; };
     const grid = (x) => `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">${x}</div>`;
     const an = (k, lab) => [0, 1, 2, 3].map((i) => field(lab + ' — année ' + (i + 2) + ' (%)', k + '.' + i, h[k][i])).join('');
     const poste = (p) => `<tr><td><input class="form-input" data-p="${esc(p.id)}" data-f="nom" value="${esc(p.nom)}"></td><td><input class="form-input" type="number" min="0" style="width:64px" data-p="${esc(p.id)}" data-f="nb" value="${num(p.nb)}"></td>
       <td><input class="form-input" type="number" min="0" style="width:110px" data-p="${esc(p.id)}" data-f="cout" value="${num(p.cout)}"></td><td><input class="form-input" type="number" min="0" max="59" style="width:64px" data-p="${esc(p.id)}" data-f="debut" value="${num(p.debut)}"></td>
       <td style="text-align:center"><input type="checkbox" data-p="${esc(p.id)}" data-f="finance" ${p.finance ? 'checked' : ''}></td><td style="text-align:center"><input type="checkbox" data-p="${esc(p.id)}" data-f="acquisition" ${p.acquisition ? 'checked' : ''}></td><td style="text-align:center"><input type="checkbox" data-p="${esc(p.id)}" data-f="tech" ${p.tech ? 'checked' : ''}></td><td><button class="btn btn-outline btn-sm" data-act="poste-del" data-id="${esc(p.id)}" aria-label="Supprimer ce poste">🗑</button></td></tr>`;
-    return `<div class="alert alert-warn" role="note">⚠️ Les valeurs initiales sont <b>indicatives</b> : seuls le nombre de clients, le prix moyen, la base installée et la commission viennent du CRM. Vérifiez chaque hypothèse avant de remettre le dossier à un financeur.</div>
+    const nav = `<div class="fin-sub" role="tablist" aria-label="Sections des hypothèses">${SECTIONS_HYP.map((x) => `<button type="button" class="fin-sub-b ${ui.sub === x[0] ? 'on' : ''}" role="tab" aria-selected="${ui.sub === x[0]}" data-sub="${x[0]}">${x[1]}</button>`).join('')}<button type="button" class="fin-sub-b ${ui.sub === 'tout' ? 'on' : ''}" role="tab" aria-selected="${ui.sub === 'tout'}" data-sub="tout">☰ Tout</button></div>`;
+    return nav + `<div class="alert alert-warn" role="note">⚠️ Les valeurs initiales sont <b>indicatives</b> : seuls le nombre de clients, le prix moyen, la base installée et la commission viennent du CRM. Vérifiez chaque hypothèse avant de remettre le dossier à un financeur.</div>
       ${bloc('📊 Point de départ (lu dans le CRM)', `<div class="stats-grid" style="margin:0">${stat('CA HT réalisé, ' + (moisActivite() !== null && moisActivite() < 12 ? 'depuis le début (' + moisActivite() + ' mois)' : '12 mois'), fmtM(c.ca12m), c.commandes12m + ' commandes', 'blue')}${stat('CA HT cumulé', fmtM(c.caTotal), c.commandesTotal + ' commandes', 'green')}${stat('Pipeline pondéré', fmtM(c.pipelinePondere), 'Brut : ' + fmtM(c.pipelineBrut), 'orange')}${stat('Clients actifs', c.clients, c.produits + ' produits au catalogue', 'purple')}</div>`)}
       ${bloc('📦 Logiciels et contrats', tabLogiciels())}
       ${bloc('🚀 Ventes', (prodsOn ? note('⚠️ Le prix, la maintenance et les frais initiaux sont réglés <b>logiciel par logiciel</b> (bloc ci-dessus) : les champs « Prix moyen », « Maintenance » et « Services » ci-dessous ne servent que si aucun logiciel n\'a de part des ventes.') : '') + grid(field('Début d\'activité (AAAA-MM)', 'debutActivite', h.debutActivite, { text: true }) + field('Nouveaux clients, année 1', 'clientsAn1', h.clientsAn1) + field('Prix moyen HT par licence', 'prixLicence', h.prixLicence) + field('Hausse annuelle des prix (%)', 'hausseAn', h.hausseAn) + field('Maintenance (% de la base installée / an)', 'maintenancePct', h.maintenancePct) + field('Maintenance : facturée à partir de … mois après la vente (1re année incluse)', 'maintDelaiMois', h.maintDelaiMois, { min: 0 }) + field('Ancienneté moyenne de la base installée (mois)', 'baseAgeMois', h.baseAgeMois, { min: 0, hint: base.ageBaseMois != null ? '(CRM : ' + Math.round(base.ageBaseMois) + ')' : '' }) + field('Rétention des clients (% / an)', 'retentionPct', h.retentionPct) + field('Services : installation, formation (% des licences)', 'servicesPct', h.servicesPct) + field('Base installée (CA HT déjà vendu)', 'baseInstallee', h.baseInstallee) + field('Délai d\'encaissement (mois)', 'delaiEncaissement', h.delaiEncaissement, { min: 0 })) + '<h4 style="margin:14px 0 8px;font-size:13px">Croissance du nombre de nouveaux clients — avec financement</h4>' + grid(an('croiss', 'Croissance')) + '<h4 style="margin:14px 0 8px;font-size:13px">Sans financement (l\'activité actuelle, limitée par les moyens)</h4>' + grid(an('croissSans', 'Croissance')))}
@@ -1100,11 +1103,12 @@
   function bind() {
     const el = root(); if (!el || el.dataset.bound) return; el.dataset.bound = '1';
     const act = (t) => {
+      if (t.dataset.sub) { ui.sub = t.dataset.sub; render(); return; }
       if (t.dataset.tab) { ui.tab = t.dataset.tab; render(); return; }
       const a = t.dataset.act; if (!a) return;
       if (a === 'atelier') { ui.atelier = { al: t.dataset.al, opt: t.dataset.opt }; ui.tab = 'synthese'; render(); const z = document.getElementById('fin-atelier'); if (z && z.scrollIntoView) z.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
       if (a === 'atelier-close') { ui.atelier = null; render(); return; }
-      if (a === 'goto-postes') { ui.tab = 'hyp'; render(); const z = document.querySelector('#fin-body [data-p]'); if (z) { const c = z.closest('.card') || z; if (c.scrollIntoView) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
+      if (a === 'goto-postes') { ui.tab = 'hyp'; ui.sub = 'equipe'; render(); const z = document.querySelector('#fin-body [data-p]'); if (z) { const c = z.closest('.card') || z; if (c.scrollIntoView) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
       const appliquer = (h2, qui) => {
         if (!confirm(qui + '\n\nVos hypothèses seront modifiées et la mention « document de travail » reviendra. « Réinitialiser » (onglet Hypothèses) remet les valeurs initiales. Continuer ?')) return;
         Object.keys(h2).forEach((k) => { if (k === 'produits') diffProduits(h.produits, h2.produits).forEach((d) => editProduit(d.id, d.champ, d.valeur)); else if (JSON.stringify(h2[k]) !== JSON.stringify(h[k])) edit(k, clone(h2[k])); });
@@ -1121,7 +1125,7 @@
       else if (a === 'poste-add') { ov.valide = false; if (!('postes' in ov)) ov.postes = clone(h.postes); ov.postes.push({ id: 'p' + Date.now().toString(36), nom: 'Nouveau poste', nb: 1, cout: 300000, debut: 6, finance: true }); persist(); recompute(); render(); }
       else if (a === 'poste-del') { ov.valide = false; if (!('postes' in ov)) ov.postes = clone(h.postes); ov.postes = ov.postes.filter((p) => p.id !== t.dataset.id); persist(); recompute(); render(); }
     };
-    el.addEventListener('click', (e) => { const t = e.target.closest('[data-tab],[data-act]'); if (t) act(t); });
+    el.addEventListener('click', (e) => { const t = e.target.closest('[data-tab],[data-sub],[data-act]'); if (t) act(t); });
     el.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.dataset && e.target.dataset.tab) { e.preventDefault(); act(e.target); } });
     const valeur = (t) => t.type === 'checkbox' ? t.checked : (t.type === 'number' ? (t.value === '' ? null : num(t.value)) : t.value);
     el.addEventListener('input', (e) => {                                  // simulation en direct : seuls les résultats sont redessinés, le champ en cours de saisie reste intact

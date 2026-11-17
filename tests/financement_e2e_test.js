@@ -43,7 +43,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(await page.evaluate(() => JSON.parse(localStorage.getItem("sanix_crm_fin_config")).croiss.join() === "100,80,60,40"), "scénario enregistré sur l'appareil");
 
     console.log("▶ Hypothèses, projections, dossier");
-    await page.click('[data-tab="hyp"]'); await page.waitForTimeout(200);
+    await page.click('[data-tab="hyp"]'); await page.click('[data-sub="tout"]'); await page.waitForTimeout(200);
     ok((await page.locator("#fin-body .alert-warn").allInnerTexts()).some((t) => t.includes("indicatives")), "avertissement sur les valeurs indicatives");
     await page.click('[data-act="poste-add"]'); await page.waitForTimeout(200);
     const nPostes = await page.locator('[data-p][data-f="nom"]').count();
@@ -95,7 +95,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(ind.includes("Valeur client / coût d'acquisition") && ind.includes("Délai de retour") && ind.includes("Revenu récurrent annualisé") && ind.includes("CA par salarié"), "onglet Indicateurs : économie unitaire");
     ok(await page.locator("#fin-body thead th").count() === 21, "indicateurs (6) + contrat type par logiciel (9) + coûts techniques (6)");
     ok(ind.includes("Coûts techniques par année") && ind.includes("Supabase") && ind.includes("Vercel") && ind.includes("GitHub") && ind.includes("Anthropic") && ind.includes("Hébergement d'un client"), "coûts techniques : quatre services, hébergement par client");
-    await page.click('[data-tab="hyp"]'); await page.waitForTimeout(200);
+    await page.click('[data-tab="hyp"]'); await page.click('[data-sub="tout"]'); await page.waitForTimeout(200);
     ok(await page.locator('[data-a][data-f="part"]').count() === 1 && await page.locator('[data-p][data-f="acquisition"]').count() === 4 && await page.locator('[data-p][data-f="tech"]').count() === 4, "Hypothèses : capital actuel et cases « Acquisition » et « Technique » par poste");
     ok(await page.locator('[data-k="supabaseProjetUsd"]').count() === 1 && await page.locator('[data-k="usdFcfa"]').count() === 1 && await page.locator('[data-k="iaMensuelUsd"]').count() === 1 && await page.locator('[data-k="projetParClient"]').count() === 1, "Hypothèses : bloc infrastructure technique et IA");
     await page.locator('[data-k="usdFcfa"]').fill("500"); await page.locator('[data-k="usdFcfa"]').blur(); await page.waitForTimeout(250);
@@ -111,7 +111,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(tour.includes("Associé B") && tour.includes("Pool d'intéressement") && tour.includes("Nouvel investisseur"), "tour de table : associés, pool et investisseur");
 
     console.log("▶ Logiciels et contrats");
-    await page.click('[data-tab="hyp"]'); await page.waitForTimeout(250);
+    await page.click('[data-tab="hyp"]'); await page.click('[data-sub="tout"]'); await page.waitForTimeout(250);
     ok(await page.locator('select[data-prod][data-f="mode"]').count() === 19, "tableau des logiciels : les 19 logiciels du catalogue");
     const parts = await page.evaluate(() => [...document.querySelectorAll('[data-prod][data-f="part"]')].map((i) => +i.value));
     ok(parts.filter((x) => x > 0).length >= 5 && Math.abs(parts.reduce((a, b) => a + b, 0) - 100) < 0.6, "parts des ventes reprises des commandes réelles (total ≈ 100 %)");
@@ -138,7 +138,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     const csvL = require("fs").readFileSync(await dlL.path(), "utf8"); ok(csvL.includes("Revenus par logiciel") && csvL.includes('"ImmoSuite ERP";"annuelle"'), "export CSV : revenus par logiciel");
 
     console.log("▶ Logiciels : le modèle suit le CRM après vos modifications");
-    const ouvrirHyp = async () => { await page.evaluate(() => navigate("pipeline", null)); await page.waitForTimeout(150); await page.evaluate(() => navigate("financement", null)); await page.waitForTimeout(450); await page.click('[data-tab="hyp"]'); await page.waitForTimeout(250); };
+    const ouvrirHyp = async () => { await page.evaluate(() => navigate("pipeline", null)); await page.waitForTimeout(150); await page.evaluate(() => navigate("financement", null)); await page.waitForTimeout(450); await page.click('[data-tab="hyp"]'); await page.click('[data-sub="tout"]'); await page.waitForTimeout(250); };
     await page.evaluate(() => { LOGICIELS.push({ id: "log_nouveau", nom: "Nouveau Logiciel", type_licence: "Perpetuelle", prixNum: 900000, prixMensuel: 90000, actif: true }); COMMANDES.push({ id: "c_sync", client: "Client Sync", date: "2026-11-16", logiciel: "Nouveau Logiciel", typeLicence: "Perpetuelle", htNet: 900000, ttc: 900000, acompte: 0, statut: "confirmee" }); LOGICIELS.find((l) => l.id === "log_distripro").prixNum = 777000; });
     await ouvrirHyp();
     ok(await page.locator('select[data-prod][data-f="mode"]').count() === 20, "logiciel ajouté au CRM : il apparaît dans le modèle (20), alors que vous avez déjà modifié ImmoSuite");
@@ -169,7 +169,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.click('[data-tab="dossier"]'); await page.waitForTimeout(150);
     const htmlVide = await pdfHtml();
     ok(htmlVide.includes("Aucun investissement (matériel") && htmlVide.includes("Compte d'exploitation prévisionnel — 12 premiers mois") && !htmlVide.includes("Plan d'amortissement prévisionnel"), "dossier PDF : indique qu'aucun investissement n'est prévu, garde le compte d'exploitation 12 mois, sans tableau d'amortissement vide");
-    await page.click('[data-tab="hyp"]'); await page.waitForTimeout(200);
+    await page.click('[data-tab="hyp"]'); await page.click('[data-sub="tout"]'); await page.waitForTimeout(200);
     await page.click('[data-act="inv-add"]'); await page.waitForTimeout(250);
     ok(await page.locator("input[data-inv][data-f=\"nom\"]").count() === 1 && await page.locator('input[data-inv][data-f="montant"]').inputValue() === "0", "ajout : une ligne, montant à 0 (rien n'est inventé)");
     ok((await blocInv().innerText()).includes("Une ligne sans montant est ignorée"), "avertissement tant que le montant est vide");
@@ -204,13 +204,13 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     const csvI = require("fs").readFileSync(await dlI.path(), "utf8");
     ok(csvI.includes("Investissements (decaissement)") && csvI.includes("Dotations amortissements") && csvI.includes('"Mois";"CA";"Charges";"EBITDA";"Investissements"'), "export CSV : investissements et dotations");
     ok(csvI.includes("Compte d'exploitation previsionnel 12 mois") && csvI.includes("Tableau des immobilisations") && csvI.includes("Plan d'amortissement previsionnel") && csvI.includes('"Ordinateurs et serveur";') && csvI.includes('"Ordinateurs et serveur - dotation"') && csvI.includes('"Valeur nette comptable"'), "export CSV : les trois états");
-    await page.click('[data-tab="hyp"]'); await page.waitForTimeout(150);
+    await page.click('[data-tab="hyp"]'); await page.click('[data-sub="tout"]'); await page.waitForTimeout(150);
     await page.click(`[data-act="inv-del"][data-id="${idInv}"]`); await page.waitForTimeout(250);
     ok(await page.locator("input[data-inv]").count() === 0 && (await blocInv().innerText()).includes("Aucun investissement saisi"), "suppression : retour au tableau vide");
     ok(await page.evaluate(() => Math.round(SanixFinancement.calc.comparer(SanixFinancement.calc.defauts({})).besoin)) === besoin0 && await page.evaluate(() => JSON.parse(localStorage.getItem("sanix_crm_fin_config")).investissements.length === 0), "retour au besoin initial, tableau enregistré vide");
 
     console.log("▶ Optimisations et notes");
-    await page.click('[data-tab="hyp"]'); await page.click('[data-act="reset"]'); await page.waitForTimeout(250);   // retour aux valeurs d'exemple (le test de simulation les avait modifiées)
+    await page.click('[data-tab="hyp"]'); await page.click('[data-sub="tout"]'); await page.click('[data-act="reset"]'); await page.waitForTimeout(250);   // retour aux valeurs d'exemple (le test de simulation les avait modifiées)
     await page.click('[data-tab="notes"]'); await page.waitForTimeout(200);
     ok(await page.locator("#fin-body dl, #fin-body table").count() >= 1 && (await page.locator("#fin-body").innerText()).includes("Besoin de financement") && (await page.locator("#fin-body").innerText()).includes("Limites à connaître"), "onglet Notes : fonctionnement, lexique et limites");
     await page.click('[data-tab="opti"]'); await page.waitForTimeout(300);
@@ -241,7 +241,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     console.log("▶ Validation des hypothèses : contrôles avant diffusion");
     const setK = async (k, v) => { await page.evaluate(([k, v]) => { const e = document.querySelector(`[data-k="${k}"]`); e.value = v; e.dispatchEvent(new Event("change", { bubbles: true })); }, [k, v]); await page.waitForTimeout(80); };
     const setP = async (id, f, v) => { await page.evaluate(([id, f, v]) => { const e = document.querySelector(`[data-p="${id}"][data-f="${f}"]`); e.value = v; e.dispatchEvent(new Event("change", { bubbles: true })); }, [id, f, v]); await page.waitForTimeout(80); };
-    await page.click('[data-tab="hyp"]'); await page.click('[data-act="reset"]'); await page.waitForTimeout(250);      // valeurs initiales : plan d'exemple non rentable
+    await page.click('[data-tab="hyp"]'); await page.click('[data-sub="tout"]'); await page.click('[data-act="reset"]'); await page.waitForTimeout(250);      // valeurs initiales : plan d'exemple non rentable
     await page.click('[data-tab="dossier"]'); await page.waitForTimeout(200);
     ok((await page.locator("#fin-body").innerText()).includes("n'est pas prêt à être diffusé") && (await page.locator("#fin-body .alert-danger").innerText()).includes("rentabilité"), "plan par défaut (non rentable) : le dossier est déclaré « pas prêt à être diffusé »");
     await page.locator('[data-k="valide"]').click(); await page.waitForTimeout(250);
@@ -249,13 +249,13 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     const htmlNon = await pdfHtml();
     ok(htmlNon.includes("NON PRÊT À DIFFUSER") && htmlNon.includes("DOCUMENT DE TRAVAIL"), "PDF : bandeau « non prêt à diffuser » en plus de « document de travail »");
     // Un plan rentable et sans besoin : mêmes hypothèses de base, sans embauche financée ni campagne
-    await page.click('[data-tab="hyp"]'); await page.waitForTimeout(200);
+    await page.click('[data-tab="hyp"]'); await page.click('[data-sub="tout"]'); await page.waitForTimeout(200);
     for (const [k, v] of [["fixesMensuels", "100000"], ["marketingMin", "0"], ["marketingPct", "0"], ["marketingBoost", "0"], ["iaMensuelUsd", "0"], ["clientsAn1", "24"]]) await setK(k, v);
     for (const id of ["p2", "p3", "p4"]) await setP(id, "nb", "0");
     await setP("p1", "cout", "300000");
     await page.click('[data-tab="dossier"]'); await page.waitForTimeout(250);
     ok(await page.locator("#fin-body .alert-danger").count() === 1 && (await page.locator("#fin-body .alert-danger").innerText()).includes("régime d'imposition"), "plan rentable mais régime d'imposition non confirmé : dossier bloqué pour ce seul motif");
-    await page.click('[data-tab="hyp"]'); await page.waitForTimeout(200);
+    await page.click('[data-tab="hyp"]'); await page.click('[data-sub="tout"]'); await page.waitForTimeout(200);
     ok(await page.locator('[data-k="regime"]').inputValue() === "auto" && await page.locator('[data-k="ticOn"]').isChecked() && await page.locator('[data-k="cgaOn"]').count() === 1, "hypothèses : régime automatique, secteur TIC coché par défaut");
     await page.check('[data-k="regimeConfirme"]'); await page.waitForTimeout(200);
     await page.click('[data-tab="dossier"]'); await page.waitForTimeout(250);
@@ -268,12 +268,12 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     const [dl2] = await Promise.all([page.waitForEvent("download"), page.click('[data-act="csv"]')]);
     ok(!require("fs").readFileSync(await dl2.path(), "utf8").includes("DOCUMENT DE TRAVAIL"), "CSV validé : plus de mention");
     // Toute modification d'hypothèse retire la validation
-    await page.click('[data-tab="hyp"]'); await page.waitForTimeout(150); await setK("clientsAn1", "25"); await page.click('[data-tab="dossier"]'); await page.waitForTimeout(200);
+    await page.click('[data-tab="hyp"]'); await page.click('[data-sub="tout"]'); await page.waitForTimeout(150); await setK("clientsAn1", "25"); await page.click('[data-tab="dossier"]'); await page.waitForTimeout(200);
     ok(await page.evaluate(() => JSON.parse(localStorage.getItem("sanix_crm_fin_config")).valide === false) && await page.locator("#fin-body .alert-warn").count() === 1, "une hypothèse modifiée après validation retire la validation (document de travail de nouveau)");
     const htmlRe = await pdfHtml(); ok(htmlRe.includes("DOCUMENT DE TRAVAIL"), "PDF : « document de travail » de retour après la modification");
 
     console.log("▶ Corrections de la revue d'audit : écran, PDF et CSV");
-    await page.click('[data-tab="hyp"]'); await page.waitForTimeout(150);
+    await page.click('[data-tab="hyp"]'); await page.click('[data-sub="tout"]'); await page.waitForTimeout(150);
     ok(await page.locator('[data-k="maintDelaiMois"]').inputValue() === "12" && await page.locator('[data-k="imfOn"]').count() === 1 && await page.locator('[data-k="debutActivite"]').inputValue() === "2026-06", "hypothèses : délai de maintenance 12 mois, impôt minimum (option), début d'activité");
     await page.click('[data-tab="traction"]'); await page.waitForTimeout(200);
     const tr = (await page.locator("#fin-body").innerText()).replace(/\s+/g, " ");
@@ -295,7 +295,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(await page.evaluate(() => PERMISSIONS.commercial.indexOf("financement") < 0 && PERMISSIONS.apporteur.indexOf("financement") < 0 && PERMISSIONS.manager.indexOf("financement") >= 0), "réservé à la direction (super admin, manager)");
 
     console.log("▶ Réinitialisation");
-    await page.click('[data-tab="hyp"]'); await page.click('[data-act="reset"]'); await page.waitForTimeout(250);
+    await page.click('[data-tab="hyp"]'); await page.click('[data-sub="tout"]'); await page.click('[data-act="reset"]'); await page.waitForTimeout(250);
     ok(await page.evaluate(() => { const o = JSON.parse(localStorage.getItem("sanix_crm_fin_config")); return Object.keys(o).join() === "liens"; }), "retour aux valeurs initiales (seul le marquage des clients reste)");
     await page.click('[data-tab="dossier"]'); await page.waitForTimeout(150);
     ok(await page.locator("#fin-body .alert-warn").count() === 1, "après réinitialisation, le document redevient « de travail »");
