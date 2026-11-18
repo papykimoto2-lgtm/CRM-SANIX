@@ -367,6 +367,56 @@ async function sendMail(d, op, i) {
   });
   return { id, thread_id: j.threadId ? String(j.threadId) : null };
 }
+var ADRESSE_GENERIQUE = /^(info|infos|contact|contacts|admin|direction|commercial|accueil|secretariat|hello|bonjour|service)\d*@/i;
+async function verifierAdressesEnLot(d, limite = 150) {
+  const adresses = await d.store.adressesAVerifier?.(limite + 1) ?? [];
+  const lot = adresses.slice(0, limite);
+  const parDomaine = /* @__PURE__ */ new Map();
+  for (const a of lot) {
+    const dom = a.slice(a.lastIndexOf("@") + 1).toLowerCase();
+    parDomaine.set(dom, [...parDomaine.get(dom) ?? [], a]);
+  }
+  let a_confirmer = 0, invalides = 0;
+  const domaines = [...parDomaine.keys()];
+  for (let i = 0; i < domaines.length; i += 8) {
+    await Promise.all(domaines.slice(i, i + 8).map(async (dom) => {
+      const mails = parDomaine.get(dom);
+      const v = await verifierDomaine(d, mails[0]);
+      for (const m of mails) {
+        const statut = !validEmail(m.trim()) || !v.ok ? "invalide" : "a_confirmer";
+        const detail = statut === "invalide" ? validEmail(m.trim()) ? `Adresse invalide : ${v.raison}` : "Adresse invalide (syntaxe)" : ADRESSE_GENERIQUE.test(m) ? "Domaine valide ; adresse g\xE9n\xE9rique : la bo\xEEte n'est pas garantie" : "Domaine valide ; la bo\xEEte n'est confirm\xE9e que par une r\xE9ponse du prospect";
+        await d.store.marquerAdresse?.(m, statut, detail).catch(() => {
+        });
+        if (statut === "invalide") invalides++;
+        else a_confirmer++;
+      }
+    }));
+  }
+  return { traitees: lot.length, a_confirmer, invalides, restantes: Math.max(0, adresses.length - lot.length) };
+}
+async function verifierDomaine(d, email) {
+  const domaine = email.slice(email.lastIndexOf("@") + 1).toLowerCase().trim();
+  if (!domaine || !/^[a-z0-9.-]+$/.test(domaine) || !domaine.includes(".")) return { ok: false, raison: "domaine invalide" };
+  if (/(^|\.)(example\.(com|org|net)|test|invalid|localhost)$/.test(domaine)) return { ok: false, raison: "domaine factice" };
+  const interroge = async (type) => {
+    try {
+      const r = await d.fetch(`https://dns.google/resolve?name=${encodeURIComponent(domaine)}&type=${type}`, { headers: { accept: "application/dns-json" } });
+      if (!r.ok) return null;
+      const j = await r.json();
+      if (typeof j?.Status !== "number") return null;
+      return { status: j.Status, reponses: Array.isArray(j.Answer) ? j.Answer.length : 0 };
+    } catch {
+      return null;
+    }
+  };
+  const mx = await interroge("MX");
+  if (!mx) return { ok: true };
+  if (mx.status === 3) return { ok: false, raison: "le domaine n'existe pas" };
+  if (mx.reponses > 0) return { ok: true };
+  const a = await interroge("A");
+  if (!a) return { ok: true };
+  return a.reponses > 0 ? { ok: true } : { ok: false, raison: "le domaine ne re\xE7oit pas de courrier (aucun serveur de messagerie)" };
+}
 async function syncReplies(d) {
   const acc = await d.store.getAccount();
   if (!acc || acc.status !== "connecte") return { verifies: 0, reponses: 0, echecs: 0, lues: 0 };
@@ -491,6 +541,10 @@ var store = {
       });
     }
   },
+  async adressesAVerifier(limite) {
+    const { data } = await db().from("ai_prospects").select("email").eq("email_statut", "inconnu").neq("email", "").not("email", "is", null).limit(limite);
+    return [...new Set((data ?? []).map((r) => String(r.email).trim()).filter(Boolean))];
+  },
   async adresseStatut(email) {
     const { data } = await db().from("ai_prospects").select("email_statut").ilike("email", email.replace(/[\\%_]/g, "\\$&")).limit(1);
     return String(data?.[0]?.email_statut ?? "inconnu");
@@ -577,6 +631,7 @@ Deno.serve(async (req) => {
       return json(req, { ok: true });
     }
     if (action === "sync") return json(req, { ok: true, ...await syncReplies(deps) });
+    if (action === "verifier_adresses") return json(req, { ok: true, ...await verifierAdressesEnLot(deps) });
     if (action === "send") {
       need("GOOGLE_CLIENT_ID");
       need("GOOGLE_CLIENT_SECRET");

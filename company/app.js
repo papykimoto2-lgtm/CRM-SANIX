@@ -581,6 +581,7 @@ async function viewReport(id) {
 const ACT = {
   ...P.acts,
   "sales-new": (el) => SALES.salesAction(el),
+  "sales-verif": (el) => SALES.salesAction(el),
   "sales-open": (el) => SALES.salesAction(el),
   "sales-refresh": (el) => SALES.salesAction(el),
   "sales-more": (el) => SALES.salesAction(el),

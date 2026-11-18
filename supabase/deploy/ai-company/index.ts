@@ -568,6 +568,10 @@ var store = {
       });
     }
   },
+  async adressesAVerifier(limite) {
+    const { data } = await db().from("ai_prospects").select("email").eq("email_statut", "inconnu").neq("email", "").not("email", "is", null).limit(limite);
+    return [...new Set((data ?? []).map((r) => String(r.email).trim()).filter(Boolean))];
+  },
   async adresseStatut(email) {
     const { data } = await db().from("ai_prospects").select("email_statut").ilike("email", email.replace(/[\\%_]/g, "\\$&")).limit(1);
     return String(data?.[0]?.email_statut ?? "inconnu");

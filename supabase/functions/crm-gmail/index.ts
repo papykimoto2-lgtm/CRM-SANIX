@@ -1,12 +1,12 @@
 // SANIX CRM — envoi d'e-mails par le Gmail de l'entreprise et suivi des réponses.
 //  GET  (retour de Google après « Connecter Gmail »)       : authentifié par le paramètre `state` signé — déployer avec --no-verify-jwt
-//  POST status | connect_url | send | disconnect           : JWT opérateur (connect_url et disconnect : direction / admin)
+//  POST status | connect_url | send | disconnect | verifier_adresses          : JWT opérateur (connect_url et disconnect : direction / admin)
 //  POST sync                                               : JWT opérateur OU x-cron-secret (planificateur, toutes les 15 minutes)
 // Secrets Edge requis : GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET. Facultatifs : APP_URL (adresse du CRM) et GMAIL_TOKEN_KEY (32 octets en base64) ;
 // sans GMAIL_TOKEN_KEY, la clé de chiffrement du jeton Gmail est dérivée (SHA-256) du secret serveur SUPABASE_SERVICE_ROLE_KEY : rien à saisir.
 // Si ce secret serveur change, le jeton stocké devient illisible : il suffit de reconnecter Gmail.
 import { cors, cronSecret, db, errMsg, HttpError, json, requireOperator, safeEqual } from "../_shared/core.ts";
-import { connectUrl, disconnect, GmailError, handleCallback, sendMail, syncReplies, type Deps } from "../_shared/gmail.ts";
+import { connectUrl, disconnect, GmailError, handleCallback, sendMail, syncReplies, verifierAdressesEnLot, type Deps } from "../_shared/gmail.ts";
 import { gmailDeps } from "../_shared/gmail_store.ts";
 
 const deps: Deps = await gmailDeps();
@@ -55,6 +55,7 @@ Deno.serve(async (req) => {
       return json(req, { ok: true });
     }
     if (action === "sync") return json(req, { ok: true, ...(await syncReplies(deps)) });
+    if (action === "verifier_adresses") return json(req, { ok: true, ...(await verifierAdressesEnLot(deps)) });
     if (action === "send") {
       need("GOOGLE_CLIENT_ID"); need("GOOGLE_CLIENT_SECRET"); need("GMAIL_TOKEN_KEY");
       const r = await sendMail(deps, op, {
