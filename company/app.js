@@ -9,6 +9,19 @@ import * as COST from "./couts.js";
 import * as CFG from "./config_panel.js";
 import { initVoice, initLecture, arreterLecture } from "./voice.js";
 
+// Tableaux en cartes sur téléphone : chaque cellule reçoit l'intitulé de sa colonne (data-label), le CSS fait le reste (≤ 760 px).
+function etiqueterTableaux(racine) {
+  for (const t of racine.querySelectorAll("table.tbl:not(.sup):not([data-etiquete])")) {
+    const th = [...t.querySelectorAll("thead th")].map((x) => x.textContent.trim());
+    if (!th.length) continue;
+    t.dataset.etiquete = "1";
+    for (const tr of t.querySelectorAll("tbody tr")) [...tr.children].forEach((td, i) => { if (th[i] && td.colSpan === 1) { td.dataset.label = th[i]; const v = document.createElement("span"); v.className = "v"; v.append(...td.childNodes); td.append(v); } });
+  }
+}
+{ let plan = false; const mo = new MutationObserver(() => { if (plan) return; plan = true; queueMicrotask(() => { plan = false; const m = document.getElementById("main"); if (m) etiqueterTableaux(m); }); });
+  const go = () => { const m = document.getElementById("main"); if (m) mo.observe(m, { childList: true, subtree: true }); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go); else go(); }
+
 // Taille du texte : réglable (surtout sur téléphone), mémorisée sur l'appareil. Le Bureau 3D n'est pas concerné.
 const TAILLES = [1, 1.15, 1.3, 1.5];
 const lireTaille = () => { try { const v = parseFloat(localStorage.getItem("sanix-ai-txt")); if (TAILLES.includes(v)) return v; } catch { /* stockage indisponible */ } return window.matchMedia?.("(max-width:560px)").matches ? 1.15 : 1; };
