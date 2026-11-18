@@ -51,6 +51,8 @@ export type Store = {
   /** Statut de qualité de l'adresse sur la fiche prospect (inconnu | a_confirmer | verifiee | invalide). */
   adresseStatut?(email: string): Promise<string>;
   /** Enregistre le statut ; une adresse « verifiee » (a répondu) n'est jamais rétrogradée, sauf par un retour « non distribué ». */
+  /** Adresses e-mail de prospects jamais vérifiées (statut « inconnu »). */
+  adressesAVerifier?(limite: number): Promise<string[]>;
   marquerAdresse?(email: string, statut: "a_confirmer" | "verifiee" | "invalide", detail: string): Promise<void>;
   /** E-mails déjà marqués « répondu » dont le texte n'a pas été lu (reconnexion tardive), non vérifiés depuis `checkedBeforeIso`. */
   repliedWithoutText(sinceIso: string, checkedBeforeIso: string, limit: number): Promise<MailRow[]>;
@@ -354,6 +356,30 @@ export async function classerAdresse(d: Deps, email: string): Promise<VerifAdres
   if (!v.ok) return { statut: "invalide", detail: `Adresse invalide : ${v.raison}` };
   if (ADRESSE_GENERIQUE.test(e)) return { statut: "a_confirmer", detail: "Domaine valide ; adresse générique : la boîte n'est pas garantie" };
   return { statut: "a_confirmer", detail: "Domaine valide ; la boîte n'est confirmée que par une réponse du prospect" };
+}
+
+/** Vérification en lot (gratuite, sans IA) des adresses jamais vérifiées : un seul contrôle DNS par domaine. */
+export async function verifierAdressesEnLot(d: Deps, limite = 150): Promise<{ traitees: number; a_confirmer: number; invalides: number; restantes: number }> {
+  const adresses = (await d.store.adressesAVerifier?.(limite + 1)) ?? [];
+  const lot = adresses.slice(0, limite);
+  const parDomaine = new Map<string, string[]>();
+  for (const a of lot) { const dom = a.slice(a.lastIndexOf("@") + 1).toLowerCase(); parDomaine.set(dom, [...(parDomaine.get(dom) ?? []), a]); }
+  let a_confirmer = 0, invalides = 0;
+  const domaines = [...parDomaine.keys()];
+  for (let i = 0; i < domaines.length; i += 8) {
+    await Promise.all(domaines.slice(i, i + 8).map(async (dom) => {
+      const mails = parDomaine.get(dom)!;
+      const v = await verifierDomaine(d, mails[0]);
+      for (const m of mails) {
+        const statut = !validEmail(m.trim()) || !v.ok ? "invalide" : "a_confirmer";
+        const detail = statut === "invalide" ? (validEmail(m.trim()) ? `Adresse invalide : ${v.raison}` : "Adresse invalide (syntaxe)")
+          : ADRESSE_GENERIQUE.test(m) ? "Domaine valide ; adresse générique : la boîte n'est pas garantie" : "Domaine valide ; la boîte n'est confirmée que par une réponse du prospect";
+        await d.store.marquerAdresse?.(m, statut, detail).catch(() => {});
+        if (statut === "invalide") invalides++; else a_confirmer++;
+      }
+    }));
+  }
+  return { traitees: lot.length, a_confirmer, invalides, restantes: Math.max(0, adresses.length - lot.length) };
 }
 
 // ───────────────────────── E-mails des agents IA ─────────────────────────

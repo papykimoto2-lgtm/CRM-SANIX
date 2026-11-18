@@ -185,7 +185,7 @@ export function renderSales(main) {
   main.innerHTML=html`<section class="panel">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
       <div><h2>Direction commerciale</h2><p class="sub">Prospects, pipeline, qualification IA, historique et rattachement aux fiches clients SANIX CRM.</p></div>
-      <div class="actions"><button class="btn" type="button" data-act="sales-refresh">Actualiser</button><button class="btn pri" type="button" data-act="sales-new">＋ Nouveau prospect</button></div>
+      <div class="actions"><button class="btn" type="button" data-act="sales-refresh">Actualiser</button><button class="btn" type="button" data-act="sales-verif" title="Contrôle gratuit du domaine de chaque adresse jamais vérifiée (sans IA)">✉ Vérifier les adresses</button><button class="btn pri" type="button" data-act="sales-new">＋ Nouveau prospect</button></div>
     </div>
     <div class="grid g4" style="margin:12px 0">
       <div class="card kpi"><b>${capped?`${total}+`:total}</b><span>Prospects suivis</span></div>
@@ -279,6 +279,16 @@ async function ouvrirConversation(cle) {
 
 export async function salesAction(el) {
   const id=el.dataset.id;
+  if(el.dataset.act==="sales-verif"){
+    el.disabled=true; const txt=el.textContent; el.textContent="Vérification…";
+    try{
+      const {data,error}=await S.sb.functions.invoke("crm-gmail",{body:{action:"verifier_adresses"}});
+      if(error){ let m=error.message; try{const j=await error.context?.json?.(); if(j?.error) m=j.error;}catch{/* corps non JSON */} throw new Error(m); }
+      toast(data.traitees?`${data.traitees} adresses contrôlées : ${data.invalides} invalide(s), ${data.a_confirmer} à confirmer${data.restantes?` · ${data.restantes} restantes, relancez`:""}`:"Toutes les adresses ont déjà été vérifiées","ok");
+      await loadSales(); renderSales($("#main"));
+    }catch(e){ toast(e.message,"bad"); el.disabled=false; el.textContent=txt; }
+    return;
+  }
   if(el.dataset.act==="sales-new") return newProspectForm();
   if(el.dataset.act==="sales-open") return openProspect(id);
   if(el.dataset.act==="sales-conv") return ouvrirConversation(el.dataset.cle);

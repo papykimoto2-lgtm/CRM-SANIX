@@ -105,6 +105,7 @@
       return { data: { task_id: t.id, agent: ag.nom }, error: null };
     }
     if (fn === "ai-sales-director" && ["qualifier", "contacter"].includes(body.action)) return { data: { ok: true }, error: null };
+    if (fn === "crm-gmail" && body.action === "verifier_adresses") return { data: { ok: true, traitees: 3, a_confirmer: 2, invalides: 1, restantes: 0 }, error: null };
     if (body.action === "report_now" || body.action === "report_resend") return { data: { id: uid(), statut: "envoye", envoyes: ["president@sanix-africa.ci"] }, error: null };
     return { data: null, error: { message: "action inconnue", context: { json: async () => ({ error: "action inconnue" }) } } };
   };

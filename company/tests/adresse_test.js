@@ -14,6 +14,9 @@ const { launch, newPage, ok, loadFixture } = require("./harness.js");
     ok(t.includes("adresse invalide"), "adresse invalide signalée sur la fiche");
     ok(t.includes("adresse à confirmer"), "adresse à confirmer signalée");
     ok(t.includes("adresse confirmée"), "adresse confirmée signalée");
+    await page.click("[data-act=sales-verif]"); await page.waitForTimeout(500);
+    ok((await page.evaluate(() => window.__CALLS.some((c) => c.fn === "crm-gmail" && c.body.action === "verifier_adresses"))), "le bouton lance la vérification en lot (fonction crm-gmail)");
+    ok((await page.locator("body").innerText()).includes("3 adresses contrôlées : 1 invalide(s), 2 à confirmer"), "le résultat est annoncé");
     ok(errors.length === 0, "aucune erreur (" + errors.join(" | ") + ")");
   } finally { await browser.close(); server.close(); }
   console.log("\nTOUT EST OK");
