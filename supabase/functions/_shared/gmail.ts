@@ -46,6 +46,8 @@ export type Store = {
   saveReplies(mailId: string, replies: ReplyRow[]): Promise<void>;
   /** Un prospect a répondu (texte lu ou non) : met à jour sa fiche côté agents (dernier échange, relances remises à zéro) et, si la réponse demande l'arrêt (« STOP »), le désinscrit. Facultatif. */
   onProspectReply?(m: MailRow, textes: string[] | null): Promise<void>;
+  /** Adresse en échec : les relances prévues vers ce prospect sont annulées (inutile de payer des tours d'IA pour un e-mail qui ne peut pas arriver). */
+  onBounce?(m: MailRow): Promise<void>;
   /** E-mails déjà marqués « répondu » dont le texte n'a pas été lu (reconnexion tardive), non vérifiés depuis `checkedBeforeIso`. */
   repliedWithoutText(sinceIso: string, checkedBeforeIso: string, limit: number): Promise<MailRow[]>;
 };
@@ -386,6 +388,7 @@ export async function syncReplies(d: Deps): Promise<{ verifies: number; reponses
         if (m.client_rid) await d.store.addInteraction(m.client_rid, { date: a.at ?? d.now().toISOString(), type: "Réponse reçue par e-mail", note: "Réponse de " + (a.from ?? "le prospect") + " à : " + m.subject, etape: 1, ico: "📩", source: "gmail" }).catch(() => {});
       } else if (a.bounced) {
         await d.store.updateMail(m.id!, { status: "echec", error: "Non distribué (retour Gmail) : adresse inexistante ou boîte pleine", last_checked_at: d.now().toISOString() }); echecs++;
+        await d.store.onBounce?.(m).catch(() => {});
         if (m.client_rid) await d.store.addInteraction(m.client_rid, { date: a.at ?? d.now().toISOString(), type: "E-mail non distribué", note: "L'adresse " + m.to_email + " semble incorrecte : à vérifier", ico: "⚠️", source: "gmail" }).catch(() => {});
       } else await d.store.updateMail(m.id!, { last_checked_at: d.now().toISOString() });
     } catch { /* un fil en erreur ne bloque pas les autres */ }
