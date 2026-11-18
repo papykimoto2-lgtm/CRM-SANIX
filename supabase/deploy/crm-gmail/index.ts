@@ -483,7 +483,7 @@ var store = {
     const p = data?.[0];
     if (!p) return;
     const quand = m.replied_at ?? (/* @__PURE__ */ new Date()).toISOString();
-    await db().from("ai_prospects").update({ last_inbound_at: quand, relances_sans_reponse: 0 }).eq("id", p.id);
+    await db().from("ai_prospects").update({ last_inbound_at: quand, relances_sans_reponse: 0, email_statut: "verifiee", email_verifie_at: quand, email_verif_detail: "Le prospect a r\xE9pondu depuis cette adresse" }).eq("id", p.id);
     if (textes && !p.opt_out && textes.some((t) => estDesinscription(t))) {
       await db().from("ai_prospects").update({ opt_out: true, opt_out_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", p.id);
       await db().from("ai_actions").insert({ agent: "gmail", action: "desinscription_stop", prospect_id: p.id, ok: true, payload: { canal: "email" } });
@@ -491,7 +491,17 @@ var store = {
       });
     }
   },
+  async adresseStatut(email) {
+    const { data } = await db().from("ai_prospects").select("email_statut").ilike("email", email.replace(/[\\%_]/g, "\\$&")).limit(1);
+    return String(data?.[0]?.email_statut ?? "inconnu");
+  },
+  async marquerAdresse(email, statut, detail) {
+    const q = db().from("ai_prospects").update({ email_statut: statut, email_verifie_at: (/* @__PURE__ */ new Date()).toISOString(), email_verif_detail: detail.slice(0, 300) }).ilike("email", email.replace(/[\\%_]/g, "\\$&"));
+    await (statut === "invalide" ? q : q.neq("email_statut", "verifiee"));
+  },
   async onBounce(m) {
+    await store.marquerAdresse(m.to_email, "invalide", "Retour \xAB non distribu\xE9 \xBB de Gmail").catch(() => {
+    });
     const q = db().from("ai_prospects").select("id");
     const { data } = m.client_rid ? await q.eq("crm_rid", m.client_rid).limit(1) : await q.ilike("email", m.to_email.replace(/[\\%_]/g, "\\$&")).limit(1);
     const p = data?.[0];

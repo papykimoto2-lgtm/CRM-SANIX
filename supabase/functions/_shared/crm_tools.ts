@@ -3,6 +3,8 @@ import type Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { db, env, neutralize } from "./core.ts";
 import { deliverMessage } from "./outbox.ts";
 import type { Prospect } from "./channels.ts";
+import { classerAdresse } from "./gmail.ts";
+import { gmailDeps } from "./gmail_store.ts";
 
 export const AGENT_STAGES = [
   "identifie", "enregistre", "qualifie", "premier_contact", "conversation", "besoin_identifie", "interesse",
@@ -48,6 +50,7 @@ type Props = Record<string, unknown>;
 const DEFS: Record<string, { description: string; props: Props }> = {
   lister_prospects: { description: "Liste des prospects du CRM (filtrable). Les prospects listés entrent dans ton périmètre de travail.",
     props: { stage: nul("string"), secteur: nul("string"), ville: nul("string"), score_min: nul("integer"), limite: { type: "integer" } } },
+  verifier_adresse: { description: "Vérifie l'adresse e-mail du prospect (syntaxe, domaine, retours « non distribué ») sans rien envoyer et enregistre son statut sur la fiche : invalide (n'écris pas), a_confirmer (domaine valide, boîte non garantie : écris en petit volume), verifiee (le prospect a déjà répondu).", props: P },
   get_prospect: { description: "Fiche prospect, 30 derniers messages tous canaux, offres, RDV, relances.", props: P },
   recommend_products: { description: "Logiciels SANIX pertinents pour un secteur et des besoins.", props: { secteur: S(), besoins_texte: S() } },
   get_product: { description: "Fonctionnalités réellement livrées, questions de découverte, argumentaire, démo, grille tarifaire. product_id : identifiant du logiciel (ex. immosuite) ; le nom commercial est aussi accepté.", props: { product_id: S() } },
@@ -155,6 +158,15 @@ export async function runCrmTool(ctx: CrmCtx, name: string, raw: Record<string, 
       if (error) throw new Error(error.message);
       for (const p of data ?? []) ctx.scope.add(String(p.id).toLowerCase());
       return data;
+    }
+    case "verifier_adresse": {
+      const p = await loadProspect(pid);
+      if (!String(p.email ?? "").trim()) return { email_statut: "inconnu", detail: "Aucune adresse e-mail sur la fiche", consigne: "Pas d'e-mail possible : passe par WhatsApp ou cherche une adresse de contact (recherche web)." };
+      if (p.email_statut === "invalide") return { email_statut: "invalide", detail: p.email_verif_detail ?? "Adresse marquée invalide", consigne: "N'écris pas à cette adresse : cherche une autre adresse de contact (recherche web) ou utilise un autre canal." };
+      if (p.email_statut === "verifiee") return { email_statut: "verifiee", detail: p.email_verif_detail ?? "A déjà répondu", consigne: "Adresse confirmée par une réponse." };
+      const d = await gmailDeps(), v = await classerAdresse(d, String(p.email));
+      await d.store.marquerAdresse?.(String(p.email), v.statut, v.detail);
+      return { email_statut: v.statut, detail: v.detail, consigne: v.statut === "invalide" ? "N'écris pas à cette adresse : cherche une autre adresse de contact ou utilise un autre canal." : "Tu peux écrire, mais en petit volume : un retour « non distribué » invaliderait l'adresse." };
     }
     case "get_prospect": {
       const [p, msgs, offers, rdv, fu] = await Promise.all([
