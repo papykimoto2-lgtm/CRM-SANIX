@@ -269,6 +269,15 @@ async function sendMail(d, op, i) {
   });
   return { id, thread_id: j.threadId ? String(j.threadId) : null };
 }
+var ADRESSE_GENERIQUE = /^(info|infos|contact|contacts|admin|direction|commercial|accueil|secretariat|hello|bonjour|service)\d*@/i;
+async function classerAdresse(d, email) {
+  const e = String(email ?? "").trim();
+  if (!validEmail(e)) return { statut: "invalide", detail: "Adresse invalide (syntaxe)" };
+  const v = await verifierDomaine(d, e);
+  if (!v.ok) return { statut: "invalide", detail: `Adresse invalide : ${v.raison}` };
+  if (ADRESSE_GENERIQUE.test(e)) return { statut: "a_confirmer", detail: "Domaine valide ; adresse g\xE9n\xE9rique : la bo\xEEte n'est pas garantie" };
+  return { statut: "a_confirmer", detail: "Domaine valide ; la bo\xEEte n'est confirm\xE9e que par une r\xE9ponse du prospect" };
+}
 var LIMITE_AGENTS_PAR_JOUR = 30;
 var SIGNATAIRE_AGENT = "Agent IA";
 async function verifierDomaine(d, email) {
@@ -301,8 +310,11 @@ async function sendAgentMail(d, i) {
   if (await d.store.countSentBy(SIGNATAIRE_AGENT, new Date(d.now().getTime() - 24 * 36e5).toISOString()) >= LIMITE_AGENTS_PAR_JOUR)
     return enFile(`Plafond de ${LIMITE_AGENTS_PAR_JOUR} e-mails d'agents par 24 h atteint : message gard\xE9 en file`);
   if (!validEmail(i.to.trim())) return { ok: false, statut: "echec", detail: "Adresse du destinataire invalide" };
-  const v = await verifierDomaine(d, i.to.trim());
-  if (!v.ok) return { ok: false, statut: "echec", detail: `Adresse non v\xE9rifi\xE9e, envoi \xE9vit\xE9 : ${v.raison}` };
+  if (await d.store.adresseStatut?.(i.to.trim()).catch(() => "inconnu") === "invalide") return { ok: false, statut: "echec", detail: "Adresse marqu\xE9e invalide sur la fiche : envoi \xE9vit\xE9" };
+  const v = await classerAdresse(d, i.to.trim());
+  await d.store.marquerAdresse?.(i.to.trim(), v.statut, v.detail).catch(() => {
+  });
+  if (v.statut === "invalide") return { ok: false, statut: "echec", detail: `Adresse non v\xE9rifi\xE9e, envoi \xE9vit\xE9 : ${v.detail}` };
   try {
     const r = await sendMail(d, { user_id: null, nom: SIGNATAIRE_AGENT }, { client_rid: i.client_rid ?? null, to: i.to, subject: i.subject.slice(0, 300), body: i.body, relance_jours: 4 });
     return { ok: true, statut: "envoye", detail: "Envoy\xE9 par Gmail", external_id: r.id };
@@ -371,7 +383,7 @@ var store = {
     const p = data?.[0];
     if (!p) return;
     const quand = m.replied_at ?? (/* @__PURE__ */ new Date()).toISOString();
-    await db().from("ai_prospects").update({ last_inbound_at: quand, relances_sans_reponse: 0 }).eq("id", p.id);
+    await db().from("ai_prospects").update({ last_inbound_at: quand, relances_sans_reponse: 0, email_statut: "verifiee", email_verifie_at: quand, email_verif_detail: "Le prospect a r\xE9pondu depuis cette adresse" }).eq("id", p.id);
     if (textes && !p.opt_out && textes.some((t) => estDesinscription(t))) {
       await db().from("ai_prospects").update({ opt_out: true, opt_out_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", p.id);
       await db().from("ai_actions").insert({ agent: "gmail", action: "desinscription_stop", prospect_id: p.id, ok: true, payload: { canal: "email" } });
@@ -379,7 +391,17 @@ var store = {
       });
     }
   },
+  async adresseStatut(email) {
+    const { data } = await db().from("ai_prospects").select("email_statut").ilike("email", email.replace(/[\\%_]/g, "\\$&")).limit(1);
+    return String(data?.[0]?.email_statut ?? "inconnu");
+  },
+  async marquerAdresse(email, statut, detail) {
+    const q = db().from("ai_prospects").update({ email_statut: statut, email_verifie_at: (/* @__PURE__ */ new Date()).toISOString(), email_verif_detail: detail.slice(0, 300) }).ilike("email", email.replace(/[\\%_]/g, "\\$&"));
+    await (statut === "invalide" ? q : q.neq("email_statut", "verifiee"));
+  },
   async onBounce(m) {
+    await store.marquerAdresse(m.to_email, "invalide", "Retour \xAB non distribu\xE9 \xBB de Gmail").catch(() => {
+    });
     const q = db().from("ai_prospects").select("id");
     const { data } = m.client_rid ? await q.eq("crm_rid", m.client_rid).limit(1) : await q.ilike("email", m.to_email.replace(/[\\%_]/g, "\\$&")).limit(1);
     const p = data?.[0];
@@ -607,6 +629,7 @@ var DEFS = {
     description: "Liste des prospects du CRM (filtrable). Les prospects list\xE9s entrent dans ton p\xE9rim\xE8tre de travail.",
     props: { stage: nul("string"), secteur: nul("string"), ville: nul("string"), score_min: nul("integer"), limite: { type: "integer" } }
   },
+  verifier_adresse: { description: "V\xE9rifie l'adresse e-mail du prospect (syntaxe, domaine, retours \xAB non distribu\xE9 \xBB) sans rien envoyer et enregistre son statut sur la fiche : invalide (n'\xE9cris pas), a_confirmer (domaine valide, bo\xEEte non garantie : \xE9cris en petit volume), verifiee (le prospect a d\xE9j\xE0 r\xE9pondu).", props: P },
   get_prospect: { description: "Fiche prospect, 30 derniers messages tous canaux, offres, RDV, relances.", props: P },
   recommend_products: { description: "Logiciels SANIX pertinents pour un secteur et des besoins.", props: { secteur: S(), besoins_texte: S() } },
   get_product: { description: "Fonctionnalit\xE9s r\xE9ellement livr\xE9es, questions de d\xE9couverte, argumentaire, d\xE9mo, grille tarifaire. product_id : identifiant du logiciel (ex. immosuite) ; le nom commercial est aussi accept\xE9.", props: { product_id: S() } },
@@ -750,6 +773,15 @@ async function runCrmTool(ctx, name, raw) {
       if (error) throw new Error(error.message);
       for (const p of data ?? []) ctx.scope.add(String(p.id).toLowerCase());
       return data;
+    }
+    case "verifier_adresse": {
+      const p = await loadProspect(pid);
+      if (!String(p.email ?? "").trim()) return { email_statut: "inconnu", detail: "Aucune adresse e-mail sur la fiche", consigne: "Pas d'e-mail possible : passe par WhatsApp ou cherche une adresse de contact (recherche web)." };
+      if (p.email_statut === "invalide") return { email_statut: "invalide", detail: p.email_verif_detail ?? "Adresse marqu\xE9e invalide", consigne: "N'\xE9cris pas \xE0 cette adresse : cherche une autre adresse de contact (recherche web) ou utilise un autre canal." };
+      if (p.email_statut === "verifiee") return { email_statut: "verifiee", detail: p.email_verif_detail ?? "A d\xE9j\xE0 r\xE9pondu", consigne: "Adresse confirm\xE9e par une r\xE9ponse." };
+      const d = await gmailDeps(), v = await classerAdresse(d, String(p.email));
+      await d.store.marquerAdresse?.(String(p.email), v.statut, v.detail);
+      return { email_statut: v.statut, detail: v.detail, consigne: v.statut === "invalide" ? "N'\xE9cris pas \xE0 cette adresse : cherche une autre adresse de contact ou utilise un autre canal." : "Tu peux \xE9crire, mais en petit volume : un retour \xAB non distribu\xE9 \xBB invaliderait l'adresse." };
     }
     case "get_prospect": {
       const [p, msgs, offers, rdv, fu] = await Promise.all([
@@ -1136,6 +1168,7 @@ function activityFor(tool, input) {
     case "lister_prospects":
       return "recherche_prospects";
     case "get_prospect":
+    case "verifier_adresse":
     case "get_product":
     case "recommend_products":
     case "rappeler":
@@ -1214,6 +1247,7 @@ var TOOLSETS = {
   ],
   relance: [
     "get_prospect",
+    "verifier_adresse",
     "get_product",
     "update_prospect",
     "set_stage",
@@ -1223,7 +1257,7 @@ var TOOLSETS = {
     "schedule_followup",
     "escalate_to_human"
   ],
-  qualification: ["get_prospect", "recommend_products", "get_product", "update_prospect", "set_stage", "schedule_followup"],
+  qualification: ["get_prospect", "verifier_adresse", "recommend_products", "get_product", "update_prospect", "set_stage", "schedule_followup"],
   mission: ["recommend_products", "create_prospect"]
 };
 async function runAgent(run, brief) {

@@ -48,6 +48,10 @@ export type Store = {
   onProspectReply?(m: MailRow, textes: string[] | null): Promise<void>;
   /** Adresse en échec : les relances prévues vers ce prospect sont annulées (inutile de payer des tours d'IA pour un e-mail qui ne peut pas arriver). */
   onBounce?(m: MailRow): Promise<void>;
+  /** Statut de qualité de l'adresse sur la fiche prospect (inconnu | a_confirmer | verifiee | invalide). */
+  adresseStatut?(email: string): Promise<string>;
+  /** Enregistre le statut ; une adresse « verifiee » (a répondu) n'est jamais rétrogradée, sauf par un retour « non distribué ». */
+  marquerAdresse?(email: string, statut: "a_confirmer" | "verifiee" | "invalide", detail: string): Promise<void>;
   /** E-mails déjà marqués « répondu » dont le texte n'a pas été lu (reconnexion tardive), non vérifiés depuis `checkedBeforeIso`. */
   repliedWithoutText(sinceIso: string, checkedBeforeIso: string, limit: number): Promise<MailRow[]>;
 };
@@ -340,6 +344,18 @@ export async function sendMail(d: Deps, op: { user_id: string | null; nom: strin
   return { id, thread_id: j.threadId ? String(j.threadId) : null };
 }
 
+export const ADRESSE_GENERIQUE = /^(info|infos|contact|contacts|admin|direction|commercial|accueil|secretariat|hello|bonjour|service)\d*@/i;
+export type VerifAdresse = { statut: "a_confirmer" | "verifiee" | "invalide"; detail: string };
+/** Statut d'une adresse sans rien envoyer : syntaxe + domaine (gratuit). « verifiee » ne s'obtient que par une réponse du prospect (voir onProspectReply). */
+export async function classerAdresse(d: Deps, email: string): Promise<VerifAdresse> {
+  const e = String(email ?? "").trim();
+  if (!validEmail(e)) return { statut: "invalide", detail: "Adresse invalide (syntaxe)" };
+  const v = await verifierDomaine(d, e);
+  if (!v.ok) return { statut: "invalide", detail: `Adresse invalide : ${v.raison}` };
+  if (ADRESSE_GENERIQUE.test(e)) return { statut: "a_confirmer", detail: "Domaine valide ; adresse générique : la boîte n'est pas garantie" };
+  return { statut: "a_confirmer", detail: "Domaine valide ; la boîte n'est confirmée que par une réponse du prospect" };
+}
+
 // ───────────────────────── E-mails des agents IA ─────────────────────────
 export const LIMITE_AGENTS_PAR_JOUR = 30;     // plafond d'e-mails des agents sur 24 h (en plus du plafond de 100 du compte)
 export const SIGNATAIRE_AGENT = "Agent IA";
@@ -383,8 +399,10 @@ export async function sendAgentMail(d: Deps, i: { client_rid?: string | null; to
   if (await d.store.countSentBy(SIGNATAIRE_AGENT, new Date(d.now().getTime() - 24 * 3600e3).toISOString()) >= LIMITE_AGENTS_PAR_JOUR)
     return enFile(`Plafond de ${LIMITE_AGENTS_PAR_JOUR} e-mails d'agents par 24 h atteint : message gardé en file`);
   if (!validEmail(i.to.trim())) return { ok: false, statut: "echec", detail: "Adresse du destinataire invalide" };
-  const v = await verifierDomaine(d, i.to.trim());
-  if (!v.ok) return { ok: false, statut: "echec", detail: `Adresse non vérifiée, envoi évité : ${v.raison}` };
+  if ((await d.store.adresseStatut?.(i.to.trim()).catch(() => "inconnu")) === "invalide") return { ok: false, statut: "echec", detail: "Adresse marquée invalide sur la fiche : envoi évité" };
+  const v = await classerAdresse(d, i.to.trim());
+  await d.store.marquerAdresse?.(i.to.trim(), v.statut, v.detail).catch(() => {});
+  if (v.statut === "invalide") return { ok: false, statut: "echec", detail: `Adresse non vérifiée, envoi évité : ${v.detail}` };
   try {
     const r = await sendMail(d, { user_id: null, nom: SIGNATAIRE_AGENT }, { client_rid: i.client_rid ?? null, to: i.to, subject: i.subject.slice(0, 300), body: i.body, relance_jours: 4 });
     return { ok: true, statut: "envoye", detail: "Envoyé par Gmail", external_id: r.id };

@@ -19,12 +19,14 @@ const VUES=[["pipeline","🧭 Pipeline"],["prospects","👥 Prospects"],["rdv","
 const RDV_STAGES=["rdv_propose","rdv_confirme","demo_realisee"];
 const CLOSED=["perdu","en_veille","marche_gagne","client_fidelise"];
 const OFFRE_ST={brouillon:["Brouillon","#64748b"],a_valider:["À valider","#F59E0B"],validee:["Validée","#0ea5e9"],envoyee:["Envoyée","#6366f1"],acceptee:["Acceptée","#22C55E"],refusee:["Refusée","#EF4444"],expiree:["Expirée","#94a3b8"]};
+const ADRESSE_ST={invalide:["⛔ adresse invalide","var(--bad)"],a_confirmer:["⚠ adresse à confirmer","var(--warn)"],verifiee:["✓ adresse confirmée","var(--ok)"]};
+const adresseBadge=p=>{ const a=p.email?ADRESSE_ST[p.email_statut]:null; return a?html` <span class="small" style="color:${a[1]};font-weight:600">${a[0]}</span>`:""; };
 const CANAUX=["whatsapp","email","telephone","sms","visio","note"];
 const nomDe=id=>prospects.find(p=>p.id===id)?.entreprise??"Prospect inconnu";
 
 export async function loadSales() {
   const [p, pr, o] = await Promise.all([
-    q(S.sb.from("ai_prospects").select("id,crm_client_id,crm_rid,relances_sans_reponse,entreprise,secteur,ville,pays,decideur,telephone,whatsapp,email,stage,score,priorite,potentiel_fcfa,produits_recommandes,owner_id,opt_out,next_action_at,last_outbound_at,last_inbound_at,created_at,resume_ia").order("updated_at",{ascending:false}).limit(MAX_ROWS)),
+    q(S.sb.from("ai_prospects").select("id,crm_client_id,crm_rid,relances_sans_reponse,entreprise,secteur,ville,pays,decideur,telephone,whatsapp,email,stage,score,priorite,potentiel_fcfa,produits_recommandes,owner_id,opt_out,next_action_at,last_outbound_at,last_inbound_at,created_at,resume_ia,email_statut").order("updated_at",{ascending:false}).limit(MAX_ROWS)),
     q(S.sb.from("ai_products").select("id,nom,marche_cible,actif").eq("actif",true).order("nom")),
     q(S.sb.from("ai_offers").select("id,reference,prospect_id,product_id,total_ht,total_ttc,statut,created_at").order("created_at",{ascending:false}).limit(100)),
   ]);
@@ -55,7 +57,7 @@ function vueProspects(){
     </div>
     <div class="scroll"><table class="tbl"><thead><tr><th>Entreprise / Contact</th><th>Produit</th><th>Étape</th><th>Score</th><th>Potentiel</th><th>Prochaine action</th><th></th></tr></thead><tbody>
     ${raw(rows.slice(0,shown).map(p=>html`<tr>
-      <td><b>${p.entreprise}</b><div class="small muted">${[p.secteur,p.ville].filter(Boolean).join(" · ")||"—"} · ${p.decideur||"Contact non renseigné"}</div><div class="small muted">${p.email||p.whatsapp||p.telephone||""}${p.crm_client_id?html` · CRM #${p.crm_client_id}`:""}</div></td>
+      <td><b>${p.entreprise}</b><div class="small muted">${[p.secteur,p.ville].filter(Boolean).join(" · ")||"—"} · ${p.decideur||"Contact non renseigné"}</div><div class="small muted">${p.email||p.whatsapp||p.telephone||""}${adresseBadge(p)}${p.crm_client_id?html` · CRM #${p.crm_client_id}`:""}</div></td>
       <td class="small">${(p.produits_recommandes??[]).map(productName).join(", ")||"À déterminer"}</td>
       <td><select data-sales-stage data-id="${p.id}" aria-label="Étape de ${p.entreprise}">${stageOptions(p.stage)}</select></td>
       <td><b>${p.score??0}/100</b><div class="small muted">${p.priorite??""}</div></td>

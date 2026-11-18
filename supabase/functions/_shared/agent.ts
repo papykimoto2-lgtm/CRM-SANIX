@@ -34,9 +34,9 @@ async function salesDirectorId(): Promise<string | null> {
 const TOOLSETS: Record<RunMode["mode"], string[]> = {
   conversation: ["get_prospect", "recommend_products", "get_product", "update_prospect", "set_stage", "send_message",
     "get_objection", "list_free_slots", "book_appointment", "create_offer", "schedule_followup", "escalate_to_human"],
-  relance: ["get_prospect", "get_product", "update_prospect", "set_stage", "send_message", "get_objection",
+  relance: ["get_prospect", "verifier_adresse", "get_product", "update_prospect", "set_stage", "send_message", "get_objection",
     "list_free_slots", "schedule_followup", "escalate_to_human"],
-  qualification: ["get_prospect", "recommend_products", "get_product", "update_prospect", "set_stage", "schedule_followup"],
+  qualification: ["get_prospect", "verifier_adresse", "recommend_products", "get_product", "update_prospect", "set_stage", "schedule_followup"],
   mission: ["recommend_products", "create_prospect"],
 };
 

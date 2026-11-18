@@ -54,7 +54,7 @@ export class Presence {
 export function activityFor(tool: string, input: Record<string, any>): string | null {
   switch (tool) {
     case "create_prospect": case "lister_prospects": return "recherche_prospects";
-    case "get_prospect": case "get_product": case "recommend_products": case "rappeler": case "consulter_taches": case "memoriser": case "transmettre":
+    case "get_prospect": case "verifier_adresse": case "get_product": case "recommend_products": case "rappeler": case "consulter_taches": case "memoriser": case "transmettre":
       return "consultation_documents";
     case "update_prospect": case "set_stage": case "consulter_indicateurs": case "consulter_performance": return "analyse_donnees";
     case "send_message": return input?.canal === "email" ? "redaction_email" : "conversation_whatsapp";
