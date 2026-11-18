@@ -7,7 +7,22 @@ import { LOGIN_ALIASES, SUPABASE_DEFAULT } from "./config.js";
 import * as SALES from "./sales.js";
 import * as COST from "./couts.js";
 import * as CFG from "./config_panel.js";
-import { initVoice } from "./voice.js";
+import { initVoice, initLecture, arreterLecture } from "./voice.js";
+
+// Taille du texte : réglable (surtout sur téléphone), mémorisée sur l'appareil. Le Bureau 3D n'est pas concerné.
+const TAILLES = [1, 1.15, 1.3, 1.5];
+const lireTaille = () => { try { const v = parseFloat(localStorage.getItem("sanix-ai-txt")); if (TAILLES.includes(v)) return v; } catch { /* stockage indisponible */ } return window.matchMedia?.("(max-width:560px)").matches ? 1.15 : 1; };
+function appliquerTaille(v) {
+  document.documentElement.style.setProperty("--txt", String(v));
+  const b = document.getElementById("txt-size"); if (b) { b.textContent = `Aa ${Math.round(v * 100)} %`; b.title = "Taille du texte : touchez pour agrandir"; }
+}
+function changerTaille() {
+  const v = TAILLES[(TAILLES.indexOf(lireTaille()) + 1) % TAILLES.length];
+  try { localStorage.setItem("sanix-ai-txt", String(v)); } catch { /* ignoré */ }
+  appliquerTaille(v);
+}
+document.addEventListener("DOMContentLoaded", () => { appliquerTaille(lireTaille()); initLecture(); document.getElementById("txt-size")?.addEventListener("click", changerTaille); });
+if (document.readyState !== "loading") { appliquerTaille(lireTaille()); initLecture(); document.getElementById("txt-size")?.addEventListener("click", changerTaille); }
 
 // ───────────────────────── Configuration & session ─────────────────────────
 const LS = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
@@ -210,6 +225,8 @@ function render(soft = false) {
   if (soft && S.tab === "gov" && govDirty) { renderChips(); return; }
   renderTabs(); renderChips();
   const main = $("#main");
+  if (main.dataset.tab !== S.tab) arreterLecture();
+  main.dataset.tab = S.tab;
   if (S.tab !== "office") S.office?.setActive(false);
   if (S.tab === "office") { P.renderOffice(main); return; }
   if (soft && ["exec"].includes(S.tab)) { renderExec(main, true); return; }
@@ -298,7 +315,7 @@ function approvalCard(a) {
   const ag = agentBy(a.agent_id);
   return html`<div class="card" style="margin:8px 0;padding:11px"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b>${APP_LABEL[a.type] ?? a.type}</b><span class="small muted">${ago(a.created_at)}</span></div>
     <div class="small">${a.ai_prospects?.entreprise ? html`<b>${a.ai_prospects.entreprise}</b> — ` : ""}${a.motif}</div>${approvalDetail(a)}${ag ? html`<div class="small muted">Demandé par ${ag.nom}</div>` : ""}
-    ${isDir() ? html`<div class="actions"><button class="btn sm ok" type="button" data-act="decide" data-id="${a.id}" data-ok="1">✔ Approuver</button><button class="btn sm bad" type="button" data-act="decide" data-id="${a.id}" data-ok="0">✖ Refuser</button></div>` : ""}</div>`;
+    ${isDir() ? html`<div class="actions"><button class="btn sm" type="button" data-lire="card" aria-pressed="false">🔊 Écouter</button><button class="btn sm ok" type="button" data-act="decide" data-id="${a.id}" data-ok="1">✔ Approuver</button><button class="btn sm bad" type="button" data-act="decide" data-id="${a.id}" data-ok="0">✖ Refuser</button></div>` : ""}</div>`;
 }
 /** Numéro prêt pour wa.me : chiffres seulement, indicatif compris (un numéro ivoirien à 10 chiffres reçoit 225). Vide si invalide. */
 const waNum = (p) => { const d = String(p?.phone_norm || p?.whatsapp || p?.telephone || "").replace(/\D/g, ""); return d.length === 10 ? "225" + d : d.length >= 11 && d.length <= 15 ? d : ""; };
@@ -320,7 +337,7 @@ function waSection() {
 }
 function renderValid(main) {
   const groups = {}; for (const a of S.approvals) (groups[a.type] ??= []).push(a);
-  main.innerHTML = html`<section class="panel"><h2>Validations en attente</h2><p class="sub">Décisions qui dépassent les délégations des collaborateurs IA.</p>${waSection()}
+  main.innerHTML = html`<section class="panel"><h2>Validations en attente</h2>${S.approvals.length ? html`<button class="btn sm" type="button" data-lire="tout" aria-pressed="false" style="float:right">🔊 Tout écouter</button>` : ""}<p class="sub">Décisions qui dépassent les délégations des collaborateurs IA.</p>${waSection()}
     ${Object.keys(groups).length ? Object.entries(groups).map(([t, l]) => html`<div style="display:flex;align-items:center;gap:10px;margin:16px 0 4px"><h3 style="margin:0">${APP_LABEL[t] ?? t} (${l.length})</h3>
       ${isDir() && l.length > 1 ? html`<button class="btn sm ok" type="button" data-act="decide-batch" data-type="${t}" data-ok="1">Tout approuver</button><button class="btn sm bad" type="button" data-act="decide-batch" data-type="${t}" data-ok="0">Tout refuser</button>` : ""}</div><div class="grid g2" data-paginate data-pg-size="10" data-pg-sizes="10,25,50">${l.map(approvalCard)}</div>`) : html`<div class="card muted">Aucune validation en attente. 👌</div>`}</section>`.s;
 }
