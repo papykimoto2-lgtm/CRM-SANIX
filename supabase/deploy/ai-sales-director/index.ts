@@ -319,12 +319,38 @@ async function sendMail(d, op, i) {
 }
 var LIMITE_AGENTS_PAR_JOUR = 30;
 var SIGNATAIRE_AGENT = "Agent IA";
+async function verifierDomaine(d, email) {
+  const domaine = email.slice(email.lastIndexOf("@") + 1).toLowerCase().trim();
+  if (!domaine || !/^[a-z0-9.-]+$/.test(domaine) || !domaine.includes(".")) return { ok: false, raison: "domaine invalide" };
+  if (/(^|\.)(example\.(com|org|net)|test|invalid|localhost)$/.test(domaine)) return { ok: false, raison: "domaine factice" };
+  const interroge = async (type) => {
+    try {
+      const r = await d.fetch(`https://dns.google/resolve?name=${encodeURIComponent(domaine)}&type=${type}`, { headers: { accept: "application/dns-json" } });
+      if (!r.ok) return null;
+      const j = await r.json();
+      if (typeof j?.Status !== "number") return null;
+      return { status: j.Status, reponses: Array.isArray(j.Answer) ? j.Answer.length : 0 };
+    } catch {
+      return null;
+    }
+  };
+  const mx = await interroge("MX");
+  if (!mx) return { ok: true };
+  if (mx.status === 3) return { ok: false, raison: "le domaine n'existe pas" };
+  if (mx.reponses > 0) return { ok: true };
+  const a = await interroge("A");
+  if (!a) return { ok: true };
+  return a.reponses > 0 ? { ok: true } : { ok: false, raison: "le domaine ne re\xE7oit pas de courrier (aucun serveur de messagerie)" };
+}
 async function sendAgentMail(d, i) {
   const enFile = (detail) => ({ ok: false, statut: "a_envoyer", detail });
   const acc = await d.store.getAccount();
   if (!acc || acc.status !== "connecte") return enFile("E-mail non configur\xE9 : connectez Gmail dans le CRM (Param\xE9trage \u2192 Relances) ; message mis en file");
   if (await d.store.countSentBy(SIGNATAIRE_AGENT, new Date(d.now().getTime() - 24 * 36e5).toISOString()) >= LIMITE_AGENTS_PAR_JOUR)
     return enFile(`Plafond de ${LIMITE_AGENTS_PAR_JOUR} e-mails d'agents par 24 h atteint : message gard\xE9 en file`);
+  if (!validEmail(i.to.trim())) return { ok: false, statut: "echec", detail: "Adresse du destinataire invalide" };
+  const v = await verifierDomaine(d, i.to.trim());
+  if (!v.ok) return { ok: false, statut: "echec", detail: `Adresse non v\xE9rifi\xE9e, envoi \xE9vit\xE9 : ${v.raison}` };
   try {
     const r = await sendMail(d, { user_id: null, nom: SIGNATAIRE_AGENT }, { client_rid: i.client_rid ?? null, to: i.to, subject: i.subject.slice(0, 300), body: i.body, relance_jours: 4 });
     return { ok: true, statut: "envoye", detail: "Envoy\xE9 par Gmail", external_id: r.id };
@@ -400,6 +426,14 @@ var store = {
       if (m.client_rid) await store.addInteraction(m.client_rid, { date: (/* @__PURE__ */ new Date()).toISOString(), type: "D\xE9sinscription (STOP)", note: "Le prospect demande de ne plus \xEAtre contact\xE9 : plus aucun message automatique", ico: "\u{1F6AB}", source: "gmail" }).catch(() => {
       });
     }
+  },
+  async onBounce(m) {
+    const q = db().from("ai_prospects").select("id");
+    const { data } = m.client_rid ? await q.eq("crm_rid", m.client_rid).limit(1) : await q.ilike("email", m.to_email.replace(/[\\%_]/g, "\\$&")).limit(1);
+    const p = data?.[0];
+    if (!p) return;
+    const { data: annulees } = await db().from("ai_followups").update({ statut: "annulee" }).eq("prospect_id", p.id).eq("statut", "planifiee").select("id");
+    if (annulees?.length) await db().from("ai_actions").insert({ agent: "gmail", action: "relances_annulees_adresse_invalide", prospect_id: p.id, ok: true, payload: { relances: annulees.length } });
   },
   async addInteraction(clientRid, interaction) {
     const { data } = await db().from("crm_records").select("rid").eq("entity", "clients").eq("rid", clientRid).is("deleted_at", null).maybeSingle();

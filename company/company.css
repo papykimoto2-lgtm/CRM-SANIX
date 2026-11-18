@@ -186,3 +186,15 @@ iframe.rpt{width:100%;height:66dvh;border:1px solid var(--line);border-radius:10
 #tabs,#main:not([data-tab="office"]){zoom:var(--txt,1)}
 .lire-btn{margin-right:6px}
 @media (max-width:560px){button,.btn{min-height:36px}.card .actions .btn{padding:8px 12px}}
+/* Téléphone : les tableaux deviennent des cartes (plus de colonnes coupées à gauche) */
+@media (max-width:760px){
+  .scroll{overflow:visible;border:0;background:none}
+  .tbl:not(.sup){display:block}.tbl:not(.sup) thead{display:none}.tbl:not(.sup) tbody{display:block}
+  .tbl:not(.sup) tr{display:block;margin:0 0 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--s1);overflow:hidden}
+  .tbl:not(.sup) td{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:7px 12px;border-bottom:1px solid var(--line);text-align:right;overflow-wrap:anywhere}
+  .tbl:not(.sup) td:last-child{border-bottom:0}
+  .tbl:not(.sup) td[data-label]::before{content:attr(data-label);flex:0 0 36%;text-align:left;color:var(--mute);font-weight:600;font-size:.9em}
+  .tbl:not(.sup) td .v{flex:1 1 0;min-width:0;text-align:right}.tbl:not(.sup) td .v>b,.tbl:not(.sup) td .v>small{display:block}
+  .tbl:not(.sup) td.num{text-align:right}
+  .tbl:not(.sup) td:empty{display:none}
+}

@@ -46,6 +46,8 @@ export type Store = {
   saveReplies(mailId: string, replies: ReplyRow[]): Promise<void>;
   /** Un prospect a répondu (texte lu ou non) : met à jour sa fiche côté agents (dernier échange, relances remises à zéro) et, si la réponse demande l'arrêt (« STOP »), le désinscrit. Facultatif. */
   onProspectReply?(m: MailRow, textes: string[] | null): Promise<void>;
+  /** Adresse en échec : les relances prévues vers ce prospect sont annulées (inutile de payer des tours d'IA pour un e-mail qui ne peut pas arriver). */
+  onBounce?(m: MailRow): Promise<void>;
   /** E-mails déjà marqués « répondu » dont le texte n'a pas été lu (reconnexion tardive), non vérifiés depuis `checkedBeforeIso`. */
   repliedWithoutText(sinceIso: string, checkedBeforeIso: string, limit: number): Promise<MailRow[]>;
 };
@@ -341,6 +343,33 @@ export async function sendMail(d: Deps, op: { user_id: string | null; nom: strin
 // ───────────────────────── E-mails des agents IA ─────────────────────────
 export const LIMITE_AGENTS_PAR_JOUR = 30;     // plafond d'e-mails des agents sur 24 h (en plus du plafond de 100 du compte)
 export const SIGNATAIRE_AGENT = "Agent IA";
+
+/**
+ * Vérification gratuite du domaine du destinataire avant un premier envoi d'agent : un domaine qui n'existe pas ou qui ne reçoit pas de courrier
+ * (ni MX, ni A) ne peut que renvoyer « non distribué ». Interroge DNS-over-HTTPS (Google) ; si le service ne répond pas, on laisse passer
+ * (jamais de blocage sur une panne). Ne peut PAS savoir si la boîte elle-même existe (info@… sur un domaine valide) : seul un retour Gmail le dira.
+ */
+export async function verifierDomaine(d: Deps, email: string): Promise<{ ok: boolean; raison?: string }> {
+  const domaine = email.slice(email.lastIndexOf("@") + 1).toLowerCase().trim();
+  if (!domaine || !/^[a-z0-9.-]+$/.test(domaine) || !domaine.includes(".")) return { ok: false, raison: "domaine invalide" };
+  if (/(^|\.)(example\.(com|org|net)|test|invalid|localhost)$/.test(domaine)) return { ok: false, raison: "domaine factice" };
+  const interroge = async (type: "MX" | "A"): Promise<{ status: number; reponses: number } | null> => {
+    try {
+      const r = await d.fetch(`https://dns.google/resolve?name=${encodeURIComponent(domaine)}&type=${type}`, { headers: { accept: "application/dns-json" } });
+      if (!r.ok) return null;
+      const j = await r.json();
+      if (typeof j?.Status !== "number") return null;
+      return { status: j.Status, reponses: Array.isArray(j.Answer) ? j.Answer.length : 0 };
+    } catch { return null; }
+  };
+  const mx = await interroge("MX");
+  if (!mx) return { ok: true };                       // service DNS indisponible : pas de blocage
+  if (mx.status === 3) return { ok: false, raison: "le domaine n'existe pas" };
+  if (mx.reponses > 0) return { ok: true };
+  const a = await interroge("A");                     // sans MX, le courrier est livré à l'adresse A du domaine (RFC 5321)
+  if (!a) return { ok: true };
+  return a.reponses > 0 ? { ok: true } : { ok: false, raison: "le domaine ne reçoit pas de courrier (aucun serveur de messagerie)" };
+}
 export type AgentSend = { ok: boolean; statut: string; detail: string; external_id?: string };
 /**
  * Envoie l'e-mail d'un agent par le Gmail connecté. Il entre dans le journal des e-mails du CRM (donc dans « Relances », avec lecture des réponses
@@ -353,6 +382,9 @@ export async function sendAgentMail(d: Deps, i: { client_rid?: string | null; to
   if (!acc || acc.status !== "connecte") return enFile("E-mail non configuré : connectez Gmail dans le CRM (Paramétrage → Relances) ; message mis en file");
   if (await d.store.countSentBy(SIGNATAIRE_AGENT, new Date(d.now().getTime() - 24 * 3600e3).toISOString()) >= LIMITE_AGENTS_PAR_JOUR)
     return enFile(`Plafond de ${LIMITE_AGENTS_PAR_JOUR} e-mails d'agents par 24 h atteint : message gardé en file`);
+  if (!validEmail(i.to.trim())) return { ok: false, statut: "echec", detail: "Adresse du destinataire invalide" };
+  const v = await verifierDomaine(d, i.to.trim());
+  if (!v.ok) return { ok: false, statut: "echec", detail: `Adresse non vérifiée, envoi évité : ${v.raison}` };
   try {
     const r = await sendMail(d, { user_id: null, nom: SIGNATAIRE_AGENT }, { client_rid: i.client_rid ?? null, to: i.to, subject: i.subject.slice(0, 300), body: i.body, relance_jours: 4 });
     return { ok: true, statut: "envoye", detail: "Envoyé par Gmail", external_id: r.id };
@@ -386,6 +418,7 @@ export async function syncReplies(d: Deps): Promise<{ verifies: number; reponses
         if (m.client_rid) await d.store.addInteraction(m.client_rid, { date: a.at ?? d.now().toISOString(), type: "Réponse reçue par e-mail", note: "Réponse de " + (a.from ?? "le prospect") + " à : " + m.subject, etape: 1, ico: "📩", source: "gmail" }).catch(() => {});
       } else if (a.bounced) {
         await d.store.updateMail(m.id!, { status: "echec", error: "Non distribué (retour Gmail) : adresse inexistante ou boîte pleine", last_checked_at: d.now().toISOString() }); echecs++;
+        await d.store.onBounce?.(m).catch(() => {});
         if (m.client_rid) await d.store.addInteraction(m.client_rid, { date: a.at ?? d.now().toISOString(), type: "E-mail non distribué", note: "L'adresse " + m.to_email + " semble incorrecte : à vérifier", ico: "⚠️", source: "gmail" }).catch(() => {});
       } else await d.store.updateMail(m.id!, { last_checked_at: d.now().toISOString() });
     } catch { /* un fil en erreur ne bloque pas les autres */ }
