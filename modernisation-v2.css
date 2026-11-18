@@ -15,3 +15,18 @@ table{border-collapse:separate;border-spacing:0}th{background:#f6f9fb;color:#617
 @media(max-width:1100px){.content{padding:22px}.topbar{padding:0 20px}.welcome{padding:21px}}
 @media(max-width:760px){.content{padding:14px}.topbar{height:58px;padding:0 14px}.welcome{padding:18px;border-radius:14px}.welcome h1{font-size:20px}.welcome .hl{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:15px}.welcome .hl>div{border-left:0;padding:0}.stat-card{padding:13px;min-height:120px}.card{padding:15px;border-radius:12px}.flt-bar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.flt-bar .form-input{width:100%;min-width:0}#clients-table-view{overflow-x:auto!important;-webkit-overflow-scrolling:touch}.client-table{min-width:760px}.tabs{overflow-x:auto;flex-wrap:nowrap;white-space:nowrap;padding-bottom:4px}.tabs .tab{flex:0 0 auto}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+/* Densité conservée (écrans > 760 px) : le style V2 (teintes, coins, ombres, dégradés) est gardé, mais les espacements et la taille du texte reviennent
+   à ceux du CRM actuel, pour qu'un écran montre autant d'informations qu'avant. Mesuré élément par élément sur le tableau de bord et la liste des clients. */
+@media(min-width:761px){
+  :root{--nav-w:240px;--topbar-h:56px}
+  body{font-size:14px;letter-spacing:0}
+  .sidebar{padding:14px 10px 56px}
+  .sb-logo{padding:6px 8px 12px;gap:10px}.sb-logo-icon{width:34px;height:34px;border-radius:11px;font-size:17px;box-shadow:0 5px 12px rgba(18,184,166,.18)}.sb-logo-text{font-size:15px}
+  .sb-item{min-height:38px;padding:9px 10px;margin-left:0;margin-right:0;font-size:13.5px;gap:8px}
+  .topbar{padding:0 24px}
+  .content{padding:18px 24px 84px}
+  .welcome{padding:18px 20px;margin-bottom:14px}.welcome h1{font-size:22px}
+  .stat-card{padding:14px 16px;min-height:0}.stat-val{font-size:24px}
+  .card{padding:20px}
+  .card-header{padding-bottom:6px;margin-bottom:10px}
+}
