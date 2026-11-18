@@ -181,3 +181,8 @@ iframe.rpt{width:100%;height:66dvh;border:1px solid var(--line);border-radius:10
   .quick button{flex:0 0 auto;white-space:nowrap;max-width:70vw;overflow:hidden;text-overflow:ellipsis}
   .compose textarea{min-height:40px;max-height:96px}
 }
+
+/* Taille du texte réglable (bouton « Aa ») : tout sauf le Bureau 3D, qui garde sa mise en page plein écran */
+#tabs,#main:not([data-tab="office"]){zoom:var(--txt,1)}
+.lire-btn{margin-right:6px}
+@media (max-width:560px){button,.btn{min-height:36px}.card .actions .btn{padding:8px 12px}}

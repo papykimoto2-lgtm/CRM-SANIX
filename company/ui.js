@@ -33,7 +33,7 @@ export const toast = (msg, kind = "", onClick = null) => {
 let lastFocus = null, onModalClose = null;
 export function openModal(content, { onClose = null } = {}) {
   lastFocus = document.activeElement; onModalClose = onClose;
-  $("#modal-box").innerHTML = html`<button class="btn sm close" type="button" data-act="close-modal" aria-label="Fermer">✕</button>${content}`.s;
+  $("#modal-box").innerHTML = html`<button class="btn sm close" type="button" data-act="close-modal" aria-label="Fermer">✕</button><button class="btn sm close lire-btn" type="button" data-lire="card" aria-pressed="false" title="Lire ce contenu à voix haute">🔊 Écouter</button>${content}`.s;
   $("#modal").hidden = false; $("#modal-box").querySelector("button:not(.close),input,select,textarea")?.focus();
 }
 export function closeModal() {
