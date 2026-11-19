@@ -33,6 +33,19 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(r.once.split(U).length - 1 === 1, "ajout idempotent : jamais deux fois le même lien");
     ok(/Pour en savoir plus[^\n]*\n\nCordialement$/.test(r.once), "e-mail : lien placé avant la formule de politesse");
     ok(r.refuse === "Bonjour", "adresse non https refusée : rien n'est ajouté");
+    console.log("▶ Générateur : champs préremplis selon le logiciel");
+    const g = await page.evaluate(() => {
+      initMarketing(); const sel = document.getElementById("mkt-lp-logiciel"), v = (id) => document.getElementById(id).value, noms = [...sel.options].map((o) => o.value);
+      sel.value = noms[0]; sel.dispatchEvent(new Event("change")); const a = { t: v("mkt-lp-titre"), o: v("mkt-lp-offre"), n: noms[0] };
+      sel.value = noms[1]; sel.dispatchEvent(new Event("change")); const b = { t: v("mkt-lp-titre"), o: v("mkt-lp-offre"), n: noms[1] };
+      const e = document.getElementById("mkt-lp-titre"); e.value = "Mon titre à moi"; e.dispatchEvent(new Event("input"));
+      sel.value = noms[0]; sel.dispatchEvent(new Event("change")); const c = { t: v("mkt-lp-titre"), o: v("mkt-lp-offre") };
+      lpPreremplir(true); return { a, b, c, d: v("mkt-lp-titre") };
+    });
+    ok(g.a.t && g.b.t && g.a.t !== g.b.t, "l'accroche change avec le logiciel choisi");
+    ok(g.a.o.includes(g.a.n) && g.b.o.includes(g.b.n), "l'offre cite le logiciel choisi");
+    ok(g.c.t === "Mon titre à moi" && g.c.o.includes(g.a.n), "ce que vous avez tapé n'est pas écrasé, le reste suit le logiciel");
+    ok(g.d === g.a.t, "« Réappliquer les suggestions » remplace tout");
     ok(errors.length === 0, "aucune erreur JavaScript (" + errors.join("; ") + ")");
     console.log("\nTOUT EST OK");
   } finally { await browser.close(); server.close(); }
