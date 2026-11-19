@@ -2622,7 +2622,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
             <div class="form-group" style="flex:1;min-width:180px"><label class="form-label">WhatsApp / Tél. 1</label><input class="form-input" id="rel-cfg-tel1" placeholder="+225 07 79 18 10 75"></div>
             <div class="form-group" style="flex:1;min-width:180px"><label class="form-label">Tél. 2</label><input class="form-input" id="rel-cfg-tel2"></div>
             <div class="form-group" style="flex:1;min-width:180px"><label class="form-label">Email</label><input class="form-input" id="rel-cfg-email"></div>
-            <div class="form-group" style="flex:2;min-width:260px"><label class="form-label">🌐 Landing page jointe à chaque message</label><input class="form-input" id="rel-cfg-landing" placeholder="https://votre-landing.vercel.app" inputmode="url"><div style="font-size:11px;color:var(--muted);margin-top:3px">Le lien est ajouté automatiquement à chaque message prospect (WhatsApp, SMS, e-mail), avec le canal et le logiciel pour suivre les visites. Laissez vide pour ne rien ajouter.</div></div>
+            <div class="form-group" style="flex:2;min-width:260px"><label class="form-label">🌐 Landing page jointe à chaque message</label><label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-bottom:4px"><input type="checkbox" id="rel-cfg-landing-on"> Joindre la landing page à chaque message prospect (WhatsApp, SMS, e-mail)</label><input class="form-input" id="rel-cfg-landing" placeholder="https://crm-sanix.vercel.app/landing/{slug}.html" inputmode="url"><div style="font-size:11px;color:var(--muted);margin-top:3px">Laissez vide pour utiliser les pages construites avec le CRM (une par logiciel, sans lien étranger). <b>{slug}</b> est remplacé par le logiciel du prospect ; le canal est indiqué dans le lien pour suivre les visites.</div></div>
           </div>
         </div>
 
@@ -12800,7 +12800,7 @@ const RELANCE_DEFAULT = {
   tel1:'+225 07 79 18 10 75',
   tel2:'+225 01 40 07 55 51',
   email:'sanixafrica699@gmail.com',
-  waPhoneId:'', waToken:'', smsUrl:'', smsKey:'', landingUrl:'',
+  waPhoneId:'', waToken:'', smsUrl:'', smsKey:'', landingUrl:'', landingActif:true,
   templates:[
     // 0 — premier contact
     'Bonjour {nom},\n\nJe suis {gerant}, gérant de {societe}. Nous éditons {logiciel}, une solution de gestion pensée pour les entreprises ivoiriennes (SYSCOHADA, hors-ligne, sans abonnement lourd).\n\nSeriez-vous disponible pour une courte démonstration {rdv} ?\n\nCordialement,\n{gerant} — {societe}\n📞 {tel} · 📧 {email}',
@@ -12856,12 +12856,15 @@ function relanceBuildPitch(c){
 
 // ── Landing page jointe à chaque message prospect (WhatsApp, SMS, e-mail) ──
 /** Adresse https de la landing page hébergée (réglage « Séquences de relance »), ou '' si non renseignée. */
-function landingUrl(){ const u=String((relanceCfg()||{}).landingUrl||'').trim(); return /^https:\/\/[^\s<>"']+$/i.test(u)?u:''; }
+const LANDING_DEFAUT='https://crm-sanix.vercel.app/landing/{slug}.html';   // pages construites avec le CRM (dossier landing/), une par logiciel
+function landingSlug(nom){ return String(nom||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
+function landingUrl(){ const r=relanceCfg()||{}; if(r.landingActif===false) return ''; const u=String(r.landingUrl||'').trim()||LANDING_DEFAUT; return /^https:\/\/[^\s<>"']+$/i.test(u)?u:''; }
 /** Lien suivi : la landing page + canal d'origine + logiciel concerné (pour savoir d'où viennent les visites). */
 function landingLien(canal,c){
-  const u=landingUrl(); if(!u) return '';
-  const ref=String((c&&c.logiciel)||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-  return u+(u.includes('?')?'&':'?')+'src='+(canal==='email'?'email':'whatsapp')+(ref?'&ref='+ref:'');
+  let u=landingUrl(); if(!u) return '';
+  const ref=landingSlug(c&&c.logiciel), src='src='+(canal==='email'?'email':'whatsapp');
+  if(u.includes('{slug}')){ if(!ref) u=u.replace(/\/?\{slug\}(\.html)?/,''); else return u.replace(/\{slug\}/g,ref)+(u.includes('?')?'&':'?')+src; }
+  return u+(u.includes('?')?'&':'?')+src+(ref?'&ref='+ref:'');
 }
 /** Ajoute le lien de la landing page à un message, une seule fois (sans effet si aucune adresse n'est réglée ou si elle y est déjà). */
 function landingAjoute(texte,canal,c){
@@ -13060,7 +13063,7 @@ function initRelanceConfig(){
   const r = relanceCfg(); try{ gmailReglageRender(); }catch(e){} try{ waReglageRender(); }catch(e){}
   const g=id=>document.getElementById(id);
   g('rel-cfg-gerant').value=r.gerant; g('rel-cfg-societe').value=r.societe; g('rel-cfg-ville').value=r.ville;
-  g('rel-cfg-tel1').value=r.tel1; g('rel-cfg-tel2').value=r.tel2; g('rel-cfg-email').value=r.email; g('rel-cfg-landing').value=r.landingUrl||'';
+  g('rel-cfg-tel1').value=r.tel1; g('rel-cfg-tel2').value=r.tel2; g('rel-cfg-email').value=r.email; g('rel-cfg-landing').value=r.landingUrl||''; g('rel-cfg-landing-on').checked=r.landingActif!==false;
   g('rel-cfg-waid').value=r.waPhoneId; g('rel-cfg-watoken').value=r.waToken;
   g('rel-cfg-smsurl').value=r.smsUrl; g('rel-cfg-smskey').value=r.smsKey;
   g('rel-cfg-firstcontact').innerHTML = Object.entries(fcCfg()).map(([k,t])=>`
@@ -13097,11 +13100,11 @@ function relanceSaveConfig(){
   CONFIG.relance={
     gerant:g('rel-cfg-gerant'),societe:g('rel-cfg-societe'),ville:g('rel-cfg-ville'),
     tel1:g('rel-cfg-tel1'),tel2:g('rel-cfg-tel2'),email:g('rel-cfg-email'),
-    waPhoneId:g('rel-cfg-waid'),waToken:g('rel-cfg-watoken'),smsUrl:g('rel-cfg-smsurl'),smsKey:g('rel-cfg-smskey'),landingUrl:g('rel-cfg-landing').trim(),
+    waPhoneId:g('rel-cfg-waid'),waToken:g('rel-cfg-watoken'),smsUrl:g('rel-cfg-smsurl'),smsKey:g('rel-cfg-smskey'),landingUrl:g('rel-cfg-landing').trim(), landingActif:document.getElementById('rel-cfg-landing-on').checked,
     templates,
     premierContact:fcCollect()
   };
-  if(CONFIG.relance.landingUrl && !landingUrl()){ CONFIG.relance.landingUrl=''; showToast('⚠️ Adresse de la landing page refusée : elle doit commencer par https://','error'); }
+  if(CONFIG.relance.landingUrl && !/^https:\/\/[^\s<>"']+$/i.test(CONFIG.relance.landingUrl)){ CONFIG.relance.landingUrl=''; showToast('⚠️ Adresse de la landing page refusée : elle doit commencer par https://','error'); }
   if(typeof persistConfig==='function') persistConfig();
   showToast('✅ Séquences de relance enregistrées');
 }
@@ -13996,12 +13999,12 @@ function lpBuildHtml(o){
   const acc=(log&&log.color)||'#0e7490';
   const titre=o.titre||cp.hook;
   const prix=log&&log.prixNum?log.prixNum:0, mens=log&&log.prixMensuel?log.prixMensuel:0;
-  const nClients=CLIENTS.filter(c=>c.logiciel===o.logNom&&c.statut==='client').length;
+  const nClients=o.publique?0:CLIENTS.filter(c=>c.logiciel===o.logNom&&c.statut==='client').length;   // page publique : jamais de chiffre tiré du CRM
   const slug='LP-'+String(o.logNom||'SANIX').toUpperCase().replace(/[^A-Z0-9]+/g,'').slice(0,10);
   const tel=o.tel?('+225 '+o.tel.replace(/^225/,'').replace(/(\d{2})(?=\d)/g,'$1 ')):'';
   const waMsg='Bonjour, je souhaite une démo gratuite de '+o.logNom+'. (Réf. '+slug+')';
   const waLinkDirect='https://wa.me/'+o.wa+'?text='+encodeURIComponent(waMsg);
-  const demoBtn=(log&&log.demo&&log.demo!=='#')?`<a class="btn ghost" href="${E(log.demo)}" target="_blank" rel="noopener">▶ Voir le logiciel en ligne</a>`:'';
+  const demoBtn=(!o.publique&&log&&log.demo&&log.demo!=='#')?`<a class="btn ghost" href="${E(log.demo)}" target="_blank" rel="noopener">▶ Voir le logiciel en ligne</a>`:'';
   const gains=cp.gains.map(g=>`<div class="card"><div class="ico">${g[0]}</div><h3>${E(g[1])}</h3><p>${E(g[2])}</p></div>`).join('');
   const pains=cp.pains.map(x=>`<li>${E(x)}</li>`).join('');
   const faq=[
@@ -14127,7 +14130,7 @@ function mktGenLanding(preview){
   if(preview===true){ window.open(url,'_blank'); document.getElementById('mkt-lp-info').innerHTML=(o.avert||'👁 Aperçu ouvert dans un nouvel onglet.'); return; }
   const a=document.createElement('a'); a.href=url; a.download='landing-'+o.logNom.toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.html';
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000);
-  document.getElementById('mkt-lp-info').innerHTML=(o.avert?o.avert+'<br>':'')+'✅ Landing page téléchargée. Hébergez-la (Vercel/Netlify), puis collez son adresse dans Paramétrage → Séquences de relance → « Landing page jointe à chaque message » : le lien sera ajouté à chaque message prospect. Chaque visiteur est envoyé sur WhatsApp vers '+('+'+o.wa)+' avec la référence de la page.';
+  document.getElementById('mkt-lp-info').innerHTML=(o.avert?o.avert+'<br>':'')+'✅ Landing page téléchargée. Les pages publiques de tous les logiciels sont déjà construites avec le CRM (adresse jointe automatiquement aux messages) ; ce fichier sert à une version personnalisée. Chaque visiteur est envoyé sur WhatsApp vers '+('+'+o.wa)+' avec la référence de la page.';
 }
 
 

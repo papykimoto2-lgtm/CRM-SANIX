@@ -14,14 +14,16 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.goto("http://localhost:4243/index.html"); await page.waitForTimeout(1200);
     await page.evaluate(() => { currentUser = USERS.find((u) => u.role === "super_admin"); enterApp(currentUser); }); await page.waitForTimeout(1800);
     const U = "https://sanix-landing.example";
-    console.log("▶ Sans adresse réglée : aucun changement");
-    const avant = await page.evaluate(() => { const c = CLIENTS[0]; return { wa: relanceBuildMsg(c, 1, "wa"), em: relanceBuildMsg(c, 1, "email") }; });
-    ok(!/En savoir plus/.test(avant.wa + avant.em), "aucun lien ajouté tant qu'aucune landing page n'est réglée");
+    console.log("▶ Réglage désactivé : aucun changement");
+    const avant = await page.evaluate(() => { relanceCfg().landingActif = false; const c = CLIENTS[0]; return { wa: relanceBuildMsg(c, 1, "wa"), em: relanceBuildMsg(c, 1, "email") }; });
+    ok(!/En savoir plus/.test(avant.wa + avant.em), "réglage désactivé : aucun lien ajouté");
     console.log("▶ Avec l'adresse réglée");
     const r = await page.evaluate((U) => {
-      relanceCfg().landingUrl = U; const c = CLIENTS[0]; c.logiciel = c.logiciel || "Sanix AluExpert ERP";
+      relanceCfg().landingActif = true; relanceCfg().landingUrl = U; const c = CLIENTS[0]; c.logiciel = c.logiciel || "Sanix AluExpert ERP";
       const out = { wa1: relanceBuildMsg(c, 1, "wa"), wa0: relanceBuildMsg(c, 0, "wa"), em1: relanceBuildMsg(c, 1, "email"), em0: relanceBuildMsg(c, 0, "email"), sms: relanceBuildMsg(c, 2, "sms"), cour: courrierExemples(c).map((e) => e.corps), once: landingAjoute(landingAjoute("Bonjour\n\nCordialement", "email", c), "email", c) };
-      out.cible = landingLien("wa", c); relanceCfg().landingUrl = "http://pas-https.example"; out.refuse = landingAjoute("Bonjour", "wa", c); relanceCfg().landingUrl = ""; return out;
+      out.cible = landingLien("wa", c); relanceCfg().landingUrl = "http://pas-https.example"; out.refuse = landingAjoute("Bonjour", "wa", c);
+      relanceCfg().landingUrl = ""; c.logiciel = "ImmoSuite ERP"; out.defaut = landingLien("wa", c); out.defautMail = landingAjoute("Bonjour\n\nCordialement", "email", c);
+      relanceCfg().landingUrl = "https://exemple.example/p/{slug}.html"; out.modele = landingLien("email", c); return out;
     }, U);
     const compte = (t) => (t.split(U).length - 1);
     ok(compte(r.wa1) === 1 && compte(r.wa0) === 1, "WhatsApp : lien présent une seule fois (relance et premier contact)");
@@ -33,6 +35,19 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(r.once.split(U).length - 1 === 1, "ajout idempotent : jamais deux fois le même lien");
     ok(/Pour en savoir plus[^\n]*\n\nCordialement$/.test(r.once), "e-mail : lien placé avant la formule de politesse");
     ok(r.refuse === "Bonjour", "adresse non https refusée : rien n'est ajouté");
+    console.log("▶ Pages construites avec le CRM");
+    ok(r.defaut === "https://crm-sanix.vercel.app/landing/immosuite-erp.html?src=whatsapp", "adresse vide : pages du CRM, une par logiciel (" + r.defaut + ")");
+    ok(r.defautMail.includes("landing/immosuite-erp.html?src=email"), "e-mail : même page, canal email");
+    ok(r.modele === "https://exemple.example/p/immosuite-erp.html?src=email", "adresse personnalisée avec {slug}");
+    const fs = require("fs"), path = require("path"), dir = path.join(__dirname, "..", "landing");
+    const fichiers = fs.readdirSync(dir).filter((f) => f.endsWith(".html") && f !== "index.html");
+    const actifs = await page.evaluate(() => LOGICIELS.filter((l) => l.actif !== false).map((l) => landingSlug(l.nom)));
+    ok(actifs.length > 10 && actifs.every((s) => fichiers.includes(s + ".html")), "une page publique pour chaque logiciel actif (" + fichiers.length + " fichiers) : relancez scripts/build_landing.js si le catalogue change");
+    const tout = fichiers.concat(["index.html"]).map((f) => fs.readFileSync(path.join(dir, f), "utf8")).join("\n");
+    const externes = [...tout.matchAll(/(?:href|src|action)="(https?:\/\/[^"]+)/g)].map((m) => m[1]).filter((u) => !u.startsWith("https://wa.me/"));
+    ok(externes.length === 0, "aucun lien étranger dans les pages (hors WhatsApp) " + externes.slice(0, 3).join(" "));
+    ok(!/immo-suite\.vercel\.app|menco-holding|angelsgroups|hotel-suite-erp|sanix-compta-pro/.test(tout), "aucune adresse de démo externe du catalogue");
+    ok(!/Déjà adopté par/.test(tout), "aucun chiffre tiré du CRM sur les pages publiques");
     console.log("▶ Générateur : champs préremplis selon le logiciel");
     const g = await page.evaluate(() => {
       initMarketing(); const sel = document.getElementById("mkt-lp-logiciel"), v = (id) => document.getElementById(id).value, noms = [...sel.options].map((o) => o.value);
