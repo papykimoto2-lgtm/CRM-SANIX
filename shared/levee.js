@@ -519,6 +519,68 @@
       <div id="lev-deck-out">${blocDeck()}</div>`;
   }
 
+
+  /* — Financeurs : annuaire (table levee_financeurs, alimentée par l'agent et à la main) — */
+  const FIN_TYPES = { business_angel: '👼 Business angel', fonds: '🏦 Fonds', banque: '💳 Banque', subvention: '🤝 Subvention', accelerateur: '🚀 Accélérateur', autre: '• Autre' };
+  const FIN_STATUTS = { a_etudier: ['À étudier', '#6b7280'], correspond: ['Correspond', '#0b7f70'], contacte: ['Contacté', '#2563eb'], en_discussion: ['En discussion', '#7c3aed'], decline: ['A décliné', '#dc2626'], ecarte: ['Écarté', '#9ca3af'], investi: ['A investi', '#16a34a'] };
+  const finUi = { liste: null, charge: false, erreur: null, filtre: { type: '', statut: '', q: '' }, edit: null };
+  const urlSure = (u) => /^https:\/\/[^\s"'<>]+$/i.test(String(u || ''));
+  const api = (path, opt) => { if (typeof window.aisApi !== 'function') return Promise.reject(new Error('Connectez l\'agent IA (Pilotage → Directeur IA)')); return window.aisApi(path, opt); };
+  async function chargerFin() {
+    finUi.charge = true; finUi.erreur = null;
+    try { finUi.liste = (await api('/rest/v1/levee_financeurs?select=*&order=created_at.desc&limit=500')) || []; }
+    catch (e) { finUi.liste = []; finUi.erreur = /session|Connectez/i.test(e.message) ? 'Connectez l\'agent IA (Pilotage → Directeur IA) pour afficher l\'annuaire.' : e.message; }
+    finUi.charge = false; if (ui.tab === 'fin') render();
+  }
+  const montantFin = (f) => { const a = f.ticket_min != null ? F.m(f.ticket_min).replace(' FCFA', '') : null, b = f.ticket_max != null ? F.m(f.ticket_max).replace(' FCFA', '') : null; if (a == null && b == null) return '—'; return (a != null && b != null ? a + ' – ' + b : (a != null ? '≥ ' + a : '≤ ' + b)) + ' ' + esc(f.devise || 'FCFA'); };
+  function tabFin() {
+    if (finUi.liste === null && !finUi.charge) { chargerFin(); }
+    const L = finUi.liste || [], q = finUi.filtre.q.trim().toLowerCase();
+    const vues = L.filter((f) => (!finUi.filtre.type || f.type === finUi.filtre.type) && (!finUi.filtre.statut || f.statut === finUi.filtre.statut) && (!q || [f.nom, f.pays, f.conditions, f.notes].some((v) => String(v || '').toLowerCase().indexOf(q) >= 0)));
+    const compte = {}; L.forEach((f) => { compte[f.statut] = (compte[f.statut] || 0) + 1; });
+    const e = finUi.edit, ed = e && e !== 'nouveau' ? L.filter((f) => f.id === e)[0] || {} : {};
+    const champ = (k, lib, type, ph) => `<label class="form-label" style="font-size:12px">${lib}<input class="form-input" name="${k}" type="${type || 'text'}" ${type === 'number' ? 'min="0" step="any"' : ''} value="${esc(ed[k] == null ? '' : ed[k])}" placeholder="${esc(ph || '')}"></label>`;
+    const opts = (m, v) => Object.keys(m).map((k) => `<option value="${k}" ${v === k ? 'selected' : ''}>${esc(Array.isArray(m[k]) ? m[k][0] : m[k])}</option>`).join('');
+    const form = e ? `<form id="lev-fin-form" class="card" data-id="${e === 'nouveau' ? '' : esc(e)}"><div class="card-header"><span class="card-title">${e === 'nouveau' ? '➕ Nouveau financeur' : '✏️ Modifier ' + esc(ed.nom || '')}</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+        ${champ('nom', 'Nom', 'text', 'ex. Fonds Jeunes Entrepreneurs')}
+        <label class="form-label" style="font-size:12px">Type<select class="form-input" name="type">${opts(FIN_TYPES, ed.type || 'fonds')}</select></label>
+        ${champ('pays', 'Pays ou zone', 'text', 'ex. Côte d\'Ivoire')}${champ('ticket_min', 'Montant minimal', 'number')}${champ('ticket_max', 'Montant maximal', 'number')}${champ('devise', 'Devise', 'text', 'FCFA')}
+        ${champ('url_source', 'Lien de la source (https, obligatoire)', 'url', 'https://…')}
+        <label class="form-label" style="font-size:12px">Statut<select class="form-input" name="statut">${opts(FIN_STATUTS, ed.statut || 'a_etudier')}</select></label></div>
+      <label class="form-label" style="font-size:12px;margin-top:8px">Conditions d'éligibilité<textarea class="form-input" name="conditions" rows="2">${esc(ed.conditions || '')}</textarea></label>
+      <label class="form-label" style="font-size:12px">Notes<textarea class="form-input" name="notes" rows="2">${esc(ed.notes || '')}</textarea></label>
+      <div id="lev-fin-err" class="alert alert-warn hidden" role="alert"></div>
+      <div style="margin-top:8px"><button class="btn btn-primary btn-sm" type="submit">Enregistrer</button> <button class="btn btn-sm" type="button" data-act="fin-annuler">Annuler</button></div></form>` : '';
+    const lignes = vues.map((f) => `<tr><td><b>${urlSure(f.url_source) ? `<a href="${esc(f.url_source)}" target="_blank" rel="noopener noreferrer" title="Ouvrir la source">${esc(f.nom)} ↗</a>` : esc(f.nom)}</b>${f.ajoute_par ? ' <span title="Ajouté par l\'agent levée de fonds">🤖</span>' : ''}<div class="muted" style="font-size:11px">${esc(f.pays || '')}</div></td>
+      <td>${esc(FIN_TYPES[f.type] || f.type)}</td><td style="white-space:nowrap">${montantFin(f)}</td>
+      <td style="font-size:12px;max-width:340px">${f.conditions ? `<details><summary>${esc(String(f.conditions).slice(0, 80))}${String(f.conditions).length > 80 ? '…' : ''}</summary>${esc(f.conditions)}${f.notes ? '<br><i>' + esc(f.notes) + '</i>' : ''}</details>` : (f.notes ? '<i>' + esc(f.notes) + '</i>' : '—')}</td>
+      <td><select class="form-input" data-fin-statut="${esc(f.id)}" style="color:${(FIN_STATUTS[f.statut] || ['', '#000'])[1]};font-weight:600" aria-label="Statut de ${esc(f.nom)}">${opts(FIN_STATUTS, f.statut)}</select></td>
+      <td style="white-space:nowrap"><button class="btn btn-sm" data-act="fin-edit" data-id="${esc(f.id)}" title="Modifier">✏️</button> <button class="btn btn-sm" data-act="fin-suppr" data-id="${esc(f.id)}" title="Supprimer">🗑️</button></td></tr>`).join('');
+    return `<div class="alert alert-info">ℹ️ <div>Annuaire des financeurs et programmes : l'agent « levée de fonds » y ajoute ceux qu'il trouve (🤖, <b>toujours avec le lien de sa source</b>) ; vous pouvez en ajouter et corriger à la main. <b>Vérifiez les conditions sur la source</b> avant de candidater : l'agent peut se tromper ou lire une page périmée.</div></div>
+      <div class="card"><div class="card-header"><span class="card-title">🏛️ Financeurs (${L.length})</span><span><button class="btn btn-sm" data-act="fin-actualiser">🔄 Actualiser</button> <button class="btn btn-sm btn-primary" data-act="fin-nouveau">➕ Ajouter</button></span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${Object.keys(FIN_STATUTS).map((k) => `<span class="chip" style="font-size:12px;color:${FIN_STATUTS[k][1]}">${FIN_STATUTS[k][0]} · ${compte[k] || 0}</span>`).join('')}</div>
+      <div id="lev-fin-filtres" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <input class="form-input" type="search" data-finf="q" value="${esc(finUi.filtre.q)}" placeholder="Rechercher (nom, pays, conditions)…" style="flex:2;min-width:180px" aria-label="Rechercher un financeur">
+        <select class="form-input" data-finf="type" style="flex:1;min-width:140px" aria-label="Filtrer par type"><option value="">Tous les types</option>${opts(FIN_TYPES, finUi.filtre.type)}</select>
+        <select class="form-input" data-finf="statut" style="flex:1;min-width:140px" aria-label="Filtrer par statut"><option value="">Tous les statuts</option>${opts(FIN_STATUTS, finUi.filtre.statut)}</select></div>
+      ${finUi.erreur ? `<div class="alert alert-warn">⚠️ <div>${esc(finUi.erreur)}</div></div>` : ''}
+      ${finUi.charge && finUi.liste === null ? '<p class="muted">Chargement…</p>' : vues.length ? `<div style="overflow:auto"><table class="table" style="width:100%;font-size:13px"><thead><tr><th>Financeur</th><th>Type</th><th>Montants</th><th>Conditions</th><th>Statut</th><th></th></tr></thead><tbody>${lignes}</tbody></table></div>` : (L.length ? '<p>Aucun financeur ne correspond aux filtres.</p>' : '<p>L\'annuaire est vide. L\'agent le remplira lors de sa mission hebdomadaire (lundi 7 h 30), ou ajoutez vos propres pistes.</p>')}</div>${form}`;
+  }
+  async function enregistrerFin(form) {
+    const d = {}; new FormData(form).forEach((v, k) => { d[k] = typeof v === 'string' ? v.trim() : v; });
+    const err = document.getElementById('lev-fin-err'), montre = (m) => { if (err) { err.textContent = m; err.classList.remove('hidden'); } };
+    if (!d.nom || d.nom.length < 2) return montre('Le nom est obligatoire (2 caractères minimum).');
+    if (!urlSure(d.url_source)) return montre('Le lien de la source est obligatoire et doit commencer par https://.');
+    const num0 = (v) => (v === '' || v == null ? null : Math.max(0, Math.round(num(v))));
+    const corps = { nom: d.nom, type: d.type, pays: d.pays || null, ticket_min: num0(d.ticket_min), ticket_max: num0(d.ticket_max), devise: d.devise || 'FCFA', conditions: d.conditions || null, url_source: d.url_source, statut: d.statut, notes: d.notes || null, updated_at: new Date().toISOString() };
+    try {
+      if (form.dataset.id) await api('/rest/v1/levee_financeurs?id=eq.' + encodeURIComponent(form.dataset.id), { method: 'PATCH', body: JSON.stringify(corps) });
+      else await api('/rest/v1/levee_financeurs', { method: 'POST', body: JSON.stringify(corps) });
+      finUi.edit = null; finUi.liste = null; await chargerFin(); toast('✅ Financeur enregistré');
+    } catch (e) { montre(/duplicate|unique|23505/i.test(e.message) ? 'Ce financeur existe déjà dans l\'annuaire (même nom).' : e.message); }
+  }
+
   /* — Notes — */
   function tabNotes() {
     return `<div class="card"><div class="card-header"><span class="card-title">📖 Comment lire ce module</span></div><div style="font-size:13px">
@@ -547,8 +609,8 @@
   function render() {
     const host = root(); if (!host) return;
     let el = host.querySelector(':scope > #lev-body'); if (!el) { el = document.createElement('div'); el.id = 'lev-body'; host.appendChild(el); }
-    const tabs = [['synthese', '📊 Synthèse'], ['indic', '📐 Indicateurs'], ['elig', '✅ Éligibilité'], ['simul', '🧪 Simulation'], ['plan', '🧭 Plan d\'action'], ['deck', '🎤 Pitch deck'], ['notes', '📖 Notes']];
-    const corps = ui.tab === 'indic' ? tabIndic() : ui.tab === 'elig' ? tabElig() : ui.tab === 'simul' ? tabSimul() : ui.tab === 'plan' ? tabPlan() : ui.tab === 'deck' ? tabDeck() : ui.tab === 'notes' ? tabNotes() : tabSynthese();
+    const tabs = [['synthese', '📊 Synthèse'], ['indic', '📐 Indicateurs'], ['elig', '✅ Éligibilité'], ['simul', '🧪 Simulation'], ['plan', '🧭 Plan d\'action'], ['deck', '🎤 Pitch deck'], ['fin', '🏛️ Financeurs'], ['notes', '📖 Notes']];
+    const corps = ui.tab === 'indic' ? tabIndic() : ui.tab === 'elig' ? tabElig() : ui.tab === 'simul' ? tabSimul() : ui.tab === 'plan' ? tabPlan() : ui.tab === 'deck' ? tabDeck() : ui.tab === 'fin' ? tabFin() : ui.tab === 'notes' ? tabNotes() : tabSynthese();
     el.innerHTML = `<div class="ban"><div class="ban-deco"></div><h1 class="page-title">🚀 Levée de fonds</h1><p class="page-sub">Votre niveau de préparation, votre éligibilité par type de financeur et la simulation pour y arriver — départ : vos chiffres réels du CRM</p></div>
       <div class="tabs" role="tablist" style="margin-bottom:16px">${tabs.map((t) => `<div class="tab ${ui.tab === t[0] ? 'active' : ''}" role="tab" tabindex="0" aria-selected="${ui.tab === t[0]}" data-tab="${t[0]}">${t[1]}</div>`).join('')}</div>${corps}
       <div id="lev-sync" class="muted" style="font-size:12px;margin-top:12px"></div>
@@ -565,18 +627,34 @@
       else if (a === 'vers-financement') { try { navGroup('finance', 'financement'); } catch (x) { try { showView('financement'); } catch (y) { /* hors CRM */ } } }
       else if (a === 'seuils-defaut') { ov.seuils = {}; persist(); recompute(); render(); }
       else if (a === 'deck-ouvrir') { const w = window.open('', '_blank'); if (!w) { toast('⚠️ Autorisez les fenêtres pop-up pour ouvrir le deck'); return; } w.document.write(deck(donneesDeck()).document(0.7)); w.document.close(); }
+      else if (a === 'fin-nouveau') { finUi.edit = 'nouveau'; render(); }
+      else if (a === 'fin-annuler') { finUi.edit = null; render(); }
+      else if (a === 'fin-edit') { finUi.edit = t.dataset.id; render(); const f = document.getElementById('lev-fin-form'); if (f && f.scrollIntoView) f.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      else if (a === 'fin-actualiser') { finUi.liste = null; chargerFin(); }
+      else if (a === 'fin-suppr') {
+        const f = (finUi.liste || []).filter((x) => x.id === t.dataset.id)[0]; if (!f || !window.confirm('Supprimer « ' + f.nom + ' » de l\'annuaire ?')) return;
+        api('/rest/v1/levee_financeurs?id=eq.' + encodeURIComponent(f.id), { method: 'DELETE' }).then(() => { finUi.liste = finUi.liste.filter((x) => x.id !== f.id); render(); toast('🗑️ Financeur supprimé'); }).catch((x) => toast('⚠️ ' + x.message));
+      }
       else if (a === 'what-reset') { ov.what = {}; persist(); render(); }
     });
     el.addEventListener('toggle', (e) => { if (e.target && e.target.id === 'lev-seuils') ui.seuilsOpen = e.target.open; }, true);
     el.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.dataset && e.target.dataset.tab) { e.preventDefault(); ui.tab = e.target.dataset.tab; render(); } });
     el.addEventListener('input', (e) => {
       const t = e.target;
+      if (t.dataset.finf === 'q') { finUi.filtre.q = t.value; const pos0 = t.selectionStart; render(); const n = document.querySelector('[data-finf="q"]'); if (n) { n.focus(); try { n.setSelectionRange(pos0, pos0); } catch (x) { /* champ non texte */ } } return; }
       if (t.dataset.sim) { ov.sim[t.dataset.sim] = t.value === '' ? null : num(t.value); persist(); const o = document.getElementById('lev-montage'); if (o) o.innerHTML = blocMontage(); }
       else if (t.dataset.deck) { ov.deck[t.dataset.deck] = t.value; persist(); const o = document.getElementById('lev-deck-out'); if (o) { const f = document.getElementById('lev-deck-f'), y = f && f.contentWindow ? f.contentWindow.scrollY : 0; o.innerHTML = blocDeck(); const f2 = document.getElementById('lev-deck-f'); if (f2 && y) f2.addEventListener('load', () => { try { f2.contentWindow.scrollTo(0, y); } catch (e) { /* aperçu */ } }); } }
       else if (t.dataset.what) { ov.what[t.dataset.what] = t.value === '' ? null : num(t.value); persist(); const o = document.getElementById('lev-what-out'); if (o) o.innerHTML = blocWhat(); }
     });
+    el.addEventListener('submit', (e) => { if (e.target && e.target.id === 'lev-fin-form') { e.preventDefault(); enregistrerFin(e.target); } });
     el.addEventListener('change', (e) => {
       const t = e.target;
+      if (t.dataset.finStatut) {
+        const f = (finUi.liste || []).filter((x) => x.id === t.dataset.finStatut)[0], v = t.value; if (!f) return;
+        api('/rest/v1/levee_financeurs?id=eq.' + encodeURIComponent(f.id), { method: 'PATCH', body: JSON.stringify({ statut: v, updated_at: new Date().toISOString() }) }).then(() => { f.statut = v; render(); }).catch((x) => { toast('⚠️ ' + x.message); render(); });
+        return;
+      }
+      if (t.dataset.finf) { finUi.filtre[t.dataset.finf] = t.value; render(); return; }
       if (t.dataset.man) { ov.manuel[t.dataset.man] = t.checked; persist(); render(); }
       else if (t.dataset.seuil) { const p = t.dataset.seuil.split('.'); ov.seuils[p[0]] = Object.assign({}, ov.seuils[p[0]], { [p[1]]: num(t.value) }); persist(); recompute(); render(); }
     });
