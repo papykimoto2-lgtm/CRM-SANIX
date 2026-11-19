@@ -67,6 +67,28 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok((await popup.locator("body").innerText()).includes("État de préparation à une levée de fonds"), "fiche d'éligibilité imprimable");
     await popup.close();
 
+
+    console.log("▶ Pitch deck");
+    await page.evaluate(() => navigate("levee", null)); await page.waitForTimeout(400);
+    await page.locator('#lev-body .tab', { hasText: "Pitch deck" }).click(); await page.waitForTimeout(400);
+    ok(await page.locator("#lev-deck-f").count() === 1, "aperçu du deck affiché");
+    const frame = async () => await page.locator("#lev-deck-f").evaluate((f) => f.getAttribute("srcdoc"));
+    ok((await frame()).split('class="s ').length - 1 === 12, "12 diapositives dans l'aperçu");
+    const nb0 = Number((await page.locator("#lev-deck-out .card-title", { hasText: "À compléter" }).innerText()).match(/\((\d+)\)/)[1]);
+    ok(nb0 >= 5, nb0 + " éléments à compléter signalés");
+    const champD = page.locator('[data-deck="marcheTotal"]'); await champD.focus(); await champD.fill("120 000 entreprises (source test)"); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => document.activeElement && document.activeElement.dataset.deck === "marcheTotal"), "le champ garde le focus pendant la saisie");
+    ok((await frame()).includes("120 000 entreprises"), "la saisie apparaît dans le deck");
+    const nb1 = Number((await page.locator("#lev-deck-out .card-title", { hasText: "À compléter" }).innerText()).match(/\((\d+)\)/)[1]);
+    ok(nb1 === nb0 - 1, "un élément de moins à compléter");
+    ok((await frame()).includes("commandes en"), "la traction vient des commandes du CRM");
+    await page.locator('[data-deck="lancement"]').fill("2027-06"); await page.waitForTimeout(300);
+    ok((await page.locator("#lev-deck-out").innerText()).includes("Que devient mon éligibilité"), "projection à la date de lancement affichée");
+    const [pop] = await Promise.all([ctx.waitForEvent("page"), page.locator('[data-act="deck-ouvrir"]').click()]); await pop.waitForLoadState();
+    ok((await pop.locator("section.s").count()) === 12, "le deck s'ouvre en plein écran (12 diapositives, prêt pour le PDF)");
+    await pop.close();
+    ok(await page.evaluate(() => JSON.parse(localStorage.getItem("sanix_crm_levee_config")).deck.lancement === "2027-06"), "date de lancement enregistrée");
+
     console.log("▶ Persistance et sécurité");
     await page.evaluate(() => navigate("comptabilite", null)); await page.waitForTimeout(300);
     await page.evaluate(() => navigate("levee", null)); await page.waitForTimeout(500);
