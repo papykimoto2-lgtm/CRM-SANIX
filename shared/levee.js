@@ -520,65 +520,118 @@
   }
 
 
-  /* — Financeurs : annuaire (table levee_financeurs, alimentée par l'agent et à la main) — */
+  /* — Financeurs : annuaire mondial par régions (tables levee_financeurs et levee_contacts, alimentées par les agents et à la main) — */
   const FIN_TYPES = { business_angel: '👼 Business angel', fonds: '🏦 Fonds', banque: '💳 Banque', subvention: '🤝 Subvention', accelerateur: '🚀 Accélérateur', autre: '• Autre' };
   const FIN_STATUTS = { a_etudier: ['À étudier', '#6b7280'], correspond: ['Correspond', '#0b7f70'], contacte: ['Contacté', '#2563eb'], en_discussion: ['En discussion', '#7c3aed'], decline: ['A décliné', '#dc2626'], ecarte: ['Écarté', '#9ca3af'], investi: ['A investi', '#16a34a'] };
-  const finUi = { liste: null, charge: false, erreur: null, filtre: { type: '', statut: '', q: '' }, edit: null };
+  const FIN_REGIONS = { afrique_ouest: '🌍 Afrique de l\'Ouest', afrique_centrale: '🌍 Afrique centrale', afrique_est: '🌍 Afrique de l\'Est', afrique_nord: '🌍 Afrique du Nord', afrique_australe: '🌍 Afrique australe', afrique_panafricain: '🌍 Afrique — panafricain',
+    europe: '🇪🇺 Europe', amerique_nord: '🌎 Amérique du Nord', amerique_latine: '🌎 Amérique latine', asie: '🌏 Asie', moyen_orient: '🕌 Moyen-Orient', oceanie: '🌏 Océanie', international: '🌐 International et institutions', '': '• Région non renseignée' };
+  const finUi = { liste: null, contacts: {}, charge: false, erreur: null, filtre: { type: '', statut: '', region: '', q: '' }, edit: null, ouvertes: { afrique_ouest: true, international: true } };
   const urlSure = (u) => /^https:\/\/[^\s"'<>]+$/i.test(String(u || ''));
+  const lienLi = (u) => /^https:\/\/([a-z0-9-]+\.)?linkedin\.com\/[^\s"'<>]*$/i.test(String(u || ''));
+  const emailOk = (v) => /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']{2,}$/.test(String(v || ''));
   const api = (path, opt) => { if (typeof window.aisApi !== 'function') return Promise.reject(new Error('Connectez l\'agent IA (Pilotage → Directeur IA)')); return window.aisApi(path, opt); };
   async function chargerFin() {
     finUi.charge = true; finUi.erreur = null;
-    try { finUi.liste = (await api('/rest/v1/levee_financeurs?select=*&order=created_at.desc&limit=500')) || []; }
-    catch (e) { finUi.liste = []; finUi.erreur = /session|Connectez/i.test(e.message) ? 'Connectez l\'agent IA (Pilotage → Directeur IA) pour afficher l\'annuaire.' : e.message; }
+    try {
+      finUi.liste = (await api('/rest/v1/levee_financeurs?select=*&order=nom.asc&limit=1000')) || [];
+      const cs = await api('/rest/v1/levee_contacts?select=*&order=nom.asc&limit=3000').catch(() => []); finUi.contacts = {};
+      (cs || []).forEach((c) => { (finUi.contacts[c.financeur_id] = finUi.contacts[c.financeur_id] || []).push(c); });
+    } catch (e) { finUi.liste = []; finUi.erreur = /session|Connectez/i.test(e.message) ? 'Connectez l\'agent IA (Pilotage → Directeur IA) pour afficher l\'annuaire.' : e.message; }
     finUi.charge = false; if (ui.tab === 'fin') render();
   }
   const montantFin = (f) => { const a = f.ticket_min != null ? F.m(f.ticket_min).replace(' FCFA', '') : null, b = f.ticket_max != null ? F.m(f.ticket_max).replace(' FCFA', '') : null; if (a == null && b == null) return '—'; return (a != null && b != null ? a + ' – ' + b : (a != null ? '≥ ' + a : '≤ ' + b)) + ' ' + esc(f.devise || 'FCFA'); };
+  const lien = (u, txt, titre) => urlSure(u) ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(titre || u)}">${txt}</a>` : '';
+  const contactsHtml = (f) => {
+    const g = []; if (f.site_web && urlSure(f.site_web)) g.push(lien(f.site_web, '🌐 Site', f.site_web));
+    if (f.linkedin_url && lienLi(f.linkedin_url)) g.push(lien(f.linkedin_url, 'in LinkedIn', 'Page LinkedIn de l\'organisation'));
+    if (f.contact_formulaire && urlSure(f.contact_formulaire)) g.push(lien(f.contact_formulaire, '✉ Formulaire', f.contact_formulaire));
+    if (f.contact_email && emailOk(f.contact_email)) g.push(`<a href="mailto:${esc(f.contact_email)}">✉ ${esc(f.contact_email)}</a>`);
+    if (f.contact_telephone) g.push('☎ ' + esc(f.contact_telephone));
+    const ps = (finUi.contacts[f.id] || []).map((c) => `<div style="margin-top:3px">👤 <b>${esc(c.nom)}</b>${c.fonction ? ' — ' + esc(c.fonction) : ''} ${c.linkedin_url && lienLi(c.linkedin_url) ? lien(c.linkedin_url, 'in', 'Profil LinkedIn public') : ''}${c.email && emailOk(c.email) ? ` <a href="mailto:${esc(c.email)}">✉</a>` : ''} ${lien(c.source_url, '↗', 'Source : ' + c.source_url)}</div>`).join('');
+    return (g.length ? '<div style="display:flex;gap:8px;flex-wrap:wrap">' + g.join('') + '</div>' : '') + ps || '—';
+  };
+  const optsFin = (m, v) => Object.keys(m).filter((k) => k !== '').map((k) => `<option value="${k}" ${v === k ? 'selected' : ''}>${esc(Array.isArray(m[k]) ? m[k][0] : m[k])}</option>`).join('');
   function tabFin() {
     if (finUi.liste === null && !finUi.charge) { chargerFin(); }
-    const L = finUi.liste || [], q = finUi.filtre.q.trim().toLowerCase();
-    const vues = L.filter((f) => (!finUi.filtre.type || f.type === finUi.filtre.type) && (!finUi.filtre.statut || f.statut === finUi.filtre.statut) && (!q || [f.nom, f.pays, f.conditions, f.notes].some((v) => String(v || '').toLowerCase().indexOf(q) >= 0)));
+    const L = finUi.liste || [], q = finUi.filtre.q.trim().toLowerCase(), fl = finUi.filtre;
+    const vues = L.filter((f) => (!fl.type || f.type === fl.type) && (!fl.statut || f.statut === fl.statut) && (!fl.region || (f.region || '') === fl.region)
+      && (!q || [f.nom, f.pays, f.conditions, f.notes, f.pertinence].some((v) => String(v || '').toLowerCase().indexOf(q) >= 0) || (finUi.contacts[f.id] || []).some((c) => String(c.nom + ' ' + (c.fonction || '')).toLowerCase().indexOf(q) >= 0)));
     const compte = {}; L.forEach((f) => { compte[f.statut] = (compte[f.statut] || 0) + 1; });
+    const nbContacts = Object.keys(finUi.contacts).reduce((n, k) => n + finUi.contacts[k].length, 0);
     const e = finUi.edit, ed = e && e !== 'nouveau' ? L.filter((f) => f.id === e)[0] || {} : {};
     const champ = (k, lib, type, ph) => `<label class="form-label" style="font-size:12px">${lib}<input class="form-input" name="${k}" type="${type || 'text'}" ${type === 'number' ? 'min="0" step="any"' : ''} value="${esc(ed[k] == null ? '' : ed[k])}" placeholder="${esc(ph || '')}"></label>`;
-    const opts = (m, v) => Object.keys(m).map((k) => `<option value="${k}" ${v === k ? 'selected' : ''}>${esc(Array.isArray(m[k]) ? m[k][0] : m[k])}</option>`).join('');
+    const persEdit = e && e !== 'nouveau' ? (finUi.contacts[e] || []).map((c) => `<div style="display:flex;gap:8px;align-items:center;font-size:13px;margin:3px 0">👤 <span><b>${esc(c.nom)}</b>${c.fonction ? ' — ' + esc(c.fonction) : ''}</span> <button type="button" class="btn btn-sm" data-act="fin-contact-suppr" data-id="${esc(c.id)}" title="Retirer cette personne">🗑️</button></div>`).join('') : '';
     const form = e ? `<form id="lev-fin-form" class="card" data-id="${e === 'nouveau' ? '' : esc(e)}"><div class="card-header"><span class="card-title">${e === 'nouveau' ? '➕ Nouveau financeur' : '✏️ Modifier ' + esc(ed.nom || '')}</span></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
         ${champ('nom', 'Nom', 'text', 'ex. Fonds Jeunes Entrepreneurs')}
-        <label class="form-label" style="font-size:12px">Type<select class="form-input" name="type">${opts(FIN_TYPES, ed.type || 'fonds')}</select></label>
+        <label class="form-label" style="font-size:12px">Type<select class="form-input" name="type">${optsFin(FIN_TYPES, ed.type || 'fonds')}</select></label>
+        <label class="form-label" style="font-size:12px">Région<select class="form-input" name="region"><option value="">—</option>${optsFin(FIN_REGIONS, ed.region || '')}</select></label>
         ${champ('pays', 'Pays ou zone', 'text', 'ex. Côte d\'Ivoire')}${champ('ticket_min', 'Montant minimal', 'number')}${champ('ticket_max', 'Montant maximal', 'number')}${champ('devise', 'Devise', 'text', 'FCFA')}
-        ${champ('url_source', 'Lien de la source (https, obligatoire)', 'url', 'https://…')}
-        <label class="form-label" style="font-size:12px">Statut<select class="form-input" name="statut">${opts(FIN_STATUTS, ed.statut || 'a_etudier')}</select></label></div>
+        ${champ('url_source', 'Lien de la source (https, obligatoire)', 'url', 'https://…')}${champ('site_web', 'Site web officiel', 'url', 'https://…')}${champ('linkedin_url', 'Page LinkedIn de l\'organisation', 'url', 'https://www.linkedin.com/company/…')}
+        ${champ('contact_email', 'E-mail de contact (publié)', 'email')}${champ('contact_telephone', 'Téléphone (publié)', 'text')}${champ('contact_formulaire', 'Formulaire de contact', 'url', 'https://…')}
+        <label class="form-label" style="font-size:12px">Statut<select class="form-input" name="statut">${optsFin(FIN_STATUTS, ed.statut || 'a_etudier')}</select></label></div>
       <label class="form-label" style="font-size:12px;margin-top:8px">Conditions d'éligibilité<textarea class="form-input" name="conditions" rows="2">${esc(ed.conditions || '')}</textarea></label>
+      <label class="form-label" style="font-size:12px">Pertinence pour SANIX<input class="form-input" name="pertinence" value="${esc(ed.pertinence || '')}"></label>
       <label class="form-label" style="font-size:12px">Notes<textarea class="form-input" name="notes" rows="2">${esc(ed.notes || '')}</textarea></label>
+      <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:8px"><b style="font-size:13px">👤 Personnes ressources</b>${persEdit}
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:6px">
+          <input class="form-input" name="cn_nom" placeholder="Nom (nouvelle personne)"><input class="form-input" name="cn_fonction" placeholder="Fonction">
+          <input class="form-input" name="cn_linkedin" type="url" placeholder="Profil LinkedIn public (https://www.linkedin.com/in/…)"><input class="form-input" name="cn_email" type="email" placeholder="E-mail publié"><input class="form-input" name="cn_source" type="url" placeholder="Source publique (https, obligatoire)"></div></div>
       <div id="lev-fin-err" class="alert alert-warn hidden" role="alert"></div>
       <div style="margin-top:8px"><button class="btn btn-primary btn-sm" type="submit">Enregistrer</button> <button class="btn btn-sm" type="button" data-act="fin-annuler">Annuler</button></div></form>` : '';
-    const lignes = vues.map((f) => `<tr><td><b>${urlSure(f.url_source) ? `<a href="${esc(f.url_source)}" target="_blank" rel="noopener noreferrer" title="Ouvrir la source">${esc(f.nom)} ↗</a>` : esc(f.nom)}</b>${f.ajoute_par ? ' <span title="Ajouté par l\'agent levée de fonds">🤖</span>' : ''}<div class="muted" style="font-size:11px">${esc(f.pays || '')}</div></td>
+    const lignes = (f) => `<tr><td><b>${urlSure(f.url_source) ? `<a href="${esc(f.url_source)}" target="_blank" rel="noopener noreferrer" title="Source : ${esc(f.url_source)}">${esc(f.nom)} ↗</a>` : esc(f.nom)}</b>${f.ajoute_par ? ' <span title="Ajouté par un agent">🤖</span>' : ''}<div class="muted" style="font-size:11px">${esc(f.pays || '')}</div>${f.pertinence ? `<div style="font-size:11px">${esc(f.pertinence)}</div>` : ''}</td>
       <td>${esc(FIN_TYPES[f.type] || f.type)}</td><td style="white-space:nowrap">${montantFin(f)}</td>
-      <td style="font-size:12px;max-width:340px">${f.conditions ? `<details><summary>${esc(String(f.conditions).slice(0, 80))}${String(f.conditions).length > 80 ? '…' : ''}</summary>${esc(f.conditions)}${f.notes ? '<br><i>' + esc(f.notes) + '</i>' : ''}</details>` : (f.notes ? '<i>' + esc(f.notes) + '</i>' : '—')}</td>
-      <td><select class="form-input" data-fin-statut="${esc(f.id)}" style="color:${(FIN_STATUTS[f.statut] || ['', '#000'])[1]};font-weight:600" aria-label="Statut de ${esc(f.nom)}">${opts(FIN_STATUTS, f.statut)}</select></td>
-      <td style="white-space:nowrap"><button class="btn btn-sm" data-act="fin-edit" data-id="${esc(f.id)}" title="Modifier">✏️</button> <button class="btn btn-sm" data-act="fin-suppr" data-id="${esc(f.id)}" title="Supprimer">🗑️</button></td></tr>`).join('');
-    return `<div class="alert alert-info">ℹ️ <div>Annuaire des financeurs et programmes : l'agent « levée de fonds » y ajoute ceux qu'il trouve (🤖, <b>toujours avec le lien de sa source</b>) ; vous pouvez en ajouter et corriger à la main. <b>Vérifiez les conditions sur la source</b> avant de candidater : l'agent peut se tromper ou lire une page périmée.</div></div>
-      <div class="card"><div class="card-header"><span class="card-title">🏛️ Financeurs (${L.length})</span><span><button class="btn btn-sm" data-act="fin-actualiser">🔄 Actualiser</button> <button class="btn btn-sm btn-primary" data-act="fin-nouveau">➕ Ajouter</button></span></div>
+      <td style="font-size:12px;max-width:300px">${f.conditions ? `<details><summary>${esc(String(f.conditions).slice(0, 70))}${String(f.conditions).length > 70 ? '…' : ''}</summary>${esc(f.conditions)}${f.notes ? '<br><i>' + esc(f.notes) + '</i>' : ''}</details>` : (f.notes ? '<i>' + esc(f.notes) + '</i>' : '—')}</td>
+      <td style="font-size:12px;min-width:200px">${contactsHtml(f)}</td>
+      <td><select class="form-input" data-fin-statut="${esc(f.id)}" style="color:${(FIN_STATUTS[f.statut] || ['', '#000'])[1]};font-weight:600" aria-label="Statut de ${esc(f.nom)}">${optsFin(FIN_STATUTS, f.statut)}</select></td>
+      <td style="white-space:nowrap"><button class="btn btn-sm" data-act="fin-edit" data-id="${esc(f.id)}" title="Modifier">✏️</button> <button class="btn btn-sm" data-act="fin-suppr" data-id="${esc(f.id)}" title="Supprimer">🗑️</button></td></tr>`;
+    const groupes = {}; vues.forEach((f) => { const k = FIN_REGIONS[f.region || ''] !== undefined ? (f.region || '') : ''; (groupes[k] = groupes[k] || []).push(f); });
+    const sections = Object.keys(FIN_REGIONS).filter((k) => groupes[k]).map((k) => `<details data-reg="${k}" ${finUi.ouvertes[k] || fl.region || q ? 'open' : ''} style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;font-size:14px;padding:6px 0">${esc(FIN_REGIONS[k])} · ${groupes[k].length}</summary>
+      <div style="overflow:auto"><table class="table" style="width:100%;font-size:13px"><thead><tr><th>Financeur</th><th>Type</th><th>Montants</th><th>Conditions</th><th>Contacts et personnes</th><th>Statut</th><th></th></tr></thead><tbody>${groupes[k].map(lignes).join('')}</tbody></table></div></details>`).join('');
+    return `<div class="alert alert-info">ℹ️ <div>Annuaire mondial des financeurs, par région. Chaque ligne porte le lien de sa source (🤖 : ajouté par un agent). Les contacts et personnes ne sont que des <b>informations professionnelles publiées</b> ; aucune adresse n'est devinée. <b>Vérifiez les conditions et les contacts sur la source</b> avant tout envoi : une page peut être périmée.</div></div>
+      <div class="card"><div class="card-header"><span class="card-title">🏛️ Financeurs (${L.length}) · 👤 ${nbContacts} personnes</span><span><button class="btn btn-sm" data-act="fin-actualiser">🔄 Actualiser</button> <button class="btn btn-sm" data-act="fin-export">⬇️ Export CSV</button> <button class="btn btn-sm btn-primary" data-act="fin-nouveau">➕ Ajouter</button></span></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${Object.keys(FIN_STATUTS).map((k) => `<span class="chip" style="font-size:12px;color:${FIN_STATUTS[k][1]}">${FIN_STATUTS[k][0]} · ${compte[k] || 0}</span>`).join('')}</div>
       <div id="lev-fin-filtres" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-        <input class="form-input" type="search" data-finf="q" value="${esc(finUi.filtre.q)}" placeholder="Rechercher (nom, pays, conditions)…" style="flex:2;min-width:180px" aria-label="Rechercher un financeur">
-        <select class="form-input" data-finf="type" style="flex:1;min-width:140px" aria-label="Filtrer par type"><option value="">Tous les types</option>${opts(FIN_TYPES, finUi.filtre.type)}</select>
-        <select class="form-input" data-finf="statut" style="flex:1;min-width:140px" aria-label="Filtrer par statut"><option value="">Tous les statuts</option>${opts(FIN_STATUTS, finUi.filtre.statut)}</select></div>
+        <input class="form-input" type="search" data-finf="q" value="${esc(fl.q)}" placeholder="Rechercher (nom, pays, conditions, personne)…" style="flex:2;min-width:180px" aria-label="Rechercher un financeur">
+        <select class="form-input" data-finf="region" style="flex:1;min-width:150px" aria-label="Filtrer par région"><option value="">Toutes les régions</option>${optsFin(FIN_REGIONS, fl.region)}</select>
+        <select class="form-input" data-finf="type" style="flex:1;min-width:140px" aria-label="Filtrer par type"><option value="">Tous les types</option>${optsFin(FIN_TYPES, fl.type)}</select>
+        <select class="form-input" data-finf="statut" style="flex:1;min-width:140px" aria-label="Filtrer par statut"><option value="">Tous les statuts</option>${optsFin(FIN_STATUTS, fl.statut)}</select></div>
       ${finUi.erreur ? `<div class="alert alert-warn">⚠️ <div>${esc(finUi.erreur)}</div></div>` : ''}
-      ${finUi.charge && finUi.liste === null ? '<p class="muted">Chargement…</p>' : vues.length ? `<div style="overflow:auto"><table class="table" style="width:100%;font-size:13px"><thead><tr><th>Financeur</th><th>Type</th><th>Montants</th><th>Conditions</th><th>Statut</th><th></th></tr></thead><tbody>${lignes}</tbody></table></div>` : (L.length ? '<p>Aucun financeur ne correspond aux filtres.</p>' : '<p>L\'annuaire est vide. L\'agent le remplira lors de sa mission hebdomadaire (lundi 7 h 30), ou ajoutez vos propres pistes.</p>')}</div>${form}`;
+      ${finUi.charge && finUi.liste === null ? '<p class="muted">Chargement…</p>' : vues.length ? sections : (L.length ? '<p>Aucun financeur ne correspond aux filtres.</p>' : '<p>L\'annuaire est vide. Les agents le remplissent (recherche mondiale, mission hebdomadaire) ; vous pouvez aussi ajouter vos propres pistes.</p>')}</div>${form}`;
+  }
+  function exportFin() {
+    const L = finUi.liste || [], cel = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""').replace(/^([=+\-@])/, "'$1") + '"';
+    const rows = [['Région', 'Nom', 'Type', 'Pays', 'Montant min', 'Montant max', 'Devise', 'Conditions', 'Statut', 'Site web', 'LinkedIn', 'E-mail', 'Téléphone', 'Formulaire', 'Personnes (nom — fonction — LinkedIn)', 'Source']];
+    L.forEach((f) => rows.push([FIN_REGIONS[f.region || ''] || '', f.nom, FIN_TYPES[f.type] || f.type, f.pays, f.ticket_min, f.ticket_max, f.devise, f.conditions, (FIN_STATUTS[f.statut] || [f.statut])[0], f.site_web, f.linkedin_url, f.contact_email, f.contact_telephone, f.contact_formulaire,
+      (finUi.contacts[f.id] || []).map((c) => [c.nom, c.fonction, c.linkedin_url].filter(Boolean).join(' — ')).join(' ; '), f.url_source]));
+    const blob = new Blob(['﻿' + rows.map((r) => r.map(cel).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' }), a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'financeurs-' + new Date().toISOString().slice(0, 10) + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
   async function enregistrerFin(form) {
     const d = {}; new FormData(form).forEach((v, k) => { d[k] = typeof v === 'string' ? v.trim() : v; });
     const err = document.getElementById('lev-fin-err'), montre = (m) => { if (err) { err.textContent = m; err.classList.remove('hidden'); } };
     if (!d.nom || d.nom.length < 2) return montre('Le nom est obligatoire (2 caractères minimum).');
     if (!urlSure(d.url_source)) return montre('Le lien de la source est obligatoire et doit commencer par https://.');
-    const num0 = (v) => (v === '' || v == null ? null : Math.max(0, Math.round(num(v))));
-    const corps = { nom: d.nom, type: d.type, pays: d.pays || null, ticket_min: num0(d.ticket_min), ticket_max: num0(d.ticket_max), devise: d.devise || 'FCFA', conditions: d.conditions || null, url_source: d.url_source, statut: d.statut, notes: d.notes || null, updated_at: new Date().toISOString() };
+    if (d.site_web && !urlSure(d.site_web)) return montre('Le site web doit commencer par https://.');
+    if (d.contact_formulaire && !urlSure(d.contact_formulaire)) return montre('Le formulaire de contact doit commencer par https://.');
+    if (d.linkedin_url && !lienLi(d.linkedin_url)) return montre('La page LinkedIn doit être un lien https://…linkedin.com/…');
+    if (d.contact_email && !emailOk(d.contact_email)) return montre('L\'adresse e-mail n\'est pas valide.');
+    if (d.cn_nom) {
+      if (d.cn_nom.length < 2) return montre('Le nom de la personne est trop court.');
+      if (!urlSure(d.cn_source)) return montre('Pour ajouter une personne, indiquez la source publique (https) qui établit son nom et sa fonction.');
+      if (d.cn_linkedin && !lienLi(d.cn_linkedin)) return montre('Le profil LinkedIn doit être un lien https://…linkedin.com/…');
+      if (d.cn_email && !emailOk(d.cn_email)) return montre('L\'e-mail de la personne n\'est pas valide.');
+    }
+    const num0 = (v) => (v === '' || v == null ? null : Math.max(0, Math.round(num(v)))), nul = (v) => (v ? v : null);
+    const corps = { nom: d.nom, type: d.type, region: nul(d.region), pays: nul(d.pays), ticket_min: num0(d.ticket_min), ticket_max: num0(d.ticket_max), devise: d.devise || 'FCFA', conditions: nul(d.conditions), url_source: d.url_source, site_web: nul(d.site_web), linkedin_url: nul(d.linkedin_url),
+      contact_email: nul(d.contact_email), contact_telephone: nul(d.contact_telephone), contact_formulaire: nul(d.contact_formulaire), pertinence: nul(d.pertinence), statut: d.statut, notes: nul(d.notes), updated_at: new Date().toISOString() };
     try {
-      if (form.dataset.id) await api('/rest/v1/levee_financeurs?id=eq.' + encodeURIComponent(form.dataset.id), { method: 'PATCH', body: JSON.stringify(corps) });
-      else await api('/rest/v1/levee_financeurs', { method: 'POST', body: JSON.stringify(corps) });
+      let id = form.dataset.id;
+      if (id) await api('/rest/v1/levee_financeurs?id=eq.' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(corps) });
+      else { const r = await api('/rest/v1/levee_financeurs', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(corps) }); id = r && r[0] && r[0].id; }
+      if (d.cn_nom && id) await api('/rest/v1/levee_contacts', { method: 'POST', body: JSON.stringify({ financeur_id: id, nom: d.cn_nom, fonction: nul(d.cn_fonction), linkedin_url: nul(d.cn_linkedin), email: nul(d.cn_email), source_url: d.cn_source }) });
       finUi.edit = null; finUi.liste = null; await chargerFin(); toast('✅ Financeur enregistré');
-    } catch (e) { montre(/duplicate|unique|23505/i.test(e.message) ? 'Ce financeur existe déjà dans l\'annuaire (même nom).' : e.message); }
+    } catch (e) { montre(/duplicate|unique|23505/i.test(e.message) ? 'Ce financeur ou cette personne existe déjà dans l\'annuaire.' : e.message); }
   }
 
   /* — Notes — */
@@ -630,6 +683,8 @@
       else if (a === 'fin-nouveau') { finUi.edit = 'nouveau'; render(); }
       else if (a === 'fin-annuler') { finUi.edit = null; render(); }
       else if (a === 'fin-edit') { finUi.edit = t.dataset.id; render(); const f = document.getElementById('lev-fin-form'); if (f && f.scrollIntoView) f.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      else if (a === 'fin-export') exportFin();
+      else if (a === 'fin-contact-suppr') { api('/rest/v1/levee_contacts?id=eq.' + encodeURIComponent(t.dataset.id), { method: 'DELETE' }).then(() => { Object.keys(finUi.contacts).forEach((k) => { finUi.contacts[k] = finUi.contacts[k].filter((c) => c.id !== t.dataset.id); }); render(); toast('🗑️ Personne retirée'); }).catch((x) => toast('⚠️ ' + x.message)); }
       else if (a === 'fin-actualiser') { finUi.liste = null; chargerFin(); }
       else if (a === 'fin-suppr') {
         const f = (finUi.liste || []).filter((x) => x.id === t.dataset.id)[0]; if (!f || !window.confirm('Supprimer « ' + f.nom + ' » de l\'annuaire ?')) return;
@@ -637,7 +692,7 @@
       }
       else if (a === 'what-reset') { ov.what = {}; persist(); render(); }
     });
-    el.addEventListener('toggle', (e) => { if (e.target && e.target.id === 'lev-seuils') ui.seuilsOpen = e.target.open; }, true);
+    el.addEventListener('toggle', (e) => { if (e.target && e.target.id === 'lev-seuils') ui.seuilsOpen = e.target.open; else if (e.target && e.target.dataset && e.target.dataset.reg !== undefined) finUi.ouvertes[e.target.dataset.reg] = e.target.open; }, true);
     el.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.dataset && e.target.dataset.tab) { e.preventDefault(); ui.tab = e.target.dataset.tab; render(); } });
     el.addEventListener('input', (e) => {
       const t = e.target;
