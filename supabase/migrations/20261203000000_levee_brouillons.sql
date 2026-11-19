@@ -1,4 +1,4 @@
--- Brouillons de messages aux financeurs : rédigés pour validation, JAMAIS envoyés par le système (le président copie ou ouvre sa messagerie).
+-- Brouillons de messages aux financeurs : rédigés pour validation. Envoi uniquement sur action du président (bouton « Envoyer maintenant » + confirmation, Gmail de l'entreprise) ; jamais automatique.
 -- Statuts : brouillon → valide → envoye ; ou abandonne. Direction uniquement. Relançable.
 create table if not exists public.levee_brouillons (
   id            uuid primary key default gen_random_uuid(),
