@@ -1,0 +1,2 @@
+// Généré par scripts/build_landing.js et scripts/build_demos.js : logiciels qui ont une page publique (landing/ et demo/). Ne pas modifier à la main.
+window.PAGES_PUBLIQUES = ["afri-bar-manager","angel-s-agro","angel-s-livraison","angel-s-transport","autogarage-pro","avinest-pro","distripro-erp","hotelsuite-erp","immosuite-erp","le-grenier-ci","medicore-suite","menko-agro","phyto-strike-force","sanix-aluexpert-erp","sanix-comptapro","sanix-crm-pro","sanix-easystock","sanix-factory-4-0","sanix-rh-suite"];

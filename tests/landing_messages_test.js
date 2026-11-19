@@ -48,6 +48,27 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(externes.length === 0, "aucun lien étranger dans les pages (hors WhatsApp) " + externes.slice(0, 3).join(" "));
     ok(!/immo-suite\.vercel\.app|menco-holding|angelsgroups|hotel-suite-erp|sanix-compta-pro/.test(tout), "aucune adresse de démo externe du catalogue");
     ok(!/Déjà adopté par/.test(tout), "aucun chiffre tiré du CRM sur les pages publiques");
+    console.log("▶ Corrections de la revue");
+    const rv = await page.evaluate(() => {
+      relanceCfg().landingActif = true; relanceCfg().landingUrl = ""; const c = CLIENTS[0]; c.logiciel = "ImmoSuite ERP";
+      const occ = (t) => (t.split("landing/immosuite-erp.html").length - 1), out = {};
+      out.doublon = occ(landingAjoute(landingAjoute("Bonjour", "wa", c), "wa", c)); out.premier = occ(relanceBuildMsg(c, 0, "wa")); out.relance = occ(relanceBuildMsg(c, 1, "email"));
+      c.logiciel = "Logiciel Ajouté Après"; out.nouveau = landingAjoute("Bonjour", "wa", c); out.demoNouveau = fcFill("{demo_line}x", { logiciel: "Logiciel Ajouté Après" });
+      relanceCfg().landingUrl = "https://exemple.example/p/{slug}.html"; out.perso = landingAjoute("Bonjour", "wa", c).includes("exemple.example/p/logiciel-ajoute-apres.html"); relanceCfg().landingUrl = "";
+      const log = LOGICIELS[0]; out.fixe = lpBuildHtml({ logNom: log.nom, log, titre: "", offre: "Offre test", offreFin: "2026-12-31", wa: "2250700000000", tel: "0700000000", gerant: "X", publique: true });
+      out.sans = lpBuildHtml({ logNom: log.nom, log, titre: "", offre: "", wa: "2250700000000", tel: "0700000000", gerant: "X", publique: true });
+      out.mois = lpBuildHtml({ logNom: log.nom, log: { ...log, color: "red;}body{display:none" }, titre: "", offre: "", wa: "2250700000000", tel: "0700000000", gerant: "X", publique: true });
+      return out;
+    });
+    ok(rv.doublon === 1 && rv.premier === 1 && rv.relance === 1, "adresse par défaut : le lien n'est jamais ajouté deux fois (premier contact, relance, e-mail)");
+    ok(rv.nouveau === "Bonjour" && !/demo\//.test(rv.demoNouveau), "logiciel sans page publique : aucun lien vers une page inexistante, ni dans le lien ni dans {demo_line}");
+    ok(rv.perso, "adresse personnalisée : le lien est ajouté même pour un logiciel sans page du CRM");
+    ok(/var FIN="2026-12-31"/.test(rv.fixe) && /class="chip offre-x"/.test(rv.fixe) && /var FIN=null/.test(rv.sans) && !/class="chip offre-x"/.test(rv.sans), "offre : compte à rebours vers une date fixe, et rien d'affiché sans offre");
+    ok(!rv.mois.includes("red;}body") && rv.mois.includes("#0e7490"), "couleur non valide du catalogue : jamais insérée dans le CSS")
+    const lf = fs.readFileSync(path.join(dir, "..", "landing", "immosuite-erp.html"), "utf8");
+    const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "scripts", "pages.config.json"), "utf8"));
+    ok(!/class="chip offre-x"/.test(lf) && !/Offre du mois/.test(lf), "pages publiques : aucune offre publiée tant que le texte et la date de fin ne sont pas renseignés");
+    ok(lf.includes("wa.me/" + (await page.evaluate((t) => waAnalyse(t).num, cfg.whatsapp))), "numéro WhatsApp des pages = celui de scripts/pages.config.json");
     console.log("▶ Générateur : champs préremplis selon le logiciel");
     const g = await page.evaluate(() => {
       initMarketing(); const sel = document.getElementById("mkt-lp-logiciel"), v = (id) => document.getElementById(id).value, noms = [...sel.options].map((o) => o.value);

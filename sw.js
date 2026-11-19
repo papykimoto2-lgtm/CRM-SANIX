@@ -2,9 +2,9 @@
    Garde en cache l'application (index.html) et les bibliothèques CDN (Chart.js, Leaflet, polices) pour
    qu'elle s'ouvre sans connexion. Les données restent dans le navigateur (localStorage) et la synchro
    Supabase ne passe pas par ici (requêtes non interceptées). */
-const VERSION = 'sanixcrm-v87';
+const VERSION = 'sanixcrm-v88';
 const CACHE_CDN = 'sanixcrm-cdn';
-const COQUILLE = ['./', './index.html', './modernisation-v2.css', './shared/pager.js', './shared/crm-connector.js', './shared/pilotage.js', './shared/financement.js', './shared/levee.js', './shared/credit_ia.js', './shared/renouvellements.js', './shared/paiements.js', './shared/strategie.js', './shared/afaire.js', './shared/bureau.js', './shared/messagerie.js', './shared/contrat.js', './manifest.webmanifest', './icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-192.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png', './icons/favicon-32.png'];
+const COQUILLE = ['./', './index.html', './modernisation-v2.css', './shared/pager.js', './shared/crm-connector.js', './shared/pilotage.js', './shared/financement.js', './shared/levee.js', './shared/pages_publiques.js', './shared/credit_ia.js', './shared/renouvellements.js', './shared/paiements.js', './shared/strategie.js', './shared/afaire.js', './shared/bureau.js', './shared/messagerie.js', './shared/contrat.js', './manifest.webmanifest', './icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-192.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png', './icons/favicon-32.png'];
 const BIBLIOTHEQUES = [
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
@@ -31,7 +31,8 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   // Application : réseau d'abord (dernière version), cache si hors ligne
   if (url.origin === self.location.origin) {
-    if (url.pathname.includes('/company/')) return;   // plateforme SANIX AI VIRTUAL COMPANY : toujours en ligne, hors cache du CRM
+    if (url.pathname.includes('/company/')) return;
+    if (url.pathname.includes('/demo/') || url.pathname.includes('/landing/')) return;   // pages publiques (prospects) : hors cache et hors coquille du CRM   // plateforme SANIX AI VIRTUAL COMPANY : toujours en ligne, hors cache du CRM
     e.respondWith(
       fetch(req).then((res) => {
         if (res.ok) { const copie = res.clone(); caches.open(VERSION).then((c) => c.put(req, copie)); }

@@ -37,7 +37,7 @@ footer{text-align:center;padding:26px 18px;color:#64748B;font-size:13px}
 <div class="top"><div class="wrap"><div class="brand">📊 SANIX CRM Pro <span>· SANIX Africa</span></div><a class="btn wa" href="https://wa.me/2250779181075?text=Bonjour%2C%20je%20souhaite%20une%20d%C3%A9mo%20gratuite%20de%20SANIX%20CRM%20Pro.%20(R%C3%A9f.%20LP-SANIXCRMPR)">📱 WhatsApp</a></div></div>
 
 <header class="hero"><div class="wrap">
-  <div class="chip">🎁 Offre du mois sur SANIX CRM Pro : installation et formation de votre équipe offertes</div>
+  
   <h1>SANIX CRM Pro : reprenez le contrôle de votre activité et gagnez du temps dès la première semaine.</h1>
   <p class="sub">CRM commercial SANIX : pipeline Kanban, clients &amp; prospects, médiathèque par logiciel, carte Leaflet géolocalisation, Gantt déploiement, rapports terrain, commissions apporteurs, Supabase sync.</p>
   <div class="cta"><a class="btn wa" href="https://wa.me/2250779181075?text=Bonjour%2C%20je%20souhaite%20une%20d%C3%A9mo%20gratuite%20de%20SANIX%20CRM%20Pro.%20(R%C3%A9f.%20LP-SANIXCRMPR)">📱 Je veux ma démo gratuite</a><a class="btn ghost" href="../demo/sanix-crm-pro.html">▶ Essayer la démo en ligne</a></div>
@@ -58,7 +58,7 @@ footer{text-align:center;padding:26px 18px;color:#64748B;font-size:13px}
   <div style="font-weight:800;color:#CBD5E1">Licence définitive · à partir de</div>
   <div class="big">300 000 FCFA</div><div class="small">soit environ 25 000 FCFA par mois sur 12 mois · ou formule mensuelle 30 000 FCFA/mois</div>
   <ul><li>Installation et prise en main</li><li>Support et mises à jour (1 an)</li><li>Paiement en 2 temps : avance puis solde</li><li>Démo gratuite avant de vous décider</li></ul>
-  <div style="color:#FCD34D;font-weight:800;margin-bottom:10px">🎁 Offre du mois sur SANIX CRM Pro : installation et formation de votre équipe offertes</div>
+  
   <a class="btn wa" href="https://wa.me/2250779181075?text=Bonjour%2C%20je%20souhaite%20une%20d%C3%A9mo%20gratuite%20de%20SANIX%20CRM%20Pro.%20(R%C3%A9f.%20LP-SANIXCRMPR)">📱 Réserver ma démo sur WhatsApp</a>
   <p class="roi">« Moins d'erreurs, plus de temps pour développer votre activité. »</p>
 </div></div></section>
@@ -81,8 +81,10 @@ function lpSend(){
   window.location.href='https://wa.me/'+LP_WA+'?text='+encodeURIComponent(msg);
 }
 (function(){ var el=document.getElementById('timer'); if(!el) return;
-  function tick(){ var d=new Date(),end=new Date(d.getFullYear(),d.getMonth()+1,1)-d; var j=Math.floor(end/864e5); if(j<0) return;
-    el.style.display='inline-block'; el.textContent='⏳ Offre valable encore '+j+' jour'+(j>1?'s':'')+' — fin du mois'; }
-  tick();
+  var FIN=null;   // date fixe (pages publiques) ; sinon fin du mois (page téléchargée)
+  function tick(){ var d=new Date(),end=(FIN?new Date(FIN+'T23:59:59'):new Date(d.getFullYear(),d.getMonth()+1,1))-d; var j=Math.floor(end/864e5);
+    if(j<0){ if(FIN){ var x=document.querySelectorAll('.offre-x'); for(var i=0;i<x.length;i++) x[i].style.display='none'; } return; }
+    el.style.display='inline-block'; el.textContent='⏳ Offre valable encore '+(j+1)+' jour'+(j>0?'s':'')+(FIN?'':' — fin du mois'); }
+  
 })();
 </script></body></html>
