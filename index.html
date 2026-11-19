@@ -24,6 +24,7 @@ try{var _t=localStorage.getItem("sanix_theme");if(_t&&_t!=="turquoise")document.
 <script src="shared/pilotage.js" defer></script>
 <script src="shared/financement.js" defer></script>
 <script src="shared/levee.js" defer></script>
+<script src="shared/pages_publiques.js" defer></script>
 <script src="shared/credit_ia.js" defer></script>
 <script src="shared/renouvellements.js" defer></script>
 <script src="shared/paiements.js" defer></script>
@@ -5560,7 +5561,7 @@ function fcFill(t,c){
   const log = LOGICIELS.find(l=>l.nom===c.logiciel) || {};
   const prix = (valeurFiche(c)||0).toLocaleString('fr-FR');
   return fcSenderVars(t)
-    .replace(/{demo_line}/g, (log.demo&&log.demo!=='#') ? '📲 Démo en ligne : '+log.demo+(log.demo_acces?'\n'+log.demo_acces:'')+'\n\n' : (log.nom ? '📲 Démo interactive (données fictives, sans compte) : '+DEMO_BASE+landingSlug(log.nom)+'.html\n\n' : ''))
+    .replace(/{demo_line}/g, (log.demo&&log.demo!=='#') ? '📲 Démo en ligne : '+log.demo+(log.demo_acces?'\n'+log.demo_acces:'')+'\n\n' : ((log.nom && pagePublique(landingSlug(log.nom))) ? '📲 Démo interactive (données fictives, sans compte) : '+DEMO_BASE+landingSlug(log.nom)+'.html\n\n' : ''))
     .replace(/{destinataire}/g, fcDestinataire(c))
     .replace(/{nom}/g, c.nom||'').replace(/{logiciel}/g, c.logiciel||'nos solutions de gestion')
     .replace(/{pitch}/g, (typeof relanceBuildPitch==='function') ? relanceBuildPitch(c) : '')
@@ -12911,16 +12912,20 @@ const LANDING_DEFAUT='https://crm-sanix.vercel.app/landing/{slug}.html';   // pa
 function landingSlug(nom){ return String(nom||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
 function landingUrl(){ const r=relanceCfg()||{}; if(r.landingActif===false) return ''; const u=String(r.landingUrl||'').trim()||LANDING_DEFAUT; return /^https:\/\/[^\s<>"']+$/i.test(u)?u:''; }
 /** Lien suivi : la landing page + canal d'origine + logiciel concerné (pour savoir d'où viennent les visites). */
+/** Vrai si une page publique (landing + démo) a été construite pour ce logiciel (liste générée dans shared/pages_publiques.js). */
+function pagePublique(slug){ return !!slug && Array.isArray(window.PAGES_PUBLIQUES) && window.PAGES_PUBLIQUES.indexOf(slug)>-1; }
 function landingLien(canal,c){
   let u=landingUrl(); if(!u) return '';
   const ref=landingSlug(c&&c.logiciel), src='src='+(canal==='email'?'email':'whatsapp');
-  if(u.includes('{slug}')){ if(!ref) u=u.replace(/\/?\{slug\}(\.html)?/,''); else return u.replace(/\{slug\}/g,ref)+(u.includes('?')?'&':'?')+src; }
+  if(u.includes('{slug}')){
+    if(u===LANDING_DEFAUT && ref && !pagePublique(ref)) return '';   // adresse par défaut : jamais de lien vers une page qui n'existe pas (logiciel ajouté ou inactif)
+    if(!ref) u=u.replace(/\/?\{slug\}(\.html)?/,''); else return u.replace(/\{slug\}/g,ref)+(u.includes('?')?'&':'?')+src;
+  }
   return u+(u.includes('?')?'&':'?')+src+(ref?'&ref='+ref:'');
 }
 /** Ajoute le lien de la landing page à un message, une seule fois (sans effet si aucune adresse n'est réglée ou si elle y est déjà). */
 function landingAjoute(texte,canal,c){
-  const t=String(texte==null?'':texte), u=landingUrl(); if(!u||!t.trim()||t.includes(u)) return t;
-  const lien=landingLien(canal,c);
+  const t=String(texte==null?'':texte), lien=landingLien(canal,c); if(!lien||!t.trim()||t.includes(lien.split('?')[0])) return t;   // déjà présent (adresse sans ?canal) : jamais deux fois
   if(canal==='email'){
     const l='Pour en savoir plus : '+lien, m=t.search(/\n\n(?:Bien cordialement|Cordialement|Bien à vous|Très cordialement)/i);
     return m>0 ? t.slice(0,m)+'\n\n'+l+t.slice(m) : t.replace(/\s+$/,'')+'\n\n'+l;
@@ -14047,7 +14052,7 @@ function lpCopyFor(log){
 function lpBuildHtml(o){
   const log=o.log, cp=lpCopyFor(log)||{hook:o.logNom,sub:'',pains:[],gains:[],roi:''};
   const E=_dEsc, num=(v)=>Number(v||0).toLocaleString('fr-FR');
-  const acc=(log&&log.color)||'#0e7490';
+  const acc=/^#[0-9a-fA-F]{3,8}$/.test((log&&log.color)||'')?log.color:'#0e7490';   // seule une couleur #hex est insérée dans le CSS
   const titre=o.titre||cp.hook;
   const prix=log&&log.prixNum?log.prixNum:0, mens=log&&log.prixMensuel?log.prixMensuel:0;
   const nClients=o.publique?0:CLIENTS.filter(c=>c.logiciel===o.logNom&&c.statut==='client').length;   // page publique : jamais de chiffre tiré du CRM
@@ -14103,7 +14108,7 @@ footer{text-align:center;padding:26px 18px;color:#64748B;font-size:13px}
 <div class="top"><div class="wrap"><div class="brand">${log&&log.icon?E(log.icon)+' ':''}${E(o.logNom)} <span>· SANIX Africa</span></div><a class="btn wa" href="${waLinkDirect}">📱 WhatsApp</a></div></div>
 
 <header class="hero"><div class="wrap">
-  ${o.offre?`<div class="chip">${E(o.offre)}</div>`:''}
+  ${o.offre?`<div class="chip offre-x">${E(o.offre)}</div>`:''}
   <h1>${E(titre)}</h1>
   <p class="sub">${E(cp.sub)}</p>
   <div class="cta"><a class="btn wa" href="${waLinkDirect}">📱 Je veux ma démo gratuite</a>${demoBtn}</div>
@@ -14124,7 +14129,7 @@ ${pains?`<section class="pains"><div class="wrap"><h2>Vous reconnaissez-vous ?</
   <div style="font-weight:800;color:#CBD5E1">Licence définitive${prix?' · à partir de':''}</div>
   ${prix?`<div class="big">${num(prix)} FCFA</div><div class="small">soit environ ${num(Math.round(prix/12))} FCFA par mois sur 12 mois${mens?` · ou formule mensuelle ${num(mens)} FCFA/mois`:''}</div>`:'<div class="big">Sur devis</div>'}
   <ul><li>Installation et prise en main</li><li>Support et mises à jour${log&&log.support==='1an'?' (1 an)':''}</li><li>Paiement en 2 temps : avance puis solde</li><li>Démo gratuite avant de vous décider</li></ul>
-  ${o.offre?`<div style="color:#FCD34D;font-weight:800;margin-bottom:10px">${E(o.offre)}</div>`:''}
+  ${o.offre?`<div class="offre-x" style="color:#FCD34D;font-weight:800;margin-bottom:10px">${E(o.offre)}</div>`:''}
   <a class="btn wa" href="${waLinkDirect}">📱 Réserver ma démo sur WhatsApp</a>
   ${cp.roi?`<p class="roi">« ${E(cp.roi)} »</p>`:''}
 </div></div></section>
@@ -14147,8 +14152,10 @@ function lpSend(){
   window.location.href='https://wa.me/'+LP_WA+'?text='+encodeURIComponent(msg);
 }
 (function(){ var el=document.getElementById('timer'); if(!el) return;
-  function tick(){ var d=new Date(),end=new Date(d.getFullYear(),d.getMonth()+1,1)-d; var j=Math.floor(end/864e5); if(j<0) return;
-    el.style.display='inline-block'; el.textContent='⏳ Offre valable encore '+j+' jour'+(j>1?'s':'')+' — fin du mois'; }
+  var FIN=${/^\d{4}-\d{2}-\d{2}$/.test(o.offreFin||'')?JSON.stringify(o.offreFin):'null'};   // date fixe (pages publiques) ; sinon fin du mois (page téléchargée)
+  function tick(){ var d=new Date(),end=(FIN?new Date(FIN+'T23:59:59'):new Date(d.getFullYear(),d.getMonth()+1,1))-d; var j=Math.floor(end/864e5);
+    if(j<0){ if(FIN){ var x=document.querySelectorAll('.offre-x'); for(var i=0;i<x.length;i++) x[i].style.display='none'; } return; }
+    el.style.display='inline-block'; el.textContent='⏳ Offre valable encore '+(j+1)+' jour'+(j>0?'s':'')+(FIN?'':' — fin du mois'); }
   ${o.offre?'tick();':''}
 })();
 <\/script></body></html>`;

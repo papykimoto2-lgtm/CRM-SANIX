@@ -19,18 +19,18 @@ function rng(seed) { let s = 0; for (const c of seed) s = (s * 31 + c.charCodeAt
 function donnees(slug, module) {
   const R = rng(slug + "|" + module), pick = (a) => a[Math.floor(R() * a.length)], k = schema(module), n = 8, rows = [], mois = (i) => ("0" + (1 + Math.floor(R() * 28))).slice(-2) + "/" + ("0" + (1 + (i % 11))).slice(-2) + "/2026";
   const montant = (a, b) => Math.round((a + R() * (b - a)) / 500) * 500;
-  if (k === "personnes") { for (let i = 0; i < n; i++) rows.push([pick(TIERS) + " " + (i + 1), pick(VILLES), "07 00 " + ("0" + Math.floor(R() * 100)).slice(-2) + " " + ("0" + Math.floor(R() * 100)).slice(-2), pick(STATUTS.personnes), montant(0, 900000)]); return { k, cols: [["Nom", "t"], ["Ville", "t"], ["Téléphone", "t"], ["Statut", "c"], ["Solde (FCFA)", "m"]], rows }; }
-  if (k === "stock") { for (let i = 0; i < n; i++) { const q = Math.floor(R() * 200), s = 20 + Math.floor(R() * 40); rows.push([ARTICLES[i % ARTICLES.length], q, s, montant(1000, 90000), q === 0 ? "Rupture" : q < s ? "Bas" : "OK"]); } return { k, cols: [["Article", "t"], ["Quantité", "n"], ["Seuil", "n"], ["Prix unitaire (FCFA)", "m"], ["État", "c"]], rows }; }
-  if (k === "pieces") { for (let i = 0; i < n; i++) rows.push(["P-2026-" + ("00" + (101 + i)).slice(-3), pick(TIERS), mois(i), montant(50000, 2500000), pick(STATUTS.pieces)]); return { k, cols: [["N°", "t"], ["Tiers", "t"], ["Date", "t"], ["Montant (FCFA)", "m"], ["Statut", "c"]], rows }; }
+  if (k === "personnes") { for (let i = 0; i < n; i++) rows.push([pick(TIERS) + " " + (i + 1), pick(VILLES), "07 00 " + ("0" + Math.floor(R() * 100)).slice(-2) + " " + ("0" + Math.floor(R() * 100)).slice(-2), pick(STATUTS.personnes), montant(0, 900000)]); return { k, def: STATUTS.personnes[0], cols: [["Nom", "t"], ["Ville", "t"], ["Téléphone", "t"], ["Statut", "c"], ["Solde (FCFA)", "m"]], rows }; }
+  if (k === "stock") { for (let i = 0; i < n; i++) { const q = Math.floor(R() * 200), s = 20 + Math.floor(R() * 40); rows.push([ARTICLES[i % ARTICLES.length], q, s, montant(1000, 90000), q === 0 ? "Rupture" : q < s ? "Bas" : "OK"]); } return { k, def: STATUTS.stock[0], cols: [["Article", "t"], ["Quantité", "n"], ["Seuil", "n"], ["Prix unitaire (FCFA)", "m"], ["État", "c"]], rows }; }
+  if (k === "pieces") { for (let i = 0; i < n; i++) rows.push(["P-2026-" + ("00" + (101 + i)).slice(-3), pick(TIERS), mois(i), montant(50000, 2500000), pick(STATUTS.pieces)]); return { k, def: STATUTS.pieces[0], cols: [["N°", "t"], ["Tiers", "t"], ["Date", "t"], ["Montant (FCFA)", "m"], ["Statut", "c"]], rows }; }
   if (k === "ecritures") { for (let i = 0; i < n; i++) { const m = montant(20000, 1800000), d = R() < 0.5; rows.push([mois(i), "PC-" + (301 + i), pick(["Vente de marchandises", "Achat fournitures", "Règlement client", "Charges de personnel", "Loyer", "Prestation de services", "Règlement fournisseur", "Frais bancaires"]), d ? m : 0, d ? 0 : m]); } return { k, cols: [["Date", "t"], ["Pièce", "t"], ["Libellé", "t"], ["Débit (FCFA)", "m"], ["Crédit (FCFA)", "m"]], rows }; }
   for (let i = 0; i < n; i++) rows.push(["R-" + (101 + i), module.split(/[ &/]/)[0] + " " + (i + 1), pick(PRENOMS), mois(i), Math.floor(R() * 101), pick(STATUTS.dossiers)]);
-  return { k: "dossiers", cols: [["Réf.", "t"], ["Intitulé", "t"], ["Responsable", "t"], ["Échéance", "t"], ["Avancement (%)", "p"], ["Statut", "c"]], rows };
+  return { k: "dossiers", def: STATUTS.dossiers[0], cols: [["Réf.", "t"], ["Intitulé", "t"], ["Responsable", "t"], ["Échéance", "t"], ["Avancement (%)", "p"], ["Statut", "c"]], rows };
 }
 
 function demoHtml(log, o) {
   const E = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (x) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[x]));
   const mods = String(log.modules || "").split(",").map((x) => x.trim()).filter((x) => x && !TECH.test(x));
-  const R = rng(o.slug), acc = log.color || "#0e7490";
+  const R = rng(o.slug), acc = /^#[0-9a-fA-F]{3,8}$/.test(log.color || "") ? log.color : "#0e7490";
   const data = { slug: o.slug, nom: log.nom, mods: mods.map((m) => ({ nom: m, ...donnees(o.slug, m) })), mois: ["Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov."].map((m) => [m, Math.round((3 + R() * 9) * 100000)]),
     wa: o.wa, wamsg: "Bonjour, je souhaite une démo gratuite de " + log.nom + " (après avoir essayé la démo en ligne)." };
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Démo ${E(log.nom)} · SANIX Africa</title>
@@ -68,7 +68,7 @@ var q2=$("q");q2.oninput=function(){Q=q2.value;var p=q2.selectionStart;view();va
 document.addEventListener("click",function(e){var t=e.target,b=t.closest&&t.closest("[data-i]");if(b){cur=Number(b.dataset.i);Q="";S={k:-1,d:1};nav();cur<0?home():view();return}
 var s=t.closest&&t.closest("[data-s]");if(s){var k=Number(s.dataset.s);S.d=S.k===k?-S.d:1;S.k=k;view();return}
 var d=t.closest&&t.closest("[data-d]");if(d){D.mods[cur].rows.splice(Number(d.dataset.d),1);view();return}
-if(t.id==="add"){var m=D.mods[cur],r=m.cols.map(function(c,i){return c[1]==="m"?Math.round(Math.random()*20)*50000:c[1]==="n"?Math.floor(Math.random()*100):c[1]==="p"?Math.floor(Math.random()*101):c[1]==="c"?m.rows[0][i]:i===0?"Nouveau "+(m.rows.length+1):"—"});m.rows.unshift(r);view()}});
+if(t.id==="add"){var m=D.mods[cur],r=m.cols.map(function(c,i){return c[1]==="m"?Math.round(Math.random()*20)*50000:c[1]==="n"?Math.floor(Math.random()*100):c[1]==="p"?Math.floor(Math.random()*101):c[1]==="c"?m.def:i===0?"Nouveau "+(m.rows.length+1):"—"});m.rows.unshift(r);view()}});
 nav();home();</script></body></html>`;
 }
 module.exports = { demoHtml, schema, TECH };

@@ -34,6 +34,8 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.locator("#add").click(); ok((await lignes()) === avant + 1, "ajout d'une ligne d'exemple");
     await page.locator("tbody .x").first().click(); ok((await lignes()) === avant, "suppression d'une ligne");
     ok((await page.locator("#cta").getAttribute("href")).startsWith("https://wa.me/225") && (await page.locator("a.btn.g").getAttribute("href")) === "../landing/immosuite-erp.html", "boutons : WhatsApp et retour à la présentation");
+    while (await page.locator("tbody .x").count()) await page.locator("tbody .x").first().click();
+    await page.locator("#add").click(); ok((await lignes()) === 1 && errs.length === 0, "tout supprimer puis ajouter une ligne : fonctionne, sans erreur");
     await page.locator("#nav button").first().click(); ok((await page.locator(".bar div").count()) === 6, "vue d'ensemble avec graphique");
     ok(errs.length === 0, "aucune erreur ni requête échouée (" + errs.slice(0, 3).join("; ") + ")");
     console.log("▶ Liens depuis les pages et messages");
