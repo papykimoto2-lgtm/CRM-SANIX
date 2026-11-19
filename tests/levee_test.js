@@ -117,4 +117,20 @@ const mLong2 = Object.assign({}, m, { moisAct: 6, rythme: 3e6, vendu12: 18e6, li
 const pj = calc.projeterALaDate(mLong2, "2027-05", {}, {});
 ok(pj.mesurable && pj.m2.vendu12 > 18e6 && pj.m2.livre12 > 9e6 && pj.m2.moisAct > 6, "6 mois d'historique : ventes et ancienneté prolongées");
 ok(pj.scores.every((s, i) => s.score >= pj.avant[i].score), "plus de temps et de ventes n'abaisse aucun score");
+
+console.log("▶ Pertinence calculée des financeurs");
+const F1 = { nom: "Fonds A", type: "fonds", region: "afrique_ouest", pays: "Abidjan, Côte d'Ivoire", ticket_min: 20000000, ticket_max: 300000000, devise: "FCFA", conditions: "Amorçage, tous secteurs", contact_formulaire: "https://x.example/f", statut: "a_etudier" };
+const nA = calc.notePertinence(F1, { besoinFcfa: 20e6 }, 0);
+ok(nA.note >= 90 && nA.niveau === "forte", "fonds ivoirien, ticket compatible, amorçage : note forte (" + nA.note + ")");
+ok(nA.raisons.some((r) => r.texte.includes("Côte d'Ivoire")) && nA.raisons.every((r) => r.texte && typeof r.pts === "number"), "chaque note s'explique par des raisons chiffrées");
+const nB = calc.notePertinence({ nom: "Fonds B", type: "fonds", region: "europe", pays: "Pays-Bas", ticket_min: 10000000, devise: "EUR", conditions: "Series A, revenus établis", statut: "a_etudier" }, { besoinFcfa: 20e6 }, 0);
+ok(nB.niveau === "faible" && nB.raisons.some((r) => r.texte.includes("sans commune mesure")), "ticket de 10 M EUR et Series A : note faible");
+ok(calc.notePertinence(Object.assign({}, F1, { statut: "ecarte" }), {}, 0).note === 0, "un financeur écarté vaut 0");
+ok(calc.notePertinence(Object.assign({}, F1, { devise: "CLP" }), {}, 0).raisons.some((r) => r.texte.includes("devise non convertie")), "devise inconnue : aucun taux inventé");
+const sans = calc.notePertinence({ nom: "X", type: "fonds", region: "afrique_ouest", pays: "Dakar, Sénégal ; startups sénégalaises", statut: "a_etudier" }, {}, 0);
+ok(sans.raisons.some((r) => r.texte.includes("autre pays")), "fonds limité à un autre pays : pénalisé");
+ok(calc.notePertinence(F1, { besoinFcfa: 20e6 }, 0).note > calc.notePertinence(F1, { besoinFcfa: 2e9 }, 0).note, "un besoin 100 fois plus grand fait baisser la note (ticket trop faible)");
+const petit = calc.notePertinence({ nom: "Petit", type: "subvention", region: "afrique_panafricain", pays: "Afrique", ticket_min: 5000, ticket_max: 5000, devise: "USD", conditions: "Capital d'amorçage", statut: "a_etudier" }, { besoinFcfa: 20e6 }, 0);
+ok(petit.raisons.some((r) => r.texte.includes("Montant faible")), "une subvention de 5 000 USD est jugée faible pour un besoin de 20 M FCFA");
+ok([nA, nB, sans, petit].every((r) => r.note >= 0 && r.note <= 100), "notes toujours entre 0 et 100");
 console.log("\nTOUT EST OK");
