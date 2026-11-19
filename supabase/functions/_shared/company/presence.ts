@@ -53,10 +53,10 @@ export class Presence {
 
 export function activityFor(tool: string, input: Record<string, any>): string | null {
   switch (tool) {
-    case "create_prospect": case "lister_prospects": return "recherche_prospects";
-    case "get_prospect": case "verifier_adresse": case "get_product": case "recommend_products": case "rappeler": case "consulter_taches": case "memoriser": case "transmettre":
+    case "create_prospect": case "lister_prospects": case "enregistrer_financeur": return "recherche_prospects";
+    case "get_prospect": case "verifier_adresse": case "lister_financeurs": case "get_product": case "recommend_products": case "rappeler": case "consulter_taches": case "memoriser": case "transmettre":
       return "consultation_documents";
-    case "update_prospect": case "set_stage": case "consulter_indicateurs": case "consulter_performance": return "analyse_donnees";
+    case "update_prospect": case "set_stage": case "consulter_levee_de_fonds": case "consulter_indicateurs": case "consulter_performance": return "analyse_donnees";
     case "send_message": return input?.canal === "email" ? "redaction_email" : "conversation_whatsapp";
     case "schedule_followup": return input?.canal === "telephone" ? "appel_telephonique" : "planification_rdv";
     case "list_free_slots": return "planification_rdv";

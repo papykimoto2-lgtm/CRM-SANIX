@@ -89,6 +89,16 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await pop.close();
     ok(await page.evaluate(() => JSON.parse(localStorage.getItem("sanix_crm_levee_config")).deck.lancement === "2027-06"), "date de lancement enregistrée");
 
+    console.log("▶ Partage avec l'agent");
+    await page.waitForTimeout(2200);
+    ok((await page.locator("#lev-sync").innerText()).includes("agent"), "l'état du partage avec l'agent est affiché (session non connectée dans le test : message explicite)");
+    await page.evaluate(() => { window.__calls = []; window.aisApi = async (p, o) => { window.__calls.push({ p, b: o && o.body }); return p.includes("levee_etat?") ? [] : "2026-11-19T10:00:00Z"; }; });
+    await page.evaluate(() => navigate("levee", null)); await page.waitForTimeout(400);
+    await page.locator('#lev-body .tab', { hasText: "Éligibilité" }).click(); await page.locator('[data-man="equipe"]').check(); await page.waitForTimeout(2200);
+    const envoi = await page.evaluate(() => window.__calls.filter((c) => c.p.includes("rpc/levee_enregistrer")).map((c) => JSON.parse(c.b)).pop());
+    ok(envoi && envoi.p_config.manuel.equipe === true, "la case cochée est envoyée au serveur pour l'agent");
+    ok(envoi.p_instantane.scores.length === 5 && envoi.p_instantane.modele && typeof envoi.p_instantane.modele.besoin === "number", "l'instantané contient les 5 scores et le modèle Financement");
+    ok((await page.locator("#lev-sync").innerText()).includes("Partagé avec l'agent"), "confirmation « partagé avec l'agent » affichée");
     console.log("▶ Persistance et sécurité");
     await page.evaluate(() => navigate("comptabilite", null)); await page.waitForTimeout(300);
     await page.evaluate(() => navigate("levee", null)); await page.waitForTimeout(500);

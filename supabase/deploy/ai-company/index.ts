@@ -1,3 +1,994 @@
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __commonJS = (cb, mod) => function __require() {
+  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target2) => (target2 = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target2, "default", { value: mod, enumerable: true }) : target2,
+  mod
+));
+
+// ../shared/levee.js
+var require_levee = __commonJS({
+  "../shared/levee.js"(exports, module) {
+    (function(G) {
+      "use strict";
+      const num2 = (v) => {
+        v = Number(v);
+        return isFinite(v) ? v : 0;
+      };
+      const pos = (v) => Math.max(0, num2(v));
+      const clamp2 = (v, a, b) => Math.min(b, Math.max(a, num2(v)));
+      const sum = (a, f) => a.reduce((s, x) => s + f(x), 0);
+      const STATUTS_VENTE = ["confirmee", "en_cours", "livree"];
+      const RECURRENT = /annuel|mensuel|abonn|saas/i;
+      const cleNom = (n2) => String(n2 || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const monthKey = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+      function mesurer(src) {
+        src = src || {};
+        const now = src.now ? new Date(src.now) : /* @__PURE__ */ new Date(), cur = monthKey(now);
+        const cm = (src.commandes || []).filter((c) => c && STATUTS_VENTE.indexOf(c.statut) >= 0 && c.date);
+        const htDe = (c) => pos(c.htNet) || Math.round(pos(c.ttc) / 1.18);
+        const mois = [];
+        for (let i = 12; i >= 1; i--) mois.push({ k: monthKey(new Date(now.getFullYear(), now.getMonth() - i, 1)), ht: 0 });
+        const idx = {};
+        mois.forEach((x, i) => {
+          idx[x.k] = i;
+        });
+        let ht12 = 0, livre12 = 0, ttcTot = 0, verse = 0, rec = 0, htTot = 0, premiere = null;
+        const parClient = {}, parLog = {}, nomLog = {}, payants = {};
+        let livreTotal = 0;
+        cm.forEach((c) => {
+          const d = String(c.date).slice(0, 10), k = d.slice(0, 7), ht = htDe(c), ttc = pos(c.ttc) || ht, v = Math.min(ttc, pos(c.acompte)), cl = cleNom(c.client);
+          if (!premiere || d < premiere) premiere = d;
+          htTot += ht;
+          ttcTot += ttc;
+          verse += v;
+          if (c.statut === "livree") livreTotal += ht;
+          if (c.renouvellement || RECURRENT.test(c.typeLicence || "")) rec += ht;
+          parClient[cl] = (parClient[cl] || 0) + ht;
+          if (v > 0) payants[cl] = 1;
+          const lg = cleNom(c.logiciel);
+          if (lg && !c.renouvellement) {
+            parLog[lg] = (parLog[lg] || 0) + ht;
+            nomLog[lg] = c.logiciel;
+          }
+          if (k >= mois[0].k && k <= cur) {
+            ht12 += ht;
+            if (c.statut === "livree") livre12 += ht;
+            if (idx[k] !== void 0) mois[idx[k]].ht += ht;
+          }
+        });
+        const moisAct = premiere ? Math.max(0, Math.round((now - new Date(premiere)) / (30.44 * 864e5) * 10) / 10) : 0;
+        const tri = (a) => sum(a, (x) => x.ht), dernier = tri(mois.slice(9)), precedent = tri(mois.slice(6, 9));
+        const croissance = moisAct >= 6 && precedent > 0 ? Math.pow(dernier / precedent, 1 / 3) - 1 : null;
+        const rythme = ht12 > 0 ? ht12 / Math.max(1, moisAct) : 0;
+        const noms = Object.keys(parClient).filter(Boolean), tops = noms.map((k) => parClient[k]).sort((a, b) => b - a), logs = Object.keys(parLog).map((k) => parLog[k]).sort((a, b) => b - a);
+        const cfg = src.config || {}, mo = src.modele || {};
+        return {
+          now: now.toISOString().slice(0, 10),
+          premiere,
+          livreTotal,
+          topLogicielNom: Object.keys(parLog).sort((a, b) => parLog[b] - parLog[a])[0] && nomLog[Object.keys(parLog).sort((a, b) => parLog[b] - parLog[a])[0]] || null,
+          nbCommandes: cm.length,
+          vendu12: ht12,
+          livre12,
+          vendu: htTot,
+          moisAct,
+          rythme,
+          croissance,
+          clients: noms.length,
+          clientsPayants: Object.keys(payants).length,
+          recurrent: htTot > 0 ? rec / htTot : null,
+          top1: htTot > 0 && tops[0] ? tops[0] / htTot : null,
+          topLogiciel: sum(logs, (x) => x) > 0 ? logs[0] / sum(logs, (x) => x) : null,
+          encaisse: ttcTot > 0 ? verse / ttcTot : null,
+          produits: logs.length,
+          pipelineMois: rythme > 0 && src.pipelinePondere != null ? pos(src.pipelinePondere) / rythme : null,
+          immat: !!(String(cfg.rccm || "").trim() && String(cfg.cc || "").trim()),
+          forme: !!(String(cfg.forme || "").trim() && String(cfg.capital || "").trim()),
+          banque: !!String(cfg.banque || "").trim(),
+          modeleValide: !!mo.valide,
+          pointMort: mo.pointMort == null ? null : num2(mo.pointMort),
+          besoin: mo.besoin == null ? null : pos(mo.besoin),
+          mensuel: mois
+        };
+      }
+      const SEUILS = {
+        livre12: { ok: 2e7, warn: 5e6 },
+        clients: { ok: 10, warn: 3 },
+        moisAct: { ok: 12, warn: 6 },
+        croissance: { ok: 0.1, warn: 0 },
+        recurrent: { ok: 0.3, warn: 0.1 },
+        top1: { ok: 0.4, warn: 0.6 },
+        topLogiciel: { ok: 0.5, warn: 0.7 },
+        encaisse: { ok: 0.7, warn: 0.4 },
+        pointMort: { ok: 36, warn: 60 },
+        produits: { ok: 3, warn: 2 },
+        pipelineMois: { ok: 6, warn: 3 }
+      };
+      const F = {
+        m: (n2) => (Math.round(num2(n2) / 1e5) / 10).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + " M FCFA",
+        p: (n2) => (num2(n2) * 100).toLocaleString("fr-FR", { maximumFractionDigits: 0 }) + " %",
+        n: (n2) => (Math.round(num2(n2) * 10) / 10).toLocaleString("fr-FR"),
+        mois: (n2) => (Math.round(num2(n2) * 10) / 10).toLocaleString("fr-FR") + " mois"
+      };
+      const CRITERES = [
+        {
+          id: "immat",
+          g: "Juridique et gouvernance",
+          lib: "Soci\xE9t\xE9 immatricul\xE9e (RCCM et compte contribuable)",
+          manuel: false,
+          mes: (m) => m.immat,
+          bin: true,
+          note: { def: "La soci\xE9t\xE9 existe l\xE9galement : num\xE9ro RCCM et num\xE9ro de compte contribuable (NCC) renseign\xE9s dans Param\xE9trage \u2192 Entreprise.", pourquoi: "Aucun investisseur ni banque ne signe avec une entit\xE9 non immatricul\xE9e : c'est le premier point v\xE9rifi\xE9.", calcul: "Lu dans Param\xE9trage \u2192 Entreprise (RCCM et N\xB0 CC)." },
+          action: "Renseigner le RCCM et le N\xB0 de compte contribuable dans Param\xE9trage \u2192 Entreprise (immatriculer la soci\xE9t\xE9 d'abord si ce n'est pas fait)."
+        },
+        {
+          id: "forme",
+          g: "Juridique et gouvernance",
+          lib: "Forme juridique et capital social renseign\xE9s",
+          mes: (m) => m.forme,
+          bin: true,
+          note: { def: "Forme (SARL, SAS\u2026) et capital social indiqu\xE9s.", pourquoi: "Elle d\xE9termine comment un investisseur peut entrer au capital et quels droits il obtient.", calcul: "Lu dans Param\xE9trage \u2192 Entreprise (forme et capital)." },
+          action: "Renseigner la forme juridique et le capital dans Param\xE9trage \u2192 Entreprise."
+        },
+        {
+          id: "banque",
+          g: "Juridique et gouvernance",
+          lib: "Compte bancaire professionnel",
+          mes: (m) => m.banque,
+          bin: true,
+          note: { def: "La soci\xE9t\xE9 dispose d'un compte bancaire \xE0 son nom.", pourquoi: "Les fonds sont vers\xE9s sur ce compte ; une banque ou un programme d'appui l'exige pour d\xE9caisser.", calcul: "Lu dans Param\xE9trage \u2192 Entreprise (banque)." },
+          action: "Ouvrir un compte professionnel au nom de la soci\xE9t\xE9 et le renseigner dans Param\xE9trage \u2192 Entreprise."
+        },
+        {
+          id: "pacte",
+          g: "Juridique et gouvernance",
+          lib: "R\xE9partition du capital et pacte d'associ\xE9s document\xE9s",
+          manuel: true,
+          note: { def: "Qui d\xE9tient quoi, avec un pacte d'associ\xE9s ou des statuts clairs (vesting des fondateurs, d\xE9cisions importantes).", pourquoi: "Un capital flou ou un fondateur sans engagement de long terme fait fuir les investisseurs en capital.", calcul: "Case coch\xE9e par la direction." },
+          action: "Faire r\xE9diger les statuts et un pacte d'associ\xE9s (avocat ou notaire) et les ranger dans la data room."
+        },
+        {
+          id: "compta",
+          g: "Juridique et gouvernance",
+          lib: "Comptabilit\xE9 tenue et \xE9tats financiers disponibles",
+          manuel: true,
+          note: { def: "Une comptabilit\xE9 SYSCOHADA \xE0 jour, avec au moins un bilan et un compte de r\xE9sultat.", pourquoi: "Les banques et la plupart des programmes demandent les \xE9tats financiers des 1 \xE0 3 derni\xE8res ann\xE9es.", calcul: "Case coch\xE9e par la direction." },
+          action: "Faire arr\xEAter les comptes par un expert-comptable et conserver bilan et compte de r\xE9sultat."
+        },
+        {
+          id: "moisAct",
+          g: "Traction commerciale",
+          lib: "Anciennet\xE9 de l'activit\xE9 commerciale",
+          mes: (m) => m.nbCommandes ? m.moisAct : null,
+          sens: "haut",
+          fmt: F.mois,
+          cle: "moisAct",
+          note: { def: "Nombre de mois \xE9coul\xE9s depuis la premi\xE8re vente enregistr\xE9e.", pourquoi: "Quelques mois de ventes ne prouvent pas que le mod\xE8le se r\xE9p\xE8te ; un historique plus long rassure.", calcul: "Date de la premi\xE8re commande (confirm\xE9e, en cours ou livr\xE9e) jusqu'\xE0 aujourd'hui." },
+          action: "Le temps seul r\xE8gle ce point : continuer \xE0 vendre r\xE9guli\xE8rement et \xE0 enregistrer chaque commande dans le CRM.",
+          temps: true
+        },
+        {
+          id: "livre12",
+          g: "Traction commerciale",
+          lib: "Chiffre d'affaires livr\xE9 (12 derniers mois, HT)",
+          mes: (m) => m.nbCommandes ? m.livre12 : null,
+          sens: "haut",
+          fmt: F.m,
+          cle: "livre12",
+          note: { def: "Ventes dont le logiciel a \xE9t\xE9 livr\xE9 au client, hors taxes, sur 12 mois glissants.", pourquoi: "C'est le chiffre d'affaires \xAB acquis \xBB : une commande seulement en cours peut encore \xEAtre annul\xE9e, donc un investisseur la compte \xE0 part.", calcul: "Somme du HT des commandes au statut \xAB livr\xE9e \xBB." },
+          action: "Livrer et cl\xF4turer les commandes en cours (statut \xAB livr\xE9e \xBB) et facturer chaque livraison.",
+          cumul: true
+        },
+        {
+          id: "clients",
+          g: "Traction commerciale",
+          lib: "Nombre de clients",
+          mes: (m) => m.nbCommandes ? m.clients : null,
+          sens: "haut",
+          fmt: F.n,
+          cle: "clients",
+          note: { def: "Clients distincts ayant une commande confirm\xE9e, en cours ou livr\xE9e.", pourquoi: "Plusieurs clients diff\xE9rents montrent que le produit n'est pas fait pour un seul acheteur.", calcul: "Noms de client distincts parmi les commandes." },
+          action: "Signer de nouveaux clients : voir Pipeline et Relances prioritaires.",
+          cumul: true
+        },
+        {
+          id: "croissance",
+          g: "Traction commerciale",
+          lib: "Croissance mensuelle des ventes",
+          mes: (m) => m.croissance,
+          sens: "haut",
+          fmt: F.p,
+          cle: "croissance",
+          note: { def: "Taux de croissance mensuel moyen des ventes : les 3 derniers mois pleins compar\xE9s aux 3 pr\xE9c\xE9dents.", pourquoi: "Les fonds d'amor\xE7age cherchent une croissance r\xE9guli\xE8re ; 10 % par mois double l'activit\xE9 en 7 mois.", calcul: "(ventes des 3 derniers mois pleins \xF7 ventes des 3 pr\xE9c\xE9dents) puissance 1/3, moins 1. Mesurable seulement avec au moins 6 mois d'activit\xE9." },
+          action: "Relancer les prospects chauds chaque semaine et suivre les ventes mois par mois ; ce chiffre appara\xEEt quand l'historique atteint 6 mois."
+        },
+        {
+          id: "pipelineMois",
+          g: "Traction commerciale",
+          lib: "Pipeline pond\xE9r\xE9 (en mois de ventes)",
+          mes: (m) => m.pipelineMois,
+          sens: "haut",
+          fmt: F.mois,
+          cle: "pipelineMois",
+          note: { def: "Valeur du pipeline pond\xE9r\xE9 par les chances de conclure, exprim\xE9e en mois de ventes au rythme actuel.", pourquoi: "Un pipeline qui couvre plusieurs mois de ventes rend la croissance pr\xE9visible.", calcul: "Pipeline pond\xE9r\xE9 (CRM) \xF7 ventes HT mensuelles moyennes depuis la premi\xE8re vente." },
+          action: "Alimenter le pipeline : qualifier les prospects, saisir les deals et mettre \xE0 jour leurs probabilit\xE9s."
+        },
+        {
+          id: "recurrent",
+          g: "Qualit\xE9 des revenus",
+          lib: "Part des revenus r\xE9currents",
+          mes: (m) => m.recurrent,
+          sens: "haut",
+          fmt: F.p,
+          cle: "recurrent",
+          note: { def: "Part du chiffre d'affaires issue d'abonnements, de maintenance ou de renouvellements.", pourquoi: "Un revenu qui revient sans nouvelle vente vaut beaucoup plus cher aux yeux d'un investisseur qu'une licence vendue une seule fois.", calcul: "HT des commandes \xE0 abonnement (annuel, mensuel, SaaS) et des renouvellements \xF7 HT total." },
+          action: "Proposer des contrats de maintenance ou des abonnements et facturer les renouvellements (module Renouvellements)."
+        },
+        {
+          id: "top1",
+          g: "Qualit\xE9 des revenus",
+          lib: "Poids du premier client",
+          mes: (m) => m.top1,
+          sens: "bas",
+          fmt: F.p,
+          cle: "top1",
+          note: { def: "Part du chiffre d'affaires faite avec votre premier client.", pourquoi: "Perdre un client qui p\xE8se plus de la moiti\xE9 du chiffre d'affaires menace toute l'entreprise : les investisseurs le regardent de pr\xE8s.", calcul: "HT du plus gros client \xF7 HT total." },
+          action: "Diversifier : viser plusieurs clients de taille comparable plut\xF4t qu'un seul gros contrat."
+        },
+        {
+          id: "topLogiciel",
+          g: "Qualit\xE9 des revenus",
+          lib: "Poids du premier logiciel",
+          mes: (m) => m.topLogiciel,
+          sens: "bas",
+          fmt: F.p,
+          cle: "topLogiciel",
+          note: { def: "Part des ventes issue de votre logiciel le plus vendu.", pourquoi: "D\xE9pendre d'un seul produit est un risque ; plusieurs produits qui se vendent prouvent une capacit\xE9 \xE0 r\xE9p\xE9ter.", calcul: "HT du premier logiciel \xF7 HT des ventes (renouvellements exclus)." },
+          action: "Pousser un deuxi\xE8me et un troisi\xE8me logiciel aupr\xE8s de clients existants (vente crois\xE9e)."
+        },
+        {
+          id: "encaisse",
+          g: "Qualit\xE9 des revenus",
+          lib: "Part du factur\xE9 d\xE9j\xE0 encaiss\xE9e",
+          mes: (m) => m.encaisse,
+          sens: "haut",
+          fmt: F.p,
+          cle: "encaisse",
+          note: { def: "Part du montant TTC des commandes d\xE9j\xE0 pay\xE9e (acomptes et r\xE8glements).", pourquoi: "Un chiffre d'affaires non encaiss\xE9 ne paie ni les salaires ni les dettes ; les banques regardent surtout cela.", calcul: "Somme des acomptes \xF7 TTC des commandes (confirm\xE9es, en cours, livr\xE9es)." },
+          action: "Exiger un acompte \xE0 la commande et relancer les soldes ; suivre les cr\xE9ances dans Commandes."
+        },
+        {
+          id: "produits",
+          g: "Dossier et \xE9quipe",
+          lib: "Produits vendus",
+          mes: (m) => m.nbCommandes ? m.produits : null,
+          sens: "haut",
+          fmt: F.n,
+          cle: "produits",
+          note: { def: "Nombre de logiciels diff\xE9rents ayant d\xE9j\xE0 trouv\xE9 au moins un acheteur.", pourquoi: "Plusieurs produits vendus montrent que l'entreprise est une plateforme et non un seul projet.", calcul: "Logiciels distincts dans les commandes." },
+          action: "Concentrer l'effort commercial sur 2 \xE0 3 logiciels d\xE9j\xE0 valid\xE9s par des clients."
+        },
+        {
+          id: "modele",
+          g: "Finances et mod\xE8le",
+          lib: "Mod\xE8le de financement valid\xE9",
+          mes: (m) => m.modeleValide,
+          bin: true,
+          note: { def: "Le mod\xE8le financier \xE0 5 ans (module Financement) est compl\xE9t\xE9 et valid\xE9 par la direction : hypoth\xE8ses revues, contr\xF4les bloquants lev\xE9s.", pourquoi: "Un financeur demande des projections coh\xE9rentes avec les chiffres r\xE9els ; un mod\xE8le \xAB document de travail \xBB n'est pas remis.", calcul: "Case \xAB Dossier valid\xE9 \xBB du module Financement." },
+          action: "Ouvrir Finance \u2192 Financement, corriger les hypoth\xE8ses et cocher la validation une fois les contr\xF4les pass\xE9s."
+        },
+        {
+          id: "pointMort",
+          g: "Finances et mod\xE8le",
+          lib: "Point mort du plan (en mois)",
+          mes: (m) => m.pointMort,
+          sens: "bas",
+          fmt: F.mois,
+          cle: "pointMort",
+          mesNul: "jamais",
+          note: { def: "Mois \xE0 partir duquel le plan de croissance reste rentable (r\xE9sultat d'exploitation positif) jusqu'\xE0 la fin.", pourquoi: "Un financeur veut savoir quand son argent arr\xEAte de br\xFBler ; un plan qui ne devient jamais rentable ne se finance pas.", calcul: "Premier mois du mod\xE8le Financement apr\xE8s lequel l'EBITDA reste positif." },
+          action: "Revoir les hypoth\xE8ses du mod\xE8le Financement : prix, volume de clients, co\xFBts fixes, recrutements."
+        },
+        {
+          id: "besoin",
+          g: "Finances et mod\xE8le",
+          lib: "Besoin de financement chiffr\xE9 et justifi\xE9",
+          mes: (m) => m.besoin,
+          bin: true,
+          binSeuil: 0,
+          note: { def: "Le mod\xE8le calcule un montant de financement n\xE9cessaire, avec l'emploi des fonds.", pourquoi: "Demander \xAB un peu d'argent \xBB sans montant ni usage ne convainc personne.", calcul: "Point bas de tr\xE9sorerie du plan complet (module Financement)." },
+          action: "Lancer la simulation du module Financement pour obtenir le montant et son emploi."
+        },
+        {
+          id: "deck",
+          g: "Dossier et \xE9quipe",
+          lib: "Pitch deck pr\xEAt (10 \xE0 12 diapositives)",
+          manuel: true,
+          note: { def: "Une pr\xE9sentation courte : probl\xE8me, solution, march\xE9, traction, mod\xE8le \xE9conomique, \xE9quipe, besoin et usage des fonds.", pourquoi: "C'est le premier document lu par un investisseur, et souvent le seul.", calcul: "Case coch\xE9e par la direction." },
+          action: "Pr\xE9parer le pitch deck \xE0 partir des chiffres de ce module (je peux le r\xE9diger avec vous)."
+        },
+        {
+          id: "equipe",
+          g: "Dossier et \xE9quipe",
+          lib: "\xC9quipe dirigeante identifi\xE9e et engag\xE9e",
+          manuel: true,
+          note: { def: "Fondateurs et responsables cl\xE9s nomm\xE9s, \xE0 temps plein, avec leurs comp\xE9tences.", pourquoi: "En phase pr\xE9coce, on investit d'abord dans les personnes.", calcul: "Case coch\xE9e par la direction." },
+          action: "Pr\xE9senter l'\xE9quipe, les r\xF4les manquants et le plan de recrutement dans le dossier."
+        },
+        {
+          id: "dataroom",
+          g: "Dossier et \xE9quipe",
+          lib: "Data room rassembl\xE9e (statuts, RCCM, comptes, contrats)",
+          manuel: true,
+          note: { def: "Un dossier partag\xE9 avec tous les documents juridiques, financiers et commerciaux demand\xE9s lors de la v\xE9rification.", pourquoi: "Une v\xE9rification lente ou incompl\xE8te fait perdre la confiance et le temps de l'investisseur.", calcul: "Case coch\xE9e par la direction." },
+          action: "Rassembler statuts, RCCM, comptes, contrats clients et licences dans un dossier partag\xE9."
+        },
+        {
+          id: "propriete",
+          g: "Dossier et \xE9quipe",
+          lib: "Propri\xE9t\xE9 du code et des marques s\xE9curis\xE9e",
+          manuel: true,
+          note: { def: "La soci\xE9t\xE9 d\xE9tient bien le code, les noms et les logos de ses logiciels (cessions sign\xE9es des d\xE9veloppeurs, marques d\xE9pos\xE9es).", pourquoi: "Un investisseur ne finance pas un produit dont la propri\xE9t\xE9 est contestable.", calcul: "Case coch\xE9e par la direction." },
+          action: "Faire signer des cessions de droits aux d\xE9veloppeurs et d\xE9poser les marques principales (OAPI)."
+        }
+      ];
+      CRITERES.forEach((c) => {
+        c.manuel = !!c.manuel;
+      });
+      const ROUTES = [
+        {
+          id: "angel",
+          lib: "Business angels (pr\xE9-amor\xE7age)",
+          ico: "\u{1F47C}",
+          seuil: 55,
+          bloquants: ["immat", "deck"],
+          desc: "Particuliers fortun\xE9s qui investissent de petits montants au capital, surtout sur la confiance dans l'\xE9quipe et la vision."
+        },
+        {
+          id: "fonds",
+          lib: "Fonds d'amor\xE7age (capital-risque)",
+          ico: "\u{1F3E6}",
+          seuil: 70,
+          bloquants: ["immat", "livre12", "pacte"],
+          desc: "Fonds professionnels qui prennent des parts contre une forte croissance ; exigent traction, revenus r\xE9currents et dossier solide."
+        },
+        {
+          id: "dette",
+          lib: "Pr\xEAt bancaire ou microfinance",
+          ico: "\u{1F4B3}",
+          seuil: 65,
+          bloquants: ["immat", "banque", "compta", "encaisse"],
+          desc: "Un pr\xEAt \xE0 rembourser avec int\xE9r\xEAts, sans c\xE9der de capital : la banque regarde la capacit\xE9 \xE0 rembourser, donc les encaissements et les comptes."
+        },
+        {
+          id: "subv",
+          lib: "Subvention ou programme d'appui",
+          ico: "\u{1F91D}",
+          seuil: 60,
+          bloquants: ["immat", "banque"],
+          desc: "Fonds non remboursables (bailleurs, \xC9tats, fondations) : exigent une soci\xE9t\xE9 en r\xE8gle, des comptes et un impact mesurable."
+        },
+        {
+          id: "acc",
+          lib: "Acc\xE9l\xE9rateur ou concours",
+          ico: "\u{1F680}",
+          seuil: 50,
+          bloquants: ["deck"],
+          desc: "Programmes qui offrent accompagnement et petits financements : peu de conditions, mais une candidature soign\xE9e."
+        }
+      ];
+      const POIDS = {
+        immat: [3, 3, 3, 3, 2],
+        forme: [1, 2, 2, 2, 1],
+        banque: [1, 1, 3, 3, 1],
+        pacte: [2, 3, 1, 1, 1],
+        compta: [1, 2, 3, 3, 1],
+        moisAct: [1, 2, 2, 2, 1],
+        livre12: [2, 3, 3, 2, 2],
+        clients: [2, 3, 2, 2, 2],
+        croissance: [2, 3, 1, 1, 2],
+        pipelineMois: [1, 2, 1, 1, 2],
+        recurrent: [2, 3, 1, 0, 2],
+        top1: [2, 2, 2, 1, 1],
+        topLogiciel: [1, 1, 1, 1, 1],
+        encaisse: [1, 2, 3, 2, 1],
+        produits: [1, 2, 1, 2, 2],
+        modele: [2, 2, 2, 2, 1],
+        pointMort: [1, 2, 3, 2, 1],
+        besoin: [2, 2, 2, 2, 1],
+        deck: [3, 3, 1, 1, 3],
+        equipe: [2, 3, 1, 1, 2],
+        dataroom: [1, 3, 2, 2, 1],
+        propriete: [1, 2, 1, 1, 1]
+      };
+      const PTS = { ok: 1, warn: 0.5, ko: 0, na: 0 };
+      const seuils = (ov2) => {
+        const s = {};
+        Object.keys(SEUILS).forEach((k) => {
+          s[k] = Object.assign({}, SEUILS[k], ov2 && ov2[k] || {});
+        });
+        return s;
+      };
+      function palier(v, S2, sens) {
+        if (v === null || v === void 0 || typeof v === "number" && !isFinite(v)) return "na";
+        return sens === "bas" ? v <= S2.ok ? "ok" : v <= S2.warn ? "warn" : "ko" : v >= S2.ok ? "ok" : v >= S2.warn ? "warn" : "ko";
+      }
+      function statutCritere(c, m, S2, man) {
+        if (c.manuel) {
+          const v2 = !!(man && man[c.id]);
+          return { s: v2 ? "ok" : "na", v: v2, texte: v2 ? "Confirm\xE9" : "\xC0 confirmer" };
+        }
+        const v = c.mes(m);
+        if (c.bin) {
+          const ok = c.binSeuil !== void 0 ? v !== null && v > c.binSeuil : !!v;
+          return { s: ok ? "ok" : "ko", v, texte: ok ? "Oui" : "Non" };
+        }
+        if (v === null || v === void 0) return { s: c.mesNul === "jamais" && m.besoin !== null ? "ko" : "na", v: null, texte: c.mesNul === "jamais" && m.besoin !== null ? "Jamais rentable" : "Non mesurable" };
+        return { s: palier(v, S2[c.cle], c.sens), v, texte: c.fmt(v) };
+      }
+      function evaluer(m, ov2, man) {
+        const S2 = seuils(ov2);
+        return CRITERES.map((c) => Object.assign({ id: c.id }, statutCritere(c, m, S2, man)));
+      }
+      function scoreRoute(ev, r) {
+        const k = ROUTES.indexOf(r), par = {};
+        ev.forEach((e) => {
+          par[e.id] = e;
+        });
+        let tot = 0, ob = 0;
+        const manques = [];
+        CRITERES.forEach((c) => {
+          const w = POIDS[c.id][k], e = par[c.id];
+          if (!w) return;
+          tot += w;
+          ob += w * PTS[e.s];
+          if (e.s !== "ok") manques.push({ id: c.id, s: e.s, poids: w, gain: w * (1 - PTS[e.s]) });
+        });
+        const score = tot > 0 ? Math.round(ob / tot * 100) : 0, bloques = r.bloquants.filter((id) => par[id] && par[id].s !== "ok");
+        const verdict = score >= r.seuil && !bloques.length ? "eligible" : score >= r.seuil - 15 ? "proche" : "non";
+        manques.forEach((x) => {
+          x.gain = tot > 0 ? Math.round(x.gain / tot * 1e3) / 10 : 0;
+        });
+        return { id: r.id, score, seuil: r.seuil, bloques, verdict, manques: manques.sort((a, b) => b.gain - a.gain), tot };
+      }
+      const scores = (ev) => ROUTES.map((r) => scoreRoute(ev, r));
+      function cible(c, m, S2) {
+        if (c.manuel || c.bin || !c.cle) return null;
+        const sx = S2[c.cle], v = c.mes(m);
+        return { objectif: sx.ok, fmt: c.fmt(sx.ok), actuel: v, ecart: v === null || v === void 0 ? null : c.sens === "bas" ? v - sx.ok : sx.ok - v, sens: c.sens };
+      }
+      function delai(c, m, S2) {
+        const t = cible(c, m, S2);
+        if (!t || t.ecart === null || t.ecart <= 0) return null;
+        if (c.temps) return Math.ceil(t.ecart);
+        if (m.moisAct < 3) return null;
+        if (c.id === "livre12" && m.rythme > 0) return Math.ceil(t.ecart / m.rythme);
+        if (c.id === "clients" && m.moisAct > 0 && m.clients > 0) return Math.ceil(t.ecart / (m.clients / Math.max(1, m.moisAct)));
+        return null;
+      }
+      function simulerHypothese(m, ov2, man, what) {
+        const m2 = Object.assign({}, m);
+        Object.keys(what || {}).forEach((k) => {
+          if (what[k] !== null && what[k] !== void 0 && what[k] !== "") m2[k] = num2(what[k]);
+        });
+        return { avant: scores(evaluer(m, ov2, man)), apres: scores(evaluer(m2, ov2, man)), m: m2 };
+      }
+      function montage(p, mod2, m) {
+        const montant2 = pos(p.montant), pre = pos(p.preMoney), post = pre + montant2, part = post > 0 ? montant2 / post : 0, alertes = [];
+        const as = (mod2 && mod2.associes || []).filter((a) => pos(a.part) > 0), tot = sum(as, (a) => pos(a.part)) || 1;
+        const table = as.map((a) => ({ nom: a.nom, avant: pos(a.part) / tot, apres: pos(a.part) / tot * (1 - part) }));
+        if (montant2 > 0) table.push({ nom: "Nouveaux investisseurs", avant: 0, apres: part });
+        const burn = mod2 && mod2.burn > 0 ? mod2.burn : 0, runway = burn > 0 ? montant2 / burn : null, besoin = mod2 && mod2.besoin != null ? pos(mod2.besoin) : null;
+        if (part > 0.3) alertes.push("Part c\xE9d\xE9e sup\xE9rieure \xE0 30 % : au-del\xE0, les fondateurs perdent le contr\xF4le des d\xE9cisions futures. Un premier tour c\xE8de plut\xF4t 10 \xE0 25 %.");
+        if (part > 0 && part < 0.05) alertes.push("Part c\xE9d\xE9e inf\xE9rieure \xE0 5 % : peu d'investisseurs s'int\xE9ressent \xE0 un ticket aussi faible.");
+        if (besoin !== null && montant2 > 0 && montant2 < besoin) alertes.push("Le montant est inf\xE9rieur au besoin de financement du mod\xE8le (" + F.m(besoin) + ") : la tr\xE9sorerie passerait en n\xE9gatif.");
+        if (runway !== null && runway < 12) alertes.push("Autonomie inf\xE9rieure \xE0 12 mois : la recherche du tour suivant commencerait trop t\xF4t.");
+        const ca12 = m && m.vendu12 > 0 ? m.vendu12 : null, rec = m && m.recurrent != null && ca12 ? m.recurrent * ca12 : null;
+        return {
+          montant: montant2,
+          pre,
+          post,
+          part,
+          table,
+          runway,
+          besoin,
+          manque: besoin !== null ? Math.max(0, besoin - montant2) : null,
+          alertes,
+          multCA: ca12 && pre > 0 ? pre / ca12 : null,
+          multRec: rec && rec > 0 && pre > 0 ? pre / rec : null
+        };
+      }
+      function plan(m, ov2, man) {
+        const ev = evaluer(m, ov2, man), S2 = seuils(ov2), sc = scores(ev), res = [];
+        CRITERES.forEach((c) => {
+          const e = ev.filter((x) => x.id === c.id)[0];
+          if (e.s === "ok") return;
+          const gains = ROUTES.map((r, i) => {
+            const x = sc[i].manques.filter((q) => q.id === c.id)[0];
+            return x ? x.gain : 0;
+          });
+          const bloque = ROUTES.filter((r, i) => sc[i].bloques.indexOf(c.id) >= 0).map((r) => r.id);
+          res.push({ id: c.id, lib: c.lib, g: c.g, s: e.s, texte: e.texte, action: c.action, gain: Math.round(sum(gains, (x) => x) / ROUTES.length * 10) / 10, bloque, delai: delai(c, m, S2), cible: cible(c, m, S2) });
+        });
+        return res.sort((a, b) => b.bloque.length - a.bloque.length || b.gain - a.gain);
+      }
+      const GLOSSAIRE = [
+        ["Pr\xE9-money (valorisation avant apport)", "Valeur de l'entreprise avant l'arriv\xE9e des nouveaux fonds. Plus elle est \xE9lev\xE9e, moins vous c\xE9dez de parts pour un m\xEAme montant."],
+        ["Post-money", "Valeur de l'entreprise juste apr\xE8s l'apport : pr\xE9-money + montant lev\xE9."],
+        ["Part c\xE9d\xE9e / dilution", "Pourcentage du capital remis aux investisseurs : montant lev\xE9 \xF7 post-money. Les parts des fondateurs diminuent d'autant."],
+        ["Autonomie (runway)", "Nombre de mois pendant lesquels l'entreprise peut payer ses d\xE9penses avec l'argent lev\xE9, au rythme de consommation pr\xE9vu."],
+        ["Consommation de tr\xE9sorerie (burn)", "Argent d\xE9pens\xE9 en plus de celui encaiss\xE9 chaque mois : il s'agit de la perte de tr\xE9sorerie mensuelle moyenne."],
+        ["EBITDA / point mort", "L'EBITDA est le r\xE9sultat d'exploitation avant amortissements et imp\xF4ts ; le point mort est le mois o\xF9 il devient durablement positif."],
+        ["Revenu r\xE9current (MRR/ARR)", "Revenu qui revient chaque mois ou chaque ann\xE9e sans nouvelle vente : abonnements, maintenance, renouvellements."],
+        ["Concentration", "Part du chiffre d'affaires port\xE9e par un seul client ou un seul produit : plus elle est forte, plus le risque est grand."],
+        ["Traction", "Preuve que le march\xE9 ach\xE8te : clients, chiffre d'affaires, croissance, r\xE9tention."],
+        ["Data room", "Dossier partag\xE9 contenant tous les documents qu'un investisseur v\xE9rifie avant de signer (statuts, comptes, contrats, propri\xE9t\xE9 du code)."],
+        ["Pacte d'associ\xE9s", "Contrat entre associ\xE9s qui fixe les r\xE8gles : d\xE9cisions importantes, d\xE9part d'un associ\xE9, entr\xE9e d'un investisseur, engagement des fondateurs (vesting)."],
+        ["Lettre d'intention / term sheet", "Document non d\xE9finitif qui r\xE9sume les conditions d'un investissement (montant, valorisation, droits) avant les contrats finaux."]
+      ];
+      function projeterALaDate(m, dateLancement, ov2, man) {
+        const d = dateLancement ? /* @__PURE__ */ new Date(dateLancement + (String(dateLancement).length === 7 ? "-01" : "")) : null, now = new Date(m.now);
+        if (!d || isNaN(d) || d <= now) return null;
+        const mois = Math.round((d - now) / (30.44 * 864e5) * 10) / 10;
+        if (m.moisAct < 3 || !(m.rythme > 0)) return { mois, mesurable: false, scores: null, m2: null };
+        const livrePart = m.vendu12 > 0 ? m.livre12 / m.vendu12 : 0;
+        const m2 = Object.assign({}, m, { moisAct: m.moisAct + mois, vendu12: m.vendu12 + m.rythme * mois, livre12: m.livre12 + m.rythme * mois * livrePart });
+        return { mois, mesurable: true, m2, scores: scores(evaluer(m2, ov2, man)), avant: scores(evaluer(m, ov2, man)) };
+      }
+      const escH = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      const dateFr = (iso) => {
+        const d = new Date(iso);
+        return isNaN(d) ? "" : d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+      };
+      const duree = (mois) => mois < 2 ? Math.max(1, Math.round(mois * 4.345)) + " semaines" : Math.round(mois) + " mois";
+      function deck(data) {
+        const m = data.m, mod2 = data.mod, d = data.d || {}, manques = [], cat = data.catalogue || [];
+        const ph = (slide, lib) => {
+          manques.push({ slide, lib });
+          return '<div class="ph"><p>[' + escH(lib) + "]</p></div>";
+        };
+        const phx = (slide, lib) => {
+          manques.push({ slide, lib });
+          return '<span class="phx">[' + escH(lib) + "]</span>";
+        };
+        const val = (v) => v !== null && v !== void 0 && String(v).trim() !== "";
+        const cartes = (a) => '<div class="row">' + a.map((c) => '<div class="card">' + c + "</div>").join("") + "</div>";
+        const pr = cat.filter((x) => num2(x.prix) > 0).map((x) => num2(x.prix)), cats = {};
+        cat.forEach((x) => {
+          const k = x.cat || "Autres";
+          (cats[k] = cats[k] || []).push(x.nom);
+        });
+        const montant2 = data.sim && data.sim.montant != null ? num2(data.sim.montant) : mod2 ? pos(mod2.recommande) : 0, pre = data.sim && data.sim.preMoney != null ? num2(data.sim.preMoney) : mod2 ? pos(mod2.preMoney) : 0;
+        const mt = montant2 > 0 ? montage({ montant: montant2, preMoney: pre }, mod2, m) : null;
+        const S2 = [];
+        const add = (id, titre, theme, corps, notes) => S2.push({ id, titre, theme, html: corps, notes: notes || "" });
+        add("cover", "Couverture", "dark", '<p class="eyebrow">' + escH((data.societe || "SANIX").toUpperCase()) + ' \xB7 LEV\xC9E DE FONDS</p><h1>Des logiciels de gestion pour les entreprises ivoiriennes, vendus et suivis par une \xE9quipe d\u2019agents IA</h1><p class="lead" style="margin-top:36px">' + (cat.length ? cat.length + " logiciels m\xE9tiers \xB7 " : "") + "normes SYSCOHADA \xB7 paiement par Mobile Money</p>");
+        add("probleme", "Le probl\xE8me", "light", '<p class="eyebrow">LE PROBL\xC8ME</p><h2>Les PME ont besoin d\u2019outils pens\xE9s pour leur r\xE9alit\xE9</h2><div style="height:36px"></div>' + cartes(["<h3>Des comptes aux normes locales</h3><p>La comptabilit\xE9 suit le r\xE9f\xE9rentiel SYSCOHADA, pas des mod\xE8les import\xE9s.</p>", "<h3>Des paiements du quotidien</h3><p>Les clients paient par Mobile Money : Wave, Orange Money, MTN.</p>", "<h3>Un r\xE9seau qui coupe</h3><p>Le logiciel doit continuer \xE0 fonctionner hors connexion.</p>"]) + '<div style="height:28px"></div>' + (val(d.sourceProbleme) ? '<p class="note">' + escH(d.sourceProbleme) + "</p>" : ph("Le probl\xE8me", "Chiffre \xE0 sourcer : part des PME sans logiciel de gestion, avec l\u2019\xE9tude cit\xE9e")));
+        add("solution", "La solution", "dark", '<p class="eyebrow">LA SOLUTION</p><h2>Un catalogue de logiciels m\xE9tiers pr\xEAts \xE0 d\xE9ployer</h2><div style="height:36px"></div>' + (cat.length ? cartes(['<p class="big">' + cat.length + "</p><h3>logiciels</h3><p>ERP, caisse, CRM, comptabilit\xE9, ressources humaines.</p>", '<p class="big">' + Object.keys(cats).length + "</p><h3>secteurs</h3><p>" + escH(Object.keys(cats).slice(0, 5).join(", ")) + "\u2026</p>", pr.length ? '<p class="big">' + (Math.round(Math.min.apply(null, pr) / 1e5) / 10).toLocaleString("fr-FR") + "\u2013" + (Math.round(Math.max.apply(null, pr) / 1e5) / 10).toLocaleString("fr-FR") + " M</p><h3>FCFA par licence</h3><p>Prix de licence du catalogue.</p>" : "<h3>Prix</h3><p>\xC0 renseigner dans le catalogue.</p>"]) : ph("La solution", "Catalogue des logiciels : \xE0 renseigner dans le CRM (module Catalogue)")));
+        add("produits", "Le catalogue", "alt", '<p class="eyebrow">LE CATALOGUE</p><h2>Un logiciel pour chaque m\xE9tier</h2><div style="height:28px"></div>' + (cat.length ? '<table><tr><th style="width:26%">Secteur</th><th>Logiciels</th></tr>' + Object.keys(cats).sort().map((k) => "<tr><td>" + escH(k) + "</td><td>" + escH(cats[k].join(" \xB7 ")) + "</td></tr>").join("") + "</table>" : ph("Le catalogue", "Catalogue vide dans le CRM")));
+        const sem = m.nbCommandes ? duree(m.moisAct) : null, debut = m.premiere ? dateFr(m.premiere) : "", finMes = dateFr(m.now);
+        add("traction", "La traction", "dark", '<p class="eyebrow">LA TRACTION</p>' + (m.nbCommandes ? "<h2>" + m.nbCommandes + " commande" + (m.nbCommandes > 1 ? "s" : "") + " en " + escH(sem) + '</h2><div style="height:30px"></div>' + cartes(['<p class="big">' + m.nbCommandes + "</p><h3>commandes</h3><p>confirm\xE9es, en cours ou livr\xE9es</p>", '<p class="big">' + m.clients + "</p><h3>client" + (m.clients > 1 ? "s" : "") + "</h3><p>" + m.clientsPayants + " ont d\xE9j\xE0 pay\xE9</p>", '<p class="big">' + F.m(m.vendu).replace(" FCFA", "") + "</p><h3>FCFA vendus</h3><p>hors taxes</p>", '<p class="big">' + F.m(m.livreTotal).replace(" FCFA", "") + "</p><h3>FCFA livr\xE9s</h3><p>hors taxes</p>"]) + '<div style="height:24px"></div><p class="note">P\xE9riode : du ' + escH(debut) + " au " + escH(finMes) + ". \xAB Livr\xE9 \xBB : logiciel remis au client ; le reste est en cours de d\xE9ploiement." + (m.topLogiciel !== null && m.topLogiciel > 0.5 ? " " + escH(m.topLogicielNom || "Un produit") + " porte " + Math.round(m.topLogiciel * 100) + " % des ventes : \xE9largir la base \xE0 d\u2019autres produits est notre priorit\xE9." : "") + (m.encaisse !== null ? " Part d\xE9j\xE0 encaiss\xE9e : " + Math.round(m.encaisse * 100) + " %." : "") + "</p>" : '<h2>Premi\xE8res ventes \xE0 venir</h2><div style="height:30px"></div>' + ph("La traction", "Aucune commande enregistr\xE9e dans le CRM")), "Chiffres du CRM au " + finMes + ", sans retraitement.");
+        add("modele", "Le mod\xE8le \xE9conomique", "light", '<p class="eyebrow">LE MOD\xC8LE \xC9CONOMIQUE</p><h2>Licence, abonnement et maintenance</h2><div style="height:36px"></div>' + cartes(["<h3>Licence + maintenance</h3><p>Un paiement \xE0 l\u2019installation, puis une maintenance annuelle.</p>", "<h3>Abonnement annuel</h3><p>Un revenu qui revient chaque ann\xE9e sans nouvelle vente.</p>", "<h3>Abonnement mensuel</h3><p>Une entr\xE9e r\xE9guli\xE8re, adapt\xE9e aux plus petites entreprises.</p>"]) + '<div style="height:28px"></div>' + (m.recurrent !== null ? '<p class="note">Part du chiffre d\u2019affaires d\xE9j\xE0 r\xE9currente : <b>' + Math.round(m.recurrent * 100) + " %</b> (abonnements, maintenance, renouvellements).</p>" : ph("Le mod\xE8le \xE9conomique", "Part du revenu r\xE9current : non mesurable, aucune vente enregistr\xE9e")));
+        add("ia", "Notre avantage", "dark2", '<p class="eyebrow">NOTRE AVANTAGE</p><h2>Une \xE9quipe d\u2019agents IA prospecte, qualifie et relance</h2><div style="height:36px"></div>' + cartes([val(d.agents) ? '<p class="big">' + escH(d.agents) + "</p><h3>collaborateurs IA</h3><p>Un directeur g\xE9n\xE9ral, un directeur commercial et des \xE9quipes sp\xE9cialis\xE9es.</p>" : "<h3>Collaborateurs IA</h3><p>" + phx("Notre avantage", "Nombre d\u2019agents IA : \xE0 renseigner") + "</p>", "<h3>Ce qu\u2019ils font</h3><p>Prospection, qualification des contacts, e-mails de premier contact, relances et rapports d\u2019activit\xE9.</p>", "<h3>Ce qui les encadre</h3><p>Chaque message externe est valid\xE9 par le pr\xE9sident. Budget IA plafonn\xE9, adresses v\xE9rifi\xE9es avant envoi.</p>"]));
+        add("marche", "Le march\xE9", "light", '<p class="eyebrow">LE MARCH\xC9</p><h2>Trois cercles chiffr\xE9s, avec leurs sources</h2><div style="height:36px"></div><div class="row">' + [["March\xE9 total", d.marcheTotal, "Nombre d\u2019entreprises concern\xE9es en C\xF4te d\u2019Ivoire et dans la zone UEMOA, avec la source"], ["March\xE9 accessible", d.marcheAccessible, "Entreprises des secteurs du catalogue, dans les villes de d\xE9ploiement"], ["Part vis\xE9e", d.marchePart, "Nombre de clients vis\xE9s en 3 ans et chiffre d\u2019affaires correspondant"]].map((x) => val(x[1]) ? '<div class="card"><h3>' + x[0] + "</h3><p>" + escH(x[1]) + "</p></div>" : '<div class="ph"><h3>' + x[0] + "</h3><p>[" + escH(x[2]) + "]</p></div>" + (manques.push({ slide: "Le march\xE9", lib: x[0] + " : " + x[2] }) && "")).join("") + "</div>");
+        add("equipe", "L\u2019\xE9quipe", "alt", '<p class="eyebrow">L\u2019\xC9QUIPE</p><h2>Un fondateur, une \xE9quipe IA, les premiers recrutements</h2><div style="height:36px"></div><div class="row"><div class="card"><h3>' + escH(d.fondateur || "Fondateur") + "</h3><p>Dirigeant de " + escH(data.societe || "SANIX") + ".</p>" + (val(d.parcours) ? "<p>" + escH(d.parcours) + "</p>" : "<p>" + phx("L\u2019\xE9quipe", "Parcours et r\xF4le du fondateur") + "</p>") + "</div>" + (val(d.associes) ? '<div class="card"><h3>Associ\xE9s et recrutements</h3><p>' + escH(d.associes) + "</p></div>" : '<div class="ph"><h3>Associ\xE9s et recrutements</h3><p>[Associ\xE9s, r\xE9partition du capital, postes \xE0 pourvoir gr\xE2ce \xE0 la lev\xE9e]</p></div>' + (manques.push({ slide: "L\u2019\xE9quipe", lib: "Associ\xE9s, r\xE9partition du capital et recrutements" }) && "")) + "</div>");
+        const emp = [["Produit et technique", d.empProduit], ["\xC9quipe commerciale", d.empCommercial], ["Marketing", d.empMarketing], ["Tr\xE9sorerie", d.empTreso]];
+        const totEmp = sum(emp, (x) => val(x[1]) ? num2(x[1]) : 0);
+        add("besoin", "Le besoin", "dark", '<p class="eyebrow">LE BESOIN</p><h2>Montant recherch\xE9 et emploi des fonds</h2><div style="height:30px"></div>' + (mt ? '<div class="row"><div class="card"><p class="big">' + F.m(mt.montant).replace(" FCFA", "") + "</p><h3>FCFA \xE0 lever</h3><p>pour une valorisation de " + F.m(mt.pre) + ' avant apport</p></div><div class="card"><p class="big">' + (mt.part * 100).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + " %</p><h3>du capital c\xE9d\xE9</h3><p>valorisation apr\xE8s apport : " + F.m(mt.post) + "</p></div>" + (mt.runway !== null ? '<div class="card"><p class="big">' + Math.round(mt.runway) + "</p><h3>mois d\u2019autonomie</h3><p>au rythme de consommation pr\xE9vu</p></div>" : "") + "</div>" : ph("Le besoin", "Montant \xE0 lever : ouvrez Finance \u2192 Financement une fois pour calculer le besoin")) + '<div style="height:26px"></div><div class="row">' + emp.map((x) => val(x[1]) ? '<div class="card"><p class="big" style="font-size:64px">' + escH(num2(x[1])) + " %</p><h3>" + x[0] + "</h3></div>" : '<div class="card"><p class="phx">[__ %]</p><h3>' + x[0] + "</h3></div>" + (manques.push({ slide: "Le besoin", lib: "Part des fonds : " + x[0] }) && "")).join("") + "</div>" + (totEmp > 0 && Math.round(totEmp) !== 100 ? '<p class="note" style="margin-top:14px">Attention : la r\xE9partition totalise ' + Math.round(totEmp) + " % (elle doit faire 100 %).</p>" : "") + (val(d.lancement) ? '<p class="note" style="margin-top:14px">Cl\xF4ture vis\xE9e : ' + escH(dateFr(d.lancement + (String(d.lancement).length === 7 ? "-01" : ""))) + ".</p>" : ""));
+        const an = mod2 && mod2.annees || [];
+        add("projections", "Les projections", "light", '<p class="eyebrow">LES PROJECTIONS</p><h2>Cinq ans de pr\xE9visions, reli\xE9es aux chiffres r\xE9els</h2><div style="height:28px"></div>' + (an.length ? '<table><tr><th style="width:28%"></th>' + an.map((a) => "<th>An " + a.an + "</th>").join("") + "</tr><tr><td>Chiffre d\u2019affaires</td>" + an.map((a) => "<td>" + F.m(a.ca) + "</td>").join("") + "</tr><tr><td>R\xE9sultat d\u2019exploitation (EBITDA)</td>" + an.map((a) => "<td>" + F.m(a.ebitda) + "</td>").join("") + "</tr><tr><td>Tr\xE9sorerie en fin d\u2019ann\xE9e</td>" + an.map((a) => "<td>" + F.m(a.tresoFin) + "</td>").join("") + "</tr><tr><td>Clients acquis dans l\u2019ann\xE9e</td>" + an.map((a) => "<td>" + Math.round(a.clients) + "</td>").join("") + '</tr></table><p class="note" style="margin-top:20px">Sc\xE9nario \xAB ' + escH(mod2.scenario || "r\xE9aliste") + " \xBB, issu du mod\xE8le Financement." + (mod2.valide ? "" : " <b>Projection non valid\xE9e : document de travail.</b>") + (mod2.pointMort != null ? " Point mort au mois " + (mod2.pointMort + 1) + "." : " Le plan n\u2019atteint pas la rentabilit\xE9 sur 5 ans.") + "</p>" : ph("Les projections", "Ouvrez Finance \u2192 Financement une fois : le mod\xE8le fournit les 5 ann\xE9es")));
+        const tel = val(d.tel) ? d.tel : val(data.tel) && String(data.tel).replace(/\D/g, "").length > 4 ? data.tel : "", site = val(d.site) ? d.site : data.site || "";
+        add("contact", "Contact", "dark2", '<p class="eyebrow">PARLONS-EN</p><h1>Construisons ensemble l\u2019\xE9diteur de logiciels de gestion des PME ivoiriennes</h1><div style="height:30px"></div><p class="lead">' + escH(data.societe || "SANIX") + '</p><p class="lead">' + escH([data.email, data.adresse].filter(Boolean).join(" \xB7 ")) + "</p>" + (tel ? '<p class="lead">' + escH(tel) + (site ? " \xB7 " + escH(site) : "") + "</p>" : "<p>" + phx("Contact", "T\xE9l\xE9phone") + (site ? " \xB7 " + escH(site) : " " + phx("Contact", "Site")) + "</p>"));
+        const css = ':root{--d:#0C2A2B;--d2:#123D3E;--l:#F5F2EA;--l2:#EAE6DA;--ink:#10302F;--mute-l:#4C6463;--mute-d:#B8D4D0;--teal:#1FB5A0;--teal-l:#0B7F70;--amber:#F0B54A;--amber-l:#8A5200}*{box-sizing:border-box}body{margin:0;background:#888;font-family:Inter,Arial,sans-serif}.s{width:1280px;height:720px;margin:0 auto 24px;padding:72px 80px 90px;display:flex;flex-direction:column;position:relative;overflow:hidden;page-break-after:always;break-after:page}.dark{background:var(--d);color:var(--l)}.dark2{background:var(--d2);color:var(--l)}.light{background:var(--l);color:var(--ink)}.alt{background:var(--l2);color:var(--ink)}h1,h2,h3{font-family:"Space Grotesk",Arial,sans-serif;margin:0}h1{font-size:56px;line-height:1.1}h2{font-size:42px;line-height:1.1}h3{font-size:24px;margin:0}p{margin:0;font-size:22px;line-height:1.4}.eyebrow{font-size:19px;letter-spacing:.1em;font-weight:600;margin-bottom:18px}.dark .eyebrow,.dark2 .eyebrow{color:var(--teal)}.light .eyebrow,.alt .eyebrow{color:var(--teal-l)}.lead{font-size:26px;color:var(--mute-d)}.light .lead,.alt .lead{color:var(--mute-l)}.row{display:flex;gap:24px}.row>*{flex:1}.card{border-radius:18px;padding:26px;display:flex;flex-direction:column;gap:10px}.dark .card,.dark2 .card{background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.14)}.light .card,.alt .card{background:#fff;border:2px solid #D9D3C3}.dark .card p,.dark2 .card p{color:var(--mute-d)}.light .card p,.alt .card p{color:var(--mute-l)}.big{font-family:"Space Grotesk",Arial,sans-serif;font-size:64px!important;line-height:1;font-weight:600}.dark .big,.dark2 .big{color:var(--teal)!important}.light .big,.alt .big{color:var(--teal-l)!important}.note{font-size:18px;line-height:1.4}.dark .note,.dark2 .note{color:var(--mute-d)}.light .note,.alt .note{color:var(--mute-l)}.ph{border:3px dashed var(--amber);border-radius:16px;padding:18px 24px}.ph p,.ph h3,.phx{color:var(--amber);font-weight:600}.light .ph,.alt .ph{border-color:var(--amber-l)}.light .ph p,.light .ph h3,.light .phx,.alt .ph p,.alt .ph h3,.alt .phx,.light .card p.phx,.alt .card p.phx{color:var(--amber-l)}.dark .card p.phx,.dark2 .card p.phx{color:var(--amber)}table{width:100%;border-collapse:collapse;font-size:17px}th,td{border-bottom:1px solid #C9C2AE;padding:7px 10px;text-align:left}.foot{position:absolute;left:80px;right:80px;bottom:30px;display:flex;justify-content:space-between;font-size:15px;opacity:.8}@media print{@page{size:1280px 720px;margin:0}body{background:none}.s{margin:0}}';
+        const document_ = (zoom) => '<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Pitch deck \u2014 ' + escH(data.societe || "SANIX") + '</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400..700&family=Inter:wght@400;600&display=swap"><style>' + css + (zoom && zoom !== 1 ? "@media screen{.s{zoom:" + zoom + "}}" : "") + "</style></head><body>" + S2.map((s, i) => '<section class="s ' + s.theme + '" id="' + s.id + '">' + s.html + '<div class="foot"><span>' + escH(data.societe || "SANIX") + " \xB7 au " + escH(dateFr(m.now)) + "</span><span>" + (i + 1) + "</span></div></section>").join("") + "</body></html>";
+        return { slides: S2, manques, document: document_ };
+      }
+      const calc2 = { projeterALaDate, deck, mesurer, CRITERES, ROUTES, POIDS, SEUILS, PTS, seuils, palier, statutCritere, evaluer, scoreRoute, scores, cible, delai, simulerHypothese, montage, plan, GLOSSAIRE, F };
+      G.SanixLevee = { calc: calc2 };
+      if (typeof module !== "undefined" && module.exports) module.exports = { calc: calc2 };
+      if (!G.document) return;
+      const LSK = "levee_config";
+      const ui = { tab: "synthese", route: "angel" };
+      let ov = null, mes = null, mod = null, modBrut = null;
+      const root = () => document.getElementById("view-levee");
+      const toast = (msg) => {
+        try {
+          showToast(msg);
+        } catch (e) {
+        }
+      };
+      const esc2 = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      const fmt2 = (n2) => (Math.round(num2(n2)) || 0).toLocaleString("fr-FR");
+      const VERD = { eligible: ["\u2705 \xC9ligible", "badge-success", "#16a34a"], proche: ["\u{1F7E0} Presque \xE9ligible", "badge-warning", "#d97706"], non: ["\u26D4 Pas encore \xE9ligible", "badge-danger", "#dc2626"] };
+      const ST = { ok: ["\u2705", "#16a34a", "Atteint"], warn: ["\u{1F7E0}", "#d97706", "\xC0 renforcer"], ko: ["\u26D4", "#dc2626", "Insuffisant"], na: ["\u2754", "#6b7280", "\xC0 documenter"] };
+      function load() {
+        try {
+          const r = localStorage.getItem("sanix_crm_" + LSK);
+          ov = r ? JSON.parse(r) : {};
+        } catch (e) {
+          ov = {};
+        }
+        if (!ov || typeof ov !== "object") ov = {};
+        ov.manuel = ov.manuel || {};
+        ov.seuils = ov.seuils || {};
+        ov.sim = ov.sim || {};
+        ov.what = ov.what || {};
+        ov.deck = ov.deck || {};
+      }
+      function persist() {
+        try {
+          if (typeof window.lsSave === "function") window.lsSave(LSK, ov);
+          else localStorage.setItem("sanix_crm_" + LSK, JSON.stringify(ov));
+        } catch (e) {
+          toast("\u26A0\uFE0F Enregistrement local impossible");
+        }
+      }
+      function recompute() {
+        const g = (f) => {
+          try {
+            return f();
+          } catch (e) {
+            return void 0;
+          }
+        };
+        const fin = G.SanixFinancement && G.SanixFinancement.snapshot && g(() => G.SanixFinancement.snapshot());
+        const P2 = G.SanixPilotage && G.SanixPilotage.calc;
+        let pond = null;
+        if (P2) {
+          const k = /* @__PURE__ */ new Date();
+          const key = k.getFullYear() + "-" + String(k.getMonth() + 1).padStart(2, "0");
+          const p = g(() => P2.pipeline(g(() => DEALS) || [], key));
+          if (p) {
+            pond = 0;
+            Object.keys(p).forEach((x) => {
+              pond += p[x].pondere;
+            });
+          }
+        }
+        modBrut = null;
+        if (fin && fin.res) {
+          const r = fin.res, m12 = r.avec0.mois.slice(0, 12), burn = Math.max(0, -sum(m12, (x) => Math.min(0, x.flux)) / 12);
+          modBrut = { besoin: r.besoin, recommande: r.recommande, pointMort: r.avec0.pointMort, valide: !!fin.h.valide, associes: fin.h.associes, burn, preMoney: fin.preMoney, caAn1: r.avec0.annees[0].ca, annees: r.avec0.annees.map((a) => ({ an: a.an, ca: a.ca, ebitda: a.ebitda, tresoFin: a.tresoFin, clients: a.clients })), scenario: { prudent: "prudent", realiste: "r\xE9aliste", ambitieux: "ambitieux", perso: "personnalis\xE9" }[fin.h.scenario] || fin.h.scenario };
+        }
+        mes = mesurer({ commandes: g(() => COMMANDES) || [], config: g(() => CONFIG) || {}, pipelinePondere: pond, modele: modBrut });
+        mod = modBrut;
+      }
+      const cell = (s) => {
+        const x = ST[s.s];
+        return `<span title="${x[2]}" style="color:${x[1]};font-weight:600">${x[0]} ${esc2(s.texte)}</span>`;
+      };
+      const stat = (titre, val, sub, color) => `<div class="stat-card ${color || "blue"}"><div class="stat-label">${esc2(titre)}</div><div class="stat-val" style="font-size:20px">${val}</div><div class="stat-label" style="margin-top:4px">${sub || ""}</div></div>`;
+      const barre = (v, couleur) => `<div style="height:8px;border-radius:6px;background:rgba(127,127,127,.25);overflow:hidden"><div style="height:100%;width:${clamp2(v, 0, 100)}%;background:${couleur}"></div></div>`;
+      const note = (t) => `<p class="muted" style="font-size:12px;margin:8px 0">${t}</p>`;
+      const evCourant = () => evaluer(mes, ov.seuils, ov.manuel);
+      const nomCrit = (id) => CRITERES.filter((c) => c.id === id)[0];
+      function tabSynthese() {
+        const ev = evCourant(), sc = scores(ev), S2 = seuils(ov.seuils), pl = plan(mes, ov.seuils, ov.manuel).slice(0, 4), nbOk = ev.filter((e) => e.s === "ok").length, nbNa = ev.filter((e) => e.s === "na").length;
+        const cartes = ROUTES.map((r, i) => {
+          const s = sc[i], v = VERD[s.verdict];
+          return `<div class="card" style="margin:0"><div class="card-header" style="margin-bottom:8px"><span class="card-title">${r.ico} ${esc2(r.lib)}</span><span class="badge ${v[1]}">${v[0]}</span></div>
+      ${barre(s.score, v[2])}<div style="display:flex;justify-content:space-between;font-size:12px;margin:4px 0 8px"><b>${s.score} / 100</b><span class="muted">seuil ${s.seuil}</span></div>
+      <p class="muted" style="font-size:12px;margin:0 0 6px">${esc2(r.desc)}</p>
+      ${s.bloques.length ? `<div style="font-size:12px;color:#dc2626">\u26D4 \xC0 r\xE9gler d'abord : ${s.bloques.map((id) => esc2(nomCrit(id).lib)).join(" ; ")}</div>` : s.manques.length ? `<div style="font-size:12px">Prochain gain : ${esc2(nomCrit(s.manques[0].id).lib)} (+${s.manques[0].gain} pts)</div>` : '<div style="font-size:12px;color:#16a34a">Tous les crit\xE8res sont atteints.</div>'}</div>`;
+        }).join("");
+        const best = sc.slice().sort((a, b) => b.score - a.score)[0], bestR = ROUTES.filter((r) => r.id === best.id)[0];
+        return `<div class="alert alert-warn" role="note">\u26A0\uFE0F <div>Les seuils sont des <b>rep\xE8res indicatifs</b> de bonnes pratiques, pas les r\xE8gles d'un financeur pr\xE9cis : avant toute candidature, comparez avec le r\xE8glement du programme vis\xE9 (onglet Notes).</div></div>
+      <div class="stats-grid" style="margin:12px 0">${stat("Chiffre d'affaires livr\xE9 (12 mois)", mes.nbCommandes ? F.m(mes.livre12) : "\u2014", mes.nbCommandes ? "vendu : " + F.m(mes.vendu12) + " HT" : "aucune vente", "green")}
+        ${stat("Clients", mes.nbCommandes ? fmt2(mes.clients) : "\u2014", fmt2(mes.clientsPayants) + " ont d\xE9j\xE0 pay\xE9", "blue")}
+        ${stat("Crit\xE8res atteints", nbOk + " / " + ev.length, nbNa ? nbNa + " \xE0 documenter" : "tout est mesur\xE9", nbOk >= ev.length * 0.7 ? "green" : "orange")}
+        ${stat("Meilleure voie aujourd'hui", bestR.ico + " " + best.score + " / 100", esc2(bestR.lib), "purple")}</div>
+      <div class="grid-3" style="gap:12px;margin-bottom:16px">${cartes}</div>
+      <div class="card"><div class="card-header"><span class="card-title">\u{1F3AF} Les 4 actions qui font le plus progresser</span></div>${pl.length ? `<ol style="margin:0;padding-left:20px">${pl.map((p) => `<li style="margin:6px 0"><b>${esc2(p.lib)}</b> \u2014 ${cell({ s: p.s, texte: p.texte })}<br><span class="muted" style="font-size:12px">${esc2(p.action)}${p.delai ? ` \xB7 d\xE9lai estim\xE9 au rythme actuel : ${p.delai} mois` : ""}</span></li>`).join("")}</ol>` : "<p>Aucune action : tous les crit\xE8res sont atteints.</p>"}</div>
+      ${note("Les montants viennent des commandes du CRM (statuts confirm\xE9e, en cours, livr\xE9e). Les valeurs non mesurables comptent pour 0 et sont marqu\xE9es \xAB \xE0 documenter \xBB.")}`;
+      }
+      function tabIndic() {
+        const ev = evCourant(), S2 = seuils(ov.seuils), grp = {};
+        CRITERES.forEach((c, i) => {
+          (grp[c.g] = grp[c.g] || []).push([c, ev[i]]);
+        });
+        return Object.keys(grp).map((g) => `<div class="card"><div class="card-header"><span class="card-title">${esc2(g)}</span></div>
+      ${grp[g].map(([c, e]) => {
+          const t = cible(c, mes, S2);
+          return `<details style="border-top:1px solid var(--border);padding:8px 0"><summary style="cursor:pointer;display:flex;gap:12px;justify-content:space-between;flex-wrap:wrap"><span>${esc2(c.lib)}</span><span>${cell(e)}${t ? ` <span class="muted" style="font-size:12px">\xB7 objectif ${esc2(c.sens === "bas" ? "\u2264 " : "\u2265 ")}${esc2(t.fmt)}</span>` : ""}</span></summary>
+        <div style="padding:8px 0 4px;font-size:13px"><p style="margin:4px 0"><b>Ce que c'est.</b> ${esc2(c.note.def)}</p><p style="margin:4px 0"><b>Pourquoi les financeurs le regardent.</b> ${esc2(c.note.pourquoi)}</p><p style="margin:4px 0"><b>Comment il est calcul\xE9.</b> ${esc2(c.note.calcul)}</p>${e.s !== "ok" ? `<p style="margin:4px 0"><b>Pour s'am\xE9liorer.</b> ${esc2(c.action)}</p>` : ""}</div></details>`;
+        }).join("")}</div>`).join("") + note("Cliquez sur une ligne pour lire l'explication.");
+      }
+      function tabElig() {
+        const ev = evCourant(), sc = scores(ev), S2 = seuils(ov.seuils);
+        const entete = `<tr><th>Crit\xE8re</th><th>Votre situation</th>${ROUTES.map((r) => `<th title="${esc2(r.lib)}" style="text-align:center">${r.ico}</th>`).join("")}</tr>`;
+        const lignes = CRITERES.map((c, i) => {
+          const e = ev[i], k = POIDS[c.id];
+          const etat = c.manuel ? `<label style="cursor:pointer"><input type="checkbox" data-man="${c.id}" ${ov.manuel[c.id] ? "checked" : ""}> ${ov.manuel[c.id] ? "\u2705 Confirm\xE9" : "\u2754 \xC0 confirmer"}</label>` : cell(e);
+          return `<tr><td>${esc2(c.lib)}<div class="muted" style="font-size:11px">${esc2(c.g)}</div></td><td>${etat}</td>${k.map((w, j) => `<td style="text-align:center" title="${w ? "Poids " + w + " sur 3" : "Non demand\xE9"}${ROUTES[j].bloquants.indexOf(c.id) >= 0 ? " \xB7 condition obligatoire" : ""}">${w ? "\u25CF".repeat(w) : "\xB7"}${ROUTES[j].bloquants.indexOf(c.id) >= 0 ? "<sup>\u26D4</sup>" : ""}</td>`).join("")}</tr>`;
+        }).join("");
+        const pied = `<tr><td colspan="2"><b>Score / verdict</b></td>${sc.map((s) => `<td style="text-align:center"><b>${s.score}</b><div style="font-size:11px">${VERD[s.verdict][0]}</div></td>`).join("")}</tr>`;
+        const seuilsUi = Object.keys(SEUILS).map((k) => {
+          const c = CRITERES.filter((x) => x.cle === k)[0];
+          if (!c) return "";
+          return `<tr><td>${esc2(c.lib)}</td><td><input class="form-input" type="number" step="any" data-seuil="${k}.ok" value="${S2[k].ok}" style="width:130px"></td><td><input class="form-input" type="number" step="any" data-seuil="${k}.warn" value="${S2[k].warn}" style="width:130px"></td><td class="muted" style="font-size:12px">${c.sens === "bas" ? "plus bas = mieux" : "plus haut = mieux"}${k.indexOf("croissance") === 0 || ["recurrent", "top1", "topLogiciel", "encaisse"].indexOf(k) >= 0 ? " (0,3 = 30 %)" : ""}</td></tr>`;
+        }).join("");
+        return `<div class="card"><div class="card-header"><span class="card-title">\u{1F9FE} Crit\xE8res et poids par type de financeur</span></div>
+      <div style="overflow:auto"><table class="table" style="width:100%;font-size:13px"><thead>${entete}</thead><tbody>${lignes}${pied}</tbody></table></div>
+      ${note("\u25CF \xE0 \u25CF\u25CF\u25CF : importance du crit\xE8re pour ce type de financeur. \u26D4 : condition obligatoire (doit \xEAtre \xAB atteinte \xBB). L\xE9gende des colonnes : " + ROUTES.map((r) => r.ico + " " + esc2(r.lib)).join(" \xB7 "))}
+      ${note("Verdict : \xAB \xE9ligible \xBB = score au-dessus du seuil ET toutes les conditions obligatoires atteintes ; \xAB presque \xBB = \xE0 moins de 15 points du seuil.")}</div>
+      <details class="card" id="lev-seuils" ${ui.seuilsOpen ? "open" : ""}><summary class="card-title" style="cursor:pointer">\u2699\uFE0F Modifier les seuils (vert / orange)</summary>
+      ${note("Adaptez-les au r\xE8glement du financeur vis\xE9. Colonne \xAB vert \xBB : valeur \xE0 atteindre ; colonne \xAB orange \xBB : valeur minimale acceptable.")}
+      <div style="overflow:auto"><table class="table" style="width:100%;font-size:13px"><thead><tr><th>Crit\xE8re</th><th>Vert</th><th>Orange</th><th></th></tr></thead><tbody>${seuilsUi}</tbody></table></div>
+      <button class="btn btn-sm" data-act="seuils-defaut">Revenir aux seuils par d\xE9faut</button></details>`;
+      }
+      function tabSimul() {
+        const rc = mod ? mod.recommande : null, pre = ov.sim.preMoney != null ? ov.sim.preMoney : mod ? mod.preMoney : 0, montant2 = ov.sim.montant != null ? ov.sim.montant : rc || 0;
+        const W2 = ov.what, champ = (k, lib, ph, st) => `<label class="form-label" style="font-size:12px">${lib}<input class="form-input" type="number" step="${st || "any"}" data-what="${k}" value="${W2[k] != null ? W2[k] : ""}" placeholder="${ph}"></label>`;
+        const actuel = (v, f) => v == null ? "non mesurable" : f(v);
+        return `<div class="card"><div class="card-header"><span class="card-title">\u{1F4B0} Simuler la lev\xE9e</span></div>
+      ${mod ? "" : `<div class="alert alert-warn">\u26A0\uFE0F <div>Le mod\xE8le Financement n'est pas encore disponible : ouvrez Finance \u2192 Financement une premi\xE8re fois.</div></div>`}
+      <div id="lev-ctl" class="grid-3" style="gap:12px">
+        <label class="form-label">Montant \xE0 lever (FCFA)<input class="form-input" type="number" min="0" step="any" data-sim="montant" value="${Math.round(montant2)}"></label>
+        <label class="form-label">Valorisation avant apport (FCFA)<input class="form-input" type="number" min="0" step="any" data-sim="preMoney" value="${Math.round(pre)}"></label>
+        <div class="muted" style="font-size:12px;align-self:end">D\xE9part : le besoin recommand\xE9 par le mod\xE8le Financement (${rc != null ? F.m(rc) : "\u2014"}) et sa valorisation automatique (${mod ? F.m(mod.preMoney) : "\u2014"}).</div></div>
+      <div id="lev-montage">${blocMontage()}</div></div>
+      <div class="card"><div class="card-header"><span class="card-title">\u{1F9EA} Et si\u2026 ? Simuler pour devenir \xE9ligible</span></div>
+      ${note("Saisissez les valeurs que vous esp\xE9rez atteindre : les scores de chaque type de financeur se recalculent en direct. Laissez vide pour garder la valeur r\xE9elle.")}
+      <div id="lev-what" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px">
+        ${champ("livre12", "CA livr\xE9 12 mois (FCFA HT) \u2014 actuel : " + actuel(mes.nbCommandes ? mes.livre12 : null, F.m), "ex. 20000000")}
+        ${champ("clients", "Clients \u2014 actuel : " + actuel(mes.nbCommandes ? mes.clients : null, F.n), "ex. 10")}
+        ${champ("croissance", "Croissance mensuelle (0,10 = 10 %) \u2014 actuel : " + actuel(mes.croissance, F.p), "ex. 0.1", "0.01")}
+        ${champ("recurrent", "Part r\xE9currente (0,3 = 30 %) \u2014 actuel : " + actuel(mes.recurrent, F.p), "ex. 0.3", "0.01")}
+        ${champ("top1", "Poids du 1er client (0,4 = 40 %) \u2014 actuel : " + actuel(mes.top1, F.p), "ex. 0.35", "0.01")}
+        ${champ("encaisse", "Part encaiss\xE9e (0,7 = 70 %) \u2014 actuel : " + actuel(mes.encaisse, F.p), "ex. 0.7", "0.01")}
+        ${champ("moisAct", "Mois d'activit\xE9 \u2014 actuel : " + actuel(mes.nbCommandes ? mes.moisAct : null, F.mois), "ex. 12")}
+        ${champ("pipelineMois", "Pipeline en mois de ventes \u2014 actuel : " + actuel(mes.pipelineMois, F.mois), "ex. 6")}</div>
+      <div id="lev-what-out">${blocWhat()}</div>
+      <button class="btn btn-sm" data-act="what-reset" style="margin-top:8px">Effacer la simulation</button></div>`;
+      }
+      function blocMontage() {
+        const x = montage({ montant: ov.sim.montant != null ? ov.sim.montant : mod ? mod.recommande : 0, preMoney: ov.sim.preMoney != null ? ov.sim.preMoney : mod ? mod.preMoney : 0 }, mod, mes);
+        return `<div class="stats-grid" style="margin:12px 0">${stat("Valorisation apr\xE8s apport", F.m(x.post), "avant : " + F.m(x.pre), "blue")}${stat("Part c\xE9d\xE9e", (x.part * 100).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + " %", "des parts de la soci\xE9t\xE9", x.part > 0.3 ? "red" : "green")}
+      ${stat("Autonomie", x.runway === null ? "\u2014" : F.mois(x.runway), x.runway === null ? "consommation non calculable" : "au rythme de " + F.m(mod.burn) + " / mois", x.runway !== null && x.runway < 12 ? "orange" : "green")}
+      ${stat("Valorisation / CA 12 mois", x.multCA === null ? "\u2014" : F.n(x.multCA) + " \xD7", x.multRec === null ? "ventes insuffisantes" : F.n(x.multRec) + " \xD7 le revenu r\xE9current", "purple")}</div>
+      ${x.alertes.length ? `<div class="alert alert-warn">\u26A0\uFE0F <div><ul style="margin:0;padding-left:18px">${x.alertes.map((a) => `<li>${esc2(a)}</li>`).join("")}</ul></div></div>` : ""}
+      ${x.table.length ? `<table class="table" style="width:100%;font-size:13px;margin-top:8px"><thead><tr><th>Associ\xE9</th><th style="text-align:right">Avant</th><th style="text-align:right">Apr\xE8s</th></tr></thead><tbody>${x.table.map((r) => `<tr><td>${esc2(r.nom)}</td><td style="text-align:right">${(r.avant * 100).toFixed(1)} %</td><td style="text-align:right">${(r.apres * 100).toFixed(1)} %</td></tr>`).join("")}</tbody></table>` : ""}
+      ${x.manque ? note("\xC9cart avec le besoin du mod\xE8le : " + F.m(x.manque) + ".") : ""}`;
+      }
+      function blocWhat() {
+        const r = simulerHypothese(mes, ov.seuils, ov.manuel, ov.what), vide = !Object.keys(ov.what).some((k) => ov.what[k] !== null && ov.what[k] !== "" && ov.what[k] !== void 0);
+        return `<table class="table" style="width:100%;font-size:13px;margin-top:12px"><thead><tr><th>Type de financeur</th><th style="text-align:right">Aujourd'hui</th><th style="text-align:right">Avec la simulation</th><th>Verdict</th></tr></thead><tbody>${ROUTES.map((q, i) => {
+          const a = r.avant[i], b = r.apres[i], d = b.score - a.score, v = VERD[b.verdict];
+          return `<tr><td>${q.ico} ${esc2(q.lib)}</td><td style="text-align:right">${a.score}</td><td style="text-align:right"><b>${b.score}</b> ${vide ? "" : `<span style="color:${d > 0 ? "#16a34a" : d < 0 ? "#dc2626" : "#6b7280"}">(${d > 0 ? "+" : ""}${d})</span>`}</td><td>${v[0]}${b.bloques.length ? `<div class="muted" style="font-size:11px">\xE0 r\xE9gler : ${b.bloques.map((id) => esc2(nomCrit(id).lib)).join(" ; ")}</div>` : ""}</td></tr>`;
+        }).join("")}</tbody></table>`;
+      }
+      function tabPlan() {
+        const pl = plan(mes, ov.seuils, ov.manuel);
+        return `<div class="card"><div class="card-header"><span class="card-title">\u{1F9ED} Plan d'action pour devenir \xE9ligible</span></div>
+      ${pl.length ? `<table class="table" style="width:100%;font-size:13px"><thead><tr><th>#</th><th>\xC0 faire</th><th>Situation</th><th>Objectif</th><th>D\xE9lai estim\xE9</th><th>D\xE9bloque</th></tr></thead><tbody>${pl.map((p, i) => `<tr><td>${i + 1}</td><td><b>${esc2(p.lib)}</b><div class="muted" style="font-size:12px">${esc2(p.action)}</div></td><td>${cell({ s: p.s, texte: p.texte })}</td><td>${p.cible ? esc2((p.cible.sens === "bas" ? "\u2264 " : "\u2265 ") + p.cible.fmt) : "\u2014"}</td><td>${p.delai ? p.delai + " mois" : "\u2014"}</td><td>${p.bloque.length ? p.bloque.map((id) => ROUTES.filter((r) => r.id === id)[0].ico).join(" ") + ' <span class="muted" style="font-size:11px">(condition obligatoire)</span>' : `+${p.gain} pts`}</td></tr>`).join("")}</tbody></table>` : "<p>\u{1F389} Tous les crit\xE8res sont atteints.</p>"}
+      ${note("Classement : d'abord les conditions obligatoires, puis le gain moyen de score. Le d\xE9lai n'est donn\xE9 que pour les crit\xE8res qui se cumulent (CA livr\xE9, clients) ou d\xE9pendent du temps, au rythme actuel des ventes : c'est un ordre de grandeur, pas une promesse.")}</div>`;
+      }
+      function donneesDeck() {
+        const g = (f) => {
+          try {
+            return f();
+          } catch (e) {
+            return void 0;
+          }
+        }, C2 = g(() => CONFIG) || {};
+        const cat = (g(() => LOGICIELS) || []).filter((l) => l && l.actif !== false).map((l) => ({ nom: l.nom, cat: l.cat, prix: l.prixNum }));
+        const d = Object.assign({ fondateur: g(() => currentUser.nom) || "" }, ov.deck);
+        return { societe: C2.raisonSociale, email: C2.email, adresse: C2.adresse, tel: C2.tel, site: C2.site, m: mes, mod, d, catalogue: cat, sim: { montant: ov.sim.montant, preMoney: ov.sim.preMoney } };
+      }
+      function blocDeck() {
+        const D = deck(donneesDeck()), proj = projeterALaDate(mes, ov.deck.lancement, ov.seuils, ov.manuel);
+        const alertes = [];
+        if (!mes.immat) alertes.push("Soci\xE9t\xE9 non immatricul\xE9e dans le CRM (RCCM et compte contribuable) : \xE0 r\xE9gler avant tout envoi.");
+        if (mod && !mod.valide) alertes.push("Le mod\xE8le Financement n'est pas valid\xE9 : les projections s'affichent comme \xAB document de travail \xBB.");
+        if (!mod) alertes.push("Le mod\xE8le Financement n'est pas encore calcul\xE9 : ouvrez Finance \u2192 Financement une fois.");
+        const projHtml = !ov.deck.lancement ? note("Indiquez la date de lancement vis\xE9e : le module estime vos scores \xE0 ce moment-l\xE0.") : !proj ? note("La date vis\xE9e doit \xEAtre dans le futur.") : !proj.mesurable ? `<div class="alert alert-warn">\u26A0\uFE0F <div>\xC0 ${esc2(Math.round(proj.mois * 10) / 10)} mois de la date vis\xE9e, l'historique actuel (${esc2(F.mois(mes.moisAct))}) est trop court pour estimer : une extrapolation serait trompeuse. Revenez apr\xE8s 3 mois de ventes.</div></div>` : `<table class="table" style="width:100%;font-size:13px"><thead><tr><th>Type de financeur</th><th style="text-align:right">Aujourd'hui</th><th style="text-align:right">\xC0 la date vis\xE9e (estim\xE9)</th><th>Verdict estim\xE9</th></tr></thead><tbody>${ROUTES.map((q, i) => {
+          const a = proj.avant[i], b = proj.scores[i], v = VERD[b.verdict];
+          return `<tr><td>${q.ico} ${esc2(q.lib)}</td><td style="text-align:right">${a.score}</td><td style="text-align:right"><b>${b.score}</b></td><td>${v[0]}</td></tr>`;
+        }).join("")}</tbody></table>${note("Estimation : le rythme de ventes actuel (" + F.m(mes.rythme) + " par mois) prolong\xE9 sur " + Math.round(proj.mois * 10) / 10 + " mois ; les crit\xE8res de dossier coch\xE9s sont suppos\xE9s inchang\xE9s. C'est un ordre de grandeur, pas une promesse.")}`;
+        return `${alertes.length ? `<div class="alert alert-warn">\u26A0\uFE0F <div><ul style="margin:0;padding-left:18px">${alertes.map((a) => `<li>${esc2(a)}</li>`).join("")}</ul></div></div>` : ""}
+      <div class="card"><div class="card-header"><span class="card-title">\u{1F9ED} Que devient mon \xE9ligibilit\xE9 \xE0 la date de lancement ?</span></div>${projHtml}</div>
+      <div class="card"><div class="card-header"><span class="card-title">\u{1F4DD} \xC0 compl\xE9ter avant diffusion (${D.manques.length})</span></div>${D.manques.length ? `<ul style="margin:0;padding-left:20px;font-size:13px">${D.manques.map((x) => `<li><b>${esc2(x.slide)}</b> \u2014 ${esc2(x.lib)}</li>`).join("")}</ul>` : "<p>\u2705 Aucun \xE9l\xE9ment manquant : le deck est complet.</p>"}</div>
+      <div class="card"><div class="card-header"><span class="card-title">\u{1F441}\uFE0F Aper\xE7u (12 diapositives)</span><button class="btn btn-sm btn-primary" data-act="deck-ouvrir">\u{1F5A8}\uFE0F Ouvrir / enregistrer en PDF</button></div>
+        <iframe title="Aper\xE7u du pitch deck" id="lev-deck-f" sandbox="allow-same-origin" style="width:100%;height:520px;border:1px solid var(--border);border-radius:8px;background:#888" srcdoc="${escH(D.document(0.5))}"></iframe></div>`;
+      }
+      function tabDeck() {
+        const d = Object.assign({ fondateur: function() {
+          try {
+            return currentUser.nom;
+          } catch (e) {
+            return "";
+          }
+        }() }, ov.deck), L = (k, lib, ph, type) => `<label class="form-label" style="font-size:12px">${lib}<input class="form-input" type="${type || "text"}" data-deck="${k}" value="${esc2(d[k] == null ? "" : d[k])}" placeholder="${esc2(ph || "")}"></label>`;
+        const T2 = (k, lib, ph) => `<label class="form-label" style="font-size:12px">${lib}<textarea class="form-input" rows="2" data-deck="${k}" placeholder="${esc2(ph || "")}">${esc2(d[k] == null ? "" : d[k])}</textarea></label>`;
+        return `<div class="alert alert-info">\u2139\uFE0F <div>Le deck se <b>reconstruit \xE0 chaque ouverture</b> \xE0 partir des chiffres du moment (commandes, clients, encaissements), de votre simulation (montant, valorisation) et du mod\xE8le Financement. Ce que vous saisissez ici sert \xE0 compl\xE9ter ce que le CRM ne sait pas.</div></div>
+      <div class="card"><div class="card-header"><span class="card-title">\u{1F3A4} \xC9l\xE9ments du deck</span></div>
+      <div id="lev-deck-ctl" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px">
+        ${L("lancement", "Date de lancement vis\xE9e", "", "month")}${L("agents", "Nombre d'agents IA (\xE0 mettre \xE0 jour)", "ex. 25")}${L("fondateur", "Fondateur", "Nom")}
+        ${T2("parcours", "Parcours du fondateur", "Exp\xE9rience, r\xF4le")}${T2("associes", "Associ\xE9s et recrutements pr\xE9vus", "Qui, quelle part du capital, quels postes")}${T2("sourceProbleme", "Chiffre de march\xE9 sourc\xE9 (diapositive Probl\xE8me)", "ex. 60 % des PME n'ont pas de logiciel de gestion (source, ann\xE9e)")}
+        ${T2("marcheTotal", "March\xE9 total", "Nombre d'entreprises, source")}${T2("marcheAccessible", "March\xE9 accessible", "Secteurs et villes servis")}${T2("marchePart", "Part vis\xE9e", "Clients et CA vis\xE9s \xE0 3 ans")}
+        ${L("empProduit", "Fonds : produit et technique (%)", "", "number")}${L("empCommercial", "Fonds : \xE9quipe commerciale (%)", "", "number")}${L("empMarketing", "Fonds : marketing (%)", "", "number")}${L("empTreso", "Fonds : tr\xE9sorerie (%)", "", "number")}
+        ${L("tel", "T\xE9l\xE9phone", "+225 \u2026")}${L("site", "Site web", "https://\u2026")}</div>
+      ${note("Montant, valorisation et part c\xE9d\xE9e viennent de l'onglet Simulation ; projections et point mort du module Financement.")}</div>
+      <div id="lev-deck-out">${blocDeck()}</div>`;
+      }
+      function tabNotes() {
+        return `<div class="card"><div class="card-header"><span class="card-title">\u{1F4D6} Comment lire ce module</span></div><div style="font-size:13px">
+      <p><b>Mesur\xE9 ou coch\xE9.</b> Les indicateurs chiffr\xE9s sont calcul\xE9s \xE0 partir de vos commandes, de vos paiements, de votre pipeline et de la fiche soci\xE9t\xE9 ; seuls les crit\xE8res de dossier qu'aucun chiffre ne prouve (pacte, \xE9quipe, pitch deck\u2026) sont \xE0 cocher.</p>
+      <p><b>Score.</b> Chaque type de financeur attribue un poids de 0 \xE0 3 \xE0 chaque crit\xE8re. Score = somme des points obtenus (atteint = 1, \xE0 renforcer = 0,5, sinon 0) \xF7 somme des poids, sur 100. Un crit\xE8re non mesurable compte pour 0.</p>
+      <p><b>\xC9ligible.</b> Score au-dessus du seuil du financeur et toutes ses conditions obligatoires atteintes.</p>
+      <p><b>Seuils.</b> Ce sont des rep\xE8res de bonnes pratiques pour des jeunes entreprises de logiciels en Afrique de l'Ouest, pas les r\xE8gles d'un fonds ou d'un programme pr\xE9cis : chacun fixe ses propres conditions (montant, secteur, \xE2ge de la soci\xE9t\xE9, r\xE9sidence des fondateurs). Lisez le r\xE8glement avant de candidater et ajustez les seuils.</p>
+      <p><b>Limites.</b> L'historique de ventes est court : la croissance et la r\xE9gularit\xE9 ne sont pas encore mesurables avant 6 mois d'activit\xE9. Les commandes \xAB en cours \xBB ne sont pas encore du chiffre d'affaires acquis. Vos r\xE9glages sont enregistr\xE9s sur cet appareil seulement.</p></div></div>
+      <div class="card"><div class="card-header"><span class="card-title">\u{1F524} Glossaire</span></div><dl style="margin:0;font-size:13px">${GLOSSAIRE.map((g) => `<dt style="font-weight:600;margin-top:8px">${esc2(g[0])}</dt><dd style="margin:2px 0 0">${esc2(g[1])}</dd>`).join("")}</dl></div>
+      <div class="card"><div class="card-header"><span class="card-title">\u{1F5FA}\uFE0F \xC9tapes d'une lev\xE9e</span></div><ol style="margin:0;padding-left:20px;font-size:13px"><li>Mettre l'entreprise en r\xE8gle (immatriculation, comptes, pacte).</li><li>R\xE9unir les preuves de traction (clients, encaissements, r\xE9current).</li><li>Fixer le besoin et l'usage des fonds (module Financement).</li><li>Pr\xE9parer le pitch deck et la data room.</li><li>Cibler les financeurs dont l'\xE9ligibilit\xE9 est atteinte (onglet \xC9ligibilit\xE9).</li><li>Premiers contacts, pr\xE9sentations, lettre d'intention.</li><li>V\xE9rification (due diligence), pacte, signature, versement.</li></ol></div>`;
+      }
+      function fiche() {
+        const ev = evCourant(), sc = scores(ev), S2 = seuils(ov.seuils), pl = plan(mes, ov.seuils, ov.manuel), e = esc2;
+        const w = window.open("", "_blank");
+        if (!w) {
+          toast("\u26A0\uFE0F Autorisez les fen\xEAtres pop-up pour ouvrir la fiche");
+          return;
+        }
+        const societe = function() {
+          try {
+            return CONFIG.raisonSociale || "SANIX";
+          } catch (x) {
+            return "SANIX";
+          }
+        }();
+        w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>\xC9ligibilit\xE9 \xE0 une lev\xE9e de fonds \u2014 ${e(societe)}</title><style>body{font:13px/1.45 system-ui,sans-serif;margin:24px;color:#111}h1{font-size:20px}h2{font-size:15px;margin:18px 0 6px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:5px 8px;text-align:left;vertical-align:top}.n{color:#555;font-size:11px}</style></head><body>
+      <h1>\xC9tat de pr\xE9paration \xE0 une lev\xE9e de fonds \u2014 ${e(societe)}</h1><p class="n">Document de travail \xE9tabli le ${e(mes.now)} \xE0 partir des commandes du CRM. Seuils indicatifs, \xE0 confronter au r\xE8glement de chaque financeur.</p>
+      <h2>\xC9ligibilit\xE9 par type de financeur</h2><table><tr><th>Financeur</th><th>Score</th><th>Verdict</th><th>\xC0 r\xE9gler d'abord</th></tr>${ROUTES.map((r, i) => `<tr><td>${e(r.lib)}</td><td>${sc[i].score} / 100 (seuil ${sc[i].seuil})</td><td>${e(VERD[sc[i].verdict][0])}</td><td>${sc[i].bloques.map((id) => e(nomCrit(id).lib)).join(" ; ") || "\u2014"}</td></tr>`).join("")}</table>
+      <h2>Indicateurs</h2><table><tr><th>Crit\xE8re</th><th>Situation</th><th>Statut</th></tr>${CRITERES.map((c, i) => `<tr><td>${e(c.lib)}</td><td>${e(ev[i].texte)}</td><td>${e(ST[ev[i].s][2])}</td></tr>`).join("")}</table>
+      <h2>Plan d'action</h2><ol>${pl.map((p) => `<li><b>${e(p.lib)}</b> \u2014 ${e(p.action)}${p.delai ? " (d\xE9lai estim\xE9 : " + p.delai + " mois)" : ""}</li>`).join("") || "<li>Aucune action.</li>"}</ol></body></html>`);
+        w.document.close();
+      }
+      function render() {
+        const host = root();
+        if (!host) return;
+        let el = host.querySelector(":scope > #lev-body");
+        if (!el) {
+          el = document.createElement("div");
+          el.id = "lev-body";
+          host.appendChild(el);
+        }
+        const tabs = [["synthese", "\u{1F4CA} Synth\xE8se"], ["indic", "\u{1F4D0} Indicateurs"], ["elig", "\u2705 \xC9ligibilit\xE9"], ["simul", "\u{1F9EA} Simulation"], ["plan", "\u{1F9ED} Plan d'action"], ["deck", "\u{1F3A4} Pitch deck"], ["notes", "\u{1F4D6} Notes"]];
+        const corps = ui.tab === "indic" ? tabIndic() : ui.tab === "elig" ? tabElig() : ui.tab === "simul" ? tabSimul() : ui.tab === "plan" ? tabPlan() : ui.tab === "deck" ? tabDeck() : ui.tab === "notes" ? tabNotes() : tabSynthese();
+        el.innerHTML = `<div class="ban"><div class="ban-deco"></div><h1 class="page-title">\u{1F680} Lev\xE9e de fonds</h1><p class="page-sub">Votre niveau de pr\xE9paration, votre \xE9ligibilit\xE9 par type de financeur et la simulation pour y arriver \u2014 d\xE9part : vos chiffres r\xE9els du CRM</p></div>
+      <div class="tabs" role="tablist" style="margin-bottom:16px">${tabs.map((t) => `<div class="tab ${ui.tab === t[0] ? "active" : ""}" role="tab" tabindex="0" aria-selected="${ui.tab === t[0]}" data-tab="${t[0]}">${t[1]}</div>`).join("")}</div>${corps}
+      <div style="margin-top:12px"><button class="btn btn-sm" data-act="fiche">\u{1F5A8}\uFE0F Fiche d'\xE9ligibilit\xE9 (PDF)</button> <button class="btn btn-sm" data-act="vers-financement">\u{1F3E6} Ouvrir le mod\xE8le Financement</button></div>`;
+      }
+      function bind() {
+        const el = root();
+        if (!el || el.dataset.bound) return;
+        el.dataset.bound = "1";
+        el.addEventListener("click", (e) => {
+          const t = e.target.closest("[data-tab],[data-act]");
+          if (!t) return;
+          if (t.dataset.tab) {
+            ui.tab = t.dataset.tab;
+            render();
+            return;
+          }
+          const a = t.dataset.act;
+          if (a === "fiche") fiche();
+          else if (a === "vers-financement") {
+            try {
+              navGroup("finance", "financement");
+            } catch (x) {
+              try {
+                showView("financement");
+              } catch (y) {
+              }
+            }
+          } else if (a === "seuils-defaut") {
+            ov.seuils = {};
+            persist();
+            recompute();
+            render();
+          } else if (a === "deck-ouvrir") {
+            const w = window.open("", "_blank");
+            if (!w) {
+              toast("\u26A0\uFE0F Autorisez les fen\xEAtres pop-up pour ouvrir le deck");
+              return;
+            }
+            w.document.write(deck(donneesDeck()).document(0.7));
+            w.document.close();
+          } else if (a === "what-reset") {
+            ov.what = {};
+            persist();
+            render();
+          }
+        });
+        el.addEventListener("toggle", (e) => {
+          if (e.target && e.target.id === "lev-seuils") ui.seuilsOpen = e.target.open;
+        }, true);
+        el.addEventListener("keydown", (e) => {
+          if ((e.key === "Enter" || e.key === " ") && e.target.dataset && e.target.dataset.tab) {
+            e.preventDefault();
+            ui.tab = e.target.dataset.tab;
+            render();
+          }
+        });
+        el.addEventListener("input", (e) => {
+          const t = e.target;
+          if (t.dataset.sim) {
+            ov.sim[t.dataset.sim] = t.value === "" ? null : num2(t.value);
+            persist();
+            const o = document.getElementById("lev-montage");
+            if (o) o.innerHTML = blocMontage();
+          } else if (t.dataset.deck) {
+            ov.deck[t.dataset.deck] = t.value;
+            persist();
+            const o = document.getElementById("lev-deck-out");
+            if (o) {
+              const f = document.getElementById("lev-deck-f"), y = f && f.contentWindow ? f.contentWindow.scrollY : 0;
+              o.innerHTML = blocDeck();
+              const f2 = document.getElementById("lev-deck-f");
+              if (f2 && y) f2.addEventListener("load", () => {
+                try {
+                  f2.contentWindow.scrollTo(0, y);
+                } catch (e2) {
+                }
+              });
+            }
+          } else if (t.dataset.what) {
+            ov.what[t.dataset.what] = t.value === "" ? null : num2(t.value);
+            persist();
+            const o = document.getElementById("lev-what-out");
+            if (o) o.innerHTML = blocWhat();
+          }
+        });
+        el.addEventListener("change", (e) => {
+          const t = e.target;
+          if (t.dataset.man) {
+            ov.manuel[t.dataset.man] = t.checked;
+            persist();
+            render();
+          } else if (t.dataset.seuil) {
+            const p = t.dataset.seuil.split(".");
+            ov.seuils[p[0]] = Object.assign({}, ov.seuils[p[0]], { [p[1]]: num2(t.value) });
+            persist();
+            recompute();
+            render();
+          }
+        });
+      }
+      G.initLevee = function() {
+        if (!ov) load();
+        recompute();
+        bind();
+        render();
+      };
+      G.SanixLevee.refresh = function() {
+        const r = root();
+        if (ov && r && !r.classList.contains("hidden")) {
+          recompute();
+          render();
+        }
+      };
+    })(typeof window !== "undefined" ? window : globalThis);
+  }
+});
+
 // functions/_shared/core.ts
 import { createClient } from "npm:@supabase/supabase-js@2.110.0";
 function env(name, required = true) {
@@ -803,8 +1794,8 @@ async function flushOutbox(limit = 20) {
 }
 function hasChannelPermission(p, canal) {
   if (canal === "whatsapp" && p.last_inbound_at) {
-    const age = Date.now() - Date.parse(p.last_inbound_at);
-    if (Number.isFinite(age) && age >= 0 && age < 24 * 60 * 60 * 1e3) return true;
+    const age2 = Date.now() - Date.parse(p.last_inbound_at);
+    if (Number.isFinite(age2) && age2 >= 0 && age2 < 24 * 60 * 60 * 1e3) return true;
   }
   const raw = p.consentement?.[canal];
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
@@ -1367,6 +2358,9 @@ var META = [
   { name: "demander_ressources", kind: "management", maxNiveau: 3, desc: "Demander plus de budget ou de capacit\xE9 au pr\xE9sident" },
   { name: "repondre_president", kind: "dg", maxNiveau: 1, desc: "R\xE9pondre au pr\xE9sident dans le bureau ex\xE9cutif" },
   { name: "transmettre", kind: "collab", maxNiveau: 5, desc: "Transmettre un dossier \xE0 un coll\xE8gue (cha\xEEne de traitement)" },
+  { name: "consulter_levee_de_fonds", kind: "levee", maxNiveau: 5, desc: "\xC9tat de pr\xE9paration \xE0 la lev\xE9e de fonds : indicateurs, \xE9ligibilit\xE9 par type de financeur, plan d'action" },
+  { name: "lister_financeurs", kind: "levee", maxNiveau: 5, desc: "Annuaire des financeurs et programmes (avec leur source)" },
+  { name: "enregistrer_financeur", kind: "levee", maxNiveau: 5, desc: "Ajouter ou mettre \xE0 jour un financeur de l'annuaire (source https obligatoire)" },
   { name: "recherche_web", kind: "web", maxNiveau: 5, desc: "Recherche sur le web (annuaires, sites d'entreprises, actualit\xE9s)" },
   ...CRM_TOOL_NAMES.map((n2) => ({
     name: n2,
@@ -1392,6 +2386,120 @@ function checkGrant(creatorNiveau, creatorTools, targetNiveau, wanted) {
     out.push(t);
   }
   return out;
+}
+
+// functions/_shared/company/levee.ts
+var import_levee = __toESM(require_levee());
+
+// functions/_shared/company/levee_pure.ts
+var STATUT = { ok: "atteint", warn: "\xE0 renforcer", ko: "insuffisant", na: "\xE0 documenter" };
+var age = (iso, now) => iso ? Math.max(0, Math.round((now.getTime() - Date.parse(iso)) / 864e5 * 10) / 10) : null;
+var r1 = (x) => typeof x === "number" && isFinite(x) ? Math.round(x * 1e3) / 1e3 : null;
+function construireEtat(L, e) {
+  const now = e.now ?? /* @__PURE__ */ new Date(), cfg = e.etat?.config ?? {}, ins = e.etat?.instantane ?? {};
+  const modele = ins.modele ?? null;
+  const m = L.mesurer({ commandes: e.commandes, config: e.config, now: now.toISOString(), pipelinePondere: ins.pipelinePondere ?? null, modele });
+  const ev = L.evaluer(m, cfg.seuils, cfg.manuel), sc = L.scores(ev), pl = L.plan(m, cfg.seuils, cfg.manuel);
+  const lib = (id) => L.CRITERES.find((c) => c.id === id)?.lib ?? id;
+  const avertissements = [];
+  if (!m.nbCommandes) avertissements.push("Aucune commande exploitable dans le CRM : les indicateurs commerciaux ne sont pas mesurables.");
+  if (m.moisAct < 6) avertissements.push(`Historique de ventes court (${m.moisAct} mois) : la croissance n'est pas mesurable avant 6 mois.`);
+  if (!e.etat?.updated_at) avertissements.push("Le module Lev\xE9e de fonds du CRM n'a jamais \xE9t\xE9 ouvert avec une session connect\xE9e : r\xE9glages et mod\xE8le Financement inconnus (crit\xE8res de dossier non coch\xE9s, mod\xE8le absent).");
+  else if ((age(e.etat.updated_at, now) ?? 0) > 14) avertissements.push(`R\xE9glages et mod\xE8le Financement synchronis\xE9s il y a ${age(e.etat.updated_at, now)} jours : peuvent \xEAtre p\xE9rim\xE9s.`);
+  if (!modele) avertissements.push("Mod\xE8le Financement indisponible : besoin de financement, point mort et projections inconnus.");
+  else if (!modele.valide) avertissements.push("Le mod\xE8le Financement n'est pas valid\xE9 par la direction : ses chiffres sont un document de travail.");
+  return {
+    date: now.toISOString().slice(0, 10),
+    mesures: {
+      commandes: m.nbCommandes,
+      clients: m.clients,
+      clients_payants: m.clientsPayants,
+      ca_vendu_12m_ht: Math.round(m.vendu12),
+      ca_livre_12m_ht: Math.round(m.livre12),
+      mois_activite: m.moisAct,
+      croissance_mensuelle: r1(m.croissance),
+      part_recurrente: r1(m.recurrent),
+      poids_premier_client: r1(m.top1),
+      poids_premier_logiciel: r1(m.topLogiciel),
+      part_encaissee: r1(m.encaisse),
+      logiciels_vendus: m.produits
+    },
+    eligibilite: L.ROUTES.map((r, i) => ({
+      type: r.id,
+      libelle: r.lib,
+      score: sc[i].score,
+      seuil: sc[i].seuil,
+      verdict: sc[i].verdict,
+      a_regler_d_abord: sc[i].bloques.map(lib),
+      prochain_gain: sc[i].manques[0] ? { critere: lib(sc[i].manques[0].id), points: sc[i].manques[0].gain } : null
+    })),
+    criteres: L.CRITERES.map((c, i) => ({ critere: c.lib, statut: STATUT[ev[i].s], valeur: ev[i].texte })),
+    plan: pl.slice(0, 8).map((p) => ({ action: p.lib, situation: p.texte, comment: p.action, delai_estime_mois: p.delai ?? null, condition_obligatoire_pour: p.bloque })),
+    modele: modele ? { besoin_fcfa: modele.besoin, recommande_fcfa: modele.recommande, point_mort_mois: modele.pointMort, valide: !!modele.valide, scenario: modele.scenario ?? null, synchronise_il_y_a_jours: age(e.etat?.updated_at, now) } : null,
+    avertissements
+  };
+}
+
+// functions/_shared/company/levee.ts
+var FINANCEUR_TYPES = ["business_angel", "fonds", "banque", "subvention", "accelerateur", "autre"];
+var FINANCEUR_STATUTS = ["a_etudier", "correspond", "contacte", "en_discussion", "decline", "ecarte", "investi"];
+var calc = () => globalThis.SanixLevee.calc;
+var txtOpt = (v, max) => typeof v === "string" && v.trim() ? clip(v.replace(/\s+/g, " ").trim(), max) : null;
+var montant = (v) => {
+  const n2 = Number(v);
+  return Number.isFinite(n2) && n2 >= 0 ? Math.round(n2) : null;
+};
+async function consulterLevee() {
+  const [cmds, cfg, etat] = await Promise.all([
+    db().from("crm_commandes").select("ref,client,date,logiciel,ttc,statut,data").limit(5e3),
+    db().from("crm_config").select("data").limit(1),
+    db().from("levee_etat").select("config,instantane,updated_at").eq("id", 1).maybeSingle()
+  ]);
+  if (cmds.error) throw new Error(cmds.error.message);
+  const commandes = (cmds.data ?? []).map((r) => ({ ...r.data ?? {}, ref: r.ref, client: r.client, date: r.date, logiciel: r.logiciel, ttc: Number(r.ttc), statut: r.statut }));
+  return construireEtat(calc(), { commandes, config: cfg.data?.[0]?.data ?? {}, etat: etat.data ?? null });
+}
+async function listerFinanceurs(i) {
+  let q = db().from("levee_financeurs").select("id,nom,type,pays,ticket_min,ticket_max,devise,conditions,url_source,statut,notes,created_at").order("created_at", { ascending: false }).limit(60);
+  if (FINANCEUR_TYPES.includes(i.type)) q = q.eq("type", i.type);
+  if (FINANCEUR_STATUTS.includes(i.statut)) q = q.eq("statut", i.statut);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return { nombre: data?.length ?? 0, financeurs: data ?? [] };
+}
+async function enregistrerFinanceur(agentId, i) {
+  const nom = txtOpt(i.nom, 160);
+  if (!nom || nom.length < 2) throw new Error("nom obligatoire");
+  const type = String(i.type ?? "");
+  if (!FINANCEUR_TYPES.includes(type)) throw new Error(`type invalide (${FINANCEUR_TYPES.join(", ")})`);
+  const url = txtOpt(i.url_source, 500);
+  if (!url || !/^https:\/\/[^\s]+$/i.test(url)) throw new Error("url_source obligatoire : lien https de la page qui d\xE9crit ce financeur (jamais une adresse suppos\xE9e)");
+  const statut = FINANCEUR_STATUTS.includes(i.statut) ? i.statut : "a_etudier";
+  const { count } = await db().from("levee_financeurs").select("id", { count: "exact", head: true });
+  const row = {
+    nom,
+    type,
+    pays: txtOpt(i.pays, 80),
+    ticket_min: montant(i.ticket_min),
+    ticket_max: montant(i.ticket_max),
+    devise: txtOpt(i.devise, 8) ?? "FCFA",
+    conditions: txtOpt(i.conditions, 3e3),
+    url_source: url,
+    statut,
+    notes: txtOpt(i.notes, 3e3),
+    ajoute_par: agentId,
+    updated_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  const { data: ex } = await db().from("levee_financeurs").select("id").eq("nom_norm", nom.toLowerCase().replace(/\s+/g, " ")).maybeSingle();
+  if (ex) {
+    const { error: error2 } = await db().from("levee_financeurs").update(row).eq("id", ex.id);
+    if (error2) throw new Error(error2.message);
+    return { ok: true, id: ex.id, mis_a_jour: true };
+  }
+  if ((count ?? 0) >= 300) throw new Error("Annuaire plein (300 financeurs) : demande au pr\xE9sident de faire le tri");
+  const { data, error } = await db().from("levee_financeurs").insert(row).select("id").single();
+  if (error) throw new Error(error.message);
+  return { ok: true, id: data.id, mis_a_jour: false };
 }
 
 // functions/_shared/company/presence.ts
@@ -1462,9 +2570,11 @@ function activityFor(tool, input) {
   switch (tool) {
     case "create_prospect":
     case "lister_prospects":
+    case "enregistrer_financeur":
       return "recherche_prospects";
     case "get_prospect":
     case "verifier_adresse":
+    case "lister_financeurs":
     case "get_product":
     case "recommend_products":
     case "rappeler":
@@ -1474,6 +2584,7 @@ function activityFor(tool, input) {
       return "consultation_documents";
     case "update_prospect":
     case "set_stage":
+    case "consulter_levee_de_fonds":
     case "consulter_indicateurs":
     case "consulter_performance":
       return "analyse_donnees";
@@ -1636,6 +2747,23 @@ function companySchemas(departmentIds) {
       commentaire: str()
     }),
     consulter_performance: T("consulter_performance", "Statistiques de ton \xE9quipe (missions, taux, qualit\xE9, d\xE9lais, co\xFBt IA, incidents, score).", { jours: int("P\xE9riode : 1 \xE0 30 jours") }),
+    consulter_levee_de_fonds: T("consulter_levee_de_fonds", "\xC9tat de pr\xE9paration \xE0 la lev\xE9e de fonds : mesures du CRM, \xE9ligibilit\xE9 (score et verdict par type de financeur), crit\xE8res, plan d'action, mod\xE8le Financement et avertissements. Seul chiffre de r\xE9f\xE9rence : ne cite jamais un chiffre absent de ce r\xE9sultat.", {}),
+    lister_financeurs: T("lister_financeurs", "Annuaire des financeurs et programmes d\xE9j\xE0 enregistr\xE9s (\xE0 consulter avant d'en ajouter).", {
+      type: str("Filtre optionnel", { enum: [...FINANCEUR_TYPES] }),
+      statut: str("Filtre optionnel", { enum: [...FINANCEUR_STATUTS] })
+    }, []),
+    enregistrer_financeur: T("enregistrer_financeur", "Ajoute ou met \xE0 jour un financeur ou programme. url_source (https) est OBLIGATOIRE : la page qui le d\xE9crit. Ne renseigne que ce que la source \xE9tablit ; jamais d'adresse e-mail ni de montant suppos\xE9s.", {
+      nom: str(),
+      type: str("Type", { enum: [...FINANCEUR_TYPES] }),
+      pays: str("Pays ou zone"),
+      ticket_min: { type: "number", description: "Montant minimal en FCFA (si \xE9tabli)" },
+      ticket_max: { type: "number", description: "Montant maximal en FCFA (si \xE9tabli)" },
+      devise: str("Devise d'origine des montants, ex. FCFA, EUR"),
+      conditions: str("Conditions d'\xE9ligibilit\xE9 \xE9tablies par la source"),
+      url_source: str("Lien https de la page source"),
+      statut: str("a_etudier | correspond | ecarte\u2026", { enum: [...FINANCEUR_STATUTS] }),
+      notes: str("Pourquoi il correspond ou non \xE0 SANIX")
+    }, ["nom", "type", "url_source"]),
     consulter_indicateurs: T("consulter_indicateurs", "Indicateurs de l'entreprise sur la p\xE9riode (activit\xE9, commercial, finances, difficult\xE9s).", { jours: int("1 \xE0 30 jours") }),
     convoquer_reunion: T("convoquer_reunion", "Convoque une r\xE9union de travail (chaque participant contribue, tu synth\xE9tises ; proc\xE8s-verbal et plan d'action). Appelle ensuite attendre_sous_taches.", {
       titre: str(),
@@ -1732,6 +2860,16 @@ async function runCompanyTool(ctx, name, input) {
   }
 }
 var IMPL = {
+  async consulter_levee_de_fonds() {
+    return await consulterLevee();
+  },
+  async lister_financeurs(_ctx, i) {
+    return await listerFinanceurs(i);
+  },
+  async enregistrer_financeur(ctx, i) {
+    ctx.acted = true;
+    return await enregistrerFinanceur(ctx.agent.id, i);
+  },
   async terminer_mission(ctx, i) {
     const statut = i.statut === "bloquee" ? "bloquee" : "terminee";
     const rapport = txt(i.rapport, 18e3, "rapport", statut === "terminee" ? 40 : 15);

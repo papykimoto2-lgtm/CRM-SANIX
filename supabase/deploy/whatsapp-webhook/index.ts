@@ -1170,9 +1170,11 @@ function activityFor(tool, input) {
   switch (tool) {
     case "create_prospect":
     case "lister_prospects":
+    case "enregistrer_financeur":
       return "recherche_prospects";
     case "get_prospect":
     case "verifier_adresse":
+    case "lister_financeurs":
     case "get_product":
     case "recommend_products":
     case "rappeler":
@@ -1182,6 +1184,7 @@ function activityFor(tool, input) {
       return "consultation_documents";
     case "update_prospect":
     case "set_stage":
+    case "consulter_levee_de_fonds":
     case "consulter_indicateurs":
     case "consulter_performance":
       return "analyse_donnees";
