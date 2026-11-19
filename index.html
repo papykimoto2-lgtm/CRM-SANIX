@@ -5560,7 +5560,7 @@ function fcFill(t,c){
   const log = LOGICIELS.find(l=>l.nom===c.logiciel) || {};
   const prix = (valeurFiche(c)||0).toLocaleString('fr-FR');
   return fcSenderVars(t)
-    .replace(/{demo_line}/g, log.demo ? '📲 Démo en ligne : '+log.demo+(log.demo_acces?'\n'+log.demo_acces:'')+'\n\n' : '')
+    .replace(/{demo_line}/g, (log.demo&&log.demo!=='#') ? '📲 Démo en ligne : '+log.demo+(log.demo_acces?'\n'+log.demo_acces:'')+'\n\n' : (log.nom ? '📲 Démo interactive (données fictives, sans compte) : '+DEMO_BASE+landingSlug(log.nom)+'.html\n\n' : ''))
     .replace(/{destinataire}/g, fcDestinataire(c))
     .replace(/{nom}/g, c.nom||'').replace(/{logiciel}/g, c.logiciel||'nos solutions de gestion')
     .replace(/{pitch}/g, (typeof relanceBuildPitch==='function') ? relanceBuildPitch(c) : '')
@@ -12906,6 +12906,7 @@ function relanceBuildPitch(c){
 
 // ── Landing page jointe à chaque message prospect (WhatsApp, SMS, e-mail) ──
 /** Adresse https de la landing page hébergée (réglage « Séquences de relance »), ou '' si non renseignée. */
+const DEMO_BASE='https://crm-sanix.vercel.app/demo/';   // démos interactives construites avec le CRM (dossier demo/), une par logiciel
 const LANDING_DEFAUT='https://crm-sanix.vercel.app/landing/{slug}.html';   // pages construites avec le CRM (dossier landing/), une par logiciel
 function landingSlug(nom){ return String(nom||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
 function landingUrl(){ const r=relanceCfg()||{}; if(r.landingActif===false) return ''; const u=String(r.landingUrl||'').trim()||LANDING_DEFAUT; return /^https:\/\/[^\s<>"']+$/i.test(u)?u:''; }
@@ -14054,7 +14055,7 @@ function lpBuildHtml(o){
   const tel=o.tel?('+225 '+o.tel.replace(/^225/,'').replace(/(\d{2})(?=\d)/g,'$1 ')):'';
   const waMsg='Bonjour, je souhaite une démo gratuite de '+o.logNom+'. (Réf. '+slug+')';
   const waLinkDirect='https://wa.me/'+o.wa+'?text='+encodeURIComponent(waMsg);
-  const demoBtn=(!o.publique&&log&&log.demo&&log.demo!=='#')?`<a class="btn ghost" href="${E(log.demo)}" target="_blank" rel="noopener">▶ Voir le logiciel en ligne</a>`:'';
+  const demoBtn=o.publique?`<a class="btn ghost" href="../demo/${E(landingSlug(o.logNom))}.html">▶ Essayer la démo en ligne</a>`:((log&&log.demo&&log.demo!=='#')?`<a class="btn ghost" href="${E(log.demo)}" target="_blank" rel="noopener">▶ Voir le logiciel en ligne</a>`:'');
   const gains=cp.gains.map(g=>`<div class="card"><div class="ico">${g[0]}</div><h3>${E(g[1])}</h3><p>${E(g[2])}</p></div>`).join('');
   const pains=cp.pains.map(x=>`<li>${E(x)}</li>`).join('');
   const faq=[
@@ -14072,7 +14073,7 @@ body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background
 a{color:inherit}.wrap{max-width:1000px;margin:0 auto;padding:0 18px}
 .top{position:sticky;top:0;z-index:50;background:rgba(11,18,32,.92);backdrop-filter:blur(8px);border-bottom:1px solid #1F2937}
 .top .wrap{display:flex;align-items:center;justify-content:space-between;height:54px;gap:10px}
-.brand{font-weight:800;font-size:15px;letter-spacing:.3px}.brand span{color:${acc}}
+.brand{font-weight:800;font-size:15px;letter-spacing:.3px}.brand span{color:#94A3B8}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 22px;border-radius:12px;font-weight:800;font-size:16px;text-decoration:none;border:0;cursor:pointer;transition:transform .15s}
 .btn:active{transform:scale(.98)}.wa{background:#25D366;color:#06260F;box-shadow:0 8px 24px rgba(37,211,102,.35)}.ghost{background:transparent;border:2px solid #334155;color:#E5E7EB}
 .top .btn{padding:9px 14px;font-size:13px}
