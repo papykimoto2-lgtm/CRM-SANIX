@@ -27,14 +27,14 @@
     const mois = []; for (let i = 12; i >= 1; i--) mois.push({ k: monthKey(new Date(now.getFullYear(), now.getMonth() - i, 1)), ht: 0 });
     const idx = {}; mois.forEach((x, i) => { idx[x.k] = i; });
     let ht12 = 0, livre12 = 0, ttcTot = 0, verse = 0, rec = 0, htTot = 0, premiere = null;
-    const parClient = {}, parLog = {}, payants = {};
+    const parClient = {}, parLog = {}, nomLog = {}, payants = {}; let livreTotal = 0;
     cm.forEach((c) => {
       const d = String(c.date).slice(0, 10), k = d.slice(0, 7), ht = htDe(c), ttc = pos(c.ttc) || ht, v = Math.min(ttc, pos(c.acompte)), cl = cleNom(c.client);
       if (!premiere || d < premiere) premiere = d;
-      htTot += ht; ttcTot += ttc; verse += v;
+      htTot += ht; ttcTot += ttc; verse += v; if (c.statut === 'livree') livreTotal += ht;
       if (c.renouvellement || RECURRENT.test(c.typeLicence || '')) rec += ht;
       parClient[cl] = (parClient[cl] || 0) + ht; if (v > 0) payants[cl] = 1;
-      const lg = cleNom(c.logiciel); if (lg && !c.renouvellement) parLog[lg] = (parLog[lg] || 0) + ht;
+      const lg = cleNom(c.logiciel); if (lg && !c.renouvellement) { parLog[lg] = (parLog[lg] || 0) + ht; nomLog[lg] = c.logiciel; }
       if (k >= mois[0].k && k <= cur) { ht12 += ht; if (c.statut === 'livree') livre12 += ht; if (idx[k] !== undefined) mois[idx[k]].ht += ht; }
     });
     const moisAct = premiere ? Math.max(0, Math.round((now - new Date(premiere)) / (30.44 * 864e5) * 10) / 10) : 0;
@@ -44,7 +44,7 @@
     const noms = Object.keys(parClient).filter(Boolean), tops = noms.map((k) => parClient[k]).sort((a, b) => b - a), logs = Object.keys(parLog).map((k) => parLog[k]).sort((a, b) => b - a);
     const cfg = src.config || {}, mo = src.modele || {};
     return {
-      now: now.toISOString().slice(0, 10), nbCommandes: cm.length, vendu12: ht12, livre12, vendu: htTot, moisAct, rythme, croissance,
+      now: now.toISOString().slice(0, 10), premiere: premiere, livreTotal: livreTotal, topLogicielNom: (Object.keys(parLog).sort((a, b) => parLog[b] - parLog[a])[0] && nomLog[Object.keys(parLog).sort((a, b) => parLog[b] - parLog[a])[0]]) || null, nbCommandes: cm.length, vendu12: ht12, livre12, vendu: htTot, moisAct, rythme, croissance,
       clients: noms.length, clientsPayants: Object.keys(payants).length,
       recurrent: htTot > 0 ? rec / htTot : null, top1: htTot > 0 && tops[0] ? tops[0] / htTot : null, topLogiciel: sum(logs, (x) => x) > 0 ? logs[0] / sum(logs, (x) => x) : null,
       encaisse: ttcTot > 0 ? verse / ttcTot : null, produits: logs.length,
@@ -250,7 +250,72 @@
     ['Lettre d\'intention / term sheet', 'Document non définitif qui résume les conditions d\'un investissement (montant, valorisation, droits) avant les contrats finaux.'],
   ];
 
-  const calc = { mesurer, CRITERES, ROUTES, POIDS, SEUILS, PTS, seuils, palier, statutCritere, evaluer, scoreRoute, scores, cible, delai, simulerHypothese, montage, plan, GLOSSAIRE, F };
+
+  /* ───────────── Projection à la date de lancement visée ───────────── */
+  /** Estime les mesures à la date visée en prolongeant le rythme actuel de ventes (seulement avec 3 mois d'historique : sinon null, jamais d'extrapolation trompeuse). */
+  function projeterALaDate(m, dateLancement, ov, man) {
+    const d = dateLancement ? new Date(dateLancement + (String(dateLancement).length === 7 ? '-01' : '')) : null, now = new Date(m.now);
+    if (!d || isNaN(d) || d <= now) return null;
+    const mois = Math.round((d - now) / (30.44 * 864e5) * 10) / 10;
+    if (m.moisAct < 3 || !(m.rythme > 0)) return { mois: mois, mesurable: false, scores: null, m2: null };
+    const livrePart = m.vendu12 > 0 ? m.livre12 / m.vendu12 : 0;
+    const m2 = Object.assign({}, m, { moisAct: m.moisAct + mois, vendu12: m.vendu12 + m.rythme * mois, livre12: m.livre12 + m.rythme * mois * livrePart });
+    return { mois: mois, mesurable: true, m2: m2, scores: scores(evaluer(m2, ov, man)), avant: scores(evaluer(m, ov, man)) };
+  }
+
+  /* ───────────── Pitch deck : reconstruit à chaque ouverture à partir des chiffres du moment ───────────── */
+  const escH = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const dateFr = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }); };
+  const duree = (mois) => mois < 2 ? Math.max(1, Math.round(mois * 4.345)) + ' semaines' : Math.round(mois) + ' mois';
+  /** data : { societe, m, mod, d (saisies), catalogue:[{nom,cat,prix}], email, sim:{montant,preMoney}, now }. Renvoie { slides:[{id,titre,html}], manques:[{slide,lib}], document(zoom) }. */
+  function deck(data) {
+    const m = data.m, mod = data.mod, d = data.d || {}, manques = [], cat = data.catalogue || [];
+    const ph = (slide, lib) => { manques.push({ slide: slide, lib: lib }); return '<div class="ph"><p>[' + escH(lib) + ']</p></div>'; };
+    const phx = (slide, lib) => { manques.push({ slide: slide, lib: lib }); return '<span class="phx">[' + escH(lib) + ']</span>'; };
+    const val = (v) => v !== null && v !== undefined && String(v).trim() !== '';
+    const cartes = (a) => '<div class="row">' + a.map((c) => '<div class="card">' + c + '</div>').join('') + '</div>';
+    const pr = cat.filter((x) => num(x.prix) > 0).map((x) => num(x.prix)), cats = {}; cat.forEach((x) => { const k = x.cat || 'Autres'; (cats[k] = cats[k] || []).push(x.nom); });
+    const montant = data.sim && data.sim.montant != null ? num(data.sim.montant) : (mod ? pos(mod.recommande) : 0), pre = data.sim && data.sim.preMoney != null ? num(data.sim.preMoney) : (mod ? pos(mod.preMoney) : 0);
+    const mt = montant > 0 ? montage({ montant: montant, preMoney: pre }, mod, m) : null;
+    const S = [];
+    const add = (id, titre, theme, corps, notes) => S.push({ id: id, titre: titre, theme: theme, html: corps, notes: notes || '' });
+
+    add('cover', 'Couverture', 'dark', '<p class="eyebrow">' + escH((data.societe || 'SANIX').toUpperCase()) + ' · LEVÉE DE FONDS</p><h1>Des logiciels de gestion pour les entreprises ivoiriennes, vendus et suivis par une équipe d’agents IA</h1><p class="lead" style="margin-top:36px">' + (cat.length ? cat.length + ' logiciels métiers · ' : '') + 'normes SYSCOHADA · paiement par Mobile Money</p>');
+
+    add('probleme', 'Le problème', 'light', '<p class="eyebrow">LE PROBLÈME</p><h2>Les PME ont besoin d’outils pensés pour leur réalité</h2><div style="height:36px"></div>' + cartes(['<h3>Des comptes aux normes locales</h3><p>La comptabilité suit le référentiel SYSCOHADA, pas des modèles importés.</p>', '<h3>Des paiements du quotidien</h3><p>Les clients paient par Mobile Money : Wave, Orange Money, MTN.</p>', '<h3>Un réseau qui coupe</h3><p>Le logiciel doit continuer à fonctionner hors connexion.</p>']) + '<div style="height:28px"></div>' + (val(d.sourceProbleme) ? '<p class="note">' + escH(d.sourceProbleme) + '</p>' : ph('Le problème', 'Chiffre à sourcer : part des PME sans logiciel de gestion, avec l’étude citée')));
+
+    add('solution', 'La solution', 'dark', '<p class="eyebrow">LA SOLUTION</p><h2>Un catalogue de logiciels métiers prêts à déployer</h2><div style="height:36px"></div>' + (cat.length ? cartes(['<p class="big">' + cat.length + '</p><h3>logiciels</h3><p>ERP, caisse, CRM, comptabilité, ressources humaines.</p>', '<p class="big">' + Object.keys(cats).length + '</p><h3>secteurs</h3><p>' + escH(Object.keys(cats).slice(0, 5).join(', ')) + '…</p>', pr.length ? '<p class="big">' + (Math.round(Math.min.apply(null, pr) / 1e5) / 10).toLocaleString('fr-FR') + '–' + (Math.round(Math.max.apply(null, pr) / 1e5) / 10).toLocaleString('fr-FR') + ' M</p><h3>FCFA par licence</h3><p>Prix de licence du catalogue.</p>' : '<h3>Prix</h3><p>À renseigner dans le catalogue.</p>']) : ph('La solution', 'Catalogue des logiciels : à renseigner dans le CRM (module Catalogue)')));
+
+    add('produits', 'Le catalogue', 'alt', '<p class="eyebrow">LE CATALOGUE</p><h2>Un logiciel pour chaque métier</h2><div style="height:28px"></div>' + (cat.length ? '<table><tr><th style="width:26%">Secteur</th><th>Logiciels</th></tr>' + Object.keys(cats).sort().map((k) => '<tr><td>' + escH(k) + '</td><td>' + escH(cats[k].join(' · ')) + '</td></tr>').join('') + '</table>' : ph('Le catalogue', 'Catalogue vide dans le CRM')));
+
+    const sem = m.nbCommandes ? duree(m.moisAct) : null, debut = m.premiere ? dateFr(m.premiere) : '', finMes = dateFr(m.now);
+    add('traction', 'La traction', 'dark', '<p class="eyebrow">LA TRACTION</p>' + (m.nbCommandes ? '<h2>' + m.nbCommandes + ' commande' + (m.nbCommandes > 1 ? 's' : '') + ' en ' + escH(sem) + '</h2><div style="height:30px"></div>' + cartes(['<p class="big">' + m.nbCommandes + '</p><h3>commandes</h3><p>confirmées, en cours ou livrées</p>', '<p class="big">' + m.clients + '</p><h3>client' + (m.clients > 1 ? 's' : '') + '</h3><p>' + m.clientsPayants + ' ont déjà payé</p>', '<p class="big">' + F.m(m.vendu).replace(' FCFA', '') + '</p><h3>FCFA vendus</h3><p>hors taxes</p>', '<p class="big">' + F.m(m.livreTotal).replace(' FCFA', '') + '</p><h3>FCFA livrés</h3><p>hors taxes</p>']) + '<div style="height:24px"></div><p class="note">Période : du ' + escH(debut) + ' au ' + escH(finMes) + '. « Livré » : logiciel remis au client ; le reste est en cours de déploiement.' + (m.topLogiciel !== null && m.topLogiciel > 0.5 ? ' ' + escH(m.topLogicielNom || 'Un produit') + ' porte ' + Math.round(m.topLogiciel * 100) + ' % des ventes : élargir la base à d’autres produits est notre priorité.' : '') + (m.encaisse !== null ? ' Part déjà encaissée : ' + Math.round(m.encaisse * 100) + ' %.' : '') + '</p>' : '<h2>Premières ventes à venir</h2><div style="height:30px"></div>' + ph('La traction', 'Aucune commande enregistrée dans le CRM')), 'Chiffres du CRM au ' + finMes + ', sans retraitement.');
+
+    add('modele', 'Le modèle économique', 'light', '<p class="eyebrow">LE MODÈLE ÉCONOMIQUE</p><h2>Licence, abonnement et maintenance</h2><div style="height:36px"></div>' + cartes(['<h3>Licence + maintenance</h3><p>Un paiement à l’installation, puis une maintenance annuelle.</p>', '<h3>Abonnement annuel</h3><p>Un revenu qui revient chaque année sans nouvelle vente.</p>', '<h3>Abonnement mensuel</h3><p>Une entrée régulière, adaptée aux plus petites entreprises.</p>']) + '<div style="height:28px"></div>' + (m.recurrent !== null ? '<p class="note">Part du chiffre d’affaires déjà récurrente : <b>' + Math.round(m.recurrent * 100) + ' %</b> (abonnements, maintenance, renouvellements).</p>' : ph('Le modèle économique', 'Part du revenu récurrent : non mesurable, aucune vente enregistrée')));
+
+    add('ia', 'Notre avantage', 'dark2', '<p class="eyebrow">NOTRE AVANTAGE</p><h2>Une équipe d’agents IA prospecte, qualifie et relance</h2><div style="height:36px"></div>' + cartes([val(d.agents) ? '<p class="big">' + escH(d.agents) + '</p><h3>collaborateurs IA</h3><p>Un directeur général, un directeur commercial et des équipes spécialisées.</p>' : '<h3>Collaborateurs IA</h3><p>' + phx('Notre avantage', 'Nombre d’agents IA : à renseigner') + '</p>', '<h3>Ce qu’ils font</h3><p>Prospection, qualification des contacts, e-mails de premier contact, relances et rapports d’activité.</p>', '<h3>Ce qui les encadre</h3><p>Chaque message externe est validé par le président. Budget IA plafonné, adresses vérifiées avant envoi.</p>']));
+
+    add('marche', 'Le marché', 'light', '<p class="eyebrow">LE MARCHÉ</p><h2>Trois cercles chiffrés, avec leurs sources</h2><div style="height:36px"></div><div class="row">' + [['Marché total', d.marcheTotal, 'Nombre d’entreprises concernées en Côte d’Ivoire et dans la zone UEMOA, avec la source'], ['Marché accessible', d.marcheAccessible, 'Entreprises des secteurs du catalogue, dans les villes de déploiement'], ['Part visée', d.marchePart, 'Nombre de clients visés en 3 ans et chiffre d’affaires correspondant']].map((x) => val(x[1]) ? '<div class="card"><h3>' + x[0] + '</h3><p>' + escH(x[1]) + '</p></div>' : '<div class="ph"><h3>' + x[0] + '</h3><p>[' + escH(x[2]) + ']</p></div>' + (manques.push({ slide: 'Le marché', lib: x[0] + ' : ' + x[2] }) && '')).join('') + '</div>');
+
+    add('equipe', 'L’équipe', 'alt', '<p class="eyebrow">L’ÉQUIPE</p><h2>Un fondateur, une équipe IA, les premiers recrutements</h2><div style="height:36px"></div><div class="row"><div class="card"><h3>' + escH(d.fondateur || 'Fondateur') + '</h3><p>Dirigeant de ' + escH(data.societe || 'SANIX') + '.</p>' + (val(d.parcours) ? '<p>' + escH(d.parcours) + '</p>' : '<p>' + phx('L’équipe', 'Parcours et rôle du fondateur') + '</p>') + '</div>' + (val(d.associes) ? '<div class="card"><h3>Associés et recrutements</h3><p>' + escH(d.associes) + '</p></div>' : '<div class="ph"><h3>Associés et recrutements</h3><p>[Associés, répartition du capital, postes à pourvoir grâce à la levée]</p></div>' + (manques.push({ slide: 'L’équipe', lib: 'Associés, répartition du capital et recrutements' }) && '')) + '</div>');
+
+    const emp = [['Produit et technique', d.empProduit], ['Équipe commerciale', d.empCommercial], ['Marketing', d.empMarketing], ['Trésorerie', d.empTreso]];
+    const totEmp = sum(emp, (x) => val(x[1]) ? num(x[1]) : 0);
+    add('besoin', 'Le besoin', 'dark', '<p class="eyebrow">LE BESOIN</p><h2>Montant recherché et emploi des fonds</h2><div style="height:30px"></div>' + (mt ? '<div class="row"><div class="card"><p class="big">' + F.m(mt.montant).replace(' FCFA', '') + '</p><h3>FCFA à lever</h3><p>pour une valorisation de ' + F.m(mt.pre) + ' avant apport</p></div><div class="card"><p class="big">' + (mt.part * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' %</p><h3>du capital cédé</h3><p>valorisation après apport : ' + F.m(mt.post) + '</p></div>' + (mt.runway !== null ? '<div class="card"><p class="big">' + Math.round(mt.runway) + '</p><h3>mois d’autonomie</h3><p>au rythme de consommation prévu</p></div>' : '') + '</div>' : ph('Le besoin', 'Montant à lever : ouvrez Finance → Financement une fois pour calculer le besoin')) + '<div style="height:26px"></div><div class="row">' + emp.map((x) => val(x[1]) ? '<div class="card"><p class="big" style="font-size:64px">' + escH(num(x[1])) + ' %</p><h3>' + x[0] + '</h3></div>' : '<div class="card"><p class="phx">[__ %]</p><h3>' + x[0] + '</h3></div>' + (manques.push({ slide: 'Le besoin', lib: 'Part des fonds : ' + x[0] }) && '')).join('') + '</div>' + (totEmp > 0 && Math.round(totEmp) !== 100 ? '<p class="note" style="margin-top:14px">Attention : la répartition totalise ' + Math.round(totEmp) + ' % (elle doit faire 100 %).</p>' : '') + (val(d.lancement) ? '<p class="note" style="margin-top:14px">Clôture visée : ' + escH(dateFr(d.lancement + (String(d.lancement).length === 7 ? '-01' : ''))) + '.</p>' : ''));
+
+    const an = mod && mod.annees || [];
+    add('projections', 'Les projections', 'light', '<p class="eyebrow">LES PROJECTIONS</p><h2>Cinq ans de prévisions, reliées aux chiffres réels</h2><div style="height:28px"></div>' + (an.length ? '<table><tr><th style="width:28%"></th>' + an.map((a) => '<th>An ' + a.an + '</th>').join('') + '</tr><tr><td>Chiffre d’affaires</td>' + an.map((a) => '<td>' + F.m(a.ca) + '</td>').join('') + '</tr><tr><td>Résultat d’exploitation (EBITDA)</td>' + an.map((a) => '<td>' + F.m(a.ebitda) + '</td>').join('') + '</tr><tr><td>Trésorerie en fin d’année</td>' + an.map((a) => '<td>' + F.m(a.tresoFin) + '</td>').join('') + '</tr><tr><td>Clients acquis dans l’année</td>' + an.map((a) => '<td>' + Math.round(a.clients) + '</td>').join('') + '</tr></table><p class="note" style="margin-top:20px">Scénario « ' + escH(mod.scenario || 'réaliste') + ' », issu du modèle Financement.' + (mod.valide ? '' : ' <b>Projection non validée : document de travail.</b>') + (mod.pointMort != null ? ' Point mort au mois ' + (mod.pointMort + 1) + '.' : ' Le plan n’atteint pas la rentabilité sur 5 ans.') + '</p>' : ph('Les projections', 'Ouvrez Finance → Financement une fois : le modèle fournit les 5 années')));
+
+    const tel = val(d.tel) ? d.tel : (val(data.tel) && String(data.tel).replace(/\D/g, '').length > 4 ? data.tel : ''), site = val(d.site) ? d.site : (data.site || '');
+    add('contact', 'Contact', 'dark2', '<p class="eyebrow">PARLONS-EN</p><h1>Construisons ensemble l’éditeur de logiciels de gestion des PME ivoiriennes</h1><div style="height:30px"></div><p class="lead">' + escH(data.societe || 'SANIX') + '</p><p class="lead">' + escH([data.email, data.adresse].filter(Boolean).join(' · ')) + '</p>' + (tel ? '<p class="lead">' + escH(tel) + (site ? ' · ' + escH(site) : '') + '</p>' : '<p>' + phx('Contact', 'Téléphone') + (site ? ' · ' + escH(site) : ' ' + phx('Contact', 'Site')) + '</p>'));
+
+    const css = ':root{--d:#0C2A2B;--d2:#123D3E;--l:#F5F2EA;--l2:#EAE6DA;--ink:#10302F;--mute-l:#4C6463;--mute-d:#B8D4D0;--teal:#1FB5A0;--teal-l:#0B7F70;--amber:#F0B54A;--amber-l:#8A5200}*{box-sizing:border-box}body{margin:0;background:#888;font-family:Inter,Arial,sans-serif}.s{width:1280px;height:720px;margin:0 auto 24px;padding:72px 80px 90px;display:flex;flex-direction:column;position:relative;overflow:hidden;page-break-after:always;break-after:page}.dark{background:var(--d);color:var(--l)}.dark2{background:var(--d2);color:var(--l)}.light{background:var(--l);color:var(--ink)}.alt{background:var(--l2);color:var(--ink)}h1,h2,h3{font-family:"Space Grotesk",Arial,sans-serif;margin:0}h1{font-size:56px;line-height:1.1}h2{font-size:42px;line-height:1.1}h3{font-size:24px;margin:0}p{margin:0;font-size:22px;line-height:1.4}.eyebrow{font-size:19px;letter-spacing:.1em;font-weight:600;margin-bottom:18px}.dark .eyebrow,.dark2 .eyebrow{color:var(--teal)}.light .eyebrow,.alt .eyebrow{color:var(--teal-l)}.lead{font-size:26px;color:var(--mute-d)}.light .lead,.alt .lead{color:var(--mute-l)}.row{display:flex;gap:24px}.row>*{flex:1}.card{border-radius:18px;padding:26px;display:flex;flex-direction:column;gap:10px}.dark .card,.dark2 .card{background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.14)}.light .card,.alt .card{background:#fff;border:2px solid #D9D3C3}.dark .card p,.dark2 .card p{color:var(--mute-d)}.light .card p,.alt .card p{color:var(--mute-l)}.big{font-family:"Space Grotesk",Arial,sans-serif;font-size:64px!important;line-height:1;font-weight:600}.dark .big,.dark2 .big{color:var(--teal)!important}.light .big,.alt .big{color:var(--teal-l)!important}.note{font-size:18px;line-height:1.4}.dark .note,.dark2 .note{color:var(--mute-d)}.light .note,.alt .note{color:var(--mute-l)}.ph{border:3px dashed var(--amber);border-radius:16px;padding:18px 24px}.ph p,.ph h3,.phx{color:var(--amber);font-weight:600}.light .ph,.alt .ph{border-color:var(--amber-l)}.light .ph p,.light .ph h3,.light .phx,.alt .ph p,.alt .ph h3,.alt .phx,.light .card p.phx,.alt .card p.phx{color:var(--amber-l)}.dark .card p.phx,.dark2 .card p.phx{color:var(--amber)}table{width:100%;border-collapse:collapse;font-size:17px}th,td{border-bottom:1px solid #C9C2AE;padding:7px 10px;text-align:left}.foot{position:absolute;left:80px;right:80px;bottom:30px;display:flex;justify-content:space-between;font-size:15px;opacity:.8}@media print{@page{size:1280px 720px;margin:0}body{background:none}.s{margin:0}}';
+    const document_ = (zoom) => '<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Pitch deck — ' + escH(data.societe || 'SANIX') + '</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400..700&family=Inter:wght@400;600&display=swap"><style>' + css + (zoom && zoom !== 1 ? '@media screen{.s{zoom:' + zoom + '}}' : '') + '</style></head><body>'
+      + S.map((s, i) => '<section class="s ' + s.theme + '" id="' + s.id + '">' + s.html + '<div class="foot"><span>' + escH(data.societe || 'SANIX') + ' · au ' + escH(dateFr(m.now)) + '</span><span>' + (i + 1) + '</span></div></section>').join('') + '</body></html>';
+    return { slides: S, manques: manques, document: document_ };
+  }
+
+  const calc = { projeterALaDate, deck, mesurer, CRITERES, ROUTES, POIDS, SEUILS, PTS, seuils, palier, statutCritere, evaluer, scoreRoute, scores, cible, delai, simulerHypothese, montage, plan, GLOSSAIRE, F };
   G.SanixLevee = { calc };
   if (typeof module !== 'undefined' && module.exports) module.exports = { calc };
   if (!G.document) return;
@@ -266,7 +331,7 @@
   const VERD = { eligible: ['✅ Éligible', 'badge-success', '#16a34a'], proche: ['🟠 Presque éligible', 'badge-warning', '#d97706'], non: ['⛔ Pas encore éligible', 'badge-danger', '#dc2626'] };
   const ST = { ok: ['✅', '#16a34a', 'Atteint'], warn: ['🟠', '#d97706', 'À renforcer'], ko: ['⛔', '#dc2626', 'Insuffisant'], na: ['❔', '#6b7280', 'À documenter'] };
 
-  function load() { try { const r = localStorage.getItem('sanix_crm_' + LSK); ov = r ? JSON.parse(r) : {}; } catch (e) { ov = {}; } if (!ov || typeof ov !== 'object') ov = {}; ov.manuel = ov.manuel || {}; ov.seuils = ov.seuils || {}; ov.sim = ov.sim || {}; ov.what = ov.what || {}; }
+  function load() { try { const r = localStorage.getItem('sanix_crm_' + LSK); ov = r ? JSON.parse(r) : {}; } catch (e) { ov = {}; } if (!ov || typeof ov !== 'object') ov = {}; ov.manuel = ov.manuel || {}; ov.seuils = ov.seuils || {}; ov.sim = ov.sim || {}; ov.what = ov.what || {}; ov.deck = ov.deck || {}; }
   function persist() { try { if (typeof window.lsSave === 'function') window.lsSave(LSK, ov); else localStorage.setItem('sanix_crm_' + LSK, JSON.stringify(ov)); } catch (e) { toast('⚠️ Enregistrement local impossible'); } }
 
   /** Lit le CRM et le modèle Financement : jamais d'écriture dans l'un ou l'autre. */
@@ -278,7 +343,7 @@
     modBrut = null;
     if (fin && fin.res) {
       const r = fin.res, m12 = r.avec0.mois.slice(0, 12), burn = Math.max(0, -sum(m12, (x) => Math.min(0, x.flux)) / 12);
-      modBrut = { besoin: r.besoin, recommande: r.recommande, pointMort: r.avec0.pointMort, valide: !!fin.h.valide, associes: fin.h.associes, burn: burn, preMoney: fin.preMoney, caAn1: r.avec0.annees[0].ca };
+      modBrut = { besoin: r.besoin, recommande: r.recommande, pointMort: r.avec0.pointMort, valide: !!fin.h.valide, associes: fin.h.associes, burn: burn, preMoney: fin.preMoney, caAn1: r.avec0.annees[0].ca, annees: r.avec0.annees.map((a) => ({ an: a.an, ca: a.ca, ebitda: a.ebitda, tresoFin: a.tresoFin, clients: a.clients })), scenario: ({ prudent: 'prudent', realiste: 'réaliste', ambitieux: 'ambitieux', perso: 'personnalisé' })[fin.h.scenario] || fin.h.scenario };
     }
     mes = mesurer({ commandes: g(() => COMMANDES) || [], config: g(() => CONFIG) || {}, pipelinePondere: pond, modele: modBrut });
     mod = modBrut;
@@ -385,6 +450,42 @@
       ${note('Classement : d\'abord les conditions obligatoires, puis le gain moyen de score. Le délai n\'est donné que pour les critères qui se cumulent (CA livré, clients) ou dépendent du temps, au rythme actuel des ventes : c\'est un ordre de grandeur, pas une promesse.')}</div>`;
   }
 
+
+  /* — Pitch deck : reconstruit à chaque ouverture à partir des chiffres du moment — */
+  function donneesDeck() {
+    const g = (f) => { try { return f(); } catch (e) { return undefined; } }, C = g(() => CONFIG) || {};
+    const cat = (g(() => LOGICIELS) || []).filter((l) => l && l.actif !== false).map((l) => ({ nom: l.nom, cat: l.cat, prix: l.prixNum }));
+    const d = Object.assign({ fondateur: g(() => currentUser.nom) || '' }, ov.deck);
+    return { societe: C.raisonSociale, email: C.email, adresse: C.adresse, tel: C.tel, site: C.site, m: mes, mod: mod, d: d, catalogue: cat, sim: { montant: ov.sim.montant, preMoney: ov.sim.preMoney } };
+  }
+  function blocDeck() {
+    const D = deck(donneesDeck()), proj = projeterALaDate(mes, ov.deck.lancement, ov.seuils, ov.manuel);
+    const alertes = []; if (!mes.immat) alertes.push('Société non immatriculée dans le CRM (RCCM et compte contribuable) : à régler avant tout envoi.'); if (mod && !mod.valide) alertes.push('Le modèle Financement n\'est pas validé : les projections s\'affichent comme « document de travail ».'); if (!mod) alertes.push('Le modèle Financement n\'est pas encore calculé : ouvrez Finance → Financement une fois.');
+    const projHtml = !ov.deck.lancement ? note('Indiquez la date de lancement visée : le module estime vos scores à ce moment-là.')
+      : !proj ? note('La date visée doit être dans le futur.')
+      : !proj.mesurable ? `<div class="alert alert-warn">⚠️ <div>À ${esc(Math.round(proj.mois * 10) / 10)} mois de la date visée, l\'historique actuel (${esc(F.mois(mes.moisAct))}) est trop court pour estimer : une extrapolation serait trompeuse. Revenez après 3 mois de ventes.</div></div>`
+      : `<table class="table" style="width:100%;font-size:13px"><thead><tr><th>Type de financeur</th><th style="text-align:right">Aujourd'hui</th><th style="text-align:right">À la date visée (estimé)</th><th>Verdict estimé</th></tr></thead><tbody>${ROUTES.map((q, i) => { const a = proj.avant[i], b = proj.scores[i], v = VERD[b.verdict]; return `<tr><td>${q.ico} ${esc(q.lib)}</td><td style="text-align:right">${a.score}</td><td style="text-align:right"><b>${b.score}</b></td><td>${v[0]}</td></tr>`; }).join('')}</tbody></table>${note('Estimation : le rythme de ventes actuel (' + F.m(mes.rythme) + ' par mois) prolongé sur ' + (Math.round(proj.mois * 10) / 10) + ' mois ; les critères de dossier cochés sont supposés inchangés. C\'est un ordre de grandeur, pas une promesse.')}`;
+    return `${alertes.length ? `<div class="alert alert-warn">⚠️ <div><ul style="margin:0;padding-left:18px">${alertes.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></div></div>` : ''}
+      <div class="card"><div class="card-header"><span class="card-title">🧭 Que devient mon éligibilité à la date de lancement ?</span></div>${projHtml}</div>
+      <div class="card"><div class="card-header"><span class="card-title">📝 À compléter avant diffusion (${D.manques.length})</span></div>${D.manques.length ? `<ul style="margin:0;padding-left:20px;font-size:13px">${D.manques.map((x) => `<li><b>${esc(x.slide)}</b> — ${esc(x.lib)}</li>`).join('')}</ul>` : '<p>✅ Aucun élément manquant : le deck est complet.</p>'}</div>
+      <div class="card"><div class="card-header"><span class="card-title">👁️ Aperçu (12 diapositives)</span><button class="btn btn-sm btn-primary" data-act="deck-ouvrir">🖨️ Ouvrir / enregistrer en PDF</button></div>
+        <iframe title="Aperçu du pitch deck" id="lev-deck-f" sandbox="allow-same-origin" style="width:100%;height:520px;border:1px solid var(--border);border-radius:8px;background:#888" srcdoc="${escH(D.document(0.5))}"></iframe></div>`;
+  }
+  function tabDeck() {
+    const d = Object.assign({ fondateur: (function () { try { return currentUser.nom; } catch (e) { return ''; } })() }, ov.deck), L = (k, lib, ph, type) => `<label class="form-label" style="font-size:12px">${lib}<input class="form-input" type="${type || 'text'}" data-deck="${k}" value="${esc(d[k] == null ? '' : d[k])}" placeholder="${esc(ph || '')}"></label>`;
+    const T = (k, lib, ph) => `<label class="form-label" style="font-size:12px">${lib}<textarea class="form-input" rows="2" data-deck="${k}" placeholder="${esc(ph || '')}">${esc(d[k] == null ? '' : d[k])}</textarea></label>`;
+    return `<div class="alert alert-info">ℹ️ <div>Le deck se <b>reconstruit à chaque ouverture</b> à partir des chiffres du moment (commandes, clients, encaissements), de votre simulation (montant, valorisation) et du modèle Financement. Ce que vous saisissez ici sert à compléter ce que le CRM ne sait pas.</div></div>
+      <div class="card"><div class="card-header"><span class="card-title">🎤 Éléments du deck</span></div>
+      <div id="lev-deck-ctl" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px">
+        ${L('lancement', 'Date de lancement visée', '', 'month')}${L('agents', 'Nombre d\'agents IA (à mettre à jour)', 'ex. 25')}${L('fondateur', 'Fondateur', 'Nom')}
+        ${T('parcours', 'Parcours du fondateur', 'Expérience, rôle')}${T('associes', 'Associés et recrutements prévus', 'Qui, quelle part du capital, quels postes')}${T('sourceProbleme', 'Chiffre de marché sourcé (diapositive Problème)', 'ex. 60 % des PME n\'ont pas de logiciel de gestion (source, année)')}
+        ${T('marcheTotal', 'Marché total', 'Nombre d\'entreprises, source')}${T('marcheAccessible', 'Marché accessible', 'Secteurs et villes servis')}${T('marchePart', 'Part visée', 'Clients et CA visés à 3 ans')}
+        ${L('empProduit', 'Fonds : produit et technique (%)', '', 'number')}${L('empCommercial', 'Fonds : équipe commerciale (%)', '', 'number')}${L('empMarketing', 'Fonds : marketing (%)', '', 'number')}${L('empTreso', 'Fonds : trésorerie (%)', '', 'number')}
+        ${L('tel', 'Téléphone', '+225 …')}${L('site', 'Site web', 'https://…')}</div>
+      ${note('Montant, valorisation et part cédée viennent de l\'onglet Simulation ; projections et point mort du module Financement.')}</div>
+      <div id="lev-deck-out">${blocDeck()}</div>`;
+  }
+
   /* — Notes — */
   function tabNotes() {
     return `<div class="card"><div class="card-header"><span class="card-title">📖 Comment lire ce module</span></div><div style="font-size:13px">
@@ -413,8 +514,8 @@
   function render() {
     const host = root(); if (!host) return;
     let el = host.querySelector(':scope > #lev-body'); if (!el) { el = document.createElement('div'); el.id = 'lev-body'; host.appendChild(el); }
-    const tabs = [['synthese', '📊 Synthèse'], ['indic', '📐 Indicateurs'], ['elig', '✅ Éligibilité'], ['simul', '🧪 Simulation'], ['plan', '🧭 Plan d\'action'], ['notes', '📖 Notes']];
-    const corps = ui.tab === 'indic' ? tabIndic() : ui.tab === 'elig' ? tabElig() : ui.tab === 'simul' ? tabSimul() : ui.tab === 'plan' ? tabPlan() : ui.tab === 'notes' ? tabNotes() : tabSynthese();
+    const tabs = [['synthese', '📊 Synthèse'], ['indic', '📐 Indicateurs'], ['elig', '✅ Éligibilité'], ['simul', '🧪 Simulation'], ['plan', '🧭 Plan d\'action'], ['deck', '🎤 Pitch deck'], ['notes', '📖 Notes']];
+    const corps = ui.tab === 'indic' ? tabIndic() : ui.tab === 'elig' ? tabElig() : ui.tab === 'simul' ? tabSimul() : ui.tab === 'plan' ? tabPlan() : ui.tab === 'deck' ? tabDeck() : ui.tab === 'notes' ? tabNotes() : tabSynthese();
     el.innerHTML = `<div class="ban"><div class="ban-deco"></div><h1 class="page-title">🚀 Levée de fonds</h1><p class="page-sub">Votre niveau de préparation, votre éligibilité par type de financeur et la simulation pour y arriver — départ : vos chiffres réels du CRM</p></div>
       <div class="tabs" role="tablist" style="margin-bottom:16px">${tabs.map((t) => `<div class="tab ${ui.tab === t[0] ? 'active' : ''}" role="tab" tabindex="0" aria-selected="${ui.tab === t[0]}" data-tab="${t[0]}">${t[1]}</div>`).join('')}</div>${corps}
       <div style="margin-top:12px"><button class="btn btn-sm" data-act="fiche">🖨️ Fiche d'éligibilité (PDF)</button> <button class="btn btn-sm" data-act="vers-financement">🏦 Ouvrir le modèle Financement</button></div>`;
@@ -428,6 +529,7 @@
       if (a === 'fiche') fiche();
       else if (a === 'vers-financement') { try { navGroup('finance', 'financement'); } catch (x) { try { showView('financement'); } catch (y) { /* hors CRM */ } } }
       else if (a === 'seuils-defaut') { ov.seuils = {}; persist(); recompute(); render(); }
+      else if (a === 'deck-ouvrir') { const w = window.open('', '_blank'); if (!w) { toast('⚠️ Autorisez les fenêtres pop-up pour ouvrir le deck'); return; } w.document.write(deck(donneesDeck()).document(0.7)); w.document.close(); }
       else if (a === 'what-reset') { ov.what = {}; persist(); render(); }
     });
     el.addEventListener('toggle', (e) => { if (e.target && e.target.id === 'lev-seuils') ui.seuilsOpen = e.target.open; }, true);
@@ -435,6 +537,7 @@
     el.addEventListener('input', (e) => {
       const t = e.target;
       if (t.dataset.sim) { ov.sim[t.dataset.sim] = t.value === '' ? null : num(t.value); persist(); const o = document.getElementById('lev-montage'); if (o) o.innerHTML = blocMontage(); }
+      else if (t.dataset.deck) { ov.deck[t.dataset.deck] = t.value; persist(); const o = document.getElementById('lev-deck-out'); if (o) { const f = document.getElementById('lev-deck-f'), y = f && f.contentWindow ? f.contentWindow.scrollY : 0; o.innerHTML = blocDeck(); const f2 = document.getElementById('lev-deck-f'); if (f2 && y) f2.addEventListener('load', () => { try { f2.contentWindow.scrollTo(0, y); } catch (e) { /* aperçu */ } }); } }
       else if (t.dataset.what) { ov.what[t.dataset.what] = t.value === '' ? null : num(t.value); persist(); const o = document.getElementById('lev-what-out'); if (o) o.innerHTML = blocWhat(); }
     });
     el.addEventListener('change', (e) => {
