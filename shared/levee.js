@@ -315,7 +315,48 @@
     return { slides: S, manques: manques, document: document_ };
   }
 
-  const calc = { projeterALaDate, deck, mesurer, CRITERES, ROUTES, POIDS, SEUILS, PTS, seuils, palier, statutCritere, evaluer, scoreRoute, scores, cible, delai, simulerHypothese, montage, plan, GLOSSAIRE, F };
+
+  /* ───────────── Pertinence d'un financeur : note calculée (règles lisibles, raisons affichées) ───────────── */
+  const CHANGE = { FCFA: 1, XOF: 1, EUR: 655.957 };       // EUR : parité fixe du franc CFA ; USD : taux du CRM ; autres devises : non converties (jamais de taux inventé)
+  const NIV_PERT = { forte: 65, moyenne: 45 };
+  /** f : fiche financeur ; p : { besoinFcfa, usdFcfa } (besoin du modèle Financement ; 20 M FCFA par défaut) ; nbPersonnes : personnes ressources connues. */
+  function notePertinence(f, p, nbPersonnes) {
+    p = p || {}; const besoin = p.besoinFcfa > 0 ? p.besoinFcfa : 20e6, R = []; let n = 35;
+    const add = (pts, t) => { n += pts; R.push({ pts: pts, texte: t }); };
+    if (f.statut === 'ecarte' || f.statut === 'decline') return { note: 0, niveau: 'faible', raisons: [{ pts: 0, texte: f.statut === 'ecarte' ? 'Écarté par vous' : 'A décliné' }], ecarte: true };
+    const cond = String(f.conditions || ''), txt = [f.pays, cond, f.nom].join(' '), reg = f.region || '';
+    if (/c[oô]te d['’]ivoire|abidjan/i.test(txt)) add(25, 'Côte d\'Ivoire ou Abidjan cités');
+    else if (reg === 'afrique_ouest' || /uemoa|cedeao|ecowas|afrique de l['’]ouest|west africa/i.test(txt)) add(18, 'Afrique de l\'Ouest couverte');
+    else if (reg === 'afrique_panafricain' || /afrique|africa/i.test(f.pays || '')) add(12, 'Mandat Afrique');
+    else if (reg === 'international') add(6, 'Programme international');
+    else if (/mondial|worldwide|monde entier|startups du monde/i.test(txt)) add(4, 'Ouvert aux startups du monde entier');
+    else add(-10, 'Aucun mandat Afrique identifié');
+    if (/s[ée]n[ée]gal|b[ée]nin|maroc|k[ée]nya|nig[ée]ria|gh[ée]na|rwanda|[ée]gypte|tunisie/i.test(txt) && !/c[oô]te d|uemoa|cedeao|ecowas|francophone|panafric|afrique|africa/i.test(txt)) add(-15, 'Limité à un autre pays');
+    if (/r[ée]serv[ée]e? aux|r[ée]serv[ée]e? [àa] |uniquement (pour|aux)|jeunes (de|bas[ée]s)/i.test(cond)) add(-15, 'Réservé à un public précis');
+    if (/s['’]installer|relocalis|implantation|physiquement au|pr[ée]sence au chili|lien n[ée]erlandais|entreprises fran[cç]aises|startups am[ée]ricaines|soci[ée]t[ée] us|flip/i.test(cond + ' ' + (f.pertinence || ''))) add(-15, 'Exige une implantation ou un lien local');
+    const mult = f.devise && /^usd$/i.test(f.devise) && p.usdFcfa > 0 ? p.usdFcfa : (/^usd$/i.test(f.devise || '') ? 595 : CHANGE[String(f.devise || 'FCFA').toUpperCase()]);
+    const tmin = f.ticket_min != null ? Number(f.ticket_min) : null, tmax = f.ticket_max != null ? Number(f.ticket_max) : null;
+    if (tmin == null && tmax == null) add(-3, 'Montants non publiés : adéquation incertaine');
+    else if (mult == null) R.push({ pts: 0, texte: 'Montants en devise non convertie (' + f.devise + ')' });
+    else if (tmin != null) {
+      const r = tmin * mult / besoin;
+      if (r <= 1.5) { add(15, 'Ticket minimal compatible avec votre besoin'); if (tmax != null && tmax * mult < besoin * 0.25) add(-10, 'Montant faible par rapport à votre besoin'); }
+      else if (r <= 5) add(4, 'Ticket minimal un peu supérieur au besoin'); else if (r <= 20) add(-8, 'Ticket minimal très supérieur au besoin'); else add(-18, 'Ticket minimal sans commune mesure avec le besoin');
+    } else if (tmax * mult >= besoin * 0.5) add(8, 'Le plafond couvre une bonne part du besoin'); else add(-2, 'Plafond bas par rapport au besoin');
+    if (/pr[ée]-?amor[cç]age|pre-?seed|early-stage|amor[cç]age|\bmvp\b|\bseed\b|id[ée]e/i.test(cond)) add(12, 'Stade précoce accepté');
+    if (/series a|s[ée]rie a|growth|croissance|post-revenue|product-market fit|revenus (s[ée]curis|[ée]tablis)|scale-up|private equity|chiffre d['’]affaires.{0,30}(400|500 000|1 m)/i.test(cond)) add(-14, 'Stade plus avancé ou revenus exigés');
+    if (['accelerateur', 'subvention', 'business_angel'].indexOf(f.type) >= 0) add(4, 'Type adapté à un pré-amorçage');
+    if (/tous secteurs|agnostique|sector-agnostic|logiciel|saas|software|erp|num[ée]rique|tech/i.test(txt)) add(6, 'Tech et logiciels acceptés');
+    if (/fintech/i.test(cond) && !/tous secteurs|logiciel|saas|software|erp/i.test(cond)) add(-8, 'Thèse centrée fintech');
+    if (/climat|r[ée]silience|sant[ée] uniquement|impact social/i.test(cond)) add(-8, 'Thèse sectorielle étroite');
+    if (/\bclos(e|es)?\b|closed|ferm[ée]e?s?\b|n['’]est pas ouvert/i.test(cond)) add(-12, 'Appel actuellement clos');
+    if (f.contact_formulaire || f.contact_email) add(5, 'Candidature ou contact direct possible'); else if (nbPersonnes > 0) add(2, 'Personnes ressources identifiées');
+    if (/non lue|extrait de recherche|non v[ée]rifi|page non charg/i.test(cond)) add(-4, 'Information peu vérifiée');
+    n = Math.max(0, Math.min(100, Math.round(n)));
+    return { note: n, niveau: n >= NIV_PERT.forte ? 'forte' : n >= NIV_PERT.moyenne ? 'moyenne' : 'faible', raisons: R };
+  }
+
+  const calc = { notePertinence, NIV_PERT, projeterALaDate, deck, mesurer, CRITERES, ROUTES, POIDS, SEUILS, PTS, seuils, palier, statutCritere, evaluer, scoreRoute, scores, cible, delai, simulerHypothese, montage, plan, GLOSSAIRE, F };
   G.SanixLevee = { calc };
   if (typeof module !== 'undefined' && module.exports) module.exports = { calc };
   if (!G.document) return;
@@ -525,7 +566,7 @@
   const FIN_STATUTS = { a_etudier: ['À étudier', '#6b7280'], correspond: ['Correspond', '#0b7f70'], contacte: ['Contacté', '#2563eb'], en_discussion: ['En discussion', '#7c3aed'], decline: ['A décliné', '#dc2626'], ecarte: ['Écarté', '#9ca3af'], investi: ['A investi', '#16a34a'] };
   const FIN_REGIONS = { afrique_ouest: '🌍 Afrique de l\'Ouest', afrique_centrale: '🌍 Afrique centrale', afrique_est: '🌍 Afrique de l\'Est', afrique_nord: '🌍 Afrique du Nord', afrique_australe: '🌍 Afrique australe', afrique_panafricain: '🌍 Afrique — panafricain',
     europe: '🇪🇺 Europe', amerique_nord: '🌎 Amérique du Nord', amerique_latine: '🌎 Amérique latine', asie: '🌏 Asie', moyen_orient: '🕌 Moyen-Orient', oceanie: '🌏 Océanie', international: '🌐 International et institutions', '': '• Région non renseignée' };
-  const finUi = { liste: null, contacts: {}, charge: false, erreur: null, filtre: { type: '', statut: '', region: '', pertinence: '', q: '' }, edit: null, ouvertes: { afrique_ouest: true, international: true } };
+  const finUi = { liste: null, contacts: {}, brouillons: {}, msg: null, charge: false, erreur: null, filtre: { type: '', statut: '', region: '', pertinence: '', q: '' }, edit: null, ouvertes: { afrique_ouest: true, international: true } };
   const urlSure = (u) => /^https:\/\/[^\s"'<>]+$/i.test(String(u || ''));
   const lienLi = (u) => /^https:\/\/([a-z0-9-]+\.)?linkedin\.com\/[^\s"'<>]*$/i.test(String(u || ''));
   const emailOk = (v) => /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']{2,}$/.test(String(v || ''));
@@ -536,14 +577,19 @@
       finUi.liste = (await api('/rest/v1/levee_financeurs?select=*&order=nom.asc&limit=1000')) || [];
       const cs = await api('/rest/v1/levee_contacts?select=*&order=nom.asc&limit=3000').catch(() => []); finUi.contacts = {};
       (cs || []).forEach((c) => { (finUi.contacts[c.financeur_id] = finUi.contacts[c.financeur_id] || []).push(c); });
+      const bs = await api('/rest/v1/levee_brouillons?select=*&order=created_at.desc&limit=500').catch(() => []); finUi.brouillons = {};
+      (bs || []).forEach((b) => { (finUi.brouillons[b.financeur_id] = finUi.brouillons[b.financeur_id] || []).push(b); });
     } catch (e) { finUi.liste = []; finUi.erreur = /session|Connectez/i.test(e.message) ? 'Connectez l\'agent IA (Pilotage → Directeur IA) pour afficher l\'annuaire.' : e.message; }
     finUi.charge = false; if (ui.tab === 'fin') render();
   }
   const PERT = { forte: ['⭐⭐⭐ Forte', '#16a34a', 0], moyenne: ['⭐⭐ Moyenne', '#d97706', 1], faible: ['⭐ Faible', '#6b7280', 2] };
-  const niveauPert = (f) => { const m = /^\s*(forte|moyenne|faible)\b/i.exec(String(f.pertinence || '')); return m ? m[1].toLowerCase() : null; };
+  const profilPert = () => ({ besoinFcfa: modBrut ? modBrut.recommande : 0, usdFcfa: 0 });
+  const cachePert = {};
+  const evalPert = (f) => { const k = f.id + '|' + f.statut + '|' + (finUi.contacts[f.id] || []).length + '|' + (profilPert().besoinFcfa || 0); return cachePert[k] || (cachePert[k] = notePertinence(f, profilPert(), (finUi.contacts[f.id] || []).length)); };
+  const niveauPert = (f) => evalPert(f).niveau;
   const textePert = (f) => String(f.pertinence || '').replace(/^\s*(forte|moyenne|faible)\s*:?\s*/i, '');
-  const rangPert = (f) => { const n = niveauPert(f); return n ? PERT[n][2] : 3; };
-  const badgePert = (f) => { const n = niveauPert(f); return n ? `<span class="chip" style="font-size:11px;font-weight:700;color:${PERT[n][1]};border:1px solid ${PERT[n][1]}">${PERT[n][0]}</span>` : ''; };
+  const rangPert = (f) => 100 - evalPert(f).note;
+  const badgePert = (f) => { const e = evalPert(f), n = e.niveau; return `<details style="display:inline-block;vertical-align:top"><summary style="cursor:pointer;list-style:none"><span class="chip" style="font-size:11px;font-weight:700;color:${PERT[n][1]};border:1px solid ${PERT[n][1]}" title="Note calculée : cliquez pour voir pourquoi">${PERT[n][0]} · ${e.note}/100</span></summary><div style="font-size:11px;font-weight:400;margin:4px 0;max-width:260px">${e.raisons.map((r) => `<div>${r.pts > 0 ? '＋' + r.pts : r.pts < 0 ? '−' + Math.abs(r.pts) : '•'} ${esc(r.texte)}</div>`).join('')}<div class="muted" style="margin-top:3px">Base 35 points. Note calculée par règles à partir de la fiche et de votre besoin.</div></div></details>`; };
   const domaine = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return ''; } };
   const montantFin = (f) => { const a = f.ticket_min != null ? F.m(f.ticket_min).replace(' FCFA', '') : null, b = f.ticket_max != null ? F.m(f.ticket_max).replace(' FCFA', '') : null; if (a == null && b == null) return '—'; return (a != null && b != null ? a + ' – ' + b : (a != null ? '≥ ' + a : '≤ ' + b)) + ' ' + esc(f.devise || 'FCFA'); };
   const lien = (u, txt, titre) => urlSure(u) ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(titre || u)}">${txt}</a>` : '';
@@ -585,20 +631,29 @@
           <input class="form-input" name="cn_linkedin" type="url" placeholder="Profil LinkedIn public (https://www.linkedin.com/in/…)"><input class="form-input" name="cn_email" type="email" placeholder="E-mail publié"><input class="form-input" name="cn_source" type="url" placeholder="Source publique (https, obligatoire)"></div></div>
       <div id="lev-fin-err" class="alert alert-warn hidden" role="alert"></div>
       <div style="margin-top:8px"><button class="btn btn-primary btn-sm" type="submit">Enregistrer</button> <button class="btn btn-sm" type="button" data-act="fin-annuler">Annuler</button></div></form>` : '';
-    const lignes = (f) => `<tr><td><b>${urlSure(f.url_source) ? `<a href="${esc(f.url_source)}" target="_blank" rel="noopener noreferrer" title="Source : ${esc(f.url_source)}">${esc(f.nom)} ↗</a>` : esc(f.nom)}</b>${f.ajoute_par ? ' <span title="Ajouté par un agent">🤖</span>' : ''}<div style="margin:3px 0">${badgePert(f)}${f.site_web && urlSure(f.site_web) ? ` <a href="${esc(f.site_web)}" target="_blank" rel="noopener noreferrer" style="font-size:12px;font-weight:600" title="Ouvrir le site web">🌐 ${esc(domaine(f.site_web))}</a>` : ''}</div><div class="muted" style="font-size:11px">${esc(f.pays || '')}</div>${f.pertinence ? `<div style="font-size:11px">${esc(textePert(f))}</div>` : ''}</td>
+    const lignes = (f) => `<tr><td><b>${urlSure(f.url_source) ? `<a href="${esc(f.url_source)}" target="_blank" rel="noopener noreferrer" title="Source : ${esc(f.url_source)}">${esc(f.nom)} ↗</a>` : esc(f.nom)}</b>${f.ajoute_par ? ' <span title="Ajouté par un agent">🤖</span>' : ''}<div style="margin:3px 0">${badgePert(f)}${f.site_web && urlSure(f.site_web) ? ` <a href="${esc(f.site_web)}" target="_blank" rel="noopener noreferrer" style="font-size:12px;font-weight:600" title="Ouvrir le site web">🌐 ${esc(domaine(f.site_web))}</a>` : ''}</div><div class="muted" style="font-size:11px">${esc(f.pays || '')}</div>${f.pertinence ? `<div style="font-size:11px" class="muted">Avis de l'agent : ${esc(textePert(f))}</div>` : ''}</td>
       <td>${esc(FIN_TYPES[f.type] || f.type)}</td><td style="white-space:nowrap">${montantFin(f)}</td>
       <td style="font-size:12px;max-width:300px">${f.conditions ? `<details><summary>${esc(String(f.conditions).slice(0, 70))}${String(f.conditions).length > 70 ? '…' : ''}</summary>${esc(f.conditions)}${f.notes ? '<br><i>' + esc(f.notes) + '</i>' : ''}</details>` : (f.notes ? '<i>' + esc(f.notes) + '</i>' : '—')}</td>
       <td style="font-size:12px;min-width:200px">${contactsHtml(f)}</td>
       <td><select class="form-input" data-fin-statut="${esc(f.id)}" style="min-width:130px;color:${(FIN_STATUTS[f.statut] || ['', '#000'])[1]};font-weight:600" aria-label="Statut de ${esc(f.nom)}">${optsFin(FIN_STATUTS, f.statut)}</select></td>
-      <td style="white-space:nowrap"><button class="btn btn-sm" data-act="fin-edit" data-id="${esc(f.id)}" title="Modifier">✏️</button> <button class="btn btn-sm" data-act="fin-suppr" data-id="${esc(f.id)}" title="Supprimer">🗑️</button></td></tr>`;
+      <td style="white-space:nowrap">${(finUi.brouillons[f.id] || []).length ? `<button class="btn btn-sm btn-primary" data-act="fin-msg" data-id="${esc(f.id)}" title="Lire et valider le message préparé">✉ Message</button> ` : ''}<button class="btn btn-sm" data-act="fin-edit" data-id="${esc(f.id)}" title="Modifier">✏️</button> <button class="btn btn-sm" data-act="fin-suppr" data-id="${esc(f.id)}" title="Supprimer">🗑️</button></td></tr>`;
     const groupes = {}; vues.forEach((f) => { const k = FIN_REGIONS[f.region || ''] !== undefined ? (f.region || '') : ''; (groupes[k] = groupes[k] || []).push(f); });
     Object.keys(groupes).forEach((k) => groupes[k].sort((a, b) => rangPert(a) - rangPert(b) || String(a.nom).localeCompare(String(b.nom), 'fr')));
-    const fortes = L.filter((f) => niveauPert(f) === 'forte').sort((a, b) => String(a.nom).localeCompare(String(b.nom), 'fr'));
+    const fortes = L.filter((f) => niveauPert(f) === 'forte').sort((a, b) => evalPert(b).note - evalPert(a).note);
     const carteTop = fortes.length ? `<div class="card" id="lev-fin-top"><div class="card-header"><span class="card-title">⭐ Les plus pertinents pour SANIX (${fortes.length})</span><button class="btn btn-sm" data-act="fin-fortes">Les isoler dans la liste</button></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px">${fortes.map((f) => `<div style="border:1px solid var(--border);border-radius:10px;padding:10px"><b>${urlSure(f.url_source) ? `<a href="${esc(f.url_source)}" target="_blank" rel="noopener noreferrer" title="Source">${esc(f.nom)} ↗</a>` : esc(f.nom)}</b>
         <div class="muted" style="font-size:11px">${esc(FIN_TYPES[f.type] || f.type)} · ${esc(FIN_REGIONS[f.region || ''] || '')} · ${montantFin(f)}</div>
-        <div style="font-size:12px;margin:4px 0">${esc(textePert(f))}</div>
+        <div style="margin:4px 0">${badgePert(f)}</div><div style="font-size:12px;margin:4px 0">${f.pertinence ? 'Avis de l\'agent : ' + esc(textePert(f)) : ''}</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px">${f.site_web && urlSure(f.site_web) ? `<a href="${esc(f.site_web)}" target="_blank" rel="noopener noreferrer" style="font-weight:600">🌐 ${esc(domaine(f.site_web))}</a>` : '<span class="muted">site non renseigné</span>'}${f.contact_formulaire && urlSure(f.contact_formulaire) ? `<a href="${esc(f.contact_formulaire)}" target="_blank" rel="noopener noreferrer">✉ Candidater / contacter</a>` : ''}</div></div>`).join('')}</div></div>` : '';
+    const dm = finUi.msg ? Object.keys(finUi.brouillons).reduce((r, k) => r || (finUi.brouillons[k] || []).filter((b) => b.id === finUi.msg)[0], null) : null, fm = dm ? L.filter((f) => f.id === dm.financeur_id)[0] : null;
+    const nbACompleter = dm ? (dm.corps.match(/\[À COMPLÉTER/g) || []).length + (dm.objet.match(/\[À COMPLÉTER/g) || []).length : 0;
+    const carteMsg = dm && fm ? `<div class="card" id="lev-fin-msg" data-id="${esc(dm.id)}"><div class="card-header"><span class="card-title">✉ Message pour ${esc(fm.nom)} <span class="chip" style="font-size:11px">${dm.langue === 'en' ? 'English' : 'Français'}</span></span><button class="btn btn-sm" data-act="fin-msg-fermer">Fermer</button></div>
+      <div class="alert alert-warn">⚠️ <div><b>Brouillon : rien n'est envoyé par le système.</b> Relisez chaque phrase, vérifiez les faits, complétez les passages entre crochets, puis envoyez vous-même.${nbACompleter ? ` <b style="color:#dc2626">${nbACompleter} élément(s) « À COMPLÉTER » restent dans le texte.</b>` : ' <b>Aucun passage « À COMPLÉTER » restant.</b>'}</div></div>
+      <div class="muted" style="font-size:12px;margin:6px 0">${dm.canal === 'email' && dm.destinataire ? 'Destinataire (e-mail publié sur son site) : <b>' + esc(dm.destinataire) + '</b>' : dm.canal === 'formulaire' ? 'Canal : formulaire du financeur' + (fm.contact_formulaire && urlSure(fm.contact_formulaire) ? ' — ' + lien(fm.contact_formulaire, 'ouvrir le formulaire ↗') : '') : 'Aucune adresse publiée : passer par le site ou le profil LinkedIn d\'une personne ressource.'}${dm.note ? '<br><i>' + esc(dm.note) + '</i>' : ''}</div>
+      <label class="form-label" style="font-size:12px">Objet<input class="form-input" data-brf="objet" value="${esc(dm.objet)}"></label>
+      <label class="form-label" style="font-size:12px">Message<textarea class="form-input" data-brf="corps" rows="16" style="font-family:inherit">${esc(dm.corps)}</textarea></label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px"><label class="form-label" style="font-size:12px;margin:0">Statut <select class="form-input" data-brf="statut" style="display:inline-block;width:auto">${[['brouillon', 'Brouillon'], ['valide', 'Validé par moi'], ['envoye', 'Envoyé'], ['abandonne', 'Abandonné']].map((x) => `<option value="${x[0]}" ${dm.statut === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></label>
+        <button class="btn btn-primary btn-sm" data-act="fin-msg-save">💾 Enregistrer</button> <button class="btn btn-sm" data-act="fin-msg-copier">📋 Copier</button>${dm.canal === 'email' && dm.destinataire ? ' <button class="btn btn-sm" data-act="fin-msg-mailto">✉ Ouvrir dans ma messagerie</button>' : ''}</div></div>` : '';
     const sections = Object.keys(FIN_REGIONS).filter((k) => groupes[k]).map((k) => `<details data-reg="${k}" ${finUi.ouvertes[k] || fl.region || q ? 'open' : ''} style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;font-size:14px;padding:6px 0">${esc(FIN_REGIONS[k])} · ${groupes[k].length}</summary>
       <div style="overflow:auto"><table class="table" style="width:100%;font-size:13px"><thead><tr><th>Financeur</th><th>Type</th><th>Montants</th><th>Conditions</th><th>Contacts et personnes</th><th>Statut</th><th></th></tr></thead><tbody>${groupes[k].map(lignes).join('')}</tbody></table></div></details>`).join('');
     return `<div class="alert alert-info">ℹ️ <div>Annuaire mondial des financeurs, par région. Chaque ligne porte le lien de sa source (🤖 : ajouté par un agent). Les contacts et personnes ne sont que des <b>informations professionnelles publiées</b> ; aucune adresse n'est devinée. <b>Vérifiez les conditions et les contacts sur la source</b> avant tout envoi : une page peut être périmée.</div></div>
@@ -612,13 +667,27 @@
         <select class="form-input" data-finf="type" style="flex:1;min-width:140px" aria-label="Filtrer par type"><option value="">Tous les types</option>${optsFin(FIN_TYPES, fl.type)}</select>
         <select class="form-input" data-finf="statut" style="flex:1;min-width:140px" aria-label="Filtrer par statut"><option value="">Tous les statuts</option>${optsFin(FIN_STATUTS, fl.statut)}</select></div>
       ${finUi.erreur ? `<div class="alert alert-warn">⚠️ <div>${esc(finUi.erreur)}</div></div>` : ''}
-      ${finUi.charge && finUi.liste === null ? '<p class="muted">Chargement…</p>' : vues.length ? sections : (L.length ? '<p>Aucun financeur ne correspond aux filtres.</p>' : '<p>L\'annuaire est vide. Les agents le remplissent (recherche mondiale, mission hebdomadaire) ; vous pouvez aussi ajouter vos propres pistes.</p>')}</div>${form}`;
+      ${finUi.charge && finUi.liste === null ? '<p class="muted">Chargement…</p>' : vues.length ? sections : (L.length ? '<p>Aucun financeur ne correspond aux filtres.</p>' : '<p>L\'annuaire est vide. Les agents le remplissent (recherche mondiale, mission hebdomadaire) ; vous pouvez aussi ajouter vos propres pistes.</p>')}</div>${carteMsg}${form}`;
+  }
+
+  const msgCourant = () => finUi.msg ? Object.keys(finUi.brouillons).reduce((r, k) => r || (finUi.brouillons[k] || []).filter((b) => b.id === finUi.msg)[0], null) : null;
+  const lireMsg = () => { const q = (k) => { const el = document.querySelector('#lev-fin-msg [data-brf="' + k + '"]'); return el ? el.value : ''; }; return { objet: q('objet').trim(), corps: q('corps').trim(), statut: q('statut') || 'brouillon' }; };
+  async function sauverMsg() {
+    const d = msgCourant(); if (!d) return; const v = lireMsg();
+    if (v.objet.length < 2 || v.corps.length < 20) return toast('⚠️ Objet ou message trop court');
+    try { await api('/rest/v1/levee_brouillons?id=eq.' + encodeURIComponent(d.id), { method: 'PATCH', body: JSON.stringify({ objet: v.objet, corps: v.corps, statut: v.statut, updated_at: new Date().toISOString() }) }); Object.assign(d, v); toast('✅ Message enregistré'); render(); }
+    catch (e) { toast('⚠️ ' + e.message); }
+  }
+  async function copierMsg() {
+    const v = lireMsg(), txt = v.objet + '\n\n' + v.corps;
+    try { await navigator.clipboard.writeText(txt); toast('📋 Message copié'); }
+    catch (e) { const t = document.querySelector('#lev-fin-msg [data-brf="corps"]'); if (t) { t.focus(); t.select(); } toast('Sélectionnez le texte et copiez-le (Ctrl+C)'); }
   }
   function exportFin() {
     const L = finUi.liste || [], cel = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""').replace(/^([=+\-@])/, "'$1") + '"';
     const rows = [['Région', 'Nom', 'Type', 'Pays', 'Montant min', 'Montant max', 'Devise', 'Conditions', 'Statut', 'Site web', 'LinkedIn', 'E-mail', 'Téléphone', 'Formulaire', 'Personnes (nom — fonction — LinkedIn)', 'Source', 'Pertinence']];
     L.forEach((f) => rows.push([FIN_REGIONS[f.region || ''] || '', f.nom, FIN_TYPES[f.type] || f.type, f.pays, f.ticket_min, f.ticket_max, f.devise, f.conditions, (FIN_STATUTS[f.statut] || [f.statut])[0], f.site_web, f.linkedin_url, f.contact_email, f.contact_telephone, f.contact_formulaire,
-      (finUi.contacts[f.id] || []).map((c) => [c.nom, c.fonction, c.linkedin_url].filter(Boolean).join(' — ')).join(' ; '), f.url_source, f.pertinence]));
+      (finUi.contacts[f.id] || []).map((c) => [c.nom, c.fonction, c.linkedin_url].filter(Boolean).join(' — ')).join(' ; '), f.url_source, evalPert(f).note + '/100 (' + niveauPert(f) + ') — avis agent : ' + (f.pertinence || '')]));
     const blob = new Blob(['﻿' + rows.map((r) => r.map(cel).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' }), a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = 'financeurs-' + new Date().toISOString().slice(0, 10) + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
@@ -699,6 +768,11 @@
       else if (a === 'fin-annuler') { finUi.edit = null; render(); }
       else if (a === 'fin-edit') { finUi.edit = t.dataset.id; render(); const f = document.getElementById('lev-fin-form'); if (f && f.scrollIntoView) f.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
       else if (a === 'fin-export') exportFin();
+      else if (a === 'fin-msg') { const bs = finUi.brouillons[t.dataset.id] || []; finUi.msg = bs[0] ? bs[0].id : null; render(); const c = document.getElementById('lev-fin-msg'); if (c && c.scrollIntoView) c.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      else if (a === 'fin-msg-fermer') { finUi.msg = null; render(); }
+      else if (a === 'fin-msg-save') { sauverMsg(); }
+      else if (a === 'fin-msg-copier') { copierMsg(); }
+      else if (a === 'fin-msg-mailto') { const d = msgCourant(); if (!d) return; const u = 'mailto:' + encodeURIComponent(d.destinataire) + '?subject=' + encodeURIComponent(lireMsg().objet) + '&body=' + encodeURIComponent(lireMsg().corps); if (u.length > 1900) { toast('⚠️ Message trop long pour la messagerie : utilisez « Copier »'); return; } window.open(u, '_self'); }
       else if (a === 'fin-fortes') { finUi.filtre.pertinence = 'forte'; render(); }
       else if (a === 'fin-contact-suppr') { api('/rest/v1/levee_contacts?id=eq.' + encodeURIComponent(t.dataset.id), { method: 'DELETE' }).then(() => { Object.keys(finUi.contacts).forEach((k) => { finUi.contacts[k] = finUi.contacts[k].filter((c) => c.id !== t.dataset.id); }); render(); toast('🗑️ Personne retirée'); }).catch((x) => toast('⚠️ ' + x.message)); }
       else if (a === 'fin-actualiser') { finUi.liste = null; chargerFin(); }

@@ -107,8 +107,9 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
         { id: "f3", nom: "Aaa Fonds Faible", type: "fonds", pays: "Sénégal", ticket_min: null, ticket_max: null, devise: "FCFA", conditions: null, url_source: "https://faible.example/p", statut: "a_etudier", notes: null, ajoute_par: null, created_at: "2026-11-17T10:00:00Z", region: "afrique_ouest", site_web: "https://www.faible.example/", pertinence: "faible : trop tôt pour SANIX" },
         { id: "f2", nom: "<img src=x onerror=alert(1)> Banque", type: "banque", pays: "UEMOA", ticket_min: null, ticket_max: 50000000, devise: "FCFA", conditions: "Garanties", url_source: "javascript:alert(1)", statut: "ecarte", notes: null, ajoute_par: null, created_at: "2026-11-18T10:00:00Z", region: "europe", site_web: "javascript:alert(2)", linkedin_url: null, contact_email: null },
       ];
-      window.__finCalls = []; window.__contacts = [{ id: "c1", financeur_id: "f1", nom: "Awa Koné", fonction: "Directrice des investissements", linkedin_url: "https://www.linkedin.com/in/awa-kone", email: null, source_url: "https://alpha.example/equipe" }];
+      window.__finCalls = []; window.__brf = [{ id: "b1", financeur_id: "f1", canal: "email", destinataire: "contact@alpha.example", objet: "Présentation SANIX", corps: "Bonjour,\n\nNous cherchons [À COMPLÉTER : montant] pour [À COMPLÉTER : usage].\n\nCordialement", langue: "fr", statut: "brouillon", note: "Adresse publiée sur son site", created_at: "2026-11-19T12:00:00Z" }]; window.__contacts = [{ id: "c1", financeur_id: "f1", nom: "Awa Koné", fonction: "Directrice des investissements", linkedin_url: "https://www.linkedin.com/in/awa-kone", email: null, source_url: "https://alpha.example/equipe" }];
       window.aisApi = async (p, o) => {
+        if (p.includes("levee_brouillons")) { const m3 = (o && o.method) || "GET"; window.__finCalls.push({ m: m3, p, b: o && o.body, br: 1 }); if (m3 === "GET") return window.__brf.slice(); if (m3 === "PATCH") { Object.assign(window.__brf[0], JSON.parse(o.body)); } return null; }
         if (p.includes("levee_contacts")) { const m2 = (o && o.method) || "GET"; window.__finCalls.push({ m: m2, p, b: o && o.body, c: 1 }); if (m2 === "GET") return window.__contacts.slice(); if (m2 === "DELETE") { window.__contacts = window.__contacts.filter((x) => x.id !== (p.match(/id=eq\\.([^&]+)/) || [])[1]); return null; } window.__contacts.push(Object.assign({ id: "c" + (window.__contacts.length + 1) }, JSON.parse(o.body))); return null; }
         if (!p.includes("levee_financeurs")) return p.includes("levee_etat?") ? [] : "2026-11-19T10:00:00Z";
         const m = (o && o.method) || "GET", id = (p.match(/id=eq\.([^&]+)/) || [])[1]; window.__finCalls.push({ m, p, b: o && o.body });
@@ -137,6 +138,17 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.locator('[data-finf="pertinence"]').selectOption("forte"); await page.waitForTimeout(200);
     ok((await page.locator("#lev-body table tbody tr").count()) === 1, "filtre par pertinence");
     await page.locator('[data-finf="pertinence"]').selectOption(""); await page.waitForTimeout(150);
+    ok((await page.locator('[data-act="fin-msg"]').count()) === 1, "bouton « Message » seulement sur le financeur qui a un brouillon");
+    await page.locator('[data-act="fin-msg"]').click(); await page.waitForTimeout(250);
+    const cm = await page.locator("#lev-fin-msg").innerText();
+    ok(cm.includes("rien n'est envoyé par le système") && cm.includes("2 élément(s)"), "carte du message : avertissement « rien n'est envoyé » et 2 passages à compléter signalés");
+    ok((await page.locator('[data-act="fin-msg-mailto"]').count()) === 1 && cm.includes("contact@alpha.example"), "adresse publiée affichée, bouton messagerie présent pour un e-mail");
+    await page.locator('#lev-fin-msg [data-brf="objet"]').fill("Présentation SANIX Africa (v2)");
+    await page.locator('#lev-fin-msg [data-brf="statut"]').selectOption("valide");
+    await page.locator('[data-act="fin-msg-save"]').click(); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => window.__finCalls.some((c) => c.br && c.m === "PATCH" && JSON.parse(c.b).objet === "Présentation SANIX Africa (v2)" && JSON.parse(c.b).statut === "valide")), "modifications du message enregistrées (PATCH)");
+    await page.locator('[data-act="fin-msg-fermer"]').click(); await page.waitForTimeout(150);
+    ok((await page.locator("#lev-fin-msg").count()) === 0, "fermeture de la carte");
     await page.locator('[data-finf="region"]').selectOption("europe"); await page.waitForTimeout(200);
     ok((await page.locator("#lev-body table tbody tr").count()) === 1, "filtre par région");
     await page.locator('[data-finf="region"]').selectOption(""); await page.waitForTimeout(150);
