@@ -1,0 +1,88 @@
+<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Phyto Strike Force — démo gratuite · SANIX Africa</title>
+<meta name="description" content="Phyto Strike Force : ERP du distributeur de produits phytosanitaires — stock, clients, TVA et SYSCOHADA."><meta property="og:title" content="Distribuez vos produits phytosanitaires avec un stock juste et une compta maîtrisée."><meta property="og:description" content="Phyto Strike Force : ERP du distributeur de produits phytosanitaires — stock, clients, TVA et SYSCOHADA."><meta name="theme-color" content="#0B1220">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
+body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#0B1220;color:#E5E7EB;line-height:1.6;padding-bottom:78px}
+a{color:inherit}.wrap{max-width:1000px;margin:0 auto;padding:0 18px}
+.top{position:sticky;top:0;z-index:50;background:rgba(11,18,32,.92);backdrop-filter:blur(8px);border-bottom:1px solid #1F2937}
+.top .wrap{display:flex;align-items:center;justify-content:space-between;height:54px;gap:10px}
+.brand{font-weight:800;font-size:15px;letter-spacing:.3px}.brand span{color:#1B5E3B}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 22px;border-radius:12px;font-weight:800;font-size:16px;text-decoration:none;border:0;cursor:pointer;transition:transform .15s}
+.btn:active{transform:scale(.98)}.wa{background:#25D366;color:#06260F;box-shadow:0 8px 24px rgba(37,211,102,.35)}.ghost{background:transparent;border:2px solid #334155;color:#E5E7EB}
+.top .btn{padding:9px 14px;font-size:13px}
+.hero{padding:44px 0 34px;background:radial-gradient(1200px 500px at 70% -10%,#1B5E3B55,transparent 60%),#0B1220}
+.chip{display:inline-block;background:#FBBF2422;border:1px solid #FBBF2466;color:#FCD34D;padding:6px 14px;border-radius:999px;font-size:13px;font-weight:700;margin-bottom:16px}
+h1{font-size:clamp(28px,6vw,46px);line-height:1.12;font-weight:900;color:#fff;margin-bottom:14px;max-width:780px}
+.sub{font-size:clamp(16px,3.4vw,19px);color:#CBD5E1;max-width:660px;margin-bottom:22px}
+.cta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}.proof{font-size:13.5px;color:#94A3B8;display:flex;gap:16px;flex-wrap:wrap}.proof b{color:#E5E7EB}
+section{padding:40px 0}h2{font-size:clamp(22px,4.6vw,32px);font-weight:900;color:#fff;margin-bottom:8px}.lead{color:#94A3B8;margin-bottom:22px;max-width:640px}
+.pains{background:#111827;border-top:1px solid #1F2937;border-bottom:1px solid #1F2937}.pains ul{list-style:none;display:grid;gap:10px;max-width:700px}
+.pains li{background:#1F293799;border-left:4px solid #EF4444;padding:12px 14px;border-radius:8px}.pains li:before{content:'✗ ';color:#F87171;font-weight:800}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.card{background:#111827;border:1px solid #1F2937;border-radius:16px;padding:18px}.card .ico{font-size:26px;margin-bottom:6px}.card h3{font-size:16px;color:#fff;margin-bottom:4px}.card p{font-size:14px;color:#94A3B8}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;counter-reset:s}.step{background:#111827;border:1px solid #1F2937;border-radius:16px;padding:18px 18px 18px 64px;position:relative;counter-increment:s}
+.step:before{content:counter(s);position:absolute;left:16px;top:16px;width:36px;height:36px;border-radius:50%;background:#1B5E3B;color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center}.step b{color:#fff;display:block;margin-bottom:2px}.step span{font-size:14px;color:#94A3B8}
+.price{background:linear-gradient(135deg,#1B5E3B33,#0B1220);border:1px solid #1B5E3B77;border-radius:22px;padding:28px 22px;text-align:center}
+.price .big{font-size:clamp(34px,8vw,54px);font-weight:900;color:#34D399;line-height:1.1}.price .small{color:#94A3B8;font-size:14px;margin-top:6px}.price ul{list-style:none;margin:16px auto;max-width:430px;text-align:left}.price li{padding:5px 0}.price li:before{content:'✓ ';color:#34D399;font-weight:900}
+.roi{margin:14px auto 0;max-width:560px;font-style:italic;color:#CBD5E1;font-size:15px}
+.timer{display:inline-block;background:#7F1D1D;color:#FECACA;padding:7px 14px;border-radius:10px;font-weight:800;font-size:14px;margin-bottom:14px}
+.form{background:#111827;border:1px solid #1F2937;border-radius:22px;padding:24px;max-width:480px;margin:0 auto}.form h2{font-size:22px;text-align:center}.form p.s{text-align:center;color:#94A3B8;font-size:14px;margin-bottom:12px}
+.form input{width:100%;padding:14px;margin:6px 0;border-radius:10px;border:1px solid #334155;background:#0B1220;color:#fff;font-size:16px}.form .btn{width:100%;margin-top:10px}
+details{background:#111827;border:1px solid #1F2937;border-radius:12px;padding:14px 16px;margin-bottom:10px}summary{cursor:pointer;font-weight:700;color:#fff}details p{margin-top:8px;color:#94A3B8;font-size:14.5px}
+footer{text-align:center;padding:26px 18px;color:#64748B;font-size:13px}
+.sticky{position:fixed;left:0;right:0;bottom:0;z-index:60;background:#0B1220ee;border-top:1px solid #1F2937;padding:10px 14px;display:flex;gap:10px}.sticky .btn{flex:1;padding:13px 10px;font-size:15px}
+@media(min-width:760px){.sticky{display:none}body{padding-bottom:0}}
+</style></head><body>
+<div class="top"><div class="wrap"><div class="brand">🌿 Phyto Strike Force <span>· SANIX Africa</span></div><a class="btn wa" href="https://wa.me/2250779181075?text=Bonjour%2C%20je%20souhaite%20une%20d%C3%A9mo%20gratuite%20de%20Phyto%20Strike%20Force.%20(R%C3%A9f.%20LP-PHYTOSTRIK)">📱 WhatsApp</a></div></div>
+
+<header class="hero"><div class="wrap">
+  <div class="chip">🎁 Offre du mois sur Phyto Strike Force : installation et formation de votre équipe offertes</div>
+  <h1>Distribuez vos produits phytosanitaires avec un stock juste et une compta maîtrisée.</h1>
+  <p class="sub">Phyto Strike Force : ERP du distributeur de produits phytosanitaires — stock, clients, TVA et SYSCOHADA.</p>
+  <div class="cta"><a class="btn wa" href="https://wa.me/2250779181075?text=Bonjour%2C%20je%20souhaite%20une%20d%C3%A9mo%20gratuite%20de%20Phyto%20Strike%20Force.%20(R%C3%A9f.%20LP-PHYTOSTRIK)">📱 Je veux ma démo gratuite</a></div>
+  <div class="proof"><span>✅ <b>Démo gratuite</b>, sans engagement</span><span>🇨🇮 Conçu pour les entreprises ivoiriennes · SYSCOHADA</span><span>🌐 <b>Portail client inclus</b></span><span>⚡ Réponse rapide sur WhatsApp</span></div>
+</div></header>
+
+<section class="pains"><div class="wrap"><h2>Vous reconnaissez-vous ?</h2><p class="lead">Ces problèmes coûtent de l'argent chaque mois. Ils se règlent.</p><ul><li>Lots et péremptions mal suivis</li><li>Créances clients difficiles à relancer</li><li>Déclarations de TVA longues et risquées</li><li>Marges inconnues par produit</li></ul></div></section>
+
+<section><div class="wrap"><h2>Ce que Phyto Strike Force change pour vous</h2><p class="lead">Tout ce qu'il faut, au même endroit.</p><div class="grid"><div class="card"><div class="ico">🧪</div><h3>Stock par lot</h3><p>Traçabilité et alertes de péremption</p></div><div class="card"><div class="ico">👨‍🌾</div><h3>Clients &amp; créances</h3><p>Soldes, relances, historique</p></div><div class="card"><div class="ico">🧾</div><h3>TVA &amp; déclarations</h3><p>Liquidation et déclarations facilitées</p></div><div class="card"><div class="ico">📊</div><h3>SIG SYSCOHADA</h3><p>Soldes intermédiaires de gestion automatiques</p></div><div class="card"><div class="ico">🛒</div><h3>Ventes &amp; achats</h3><p>Facturation et réceptions fournisseurs</p></div><div class="card"><div class="ico">📈</div><h3>Marges par produit</h3><p>Voyez ce qui rapporte vraiment</p></div></div></div></section>
+
+<section><div class="wrap"><div class="card" style="border-color:#1B5E3B77;background:linear-gradient(135deg,#1B5E3B22,#111827);padding:24px"><div class="chip" style="margin-bottom:10px">🌐 Inclus avec Phyto Strike Force</div><h2>Un portail client : vos clients suivent leur projet en direct</h2><p class="lead" style="margin-bottom:12px">Fini les « où en est ma commande ? ». Chaque client se connecte à son espace et voit l'avancement, ses documents et ses paiements — sans vous appeler.</p><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))"><div>📍 <b style="color:#fff">Avancement en temps réel</b><br><span style="font-size:14px;color:#94A3B8">Étapes du projet, de la commande à la livraison</span></div><div>📄 <b style="color:#fff">Documents à portée de main</b><br><span style="font-size:14px;color:#94A3B8">Devis, factures et suivi des règlements</span></div><div>🤝 <b style="color:#fff">Clients rassurés, fidélisés</b><br><span style="font-size:14px;color:#94A3B8">Une image pro qui vous démarque et déclenche le bouche-à-oreille</span></div></div></div></div></section>
+
+<section><div class="wrap"><h2>Comment ça se passe</h2><p class="lead">Simple, rapide, sans mauvaise surprise.</p>
+<div class="steps"><div class="step"><b>Démo de 20 minutes</b><span>Sur votre cas concret, en ligne ou chez vous. Gratuite.</span></div><div class="step"><b>Installation & prise en main</b><span>Nous configurons le logiciel et formons votre équipe.</span></div><div class="step"><b>Vous pilotez vos chiffres</b><span>Dès la première semaine, vous voyez la différence.</span></div></div></div></section>
+
+<section><div class="wrap"><div class="price">
+  <div class="timer" id="timer" style="display:none"></div>
+  <div style="font-weight:800;color:#CBD5E1">Licence définitive · à partir de</div>
+  <div class="big">650 000 FCFA</div><div class="small">soit environ 54 167 FCFA par mois sur 12 mois · ou formule mensuelle 65 000 FCFA/mois</div>
+  <ul><li>Installation et prise en main</li><li>Support et mises à jour (1 an)</li><li>Paiement en 2 temps : avance puis solde</li><li>Démo gratuite avant de vous décider</li></ul>
+  <div style="color:#FCD34D;font-weight:800;margin-bottom:10px">🎁 Offre du mois sur Phyto Strike Force : installation et formation de votre équipe offertes</div>
+  <a class="btn wa" href="https://wa.me/2250779181075?text=Bonjour%2C%20je%20souhaite%20une%20d%C3%A9mo%20gratuite%20de%20Phyto%20Strike%20Force.%20(R%C3%A9f.%20LP-PHYTOSTRIK)">📱 Réserver ma démo sur WhatsApp</a>
+  <p class="roi">« Connaître la marge réelle par produit change la façon d'acheter et de vendre. »</p>
+</div></div></section>
+
+<section><div class="wrap"><div class="form" id="form"><h2>Recevez votre démo</h2><p class="s">Laissez vos coordonnées, on vous répond sur WhatsApp.</p>
+<input id="lp-nom" placeholder="Votre nom / entreprise" autocomplete="organization"><input id="lp-tel" type="tel" placeholder="Votre numéro WhatsApp" autocomplete="tel"><input id="lp-act" placeholder="Votre activité (facultatif)">
+<button class="btn wa" onclick="lpSend()">📱 Je veux ma démo gratuite</button></div></div></section>
+
+<section><div class="wrap"><h2>Questions fréquentes</h2><p class="lead"></p><details><summary>Une démonstration, ça m'engage à quelque chose ?</summary><p>Non. La démo est gratuite et sans engagement : nous vous montrons le logiciel sur votre cas concret, en ligne ou chez vous (environ 20 minutes).</p></details><details><summary>Faut-il être à l'aise avec l'informatique ?</summary><p>Non. Le logiciel est pensé pour des utilisateurs non techniciens et nous vous accompagnons à la prise en main.</p></details><details><summary>Combien ça coûte vraiment ?</summary><p>La licence est définitive : 650 000 FCFA, à régler en deux temps (avance à la commande, solde à la livraison). Une formule mensuelle à 65 000 FCFA/mois est aussi disponible.</p></details><details><summary>Et après l'achat ?</summary><p>Support et mises à jour inclus (1 an). Vous pouvez nous joindre directement sur WhatsApp.</p></details></div></section>
+
+<footer>SANIX Africa · Cyrille KESIE · Abidjan, Côte d'Ivoire · 📞 +225 07 79 18 10 75</footer>
+
+<div class="sticky"><a class="btn wa" href="https://wa.me/2250779181075?text=Bonjour%2C%20je%20souhaite%20une%20d%C3%A9mo%20gratuite%20de%20Phyto%20Strike%20Force.%20(R%C3%A9f.%20LP-PHYTOSTRIK)">📱 Démo sur WhatsApp</a><a class="btn ghost" href="tel:+2250779181075">📞 Appeler</a></div>
+<script>
+var LP_LOG="Phyto Strike Force",LP_WA="2250779181075",LP_REF="LP-PHYTOSTRIK";
+function lpSend(){
+  var n=(document.getElementById('lp-nom').value||'').trim(),t=(document.getElementById('lp-tel').value||'').trim(),a=(document.getElementById('lp-act').value||'').trim();
+  if(!n||!t){ alert('Merci de renseigner votre nom et votre numéro WhatsApp.'); return; }
+  var msg='Bonjour, je suis '+n+(a?' ('+a+')':'')+', tél : '+t+'. Je souhaite une démo gratuite de '+LP_LOG+'. (Réf. '+LP_REF+')';
+  window.location.href='https://wa.me/'+LP_WA+'?text='+encodeURIComponent(msg);
+}
+(function(){ var el=document.getElementById('timer'); if(!el) return;
+  function tick(){ var d=new Date(),end=new Date(d.getFullYear(),d.getMonth()+1,1)-d; var j=Math.floor(end/864e5); if(j<0) return;
+    el.style.display='inline-block'; el.textContent='⏳ Offre valable encore '+j+' jour'+(j>1?'s':'')+' — fin du mois'; }
+  tick();
+})();
+</script></body></html>
