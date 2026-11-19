@@ -1148,5 +1148,7 @@
     });
   }
   G.initFinancement = function () { if (!ov) load(); recompute(); bind(); render(); };
+  /** Lecture seule pour le module « Levée de fonds » : hypothèses, résultats et valorisation avant apport du modèle courant. */
+  G.SanixFinancement.snapshot = function () { if (!ov) load(); recompute(); return { h: h, base: base, res: res, preMoney: preMoney(h, res.avec0.annees[0].ca) }; };
   G.SanixFinancement.refresh = function () { if (ov && visible()) { recompute(); render(); } };
 })(typeof window !== 'undefined' ? window : globalThis);
