@@ -24,6 +24,7 @@ try{var _t=localStorage.getItem("sanix_theme");if(_t&&_t!=="turquoise")document.
 <script src="shared/pilotage.js" defer></script>
 <script src="shared/financement.js" defer></script>
 <script src="shared/levee.js" defer></script>
+<script src="shared/credit_ia.js" defer></script>
 <script src="shared/renouvellements.js" defer></script>
 <script src="shared/paiements.js" defer></script>
 <script src="shared/strategie.js" defer></script>
@@ -1313,6 +1314,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--primary)}
     <div id="view-budget" class="hidden fade-in"></div>
     <div id="view-financement" class="hidden fade-in"></div>
     <div id="view-levee" class="hidden fade-in"></div>
+    <div id="view-creditia" class="hidden fade-in"></div>
 
     <div id="view-bureau" class="hidden fade-in">
       <div class="ban"><div class="ban-deco"></div><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start"><div><h1 class="page-title">🏢 Bureau du jour</h1><p class="page-sub" id="bureau-phrase">Chargement…</p></div><button class="btn btn-outline btn-sm" style="background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.4)" onclick="initBureau(true)">🔄 Actualiser</button></div></div>
@@ -6177,7 +6179,7 @@ const NAV_GROUPS = {
   livraison: {views:[['licences','🔑 Licences'],['planning','📅 Planning déploiement']], badges:['sb-lic-badge']},
   finance:   {views:[['comptabilite','📒 Comptabilité'],['commissions','💰 Commissions'],['financement','🏦 Financement'],['levee','🚀 Levée de fonds']], badges:['sb-compta-badge','sb-comm-badge']},
   apres:     {views:[['apresvente','🔁 Renouvellements & fidélisation']], badges:[]},
-  pilot:     {views:[['direction','👔 Direction'],['budget','💶 Budget & actions'],['aisales','🤖 Directeur IA'],['cockpit','🧠 Cockpit IA'],['intel','🧬 Intelligence']], badges:['sb-ais-badge']},
+  pilot:     {views:[['direction','👔 Direction'],['budget','💶 Budget & actions'],['aisales','🤖 Directeur IA'],['creditia','💳 Crédit IA'],['cockpit','🧠 Cockpit IA'],['intel','🧬 Intelligence']], badges:['sb-ais-badge']},
   reglages:  {views:[['equipe','🏆 Équipe & Apporteurs'],['documents','📄 Documents & Modèles'],['parametrage','🛠️ Paramétrage']], badges:['sb-app-badge','sb-doc-badge']}
 };
 // Écrans fusionnés : la vue d'origine est déplacée dans l'écran d'accueil de son module
@@ -6509,7 +6511,7 @@ function navigate(view, el) {
     planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
     parametrage:'Paramétrage',apresvente:'Après-vente & fidélisation',qualification:'Qualification des prospects',strategie:'Stratégie par logiciel',
     presentations:'Présentations & Démos',commandes:'Commandes Clients',contrats:'Contrats & Conventions',
-    licences:'Licences Attribuées',documents:'Documents & Modèles',comptabilite:'Comptabilité SYSCOHADA',financement:'Financement',levee:'Levée de fonds'
+    licences:'Licences Attribuées',documents:'Documents & Modèles',comptabilite:'Comptabilité SYSCOHADA',financement:'Financement',levee:'Levée de fonds',creditia:'Crédit IA'
   }[view] || view;
   try{ afficherNote(_orig in NOTES_VUES ? _orig : view); }catch(e){ console.error(e); }
   if(view==='messagerie'){ try{ initMessagerie(); }catch(e){ console.error(e); } }
@@ -6529,6 +6531,7 @@ function navigate(view, el) {
   if(view === 'budget') setTimeout(()=>{ try{ initPilotage(); }catch(e){ console.error(e); } }, 30);
   if(view === 'financement') setTimeout(()=>{ try{ initFinancement(); }catch(e){ console.error(e); } }, 30);
   if(view === 'levee') setTimeout(()=>{ try{ initLevee(); }catch(e){ console.error(e); } }, 30);
+  if(view === 'creditia') setTimeout(()=>{ try{ initCreditIA(); }catch(e){ console.error(e); } }, 30);
   if(view === 'direction'){ setTimeout(initIntel, 70); setTimeout(initDirection, 50); setTimeout(initCockpit, 60); const _ck=document.getElementById('view-cockpit'); if(_ck) _ck.classList.remove('hidden'); }
   if(view === 'equipe') eqSyncTab(_orig);
   if(view === 'marketing') setTimeout(initMarketing, 50);
@@ -9617,8 +9620,8 @@ const ROLE_BG = {
   apporteur:'#FFFBEB'
 };
 const PERMISSIONS = {
-  super_admin:['bureau','qualification','strategie','budget','financement','levee','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports','users','parametrage','parametres'],
-  manager:    ['bureau','qualification','strategie','budget','financement','levee','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports'],
+  super_admin:['bureau','qualification','strategie','budget','financement','levee','creditia','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports','users','parametrage','parametres'],
+  manager:    ['bureau','qualification','strategie','budget','financement','levee','creditia','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports'],
   commercial: ['qualification','strategie','journal','dashboard','pipeline','clients','logiciels','messagerie','carte','rapports'],
   apporteur:  ['pipeline','clients','messagerie','rapports'],
 };
@@ -12424,6 +12427,7 @@ const NOTES_VUES = {
   apresvente:{quoi:"Après-vente et fidélisation : renouvellements de licences, maintenance, clients silencieux.",pts:["L'échéancier propose les relances par palier : J-60, J-30, J-15, J-7 et expiré.","Le bouton de facturation crée une facture de renouvellement en brouillon : rien n'est envoyé ni facturé sans votre accord.","La maintenance ne se facture que si le client l'a acceptée."]},
   comptabilite:{quoi:"Comptabilité SYSCOHADA : journal, grand livre, balance, soldes intermédiaires, TVA et FEC.",pts:["Les écritures sont générées automatiquement depuis les commandes et chaque paiement (à sa date et selon son mode : caisse 571, banque 521, Mobile Money 552, règlement en nature 471).","« Régénérer écritures » recalcule les écritures automatiques sans toucher aux écritures manuelles.","Ces écritures sont une aide : à faire valider par un expert-comptable avant tout usage officiel."]},
   commissions:{quoi:"Suivi et paiement des commissions des commerciaux et des apporteurs d'affaires.",pts:["La commission se calcule sur le montant hors taxes de la vente.","« Recalculer » refait les commissions à partir des commandes ; « Saisie manuelle » ajoute un cas particulier.","Marquez une commission payée uniquement quand elle l'est : cela évite de la payer deux fois."]},
+  creditia:{quoi:"Crédit IA : le solde du crédit Anthropic et la consommation de vos agents (dépense par jour, par modèle, par collaborateur, plafonds).",pts:["Le solde est estimé : dernier solde que vous déclarez (lu dans la Console Anthropic), moins la dépense enregistrée par les agents depuis.","Remettez-le à jour avec « Déclarer le solde » après une recharge ou de temps en temps.","Une alerte apparaît quand le crédit est bas ou quand la dépense de fin de mois dépasserait le plafond mensuel."]},
   levee:{quoi:"Levée de fonds : votre niveau de préparation, votre éligibilité par type de financeur (business angels, fonds, banque, subvention, accélérateur) et la simulation pour y arriver.",pts:["Les indicateurs sont mesurés dans vos commandes, vos paiements et votre pipeline ; seuls les critères de dossier (pacte, équipe, pitch deck…) se cochent à la main.","Chaque critère a une note explicative : cliquez sur une ligne de l'onglet Indicateurs.","Les seuils sont des repères indicatifs : adaptez-les au règlement du financeur visé (onglet Éligibilité).","L'onglet Simulation montre ce qu'il faut atteindre pour devenir éligible et ce que coûte la levée en part cédée."]},
   financement:{quoi:"Plan de financement sur 5 ans : combien lever, dans quel montage, et à quelle condition l'activité devient rentable.",pts:["Les hypothèses partent des chiffres réels du CRM ; modifiez-les dans l'onglet Hypothèses, puis lisez Projections et Indicateurs.","Le régime d'imposition se choisit selon le chiffre d'affaires (taxe de l'entreprenant, micro-entreprise, réel simplifié, réel normal) ; l'IS est à 30 % pour un éditeur de logiciels.","Le dossier ne peut être validé que si le plan est rentable, si le montage tient et si le régime d'imposition est confirmé par votre expert-comptable.","Ce sont des projections, pas des promesses : la maintenance et la croissance sont des hypothèses tant qu'elles ne sont pas contractualisées."]},
   budget:{quoi:"Budget et plan d'actions : objectifs mensuels, dépenses engagées et actions à mener.",pts:["Saisissez l'objectif de chaque mois et vos dépenses pour voir l'écart avec le réalisé.","Le plan d'actions liste ce qui reste à faire pour atteindre l'objectif."]},
