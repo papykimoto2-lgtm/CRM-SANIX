@@ -1336,12 +1336,7 @@ async function runAgent(run, brief) {
   };
   const tools = TOOLSETS[run.mode].map((n) => crmTool(n, true));
   if (run.mode === "mission") {
-    tools.push({
-      type: "web_search_20260209",
-      name: "web_search",
-      max_uses: 15,
-      user_location: { type: "approximate", country: "CI", city: "Abidjan", timezone: "Africa/Abidjan" }
-    });
+    tools.push({ type: "web_search_20260209", name: "web_search", max_uses: 15 });
   }
   const messages = [{ role: "user", content: brief }];
   let resume = "", tours = 0;

@@ -58,8 +58,7 @@ export async function runAgent(run: RunMode, brief: string): Promise<{ resume: s
   // v1 : jeux d'outils réduits → garantie de schéma stricte possible (limites API respectées).
   const tools: Anthropic.Beta.BetaToolUnion[] = TOOLSETS[run.mode].map((n) => crmTool(n, true));
   if (run.mode === "mission") {
-    tools.push({ type: "web_search_20260209", name: "web_search", max_uses: 15,
-      user_location: { type: "approximate", country: "CI", city: "Abidjan", timezone: "Africa/Abidjan" } });
+    tools.push({ type: "web_search_20260209", name: "web_search", max_uses: 15 });   // pas de user_location : l'API refuse le code pays « CI » (400) ; la zone visée est donnée dans la consigne
   }
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: brief }];
   let resume = "", tours = 0;

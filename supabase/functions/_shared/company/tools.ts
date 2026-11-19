@@ -170,8 +170,7 @@ export function toolsFor(a: AgentRow, departmentIds: string[]): Anthropic.Beta.B
   const out: Anthropic.Beta.BetaToolUnion[] = [];
   for (const n of [...new Set(allowedTools(a))]) {
     if (n === "recherche_web") {
-      out.push({ type: "web_search_20260209", name: "web_search", max_uses: 10,
-        user_location: { type: "approximate", country: "CI", city: "Abidjan", timezone: "Africa/Abidjan" } });
+      out.push({ type: "web_search_20260209", name: "web_search", max_uses: 10 });   // pas de user_location : l'API refuse le code pays « CI » (400) ; la zone visée est donnée dans la consigne
     } else if (schemas[n]) out.push(schemas[n]);
     else if (CRM_TOOL_NAMES.includes(n)) out.push(crmTool(n, false));
   }

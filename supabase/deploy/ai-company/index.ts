@@ -608,7 +608,9 @@ var require_levee = __commonJS({
       if (!G.document) return;
       const LSK = "levee_config";
       const ui = { tab: "synthese", route: "angel" };
-      let ov = null, mes = null, mod = null, modBrut = null;
+      let ov = null, mes = null, mod = null, modBrut = null, pipelineP = null;
+      const syncEtat = { s: "attente", at: null, msg: "" };
+      let syncT = null;
       const root = () => document.getElementById("view-levee");
       const toast = (msg) => {
         try {
@@ -641,6 +643,49 @@ var require_levee = __commonJS({
         } catch (e) {
           toast("\u26A0\uFE0F Enregistrement local impossible");
         }
+        planifierSync();
+      }
+      function instantane() {
+        const sc = scores(evaluer(mes, ov.seuils, ov.manuel));
+        return { maj: (/* @__PURE__ */ new Date()).toISOString(), pipelinePondere: pipelineP, modele: modBrut, scores: ROUTES.map((r, i) => ({ type: r.id, score: sc[i].score, verdict: sc[i].verdict })) };
+      }
+      function majStatutSync() {
+        const el = document.getElementById("lev-sync");
+        if (!el) return;
+        el.innerHTML = syncEtat.s === "ok" ? "\u{1F916} Partag\xE9 avec l'agent lev\xE9e de fonds \xE0 " + esc2(syncEtat.at.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })) : syncEtat.s === "erreur" ? "\u26A0\uFE0F Non partag\xE9 avec l'agent : " + esc2(syncEtat.msg) : "\u{1F916} Partage avec l'agent en attente\u2026";
+      }
+      async function pousser() {
+        if (typeof window.aisApi !== "function" || !mes) return;
+        try {
+          await window.aisApi("/rest/v1/rpc/levee_enregistrer", { method: "POST", body: JSON.stringify({ p_config: ov, p_instantane: instantane() }) });
+          syncEtat.s = "ok";
+          syncEtat.at = /* @__PURE__ */ new Date();
+        } catch (e) {
+          syncEtat.s = "erreur";
+          syncEtat.msg = /session|Connectez/i.test(e.message) ? "connectez l'agent IA (Pilotage \u2192 Directeur IA) pour le partager" : e.message;
+        }
+        majStatutSync();
+      }
+      function planifierSync() {
+        clearTimeout(syncT);
+        syncT = setTimeout(pousser, 1500);
+      }
+      async function tirer() {
+        if (typeof window.aisApi !== "function") return false;
+        const vide = !Object.keys(ov.manuel).length && !Object.keys(ov.seuils).length && !Object.keys(ov.sim).length && !Object.keys(ov.what).length && !Object.keys(ov.deck).length;
+        if (!vide) return false;
+        try {
+          const r = await window.aisApi("/rest/v1/levee_etat?select=config&id=eq.1"), c = r && r[0] && r[0].config;
+          if (!c || typeof c !== "object" || !Object.keys(c).length) return false;
+          ov = Object.assign({ manuel: {}, seuils: {}, sim: {}, what: {}, deck: {} }, c);
+          try {
+            localStorage.setItem("sanix_crm_" + LSK, JSON.stringify(ov));
+          } catch (e) {
+          }
+          return true;
+        } catch (e) {
+          return false;
+        }
       }
       function recompute() {
         const g = (f) => {
@@ -653,6 +698,7 @@ var require_levee = __commonJS({
         const fin = G.SanixFinancement && G.SanixFinancement.snapshot && g(() => G.SanixFinancement.snapshot());
         const P2 = G.SanixPilotage && G.SanixPilotage.calc;
         let pond = null;
+        pipelineP = null;
         if (P2) {
           const k = /* @__PURE__ */ new Date();
           const key = k.getFullYear() + "-" + String(k.getMonth() + 1).padStart(2, "0");
@@ -662,6 +708,7 @@ var require_levee = __commonJS({
             Object.keys(p).forEach((x) => {
               pond += p[x].pondere;
             });
+            pipelineP = pond;
           }
         }
         modBrut = null;
@@ -874,7 +921,9 @@ var require_levee = __commonJS({
         const corps = ui.tab === "indic" ? tabIndic() : ui.tab === "elig" ? tabElig() : ui.tab === "simul" ? tabSimul() : ui.tab === "plan" ? tabPlan() : ui.tab === "deck" ? tabDeck() : ui.tab === "notes" ? tabNotes() : tabSynthese();
         el.innerHTML = `<div class="ban"><div class="ban-deco"></div><h1 class="page-title">\u{1F680} Lev\xE9e de fonds</h1><p class="page-sub">Votre niveau de pr\xE9paration, votre \xE9ligibilit\xE9 par type de financeur et la simulation pour y arriver \u2014 d\xE9part : vos chiffres r\xE9els du CRM</p></div>
       <div class="tabs" role="tablist" style="margin-bottom:16px">${tabs.map((t) => `<div class="tab ${ui.tab === t[0] ? "active" : ""}" role="tab" tabindex="0" aria-selected="${ui.tab === t[0]}" data-tab="${t[0]}">${t[1]}</div>`).join("")}</div>${corps}
+      <div id="lev-sync" class="muted" style="font-size:12px;margin-top:12px"></div>
       <div style="margin-top:12px"><button class="btn btn-sm" data-act="fiche">\u{1F5A8}\uFE0F Fiche d'\xE9ligibilit\xE9 (PDF)</button> <button class="btn btn-sm" data-act="vers-financement">\u{1F3E6} Ouvrir le mod\xE8le Financement</button></div>`;
+        majStatutSync();
       }
       function bind() {
         const el = root();
@@ -977,6 +1026,14 @@ var require_levee = __commonJS({
         recompute();
         bind();
         render();
+        majStatutSync();
+        tirer().then((ch) => {
+          if (ch) {
+            recompute();
+            render();
+          }
+          planifierSync();
+        });
       };
       G.SanixLevee.refresh = function() {
         const r = root();
@@ -2833,12 +2890,7 @@ function toolsFor(a, departmentIds) {
   const out = [];
   for (const n2 of [...new Set(allowedTools(a))]) {
     if (n2 === "recherche_web") {
-      out.push({
-        type: "web_search_20260209",
-        name: "web_search",
-        max_uses: 10,
-        user_location: { type: "approximate", country: "CI", city: "Abidjan", timezone: "Africa/Abidjan" }
-      });
+      out.push({ type: "web_search_20260209", name: "web_search", max_uses: 10 });
     } else if (schemas[n2]) out.push(schemas[n2]);
     else if (CRM_TOOL_NAMES.includes(n2)) out.push(crmTool(n2, false));
   }
