@@ -8598,7 +8598,7 @@ function msgTout(oui){ if(oui) _msg.desel.clear(); else (_msg.cible?_msg.cible.r
 function msgCibleAffiche(r){ return _msg.canal==='wa' ? (waAnalyse(r.c.phone).affiche||r.cible) : r.cible; }
 
 // ── Message personnalisé ──
-function msgRempli(c){ return {objet:fcFill(_msgG('msg-objet'),c).trim(), corps:fcFill(_msgG('msg-text'),c).trim()}; }
+function msgRempli(c){ return {objet:fcFill(_msgG('msg-objet'),c).trim(), corps:landingAjoute(fcFill(_msgG('msg-text'),c).trim(), _msg.canal==='email'?'email':'wa', c)}; }   // la landing page est jointe ici aussi (Messagerie, envoi en lot)
 function msgModeleWa(){ const id=_msgG('msg-wa-modele'); return waModeles().find(m=>m.id===id)||null; }
 function msgPret(sel){
   const SM=SanixMessagerie, email=_msg.canal==='email';
