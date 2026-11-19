@@ -109,6 +109,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
       ];
       window.__finCalls = []; window.__brf = [{ id: "b1", financeur_id: "f1", canal: "email", destinataire: "contact@alpha.example", objet: "Présentation SANIX", corps: "Bonjour,\n\nNous cherchons [À COMPLÉTER : montant] pour [À COMPLÉTER : usage].\n\nCordialement", langue: "fr", statut: "brouillon", note: "Adresse publiée sur son site", created_at: "2026-11-19T12:00:00Z" }]; window.__contacts = [{ id: "c1", financeur_id: "f1", nom: "Awa Koné", fonction: "Directrice des investissements", linkedin_url: "https://www.linkedin.com/in/awa-kone", email: null, source_url: "https://alpha.example/equipe" }];
       window.aisApi = async (p, o) => {
+        if (p.includes("crm-gmail")) { window.__finCalls.push({ m: "POST", p, b: o && o.body, gm: 1 }); return { ok: true }; }
         if (p.includes("levee_brouillons")) { const m3 = (o && o.method) || "GET"; window.__finCalls.push({ m: m3, p, b: o && o.body, br: 1 }); if (m3 === "GET") return window.__brf.slice(); if (m3 === "PATCH") { Object.assign(window.__brf[0], JSON.parse(o.body)); } return null; }
         if (p.includes("levee_contacts")) { const m2 = (o && o.method) || "GET"; window.__finCalls.push({ m: m2, p, b: o && o.body, c: 1 }); if (m2 === "GET") return window.__contacts.slice(); if (m2 === "DELETE") { window.__contacts = window.__contacts.filter((x) => x.id !== (p.match(/id=eq\\.([^&]+)/) || [])[1]); return null; } window.__contacts.push(Object.assign({ id: "c" + (window.__contacts.length + 1) }, JSON.parse(o.body))); return null; }
         if (!p.includes("levee_financeurs")) return p.includes("levee_etat?") ? [] : "2026-11-19T10:00:00Z";
@@ -147,6 +148,21 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.locator('#lev-fin-msg [data-brf="statut"]').selectOption("valide");
     await page.locator('[data-act="fin-msg-save"]').click(); await page.waitForTimeout(300);
     ok(await page.evaluate(() => window.__finCalls.some((c) => c.br && c.m === "PATCH" && JSON.parse(c.b).objet === "Présentation SANIX Africa (v2)" && JSON.parse(c.b).statut === "valide")), "modifications du message enregistrées (PATCH)");
+    const nbGm = () => page.evaluate(() => window.__finCalls.filter((c) => c.gm).length);
+    ok((await page.locator('[data-act="fin-msg-envoyer"]').count()) === 1, "bouton « Envoyer maintenant » présent pour un e-mail");
+    await page.evaluate(() => { window.confirm = () => true; });
+    await page.locator('[data-act="fin-msg-envoyer"]').click(); await page.waitForTimeout(200);
+    ok((await nbGm()) === 0, "envoi bloqué tant qu'il reste un passage [À COMPLÉTER]");
+    await page.locator('#lev-fin-msg [data-brf="corps"]').fill("Bonjour,\n\nNous cherchons 55 M FCFA pour recruter.\n\nCordialement");
+    await page.evaluate(() => { window.confirm = () => false; });
+    await page.locator('[data-act="fin-msg-envoyer"]').click(); await page.waitForTimeout(200);
+    ok((await nbGm()) === 0, "aucun envoi sans confirmation");
+    await page.evaluate(() => { window.confirm = () => true; });
+    await page.locator('[data-act="fin-msg-envoyer"]').click(); await page.waitForTimeout(300);
+    const envMsg = await page.evaluate(() => { const c = window.__finCalls.filter((x) => x.gm); return { n: c.length, b: c[0] && JSON.parse(c[0].b), p: window.__finCalls.some((x) => x.br && x.m === "PATCH" && JSON.parse(x.b).statut === "envoye") }; });
+    ok(envMsg.n === 1 && envMsg.b.action === "send" && envMsg.b.to === "contact@alpha.example" && envMsg.b.body.includes("55 M FCFA"), "un seul envoi Gmail, au bon destinataire, avec le texte validé");
+    ok(envMsg.p, "statut du message passé à « envoyé »");
+    ok((await page.locator('[data-act="fin-msg-envoyer"]').count()) === 0, "plus de bouton d'envoi une fois envoyé (pas de double envoi)");
     await page.locator('[data-act="fin-msg-fermer"]').click(); await page.waitForTimeout(150);
     ok((await page.locator("#lev-fin-msg").count()) === 0, "fermeture de la carte");
     await page.locator('[data-finf="region"]').selectOption("europe"); await page.waitForTimeout(200);
@@ -167,7 +183,7 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     await page.locator('#lev-fin-form [name="nom"]').fill("Programme Beta"); await page.locator('#lev-fin-form [name="url_source"]').fill("http://pas-https.example");
     await page.locator('#lev-fin-form button[type="submit"]').click(); await page.waitForTimeout(200);
     ok((await page.locator("#lev-fin-err").innerText()).includes("https"), "lien non https refusé avant tout envoi");
-    ok(!(await page.evaluate(() => window.__finCalls.some((c) => c.m === "POST"))), "aucun envoi tant que la source est invalide");
+    ok(!(await page.evaluate(() => window.__finCalls.some((c) => c.m === "POST" && !c.gm))), "aucun envoi tant que la source est invalide");
     await page.locator('#lev-fin-form [name="url_source"]').fill("https://beta.example/appel"); await page.locator('#lev-fin-form [name="ticket_max"]').fill("30000000");
     await page.locator('#lev-fin-form [name="cn_nom"]').fill("Jean Test"); await page.locator('#lev-fin-form button[type="submit"]').click(); await page.waitForTimeout(200);
     ok((await page.locator("#lev-fin-err").innerText()).includes("source publique"), "une personne sans source publique est refusée");

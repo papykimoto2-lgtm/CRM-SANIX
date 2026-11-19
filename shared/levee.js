@@ -653,7 +653,7 @@
       <label class="form-label" style="font-size:12px">Objet<input class="form-input" data-brf="objet" value="${esc(dm.objet)}"></label>
       <label class="form-label" style="font-size:12px">Message<textarea class="form-input" data-brf="corps" rows="16" style="font-family:inherit">${esc(dm.corps)}</textarea></label>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px"><label class="form-label" style="font-size:12px;margin:0">Statut <select class="form-input" data-brf="statut" style="display:inline-block;width:auto">${[['brouillon', 'Brouillon'], ['valide', 'Validé par moi'], ['envoye', 'Envoyé'], ['abandonne', 'Abandonné']].map((x) => `<option value="${x[0]}" ${dm.statut === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></label>
-        <button class="btn btn-primary btn-sm" data-act="fin-msg-save">💾 Enregistrer</button> <button class="btn btn-sm" data-act="fin-msg-copier">📋 Copier</button>${dm.canal === 'email' && dm.destinataire ? ' <button class="btn btn-sm" data-act="fin-msg-mailto">✉ Ouvrir dans ma messagerie</button>' : ''}</div></div>` : '';
+        <button class="btn btn-primary btn-sm" data-act="fin-msg-save">💾 Enregistrer</button> <button class="btn btn-sm" data-act="fin-msg-copier">📋 Copier</button>${dm.destinataire && emailOk(dm.destinataire) ? (dm.statut === 'envoye' ? ' <span class="muted" style="font-size:12px">✅ Déjà envoyé</span>' : ' <button class="btn btn-sm btn-primary" data-act="fin-msg-envoyer" title="Envoi par le Gmail de l\'entreprise, après votre confirmation">📤 Envoyer maintenant</button>') + ' <button class="btn btn-sm" data-act="fin-msg-mailto">✉ Ouvrir dans ma messagerie</button>' : ''}</div></div>` : '';
     const sections = Object.keys(FIN_REGIONS).filter((k) => groupes[k]).map((k) => `<details data-reg="${k}" ${finUi.ouvertes[k] || fl.region || q ? 'open' : ''} style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;font-size:14px;padding:6px 0">${esc(FIN_REGIONS[k])} · ${groupes[k].length}</summary>
       <div style="overflow:auto"><table class="table" style="width:100%;font-size:13px"><thead><tr><th>Financeur</th><th>Type</th><th>Montants</th><th>Conditions</th><th>Contacts et personnes</th><th>Statut</th><th></th></tr></thead><tbody>${groupes[k].map(lignes).join('')}</tbody></table></div></details>`).join('');
     return `<div class="alert alert-info">ℹ️ <div>Annuaire mondial des financeurs, par région. Chaque ligne porte le lien de sa source (🤖 : ajouté par un agent). Les contacts et personnes ne sont que des <b>informations professionnelles publiées</b> ; aucune adresse n'est devinée. <b>Vérifiez les conditions et les contacts sur la source</b> avant tout envoi : une page peut être périmée.</div></div>
@@ -677,6 +677,23 @@
     if (v.objet.length < 2 || v.corps.length < 20) return toast('⚠️ Objet ou message trop court');
     try { await api('/rest/v1/levee_brouillons?id=eq.' + encodeURIComponent(d.id), { method: 'PATCH', body: JSON.stringify({ objet: v.objet, corps: v.corps, statut: v.statut, updated_at: new Date().toISOString() }) }); Object.assign(d, v); toast('✅ Message enregistré'); render(); }
     catch (e) { toast('⚠️ ' + e.message); }
+  }
+  /** Envoi réel par le Gmail connecté du CRM (fonction crm-gmail). Jamais automatique : aperçu + confirmation obligatoires, bloqué tant qu'il reste un passage à compléter. */
+  async function envoyerMsg() {
+    const d = msgCourant(); if (!d) return; const v = lireMsg();
+    if (!d.destinataire || !emailOk(d.destinataire)) return toast('⚠️ Aucune adresse e-mail pour ce financeur');
+    if (d.statut === 'envoye') return toast('Ce message est déjà marqué comme envoyé');
+    if (v.objet.length < 2 || v.corps.length < 20) return toast('⚠️ Objet ou message trop court');
+    if (/\[(À COMPLÉTER|TO COMPLETE)[^\]]*\]/i.test(v.objet + '\n' + v.corps)) return toast('⚠️ Complétez d\'abord les passages [TO COMPLETE : …] avant d\'envoyer');
+    if (!window.confirm('Envoyer maintenant ce message à ' + d.destinataire + ' ?\n\nObjet : ' + v.objet + '\n\nIl partira du Gmail de l\'entreprise et ne pourra pas être rappelé.')) return;
+    const g = (typeof window.courrierSignataire === 'function') ? window.courrierSignataire() : {}, nom = (g.nom || 'SANIX Africa') + (g.societe ? ' — ' + g.societe : '');
+    try {
+      await api('/functions/v1/crm-gmail', { method: 'POST', body: JSON.stringify({ action: 'send', client_rid: null, to: d.destinataire, subject: v.objet, body: v.corps, from_name: nom, relance_jours: 7 }), timeout: 45000 });
+    } catch (e) { return toast('❌ Envoi impossible : ' + e.message); }
+    const note = ((d.note || '') + ' | Envoyé le ' + new Date().toLocaleString('fr-FR') + ' à ' + d.destinataire).slice(-1000);
+    try { await api('/rest/v1/levee_brouillons?id=eq.' + encodeURIComponent(d.id), { method: 'PATCH', body: JSON.stringify({ objet: v.objet, corps: v.corps, statut: 'envoye', note, updated_at: new Date().toISOString() }) }); Object.assign(d, { objet: v.objet, corps: v.corps, statut: 'envoye', note }); }
+    catch (e) { toast('✅ E-mail envoyé, mais le statut n\'a pas pu être mis à jour : ' + e.message); render(); return; }
+    toast('✅ E-mail envoyé à ' + d.destinataire); render();
   }
   async function copierMsg() {
     const v = lireMsg(), txt = v.objet + '\n\n' + v.corps;
@@ -772,6 +789,7 @@
       else if (a === 'fin-msg-fermer') { finUi.msg = null; render(); }
       else if (a === 'fin-msg-save') { sauverMsg(); }
       else if (a === 'fin-msg-copier') { copierMsg(); }
+      else if (a === 'fin-msg-envoyer') { envoyerMsg(); }
       else if (a === 'fin-msg-mailto') { const d = msgCourant(); if (!d) return; const u = 'mailto:' + encodeURIComponent(d.destinataire) + '?subject=' + encodeURIComponent(lireMsg().objet) + '&body=' + encodeURIComponent(lireMsg().corps); if (u.length > 1900) { toast('⚠️ Message trop long pour la messagerie : utilisez « Copier »'); return; } window.open(u, '_self'); }
       else if (a === 'fin-fortes') { finUi.filtre.pertinence = 'forte'; render(); }
       else if (a === 'fin-contact-suppr') { api('/rest/v1/levee_contacts?id=eq.' + encodeURIComponent(t.dataset.id), { method: 'DELETE' }).then(() => { Object.keys(finUi.contacts).forEach((k) => { finUi.contacts[k] = finUi.contacts[k].filter((c) => c.id !== t.dataset.id); }); render(); toast('🗑️ Personne retirée'); }).catch((x) => toast('⚠️ ' + x.message)); }
