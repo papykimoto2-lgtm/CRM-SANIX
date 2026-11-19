@@ -103,26 +103,38 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     console.log("▶ Annuaire des financeurs");
     await page.evaluate(() => {
       window.__fin = [
-        { id: "f1", nom: "Fonds Alpha", type: "fonds", pays: "Côte d'Ivoire", ticket_min: 20000000, ticket_max: 100000000, devise: "FCFA", conditions: "Sociétés immatriculées de moins de 5 ans", url_source: "https://alpha.example/programme", statut: "a_etudier", notes: "Correspond au profil", ajoute_par: "ag1", created_at: "2026-11-19T10:00:00Z" },
-        { id: "f2", nom: "<img src=x onerror=alert(1)> Banque", type: "banque", pays: "UEMOA", ticket_min: null, ticket_max: 50000000, devise: "FCFA", conditions: "Garanties", url_source: "javascript:alert(1)", statut: "ecarte", notes: null, ajoute_par: null, created_at: "2026-11-18T10:00:00Z" },
+        { id: "f1", nom: "Fonds Alpha", type: "fonds", pays: "Côte d'Ivoire", ticket_min: 20000000, ticket_max: 100000000, devise: "FCFA", conditions: "Sociétés immatriculées de moins de 5 ans", url_source: "https://alpha.example/programme", statut: "a_etudier", notes: "Correspond au profil", ajoute_par: "ag1", created_at: "2026-11-19T10:00:00Z", region: "afrique_ouest", site_web: "https://alpha.example", linkedin_url: "https://www.linkedin.com/company/alpha", contact_email: "contact@alpha.example", contact_telephone: "+225 00 00 00", pertinence: "forte : amorçage logiciel" },
+        { id: "f2", nom: "<img src=x onerror=alert(1)> Banque", type: "banque", pays: "UEMOA", ticket_min: null, ticket_max: 50000000, devise: "FCFA", conditions: "Garanties", url_source: "javascript:alert(1)", statut: "ecarte", notes: null, ajoute_par: null, created_at: "2026-11-18T10:00:00Z", region: "europe", site_web: "javascript:alert(2)", linkedin_url: null, contact_email: null },
       ];
-      window.__finCalls = [];
+      window.__finCalls = []; window.__contacts = [{ id: "c1", financeur_id: "f1", nom: "Awa Koné", fonction: "Directrice des investissements", linkedin_url: "https://www.linkedin.com/in/awa-kone", email: null, source_url: "https://alpha.example/equipe" }];
       window.aisApi = async (p, o) => {
+        if (p.includes("levee_contacts")) { const m2 = (o && o.method) || "GET"; window.__finCalls.push({ m: m2, p, b: o && o.body, c: 1 }); if (m2 === "GET") return window.__contacts.slice(); if (m2 === "DELETE") { window.__contacts = window.__contacts.filter((x) => x.id !== (p.match(/id=eq\\.([^&]+)/) || [])[1]); return null; } window.__contacts.push(Object.assign({ id: "c" + (window.__contacts.length + 1) }, JSON.parse(o.body))); return null; }
         if (!p.includes("levee_financeurs")) return p.includes("levee_etat?") ? [] : "2026-11-19T10:00:00Z";
         const m = (o && o.method) || "GET", id = (p.match(/id=eq\.([^&]+)/) || [])[1]; window.__finCalls.push({ m, p, b: o && o.body });
         if (m === "GET") return window.__fin.slice();
         if (m === "DELETE") { window.__fin = window.__fin.filter((x) => x.id !== id); return null; }
         if (m === "PATCH") { Object.assign(window.__fin.find((x) => x.id === id), JSON.parse(o.body)); return null; }
-        const row = Object.assign({ id: "f" + (window.__fin.length + 1), ajoute_par: null, created_at: "2026-11-19T11:00:00Z" }, JSON.parse(o.body)); window.__fin.unshift(row); return null;
+        const row = Object.assign({ id: "f" + (window.__fin.length + 1), ajoute_par: null, created_at: "2026-11-19T11:00:00Z" }, JSON.parse(o.body)); window.__fin.unshift(row); return o.headers && o.headers.Prefer ? [row] : null;
       };
     });
     await page.evaluate(() => navigate("levee", null)); await page.waitForTimeout(300);
     await page.locator('#lev-body .tab', { hasText: "Financeurs" }).click(); await page.waitForTimeout(500);
     ok((await page.locator("#lev-body table tbody tr").count()) === 2, "les 2 financeurs sont listés");
-    ok((await page.locator("#lev-body table").innerText()).includes("Fonds Alpha") && (await page.locator('a[href="https://alpha.example/programme"]').count()) === 1, "nom cliquable vers la source https");
+    ok((await page.locator("#lev-body").innerText()).includes("Fonds Alpha") && (await page.locator('a[href="https://alpha.example/programme"]').count()) === 1, "nom cliquable vers la source https");
     ok((await page.locator('#lev-body a[href^="javascript"]').count()) === 0, "un lien non https n'est jamais rendu cliquable");
     ok(!(await page.locator("#lev-body").innerHTML()).includes("<img src=x"), "nom hostile échappé");
     ok((await page.locator("#lev-body").innerText()).includes("🤖"), "l'ajout par l'agent est signalé");
+    ok((await page.locator('#lev-body details[data-reg="afrique_ouest"] > summary').innerText()).includes("Afrique de l'Ouest") && (await page.locator('#lev-body details[data-reg="europe"]').count()) === 1, "financeurs groupés par région");
+    ok((await page.locator('#lev-body a[href="https://alpha.example"]').count()) === 1 && (await page.locator('#lev-body a[href="mailto:contact@alpha.example"]').count()) === 1, "site web et e-mail publiés affichés");
+    ok((await page.locator('#lev-body a[href="https://www.linkedin.com/in/awa-kone"]').count()) === 1 && (await page.locator("#lev-body").innerText()).includes("Directrice des investissements"), "personne ressource avec fonction et profil LinkedIn");
+    ok((await page.locator('#lev-body a[href^="javascript"]').count()) === 0, "un site non https n'est jamais cliquable");
+    ok((await page.locator("#lev-body").innerText()).includes("👤 1 personnes"), "compteur de personnes");
+    await page.locator('[data-finf="region"]').selectOption("europe"); await page.waitForTimeout(200);
+    ok((await page.locator("#lev-body table tbody tr").count()) === 1, "filtre par région");
+    await page.locator('[data-finf="region"]').selectOption(""); await page.waitForTimeout(150);
+    const [dl] = await Promise.all([page.waitForEvent("download"), page.locator('[data-act="fin-export"]').click()]);
+    const csv = require("fs").readFileSync(await dl.path(), "utf8");
+    ok(csv.includes("Fonds Alpha") && csv.includes("Awa Koné") && csv.includes("linkedin.com/in/awa-kone"), "export CSV avec les personnes et leur LinkedIn");
     await page.locator('[data-finf="type"]').selectOption("banque"); await page.waitForTimeout(200);
     ok((await page.locator("#lev-body table tbody tr").count()) === 1, "filtre par type");
     await page.locator('[data-finf="type"]').selectOption(""); await page.waitForTimeout(100);
@@ -137,8 +149,15 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok((await page.locator("#lev-fin-err").innerText()).includes("https"), "lien non https refusé avant tout envoi");
     ok(!(await page.evaluate(() => window.__finCalls.some((c) => c.m === "POST"))), "aucun envoi tant que la source est invalide");
     await page.locator('#lev-fin-form [name="url_source"]').fill("https://beta.example/appel"); await page.locator('#lev-fin-form [name="ticket_max"]').fill("30000000");
+    await page.locator('#lev-fin-form [name="cn_nom"]').fill("Jean Test"); await page.locator('#lev-fin-form button[type="submit"]').click(); await page.waitForTimeout(200);
+    ok((await page.locator("#lev-fin-err").innerText()).includes("source publique"), "une personne sans source publique est refusée");
+    await page.locator('#lev-fin-form [name="cn_source"]').fill("https://beta.example/equipe"); await page.locator('#lev-fin-form [name="cn_linkedin"]').fill("https://exemple.com/pas-linkedin");
+    await page.locator('#lev-fin-form button[type="submit"]').click(); await page.waitForTimeout(200);
+    ok((await page.locator("#lev-fin-err").innerText()).includes("LinkedIn"), "un lien LinkedIn invalide est refusé");
+    await page.locator('#lev-fin-form [name="cn_linkedin"]').fill("https://www.linkedin.com/in/jean-test");
     await page.locator('#lev-fin-form button[type="submit"]').click(); await page.waitForTimeout(500);
     ok(await page.evaluate(() => window.__finCalls.some((c) => c.m === "POST" && JSON.parse(c.b).nom === "Programme Beta" && JSON.parse(c.b).ticket_max === 30000000)), "ajout à la main enregistré (POST)");
+    ok(await page.evaluate(() => window.__finCalls.some((c) => c.c && c.m === "POST" && JSON.parse(c.b).nom === "Jean Test" && JSON.parse(c.b).linkedin_url.includes("linkedin.com/in/jean-test"))), "la personne ressource est enregistrée avec sa source");
     ok((await page.locator("#lev-body table tbody tr").count()) === 3, "le nouveau financeur apparaît dans la liste");
     await page.locator('[data-act="fin-suppr"][data-id="f2"]').click(); await page.waitForTimeout(400);
     ok((await page.locator("#lev-body table tbody tr").count()) === 2 && await page.evaluate(() => window.__finCalls.some((c) => c.m === "DELETE")), "suppression confirmée et enregistrée (DELETE)");
