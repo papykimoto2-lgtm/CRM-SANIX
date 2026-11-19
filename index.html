@@ -2621,6 +2621,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
             <div class="form-group" style="flex:1;min-width:180px"><label class="form-label">WhatsApp / Tél. 1</label><input class="form-input" id="rel-cfg-tel1" placeholder="+225 07 79 18 10 75"></div>
             <div class="form-group" style="flex:1;min-width:180px"><label class="form-label">Tél. 2</label><input class="form-input" id="rel-cfg-tel2"></div>
             <div class="form-group" style="flex:1;min-width:180px"><label class="form-label">Email</label><input class="form-input" id="rel-cfg-email"></div>
+            <div class="form-group" style="flex:2;min-width:260px"><label class="form-label">🌐 Landing page jointe à chaque message</label><input class="form-input" id="rel-cfg-landing" placeholder="https://votre-landing.vercel.app" inputmode="url"><div style="font-size:11px;color:var(--muted);margin-top:3px">Le lien est ajouté automatiquement à chaque message prospect (WhatsApp, SMS, e-mail), avec le canal et le logiciel pour suivre les visites. Laissez vide pour ne rien ajouter.</div></div>
           </div>
         </div>
 
@@ -5581,8 +5582,8 @@ function fcAddPortail(body, canal){
 function fcGet(c, canal){
   const t = fcCfg()[fcSegment(c)];
   return canal==='email'
-    ? {subject: fcFill(t.emailSubject,c), body: fcAddPortail(fcFill(t.email,c),'email')}
-    : {subject: '', body: fcAddPortail(fcFill(t.wa,c),'wa')};
+    ? {subject: fcFill(t.emailSubject,c), body: landingAjoute(fcAddPortail(fcFill(t.email,c),'email'),'email',c)}
+    : {subject: '', body: landingAjoute(fcAddPortail(fcFill(t.wa,c),'wa'),'wa',c)};
 }
 
 
@@ -5616,7 +5617,7 @@ function courrierExemples(c){
   const reco = (typeof gmailAttente==='function' && gmailAttente(c)) ? 'relance' : et===0 ? 'premier' : (d!==null && d>=7) ? 'relance' : et===1 ? 'appel' : et===2 ? 'apres_demo' : 'proposition';
   const out = COURRIER_MODELES.map(m=>{
     if(m.fc){ const g=fcGet(c,'email'); return {id:m.id,titre:m.titre,quand:m.quand,objet:g.subject,corps:g.body,conseille:m.id===reco}; }
-    return {id:m.id,titre:m.titre,quand:m.quand,objet:fcFill(m.objet,c),corps:fcFill(m.corps,c),conseille:m.id===reco};
+    return {id:m.id,titre:m.titre,quand:m.quand,objet:fcFill(m.objet,c),corps:landingAjoute(fcFill(m.corps,c),'email',c),conseille:m.id===reco};
   });
   return out.sort((a,b)=>(b.conseille?1:0)-(a.conseille?1:0));
 }
@@ -8721,7 +8722,7 @@ async function msgEnvoiGmail(items){
     const x=items[i];
     box.innerHTML='<div class="msg-note">📤 Envoi en cours : '+(i+1)+' / '+l.partent+' — '+_msgEsc(x.c.nom)+' <button class="btn btn-outline btn-sm" style="font-size:11px;margin-left:8px" onclick="_msg.stop=true">⏹ Arrêter</button></div>';
     try{
-      await aisApi(_GM_FONC,{method:'POST',body:JSON.stringify({action:'send',client_rid:x.c._rid||null,to:x.cible,subject:x.objet,body:x.corps,from_name:g.nom+(g.societe?' — '+g.societe:''),relance_jours:4}),timeout:45000});
+      await aisApi(_GM_FONC,{method:'POST',body:JSON.stringify({action:'send',client_rid:x.c._rid||null,to:x.cible,subject:x.objet,body:landingAjoute(x.corps,'email',x.c),from_name:g.nom+(g.societe?' — '+g.societe:''),relance_jours:4}),timeout:45000});
       ok++; suite=0; msgTrace(x.c,'email','gmail','envoye',x.objet);
     }catch(e){
       ko++; suite++; msgTrace(x.c,'email','gmail','echec',x.objet,e.message);
@@ -12798,7 +12799,7 @@ const RELANCE_DEFAULT = {
   tel1:'+225 07 79 18 10 75',
   tel2:'+225 01 40 07 55 51',
   email:'sanixafrica699@gmail.com',
-  waPhoneId:'', waToken:'', smsUrl:'', smsKey:'',
+  waPhoneId:'', waToken:'', smsUrl:'', smsKey:'', landingUrl:'',
   templates:[
     // 0 — premier contact
     'Bonjour {nom},\n\nJe suis {gerant}, gérant de {societe}. Nous éditons {logiciel}, une solution de gestion pensée pour les entreprises ivoiriennes (SYSCOHADA, hors-ligne, sans abonnement lourd).\n\nSeriez-vous disponible pour une courte démonstration {rdv} ?\n\nCordialement,\n{gerant} — {societe}\n📞 {tel} · 📧 {email}',
@@ -12851,7 +12852,28 @@ function relanceBuildPitch(c){
        + (best.prixNum?` À partir de ${prix} FCFA.`:'');
 }
 
-function relanceBuildMsg(c, etape, canal){
+
+// ── Landing page jointe à chaque message prospect (WhatsApp, SMS, e-mail) ──
+/** Adresse https de la landing page hébergée (réglage « Séquences de relance »), ou '' si non renseignée. */
+function landingUrl(){ const u=String((relanceCfg()||{}).landingUrl||'').trim(); return /^https:\/\/[^\s<>"']+$/i.test(u)?u:''; }
+/** Lien suivi : la landing page + canal d'origine + logiciel concerné (pour savoir d'où viennent les visites). */
+function landingLien(canal,c){
+  const u=landingUrl(); if(!u) return '';
+  const ref=String((c&&c.logiciel)||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  return u+(u.includes('?')?'&':'?')+'src='+(canal==='email'?'email':'whatsapp')+(ref?'&ref='+ref:'');
+}
+/** Ajoute le lien de la landing page à un message, une seule fois (sans effet si aucune adresse n'est réglée ou si elle y est déjà). */
+function landingAjoute(texte,canal,c){
+  const t=String(texte==null?'':texte), u=landingUrl(); if(!u||!t.trim()||t.includes(u)) return t;
+  const lien=landingLien(canal,c);
+  if(canal==='email'){
+    const l='Pour en savoir plus : '+lien, m=t.search(/\n\n(?:Bien cordialement|Cordialement|Bien à vous|Très cordialement)/i);
+    return m>0 ? t.slice(0,m)+'\n\n'+l+t.slice(m) : t.replace(/\s+$/,'')+'\n\n'+l;
+  }
+  return t.replace(/\s+$/,'')+'\n\n🌐 En savoir plus : '+lien;
+}
+function relanceBuildMsg(c, etape, canal){ return landingAjoute(relanceBuildMsgBrut(c, etape, canal), canal==='email'?'email':'wa', c); }
+function relanceBuildMsgBrut(c, etape, canal){
   if(etape===0) return fcGet(c, canal==='email'?'email':'wa').body;   // premier contact : modèles WhatsApp / e-mail dédiés
   const r = relanceCfg();
   const log = LOGICIELS.find(l=>l.nom===c.logiciel);
@@ -13037,7 +13059,7 @@ function initRelanceConfig(){
   const r = relanceCfg(); try{ gmailReglageRender(); }catch(e){} try{ waReglageRender(); }catch(e){}
   const g=id=>document.getElementById(id);
   g('rel-cfg-gerant').value=r.gerant; g('rel-cfg-societe').value=r.societe; g('rel-cfg-ville').value=r.ville;
-  g('rel-cfg-tel1').value=r.tel1; g('rel-cfg-tel2').value=r.tel2; g('rel-cfg-email').value=r.email;
+  g('rel-cfg-tel1').value=r.tel1; g('rel-cfg-tel2').value=r.tel2; g('rel-cfg-email').value=r.email; g('rel-cfg-landing').value=r.landingUrl||'';
   g('rel-cfg-waid').value=r.waPhoneId; g('rel-cfg-watoken').value=r.waToken;
   g('rel-cfg-smsurl').value=r.smsUrl; g('rel-cfg-smskey').value=r.smsKey;
   g('rel-cfg-firstcontact').innerHTML = Object.entries(fcCfg()).map(([k,t])=>`
@@ -13074,10 +13096,11 @@ function relanceSaveConfig(){
   CONFIG.relance={
     gerant:g('rel-cfg-gerant'),societe:g('rel-cfg-societe'),ville:g('rel-cfg-ville'),
     tel1:g('rel-cfg-tel1'),tel2:g('rel-cfg-tel2'),email:g('rel-cfg-email'),
-    waPhoneId:g('rel-cfg-waid'),waToken:g('rel-cfg-watoken'),smsUrl:g('rel-cfg-smsurl'),smsKey:g('rel-cfg-smskey'),
+    waPhoneId:g('rel-cfg-waid'),waToken:g('rel-cfg-watoken'),smsUrl:g('rel-cfg-smsurl'),smsKey:g('rel-cfg-smskey'),landingUrl:g('rel-cfg-landing').trim(),
     templates,
     premierContact:fcCollect()
   };
+  if(CONFIG.relance.landingUrl && !landingUrl()){ CONFIG.relance.landingUrl=''; showToast('⚠️ Adresse de la landing page refusée : elle doit commencer par https://','error'); }
   if(typeof persistConfig==='function') persistConfig();
   showToast('✅ Séquences de relance enregistrées');
 }
@@ -14092,7 +14115,7 @@ function mktGenLanding(preview){
   if(preview===true){ window.open(url,'_blank'); document.getElementById('mkt-lp-info').innerHTML=(o.avert||'👁 Aperçu ouvert dans un nouvel onglet.'); return; }
   const a=document.createElement('a'); a.href=url; a.download='landing-'+o.logNom.toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.html';
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000);
-  document.getElementById('mkt-lp-info').innerHTML=(o.avert?o.avert+'<br>':'')+'✅ Landing page téléchargée. Hébergez-la (Vercel/Netlify) et diffusez le lien : chaque visiteur est envoyé sur WhatsApp vers '+('+'+o.wa)+' avec la référence de la page.';
+  document.getElementById('mkt-lp-info').innerHTML=(o.avert?o.avert+'<br>':'')+'✅ Landing page téléchargée. Hébergez-la (Vercel/Netlify), puis collez son adresse dans Paramétrage → Séquences de relance → « Landing page jointe à chaque message » : le lien sera ajouté à chaque message prospect. Chaque visiteur est envoyé sur WhatsApp vers '+('+'+o.wa)+' avec la référence de la page.';
 }
 
 
