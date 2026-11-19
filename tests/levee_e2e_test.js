@@ -99,6 +99,50 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(envoi && envoi.p_config.manuel.equipe === true, "la case cochée est envoyée au serveur pour l'agent");
     ok(envoi.p_instantane.scores.length === 5 && envoi.p_instantane.modele && typeof envoi.p_instantane.modele.besoin === "number", "l'instantané contient les 5 scores et le modèle Financement");
     ok((await page.locator("#lev-sync").innerText()).includes("Partagé avec l'agent"), "confirmation « partagé avec l'agent » affichée");
+
+    console.log("▶ Annuaire des financeurs");
+    await page.evaluate(() => {
+      window.__fin = [
+        { id: "f1", nom: "Fonds Alpha", type: "fonds", pays: "Côte d'Ivoire", ticket_min: 20000000, ticket_max: 100000000, devise: "FCFA", conditions: "Sociétés immatriculées de moins de 5 ans", url_source: "https://alpha.example/programme", statut: "a_etudier", notes: "Correspond au profil", ajoute_par: "ag1", created_at: "2026-11-19T10:00:00Z" },
+        { id: "f2", nom: "<img src=x onerror=alert(1)> Banque", type: "banque", pays: "UEMOA", ticket_min: null, ticket_max: 50000000, devise: "FCFA", conditions: "Garanties", url_source: "javascript:alert(1)", statut: "ecarte", notes: null, ajoute_par: null, created_at: "2026-11-18T10:00:00Z" },
+      ];
+      window.__finCalls = [];
+      window.aisApi = async (p, o) => {
+        if (!p.includes("levee_financeurs")) return p.includes("levee_etat?") ? [] : "2026-11-19T10:00:00Z";
+        const m = (o && o.method) || "GET", id = (p.match(/id=eq\.([^&]+)/) || [])[1]; window.__finCalls.push({ m, p, b: o && o.body });
+        if (m === "GET") return window.__fin.slice();
+        if (m === "DELETE") { window.__fin = window.__fin.filter((x) => x.id !== id); return null; }
+        if (m === "PATCH") { Object.assign(window.__fin.find((x) => x.id === id), JSON.parse(o.body)); return null; }
+        const row = Object.assign({ id: "f" + (window.__fin.length + 1), ajoute_par: null, created_at: "2026-11-19T11:00:00Z" }, JSON.parse(o.body)); window.__fin.unshift(row); return null;
+      };
+    });
+    await page.evaluate(() => navigate("levee", null)); await page.waitForTimeout(300);
+    await page.locator('#lev-body .tab', { hasText: "Financeurs" }).click(); await page.waitForTimeout(500);
+    ok((await page.locator("#lev-body table tbody tr").count()) === 2, "les 2 financeurs sont listés");
+    ok((await page.locator("#lev-body table").innerText()).includes("Fonds Alpha") && (await page.locator('a[href="https://alpha.example/programme"]').count()) === 1, "nom cliquable vers la source https");
+    ok((await page.locator('#lev-body a[href^="javascript"]').count()) === 0, "un lien non https n'est jamais rendu cliquable");
+    ok(!(await page.locator("#lev-body").innerHTML()).includes("<img src=x"), "nom hostile échappé");
+    ok((await page.locator("#lev-body").innerText()).includes("🤖"), "l'ajout par l'agent est signalé");
+    await page.locator('[data-finf="type"]').selectOption("banque"); await page.waitForTimeout(200);
+    ok((await page.locator("#lev-body table tbody tr").count()) === 1, "filtre par type");
+    await page.locator('[data-finf="type"]').selectOption(""); await page.waitForTimeout(100);
+    const qf = page.locator('[data-finf="q"]'); await qf.focus(); await qf.fill("alpha"); await page.waitForTimeout(250);
+    ok((await page.locator("#lev-body table tbody tr").count()) === 1 && await page.evaluate(() => document.activeElement && document.activeElement.dataset.finf === "q"), "recherche texte, le champ garde le focus");
+    await qf.fill(""); await page.waitForTimeout(150);
+    await page.locator('[data-fin-statut="f1"]').selectOption("contacte"); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => window.__finCalls.some((c) => c.m === "PATCH" && c.p.includes("id=eq.f1") && JSON.parse(c.b).statut === "contacte")), "changement de statut enregistré (PATCH)");
+    await page.locator('[data-act="fin-nouveau"]').click(); await page.waitForTimeout(200);
+    await page.locator('#lev-fin-form [name="nom"]').fill("Programme Beta"); await page.locator('#lev-fin-form [name="url_source"]').fill("http://pas-https.example");
+    await page.locator('#lev-fin-form button[type="submit"]').click(); await page.waitForTimeout(200);
+    ok((await page.locator("#lev-fin-err").innerText()).includes("https"), "lien non https refusé avant tout envoi");
+    ok(!(await page.evaluate(() => window.__finCalls.some((c) => c.m === "POST"))), "aucun envoi tant que la source est invalide");
+    await page.locator('#lev-fin-form [name="url_source"]').fill("https://beta.example/appel"); await page.locator('#lev-fin-form [name="ticket_max"]').fill("30000000");
+    await page.locator('#lev-fin-form button[type="submit"]').click(); await page.waitForTimeout(500);
+    ok(await page.evaluate(() => window.__finCalls.some((c) => c.m === "POST" && JSON.parse(c.b).nom === "Programme Beta" && JSON.parse(c.b).ticket_max === 30000000)), "ajout à la main enregistré (POST)");
+    ok((await page.locator("#lev-body table tbody tr").count()) === 3, "le nouveau financeur apparaît dans la liste");
+    await page.locator('[data-act="fin-suppr"][data-id="f2"]').click(); await page.waitForTimeout(400);
+    ok((await page.locator("#lev-body table tbody tr").count()) === 2 && await page.evaluate(() => window.__finCalls.some((c) => c.m === "DELETE")), "suppression confirmée et enregistrée (DELETE)");
+
     console.log("▶ Persistance et sécurité");
     await page.evaluate(() => navigate("comptabilite", null)); await page.waitForTimeout(300);
     await page.evaluate(() => navigate("levee", null)); await page.waitForTimeout(500);
