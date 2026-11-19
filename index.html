@@ -2766,6 +2766,9 @@ Seriez-vous disponible pour une démonstration {rdv} ?
         <button class="btn btn-primary btn-sm" onclick="openPresModal()">+ Nouvelle présentation</button>
       </div>
 
+      <!-- Adresse stable de la démo (branche Git « demo » sur Vercel) -->
+      <div class="card" id="demo-adresse" style="padding:14px 16px;margin-bottom:16px"></div>
+
       <!-- Barre de progression marche en avant -->
       <div style="display:flex;gap:0;border-radius:var(--r-sm);overflow:hidden;margin-bottom:20px;height:28px">
         <div style="flex:1;background:#94A3B8;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">① PROSPECT</div>
@@ -10924,7 +10927,54 @@ const PRES_RESULTAT_LBL = {
   commande:'🛒 Commande', relance_j7:'📅 J+7', relance_j30:'📅 J+30', negatif:'👎 Négatif',
 };
 
+/** Carte « Adresse de la démo » : enregistre l'adresse stable (catalogue + messages) et, si Vercel est relié, l'attribue à la branche demo. */
+const _demo={etat:null,msg:'',busy:false};
+const _demoE=t=>String(t==null?'':t).replace(/[&<>"]/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[x]));
+function demoUrl(){ const l=LOGICIELS.find(x=>x.id==='log_sanixcrm'); return (CONFIG.demoUrl||'')||(l&&l.demo)||''; }
+async function demoBrancheRender(rafraichir){
+  const el=document.getElementById('demo-adresse'); if(!el) return;
+  const E=_demoE;
+  if(rafraichir){ try{ _demo.etat=await aisApi('/functions/v1/crm-vercel',{method:'POST',body:JSON.stringify({action:'status'}),timeout:20000}); }catch(e){ _demo.etat={erreur:e.message}; } }
+  const st=_demo.etat, url=demoUrl();
+  const lien=st&&st.configure ? '<span style="color:#16a34a">✅ Vercel relié (projet '+E(st.projet)+', branche '+E(st.branche)+')</span>'
+    : st&&st.erreur ? '<span style="color:#dc2626">⚠️ '+E(st.erreur)+'</span>'
+    : st ? '<span style="color:#b45309">Vercel non relié : ajoutez le secret <b>VERCEL_TOKEN</b> dans Supabase → Edge Functions → Secrets (vous le saisissez vous-même, jamais ici), puis rechargez. Sans lui, collez simplement l\'adresse et utilisez « Enregistrer ».</span>'
+    : '<span style="color:var(--muted)">Vérification de la liaison Vercel…</span>';
+  const doms=st&&st.configure&&st.domaines&&st.domaines.length?'<div style="font-size:11px;color:var(--muted);margin-top:6px">Domaines du projet : '+st.domaines.map(d=>E(d.nom)+' → '+(d.branche?'branche '+E(d.branche):'production')).join(' · ')+'</div>':'';
+  el.innerHTML='<div style="font-weight:700;margin-bottom:4px">🌐 Adresse stable de la démo (branche <code>demo</code>)</div>'
+    +'<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Cette adresse remplace celle de la fiche « SANIX CRM Pro » du catalogue et celle donnée aux prospects.</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input class="form-input" id="demo-dom" style="flex:1;min-width:220px" placeholder="sanix-demo.vercel.app" value="'+E(url.replace(/^https?:\/\//,'').replace(/\/$/,''))+'" inputmode="url">'
+    +'<button class="btn btn-sm" id="demo-save"'+(_demo.busy?' disabled':'')+'>💾 Enregistrer</button>'
+    +'<button class="btn btn-primary btn-sm" id="demo-attach"'+(_demo.busy||!(st&&st.configure)?' disabled':'')+' title="'+(st&&st.configure?'Ajoute ce domaine à la branche demo sur Vercel':'Vercel non relié')+'">🚀 Attribuer à la branche demo (Vercel)</button></div>'
+    +'<div style="font-size:12px;margin-top:8px">'+lien+'</div>'+doms+(_demo.msg?'<div style="font-size:12px;margin-top:6px">'+_demo.msg+'</div>':'');
+  document.getElementById('demo-save').onclick=()=>demoEnregistrer(false);
+  document.getElementById('demo-attach').onclick=()=>demoEnregistrer(true);
+}
+function _demoNormalise(x){ const d=String(x||'').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/[\/?#].*$/,'').replace(/\.$/,''); return /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(d)?d:''; }
+function demoMemorise(dom){
+  const url='https://'+dom, l=LOGICIELS.find(x=>x.id==='log_sanixcrm');
+  if(l){ l.demo=url; l.updated_at=new Date().toISOString(); saveStore('logiciels'); }
+  CONFIG.demoUrl=url; if(typeof persistConfig==='function') persistConfig();
+  return url;
+}
+async function demoEnregistrer(attribuer){
+  const E=_demoE;
+  const dom=_demoNormalise((document.getElementById('demo-dom')||{}).value);
+  if(!dom){ _demo.msg='<span style="color:#dc2626">Adresse invalide : saisissez par exemple sanix-demo.vercel.app</span>'; return demoBrancheRender(false); }
+  if(!attribuer){ demoMemorise(dom); _demo.msg='✅ Adresse enregistrée : <b>https://'+dom+'</b> (catalogue et messages).'; showToast('✅ Adresse de démo enregistrée'); return demoBrancheRender(false); }
+  if(!confirm('Attribuer '+dom+' à la branche « demo » sur Vercel ?\n\nLa production n\'est pas touchée.')) return;
+  _demo.busy=true; _demo.msg='Attribution en cours…'; demoBrancheRender(false);
+  try{
+    const r=await aisApi('/functions/v1/crm-vercel',{method:'POST',body:JSON.stringify({action:'attach',domaine:dom}),timeout:30000});
+    demoMemorise(r.domaine);
+    const v=(r.verification||[]).length?'<br>⚠️ Domaine à vérifier chez votre hébergeur DNS : '+r.verification.map(x=>String(x.type||'')+' '+String(x.domain||'')+' → '+String(x.value||'')).map(E).join(' ; '):'';
+    _demo.msg=(r.verifie?'✅':'⏳')+' <b>https://'+E(r.domaine)+'</b> est attribué à la branche <b>'+E(r.branche)+'</b>'+(r.verifie?'. Adresse enregistrée dans le catalogue et les messages.':'. En attente de vérification.')+v;
+    showToast('✅ Domaine attribué à la branche demo');
+  }catch(e){ _demo.msg='<span style="color:#dc2626">❌ '+E(e.message)+'</span>'; }
+  _demo.busy=false; demoBrancheRender(true);
+}
 function initPresentations() {
+  try{ demoBrancheRender(true); }catch(e){}
   renderPresStats();
   renderPresentations();
   populatePresFilters();
