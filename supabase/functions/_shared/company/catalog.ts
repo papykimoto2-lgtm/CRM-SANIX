@@ -1,7 +1,7 @@
 // Catalogue des outils attribuables aux collaborateurs IA (principe du moindre privilège).
 import { CRM_DESCRIPTIONS, CRM_TOOL_NAMES } from "../crm_tools.ts";
 
-export type ToolKind = "base" | "management" | "collab" | "web" | "crm" | "dg";
+export type ToolKind = "base" | "management" | "collab" | "web" | "crm" | "dg" | "levee";
 export type ToolMeta = { name: string; kind: ToolKind; desc: string; maxNiveau: number };
 
 /** Toujours disponibles, jamais stockés dans ai_agents.outils. */
@@ -20,6 +20,9 @@ const META: ToolMeta[] = [
   { name: "demander_ressources", kind: "management", maxNiveau: 3, desc: "Demander plus de budget ou de capacité au président" },
   { name: "repondre_president", kind: "dg", maxNiveau: 1, desc: "Répondre au président dans le bureau exécutif" },
   { name: "transmettre", kind: "collab", maxNiveau: 5, desc: "Transmettre un dossier à un collègue (chaîne de traitement)" },
+  { name: "consulter_levee_de_fonds", kind: "levee", maxNiveau: 5, desc: "État de préparation à la levée de fonds : indicateurs, éligibilité par type de financeur, plan d'action" },
+  { name: "lister_financeurs", kind: "levee", maxNiveau: 5, desc: "Annuaire des financeurs et programmes (avec leur source)" },
+  { name: "enregistrer_financeur", kind: "levee", maxNiveau: 5, desc: "Ajouter ou mettre à jour un financeur de l'annuaire (source https obligatoire)" },
   { name: "recherche_web", kind: "web", maxNiveau: 5, desc: "Recherche sur le web (annuaires, sites d'entreprises, actualités)" },
   ...CRM_TOOL_NAMES.map((n): ToolMeta => ({
     name: n, kind: "crm", maxNiveau: 5,

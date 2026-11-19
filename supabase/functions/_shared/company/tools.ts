@@ -6,6 +6,7 @@ import { crmTool, CRM_TOOL_NAMES, type CrmCtx, runCrmTool } from "../crm_tools.t
 import { CHARTER_KEYS } from "../prompts.ts";
 import { BASE_TOOLS, CATALOG_BY_NAME, catalogText, checkGrant, EXTERNAL_TOOLS } from "./catalog.ts";
 import { type AgentRow, type Governance, loadGovernance, norm, OPEN_STATES, Org, slugCode, type TaskRow } from "./org.ts";
+import { consulterLevee, enregistrerFinanceur, FINANCEUR_STATUTS, FINANCEUR_TYPES, listerFinanceurs } from "./levee.ts";
 import { activityFor, type PendingMove, type Presence, publishMove } from "./presence.ts";
 
 export type CoCtx = {
@@ -106,6 +107,15 @@ export function companySchemas(departmentIds: string[]): Record<string, Anthropi
       task_id: str(), note: int("0-100"), commentaire: str(),
     }),
     consulter_performance: T("consulter_performance", "Statistiques de ton équipe (missions, taux, qualité, délais, coût IA, incidents, score).", { jours: int("Période : 1 à 30 jours") }),
+    consulter_levee_de_fonds: T("consulter_levee_de_fonds", "État de préparation à la levée de fonds : mesures du CRM, éligibilité (score et verdict par type de financeur), critères, plan d'action, modèle Financement et avertissements. Seul chiffre de référence : ne cite jamais un chiffre absent de ce résultat.", {}),
+    lister_financeurs: T("lister_financeurs", "Annuaire des financeurs et programmes déjà enregistrés (à consulter avant d'en ajouter).", {
+      type: str("Filtre optionnel", { enum: [...FINANCEUR_TYPES] }), statut: str("Filtre optionnel", { enum: [...FINANCEUR_STATUTS] }),
+    }, []),
+    enregistrer_financeur: T("enregistrer_financeur", "Ajoute ou met à jour un financeur ou programme. url_source (https) est OBLIGATOIRE : la page qui le décrit. Ne renseigne que ce que la source établit ; jamais d'adresse e-mail ni de montant supposés.", {
+      nom: str(), type: str("Type", { enum: [...FINANCEUR_TYPES] }), pays: str("Pays ou zone"), ticket_min: { type: "number", description: "Montant minimal en FCFA (si établi)" },
+      ticket_max: { type: "number", description: "Montant maximal en FCFA (si établi)" }, devise: str("Devise d'origine des montants, ex. FCFA, EUR"), conditions: str("Conditions d'éligibilité établies par la source"),
+      url_source: str("Lien https de la page source"), statut: str("a_etudier | correspond | ecarte…", { enum: [...FINANCEUR_STATUTS] }), notes: str("Pourquoi il correspond ou non à SANIX"),
+    }, ["nom", "type", "url_source"]),
     consulter_indicateurs: T("consulter_indicateurs", "Indicateurs de l'entreprise sur la période (activité, commercial, finances, difficultés).", { jours: int("1 à 30 jours") }),
     convoquer_reunion: T("convoquer_reunion", "Convoque une réunion de travail (chaque participant contribue, tu synthétises ; procès-verbal et plan d'action). Appelle ensuite attendre_sous_taches.", {
       titre: str(), ordre_du_jour: str(), participants: arr("Codes des participants"),
@@ -186,6 +196,10 @@ export async function runCompanyTool(ctx: CoCtx, name: string, input: Record<str
 }
 
 const IMPL: Record<string, (ctx: CoCtx, i: Record<string, any>) => Promise<unknown>> = {
+  async consulter_levee_de_fonds() { return await consulterLevee(); },
+  async lister_financeurs(_ctx, i) { return await listerFinanceurs(i); },
+  async enregistrer_financeur(ctx, i) { ctx.acted = true; return await enregistrerFinanceur(ctx.agent.id, i); },
+
   async terminer_mission(ctx, i) {
     // Une mission n'est jamais « terminée » sur une simple déclaration : un rapport substantiel et au moins un résultat vérifiable sont exigés.
     const statut = i.statut === "bloquee" ? "bloquee" : "terminee";

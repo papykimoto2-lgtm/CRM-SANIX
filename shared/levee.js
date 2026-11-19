@@ -323,7 +323,9 @@
   /* ═══════════════════════════════ Écran ═══════════════════════════════ */
   const LSK = 'levee_config';
   const ui = { tab: 'synthese', route: 'angel' };
-  let ov = null, mes = null, mod = null, modBrut = null;
+  let ov = null, mes = null, mod = null, modBrut = null, pipelineP = null;
+  const syncEtat = { s: 'attente', at: null, msg: '' };
+  let syncT = null;
   const root = () => document.getElementById('view-levee');
   const toast = (msg) => { try { showToast(msg); } catch (e) { /* hors CRM */ } };
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -332,14 +334,45 @@
   const ST = { ok: ['✅', '#16a34a', 'Atteint'], warn: ['🟠', '#d97706', 'À renforcer'], ko: ['⛔', '#dc2626', 'Insuffisant'], na: ['❔', '#6b7280', 'À documenter'] };
 
   function load() { try { const r = localStorage.getItem('sanix_crm_' + LSK); ov = r ? JSON.parse(r) : {}; } catch (e) { ov = {}; } if (!ov || typeof ov !== 'object') ov = {}; ov.manuel = ov.manuel || {}; ov.seuils = ov.seuils || {}; ov.sim = ov.sim || {}; ov.what = ov.what || {}; ov.deck = ov.deck || {}; }
-  function persist() { try { if (typeof window.lsSave === 'function') window.lsSave(LSK, ov); else localStorage.setItem('sanix_crm_' + LSK, JSON.stringify(ov)); } catch (e) { toast('⚠️ Enregistrement local impossible'); } }
+  function persist() { try { if (typeof window.lsSave === 'function') window.lsSave(LSK, ov); else localStorage.setItem('sanix_crm_' + LSK, JSON.stringify(ov)); } catch (e) { toast('⚠️ Enregistrement local impossible'); } planifierSync(); }
+
+  /* — Partage avec l'agent « levée de fonds » : réglages et instantané du modèle enregistrés côté serveur (les agents ne voient pas le navigateur) — */
+  function instantane() {
+    const sc = scores(evaluer(mes, ov.seuils, ov.manuel));
+    return { maj: new Date().toISOString(), pipelinePondere: pipelineP, modele: modBrut, scores: ROUTES.map((r, i) => ({ type: r.id, score: sc[i].score, verdict: sc[i].verdict })) };
+  }
+  function majStatutSync() {
+    const el = document.getElementById('lev-sync'); if (!el) return;
+    el.innerHTML = syncEtat.s === 'ok' ? '🤖 Partagé avec l\'agent levée de fonds à ' + esc(syncEtat.at.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }))
+      : syncEtat.s === 'erreur' ? '⚠️ Non partagé avec l\'agent : ' + esc(syncEtat.msg) : '🤖 Partage avec l\'agent en attente…';
+  }
+  async function pousser() {
+    if (typeof window.aisApi !== 'function' || !mes) return;
+    try { await window.aisApi('/rest/v1/rpc/levee_enregistrer', { method: 'POST', body: JSON.stringify({ p_config: ov, p_instantane: instantane() }) }); syncEtat.s = 'ok'; syncEtat.at = new Date(); }
+    catch (e) { syncEtat.s = 'erreur'; syncEtat.msg = /session|Connectez/i.test(e.message) ? 'connectez l\'agent IA (Pilotage → Directeur IA) pour le partager' : e.message; }
+    majStatutSync();
+  }
+  function planifierSync() { clearTimeout(syncT); syncT = setTimeout(pousser, 1500); }
+  /** Nouvel appareil sans réglage local : reprend ceux enregistrés côté serveur. */
+  async function tirer() {
+    if (typeof window.aisApi !== 'function') return false;
+    const vide = !Object.keys(ov.manuel).length && !Object.keys(ov.seuils).length && !Object.keys(ov.sim).length && !Object.keys(ov.what).length && !Object.keys(ov.deck).length;
+    if (!vide) return false;
+    try {
+      const r = await window.aisApi('/rest/v1/levee_etat?select=config&id=eq.1'), c = r && r[0] && r[0].config;
+      if (!c || typeof c !== 'object' || !Object.keys(c).length) return false;
+      ov = Object.assign({ manuel: {}, seuils: {}, sim: {}, what: {}, deck: {} }, c); try { localStorage.setItem('sanix_crm_' + LSK, JSON.stringify(ov)); } catch (e) { /* stockage local indisponible */ }
+      return true;
+    } catch (e) { return false; }
+  }
 
   /** Lit le CRM et le modèle Financement : jamais d'écriture dans l'un ou l'autre. */
   function recompute() {
     const g = (f) => { try { return f(); } catch (e) { return undefined; } };
     const fin = G.SanixFinancement && G.SanixFinancement.snapshot && g(() => G.SanixFinancement.snapshot());
     const P = G.SanixPilotage && G.SanixPilotage.calc; let pond = null;
-    if (P) { const k = new Date(); const key = k.getFullYear() + '-' + String(k.getMonth() + 1).padStart(2, '0'); const p = g(() => P.pipeline(g(() => DEALS) || [], key)); if (p) { pond = 0; Object.keys(p).forEach((x) => { pond += p[x].pondere; }); } }
+    pipelineP = null;
+    if (P) { const k = new Date(); const key = k.getFullYear() + '-' + String(k.getMonth() + 1).padStart(2, '0'); const p = g(() => P.pipeline(g(() => DEALS) || [], key)); if (p) { pond = 0; Object.keys(p).forEach((x) => { pond += p[x].pondere; }); pipelineP = pond; } }
     modBrut = null;
     if (fin && fin.res) {
       const r = fin.res, m12 = r.avec0.mois.slice(0, 12), burn = Math.max(0, -sum(m12, (x) => Math.min(0, x.flux)) / 12);
@@ -518,7 +551,9 @@
     const corps = ui.tab === 'indic' ? tabIndic() : ui.tab === 'elig' ? tabElig() : ui.tab === 'simul' ? tabSimul() : ui.tab === 'plan' ? tabPlan() : ui.tab === 'deck' ? tabDeck() : ui.tab === 'notes' ? tabNotes() : tabSynthese();
     el.innerHTML = `<div class="ban"><div class="ban-deco"></div><h1 class="page-title">🚀 Levée de fonds</h1><p class="page-sub">Votre niveau de préparation, votre éligibilité par type de financeur et la simulation pour y arriver — départ : vos chiffres réels du CRM</p></div>
       <div class="tabs" role="tablist" style="margin-bottom:16px">${tabs.map((t) => `<div class="tab ${ui.tab === t[0] ? 'active' : ''}" role="tab" tabindex="0" aria-selected="${ui.tab === t[0]}" data-tab="${t[0]}">${t[1]}</div>`).join('')}</div>${corps}
+      <div id="lev-sync" class="muted" style="font-size:12px;margin-top:12px"></div>
       <div style="margin-top:12px"><button class="btn btn-sm" data-act="fiche">🖨️ Fiche d'éligibilité (PDF)</button> <button class="btn btn-sm" data-act="vers-financement">🏦 Ouvrir le modèle Financement</button></div>`;
+    majStatutSync();
   }
   function bind() {
     const el = root(); if (!el || el.dataset.bound) return; el.dataset.bound = '1';
@@ -546,6 +581,6 @@
       else if (t.dataset.seuil) { const p = t.dataset.seuil.split('.'); ov.seuils[p[0]] = Object.assign({}, ov.seuils[p[0]], { [p[1]]: num(t.value) }); persist(); recompute(); render(); }
     });
   }
-  G.initLevee = function () { if (!ov) load(); recompute(); bind(); render(); };
+  G.initLevee = function () { if (!ov) load(); recompute(); bind(); render(); majStatutSync(); tirer().then((ch) => { if (ch) { recompute(); render(); } planifierSync(); }); };
   G.SanixLevee.refresh = function () { const r = root(); if (ov && r && !r.classList.contains('hidden')) { recompute(); render(); } };
 })(typeof window !== 'undefined' ? window : globalThis);
