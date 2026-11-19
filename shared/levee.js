@@ -525,7 +525,7 @@
   const FIN_STATUTS = { a_etudier: ['À étudier', '#6b7280'], correspond: ['Correspond', '#0b7f70'], contacte: ['Contacté', '#2563eb'], en_discussion: ['En discussion', '#7c3aed'], decline: ['A décliné', '#dc2626'], ecarte: ['Écarté', '#9ca3af'], investi: ['A investi', '#16a34a'] };
   const FIN_REGIONS = { afrique_ouest: '🌍 Afrique de l\'Ouest', afrique_centrale: '🌍 Afrique centrale', afrique_est: '🌍 Afrique de l\'Est', afrique_nord: '🌍 Afrique du Nord', afrique_australe: '🌍 Afrique australe', afrique_panafricain: '🌍 Afrique — panafricain',
     europe: '🇪🇺 Europe', amerique_nord: '🌎 Amérique du Nord', amerique_latine: '🌎 Amérique latine', asie: '🌏 Asie', moyen_orient: '🕌 Moyen-Orient', oceanie: '🌏 Océanie', international: '🌐 International et institutions', '': '• Région non renseignée' };
-  const finUi = { liste: null, contacts: {}, charge: false, erreur: null, filtre: { type: '', statut: '', region: '', q: '' }, edit: null, ouvertes: { afrique_ouest: true, international: true } };
+  const finUi = { liste: null, contacts: {}, charge: false, erreur: null, filtre: { type: '', statut: '', region: '', pertinence: '', q: '' }, edit: null, ouvertes: { afrique_ouest: true, international: true } };
   const urlSure = (u) => /^https:\/\/[^\s"'<>]+$/i.test(String(u || ''));
   const lienLi = (u) => /^https:\/\/([a-z0-9-]+\.)?linkedin\.com\/[^\s"'<>]*$/i.test(String(u || ''));
   const emailOk = (v) => /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']{2,}$/.test(String(v || ''));
@@ -539,10 +539,16 @@
     } catch (e) { finUi.liste = []; finUi.erreur = /session|Connectez/i.test(e.message) ? 'Connectez l\'agent IA (Pilotage → Directeur IA) pour afficher l\'annuaire.' : e.message; }
     finUi.charge = false; if (ui.tab === 'fin') render();
   }
+  const PERT = { forte: ['⭐⭐⭐ Forte', '#16a34a', 0], moyenne: ['⭐⭐ Moyenne', '#d97706', 1], faible: ['⭐ Faible', '#6b7280', 2] };
+  const niveauPert = (f) => { const m = /^\s*(forte|moyenne|faible)\b/i.exec(String(f.pertinence || '')); return m ? m[1].toLowerCase() : null; };
+  const textePert = (f) => String(f.pertinence || '').replace(/^\s*(forte|moyenne|faible)\s*:?\s*/i, '');
+  const rangPert = (f) => { const n = niveauPert(f); return n ? PERT[n][2] : 3; };
+  const badgePert = (f) => { const n = niveauPert(f); return n ? `<span class="chip" style="font-size:11px;font-weight:700;color:${PERT[n][1]};border:1px solid ${PERT[n][1]}">${PERT[n][0]}</span>` : ''; };
+  const domaine = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return ''; } };
   const montantFin = (f) => { const a = f.ticket_min != null ? F.m(f.ticket_min).replace(' FCFA', '') : null, b = f.ticket_max != null ? F.m(f.ticket_max).replace(' FCFA', '') : null; if (a == null && b == null) return '—'; return (a != null && b != null ? a + ' – ' + b : (a != null ? '≥ ' + a : '≤ ' + b)) + ' ' + esc(f.devise || 'FCFA'); };
   const lien = (u, txt, titre) => urlSure(u) ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(titre || u)}">${txt}</a>` : '';
   const contactsHtml = (f) => {
-    const g = []; if (f.site_web && urlSure(f.site_web)) g.push(lien(f.site_web, '🌐 Site', f.site_web));
+    const g = [];
     if (f.linkedin_url && lienLi(f.linkedin_url)) g.push(lien(f.linkedin_url, 'in LinkedIn', 'Page LinkedIn de l\'organisation'));
     if (f.contact_formulaire && urlSure(f.contact_formulaire)) g.push(lien(f.contact_formulaire, '✉ Formulaire', f.contact_formulaire));
     if (f.contact_email && emailOk(f.contact_email)) g.push(`<a href="mailto:${esc(f.contact_email)}">✉ ${esc(f.contact_email)}</a>`);
@@ -554,7 +560,7 @@
   function tabFin() {
     if (finUi.liste === null && !finUi.charge) { chargerFin(); }
     const L = finUi.liste || [], q = finUi.filtre.q.trim().toLowerCase(), fl = finUi.filtre;
-    const vues = L.filter((f) => (!fl.type || f.type === fl.type) && (!fl.statut || f.statut === fl.statut) && (!fl.region || (f.region || '') === fl.region)
+    const vues = L.filter((f) => (!fl.type || f.type === fl.type) && (!fl.statut || f.statut === fl.statut) && (!fl.region || (f.region || '') === fl.region) && (!fl.pertinence || niveauPert(f) === fl.pertinence)
       && (!q || [f.nom, f.pays, f.conditions, f.notes, f.pertinence].some((v) => String(v || '').toLowerCase().indexOf(q) >= 0) || (finUi.contacts[f.id] || []).some((c) => String(c.nom + ' ' + (c.fonction || '')).toLowerCase().indexOf(q) >= 0)));
     const compte = {}; L.forEach((f) => { compte[f.statut] = (compte[f.statut] || 0) + 1; });
     const nbContacts = Object.keys(finUi.contacts).reduce((n, k) => n + finUi.contacts[k].length, 0);
@@ -579,21 +585,30 @@
           <input class="form-input" name="cn_linkedin" type="url" placeholder="Profil LinkedIn public (https://www.linkedin.com/in/…)"><input class="form-input" name="cn_email" type="email" placeholder="E-mail publié"><input class="form-input" name="cn_source" type="url" placeholder="Source publique (https, obligatoire)"></div></div>
       <div id="lev-fin-err" class="alert alert-warn hidden" role="alert"></div>
       <div style="margin-top:8px"><button class="btn btn-primary btn-sm" type="submit">Enregistrer</button> <button class="btn btn-sm" type="button" data-act="fin-annuler">Annuler</button></div></form>` : '';
-    const lignes = (f) => `<tr><td><b>${urlSure(f.url_source) ? `<a href="${esc(f.url_source)}" target="_blank" rel="noopener noreferrer" title="Source : ${esc(f.url_source)}">${esc(f.nom)} ↗</a>` : esc(f.nom)}</b>${f.ajoute_par ? ' <span title="Ajouté par un agent">🤖</span>' : ''}<div class="muted" style="font-size:11px">${esc(f.pays || '')}</div>${f.pertinence ? `<div style="font-size:11px">${esc(f.pertinence)}</div>` : ''}</td>
+    const lignes = (f) => `<tr><td><b>${urlSure(f.url_source) ? `<a href="${esc(f.url_source)}" target="_blank" rel="noopener noreferrer" title="Source : ${esc(f.url_source)}">${esc(f.nom)} ↗</a>` : esc(f.nom)}</b>${f.ajoute_par ? ' <span title="Ajouté par un agent">🤖</span>' : ''}<div style="margin:3px 0">${badgePert(f)}${f.site_web && urlSure(f.site_web) ? ` <a href="${esc(f.site_web)}" target="_blank" rel="noopener noreferrer" style="font-size:12px;font-weight:600" title="Ouvrir le site web">🌐 ${esc(domaine(f.site_web))}</a>` : ''}</div><div class="muted" style="font-size:11px">${esc(f.pays || '')}</div>${f.pertinence ? `<div style="font-size:11px">${esc(textePert(f))}</div>` : ''}</td>
       <td>${esc(FIN_TYPES[f.type] || f.type)}</td><td style="white-space:nowrap">${montantFin(f)}</td>
       <td style="font-size:12px;max-width:300px">${f.conditions ? `<details><summary>${esc(String(f.conditions).slice(0, 70))}${String(f.conditions).length > 70 ? '…' : ''}</summary>${esc(f.conditions)}${f.notes ? '<br><i>' + esc(f.notes) + '</i>' : ''}</details>` : (f.notes ? '<i>' + esc(f.notes) + '</i>' : '—')}</td>
       <td style="font-size:12px;min-width:200px">${contactsHtml(f)}</td>
-      <td><select class="form-input" data-fin-statut="${esc(f.id)}" style="color:${(FIN_STATUTS[f.statut] || ['', '#000'])[1]};font-weight:600" aria-label="Statut de ${esc(f.nom)}">${optsFin(FIN_STATUTS, f.statut)}</select></td>
+      <td><select class="form-input" data-fin-statut="${esc(f.id)}" style="min-width:130px;color:${(FIN_STATUTS[f.statut] || ['', '#000'])[1]};font-weight:600" aria-label="Statut de ${esc(f.nom)}">${optsFin(FIN_STATUTS, f.statut)}</select></td>
       <td style="white-space:nowrap"><button class="btn btn-sm" data-act="fin-edit" data-id="${esc(f.id)}" title="Modifier">✏️</button> <button class="btn btn-sm" data-act="fin-suppr" data-id="${esc(f.id)}" title="Supprimer">🗑️</button></td></tr>`;
     const groupes = {}; vues.forEach((f) => { const k = FIN_REGIONS[f.region || ''] !== undefined ? (f.region || '') : ''; (groupes[k] = groupes[k] || []).push(f); });
+    Object.keys(groupes).forEach((k) => groupes[k].sort((a, b) => rangPert(a) - rangPert(b) || String(a.nom).localeCompare(String(b.nom), 'fr')));
+    const fortes = L.filter((f) => niveauPert(f) === 'forte').sort((a, b) => String(a.nom).localeCompare(String(b.nom), 'fr'));
+    const carteTop = fortes.length ? `<div class="card" id="lev-fin-top"><div class="card-header"><span class="card-title">⭐ Les plus pertinents pour SANIX (${fortes.length})</span><button class="btn btn-sm" data-act="fin-fortes">Les isoler dans la liste</button></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px">${fortes.map((f) => `<div style="border:1px solid var(--border);border-radius:10px;padding:10px"><b>${urlSure(f.url_source) ? `<a href="${esc(f.url_source)}" target="_blank" rel="noopener noreferrer" title="Source">${esc(f.nom)} ↗</a>` : esc(f.nom)}</b>
+        <div class="muted" style="font-size:11px">${esc(FIN_TYPES[f.type] || f.type)} · ${esc(FIN_REGIONS[f.region || ''] || '')} · ${montantFin(f)}</div>
+        <div style="font-size:12px;margin:4px 0">${esc(textePert(f))}</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px">${f.site_web && urlSure(f.site_web) ? `<a href="${esc(f.site_web)}" target="_blank" rel="noopener noreferrer" style="font-weight:600">🌐 ${esc(domaine(f.site_web))}</a>` : '<span class="muted">site non renseigné</span>'}${f.contact_formulaire && urlSure(f.contact_formulaire) ? `<a href="${esc(f.contact_formulaire)}" target="_blank" rel="noopener noreferrer">✉ Candidater / contacter</a>` : ''}</div></div>`).join('')}</div></div>` : '';
     const sections = Object.keys(FIN_REGIONS).filter((k) => groupes[k]).map((k) => `<details data-reg="${k}" ${finUi.ouvertes[k] || fl.region || q ? 'open' : ''} style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;font-size:14px;padding:6px 0">${esc(FIN_REGIONS[k])} · ${groupes[k].length}</summary>
       <div style="overflow:auto"><table class="table" style="width:100%;font-size:13px"><thead><tr><th>Financeur</th><th>Type</th><th>Montants</th><th>Conditions</th><th>Contacts et personnes</th><th>Statut</th><th></th></tr></thead><tbody>${groupes[k].map(lignes).join('')}</tbody></table></div></details>`).join('');
     return `<div class="alert alert-info">ℹ️ <div>Annuaire mondial des financeurs, par région. Chaque ligne porte le lien de sa source (🤖 : ajouté par un agent). Les contacts et personnes ne sont que des <b>informations professionnelles publiées</b> ; aucune adresse n'est devinée. <b>Vérifiez les conditions et les contacts sur la source</b> avant tout envoi : une page peut être périmée.</div></div>
+      ${carteTop}
       <div class="card"><div class="card-header"><span class="card-title">🏛️ Financeurs (${L.length}) · 👤 ${nbContacts} personnes</span><span><button class="btn btn-sm" data-act="fin-actualiser">🔄 Actualiser</button> <button class="btn btn-sm" data-act="fin-export">⬇️ Export CSV</button> <button class="btn btn-sm btn-primary" data-act="fin-nouveau">➕ Ajouter</button></span></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${Object.keys(FIN_STATUTS).map((k) => `<span class="chip" style="font-size:12px;color:${FIN_STATUTS[k][1]}">${FIN_STATUTS[k][0]} · ${compte[k] || 0}</span>`).join('')}</div>
       <div id="lev-fin-filtres" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
         <input class="form-input" type="search" data-finf="q" value="${esc(fl.q)}" placeholder="Rechercher (nom, pays, conditions, personne)…" style="flex:2;min-width:180px" aria-label="Rechercher un financeur">
         <select class="form-input" data-finf="region" style="flex:1;min-width:150px" aria-label="Filtrer par région"><option value="">Toutes les régions</option>${optsFin(FIN_REGIONS, fl.region)}</select>
+        <select class="form-input" data-finf="pertinence" style="flex:1;min-width:150px" aria-label="Filtrer par pertinence"><option value="">Toutes pertinences</option>${Object.keys(PERT).map((k) => `<option value="${k}" ${fl.pertinence === k ? 'selected' : ''}>${PERT[k][0]}</option>`).join('')}</select>
         <select class="form-input" data-finf="type" style="flex:1;min-width:140px" aria-label="Filtrer par type"><option value="">Tous les types</option>${optsFin(FIN_TYPES, fl.type)}</select>
         <select class="form-input" data-finf="statut" style="flex:1;min-width:140px" aria-label="Filtrer par statut"><option value="">Tous les statuts</option>${optsFin(FIN_STATUTS, fl.statut)}</select></div>
       ${finUi.erreur ? `<div class="alert alert-warn">⚠️ <div>${esc(finUi.erreur)}</div></div>` : ''}
@@ -601,9 +616,9 @@
   }
   function exportFin() {
     const L = finUi.liste || [], cel = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""').replace(/^([=+\-@])/, "'$1") + '"';
-    const rows = [['Région', 'Nom', 'Type', 'Pays', 'Montant min', 'Montant max', 'Devise', 'Conditions', 'Statut', 'Site web', 'LinkedIn', 'E-mail', 'Téléphone', 'Formulaire', 'Personnes (nom — fonction — LinkedIn)', 'Source']];
+    const rows = [['Région', 'Nom', 'Type', 'Pays', 'Montant min', 'Montant max', 'Devise', 'Conditions', 'Statut', 'Site web', 'LinkedIn', 'E-mail', 'Téléphone', 'Formulaire', 'Personnes (nom — fonction — LinkedIn)', 'Source', 'Pertinence']];
     L.forEach((f) => rows.push([FIN_REGIONS[f.region || ''] || '', f.nom, FIN_TYPES[f.type] || f.type, f.pays, f.ticket_min, f.ticket_max, f.devise, f.conditions, (FIN_STATUTS[f.statut] || [f.statut])[0], f.site_web, f.linkedin_url, f.contact_email, f.contact_telephone, f.contact_formulaire,
-      (finUi.contacts[f.id] || []).map((c) => [c.nom, c.fonction, c.linkedin_url].filter(Boolean).join(' — ')).join(' ; '), f.url_source]));
+      (finUi.contacts[f.id] || []).map((c) => [c.nom, c.fonction, c.linkedin_url].filter(Boolean).join(' — ')).join(' ; '), f.url_source, f.pertinence]));
     const blob = new Blob(['﻿' + rows.map((r) => r.map(cel).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' }), a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = 'financeurs-' + new Date().toISOString().slice(0, 10) + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
@@ -684,6 +699,7 @@
       else if (a === 'fin-annuler') { finUi.edit = null; render(); }
       else if (a === 'fin-edit') { finUi.edit = t.dataset.id; render(); const f = document.getElementById('lev-fin-form'); if (f && f.scrollIntoView) f.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
       else if (a === 'fin-export') exportFin();
+      else if (a === 'fin-fortes') { finUi.filtre.pertinence = 'forte'; render(); }
       else if (a === 'fin-contact-suppr') { api('/rest/v1/levee_contacts?id=eq.' + encodeURIComponent(t.dataset.id), { method: 'DELETE' }).then(() => { Object.keys(finUi.contacts).forEach((k) => { finUi.contacts[k] = finUi.contacts[k].filter((c) => c.id !== t.dataset.id); }); render(); toast('🗑️ Personne retirée'); }).catch((x) => toast('⚠️ ' + x.message)); }
       else if (a === 'fin-actualiser') { finUi.liste = null; chargerFin(); }
       else if (a === 'fin-suppr') {
