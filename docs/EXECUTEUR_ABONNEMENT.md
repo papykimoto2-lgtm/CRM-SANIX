@@ -13,6 +13,8 @@ rapport factuel, au moins un résultat vérifiable pour « terminee », une seul
 
 Les agents responsables (qui assignent des missions) disposent en plus de la délégation encadrée (migration `20261205000000_abonnement_delegation.sql`) : `ai_abonnement_assigner`, `ai_abonnement_attendre`, `ai_abonnement_evaluer`, avec les règles du moteur (hiérarchie, plafonds, doublons, reprise automatique).
 
+Les agents chasseurs peuvent créer des prospects via `ai_abonnement_creer_prospect` (migration `20261206000000_abonnement_prospects.sql`) : mêmes règles que le moteur (outil create_prospect, e-mail valide, logiciel actif, source https, 100 fiches maximum par mission, doublons refusés).
+
 Ce que l'abonnement ne permet pas : brancher l'abonnement sur l'API (non autorisé par Anthropic). L'exécuteur est une session Claude Code ordinaire.
 
 ## Revenir au mode API
