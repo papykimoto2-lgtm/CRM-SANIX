@@ -106,6 +106,15 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     await page.click('#cfg-form button[type=submit]'); await page.waitForTimeout(500);
     r = (await rpcs()).at(-1);
     ok(r.n === "ai_cfg_create_agent" && r.a.p.role_code === "lead_hunter" && r.a.p.nom === "Chasseur Alu" && r.a.p.manager_id === ids.chef && r.a.p.cell_id === "immosuite" && r.a.p.outils.includes("create_prospect"), "création d'un agent depuis un rôle");
+    ok((await body()).includes("Mode"), "colonne « Mode » dans la liste des agents");
+    await page.click('button[data-act="cfg-agent-edit"][data-id="' + ids.hunter + '"]'); await page.waitForTimeout(200);
+    ok(await page.inputValue('#cfg-form [name=mode_execution]') === "api" && (await page.locator('#cfg-form').innerText()).includes("tâche planifiée"), "mode d'exécution proposé (API par défaut) avec son explication");
+    await page.selectOption('#cfg-form [name=mode_execution]', "abonnement"); await page.click('#cfg-form button[type=submit]'); await page.waitForTimeout(450);
+    const rr = await rpcs();
+    ok(rr.some((x) => x.n === "ai_cfg_set_mode_execution" && x.a.p_agent === ids.hunter && x.a.p_mode === "abonnement"), "passage en mode abonnement : fonction d'administration appelée");
+    await page.click('button[data-act="cfg-agent-edit"][data-id="' + ids.hunter + '"]'); await page.waitForTimeout(150);
+    const n0 = (await rpcs()).filter((x) => x.n === "ai_cfg_set_mode_execution").length; await page.click('#cfg-form button[type=submit]'); await page.waitForTimeout(400);
+    ok((await rpcs()).filter((x) => x.n === "ai_cfg_set_mode_execution").length === n0, "mode inchangé : aucun appel inutile");
     await page.click('button[data-act="cfg-sec"][data-sec="roles"]'); await page.waitForTimeout(250);
     ok((await body()).includes("Lead Hunter") && (await body()).includes("Qualification"), "rôles affichés");
     await page.click('button[data-act="cfg-role-edit"][data-id="qualification"]'); await page.waitForTimeout(200);
