@@ -124,8 +124,8 @@ async function buildBrief(ctx: CoCtx): Promise<Brief> {
     }
   }
   if (task.type === "instruction") {
-    const { data: hist } = await db().from("ai_executive_messages").select("auteur, contenu, created_at").order("created_at", { ascending: false }).limit(12);
-    if (hist?.length) L.push("Conversation récente avec le Président (du plus ancien au plus récent) :\n" + hist.reverse().map((h) => `${h.auteur === "president" ? "Président" : "Toi"} : ${clip(h.contenu, 1200)}`).join("\n"));
+    const { data: hist } = await db().from("ai_executive_messages").select("auteur, contenu, canal, created_at").order("created_at", { ascending: false }).limit(12);
+    if (hist?.length) L.push("Conversation récente avec le Président (du plus ancien au plus récent) :\n" + hist.reverse().map((h) => `${h.auteur === "president" ? "Président" + (h.canal === "whatsapp" ? " (par WhatsApp)" : "") : "Toi"} : ${clip(h.contenu, 1200)}`).join("\n"));
   }
   L.push("Exécute cette mission avec tes outils, puis clôture par terminer_mission (ou attendre_sous_taches si tu attends tes subordonnés).");
   return { text: L.join("\n\n"), seeds };

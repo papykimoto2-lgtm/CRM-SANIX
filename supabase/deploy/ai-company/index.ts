@@ -602,7 +602,55 @@ var require_levee = __commonJS({
         const document_ = (zoom) => '<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Pitch deck \u2014 ' + escH(data.societe || "SANIX") + '</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400..700&family=Inter:wght@400;600&display=swap"><style>' + css + (zoom && zoom !== 1 ? "@media screen{.s{zoom:" + zoom + "}}" : "") + "</style></head><body>" + S2.map((s, i) => '<section class="s ' + s.theme + '" id="' + s.id + '">' + s.html + '<div class="foot"><span>' + escH(data.societe || "SANIX") + " \xB7 au " + escH(dateFr(m.now)) + "</span><span>" + (i + 1) + "</span></div></section>").join("") + "</body></html>";
         return { slides: S2, manques, document: document_ };
       }
-      const calc2 = { projeterALaDate, deck, mesurer, CRITERES, ROUTES, POIDS, SEUILS, PTS, seuils, palier, statutCritere, evaluer, scoreRoute, scores, cible, delai, simulerHypothese, montage, plan, GLOSSAIRE, F };
+      const CHANGE = { FCFA: 1, XOF: 1, EUR: 655.957 };
+      const NIV_PERT = { forte: 65, moyenne: 45 };
+      function notePertinence(f, p, nbPersonnes) {
+        p = p || {};
+        const besoin = p.besoinFcfa > 0 ? p.besoinFcfa : 2e7, R = [];
+        let n2 = 35;
+        const add = (pts, t) => {
+          n2 += pts;
+          R.push({ pts, texte: t });
+        };
+        if (f.statut === "ecarte" || f.statut === "decline") return { note: 0, niveau: "faible", raisons: [{ pts: 0, texte: f.statut === "ecarte" ? "\xC9cart\xE9 par vous" : "A d\xE9clin\xE9" }], ecarte: true };
+        const cond = String(f.conditions || ""), txt2 = [f.pays, cond, f.nom].join(" "), reg = f.region || "";
+        if (/c[oô]te d['’]ivoire|abidjan/i.test(txt2)) add(25, "C\xF4te d'Ivoire ou Abidjan cit\xE9s");
+        else if (reg === "afrique_ouest" || /uemoa|cedeao|ecowas|afrique de l['’]ouest|west africa/i.test(txt2)) add(18, "Afrique de l'Ouest couverte");
+        else if (reg === "afrique_panafricain" || /afrique|africa/i.test(f.pays || "")) add(12, "Mandat Afrique");
+        else if (reg === "international") add(6, "Programme international");
+        else if (/mondial|worldwide|monde entier|startups du monde/i.test(txt2)) add(4, "Ouvert aux startups du monde entier");
+        else add(-10, "Aucun mandat Afrique identifi\xE9");
+        if (/s[ée]n[ée]gal|b[ée]nin|maroc|k[ée]nya|nig[ée]ria|gh[ée]na|rwanda|[ée]gypte|tunisie/i.test(txt2) && !/c[oô]te d|uemoa|cedeao|ecowas|francophone|panafric|afrique|africa/i.test(txt2)) add(-15, "Limit\xE9 \xE0 un autre pays");
+        if (/r[ée]serv[ée]e? aux|r[ée]serv[ée]e? [àa] |uniquement (pour|aux)|jeunes (de|bas[ée]s)/i.test(cond)) add(-15, "R\xE9serv\xE9 \xE0 un public pr\xE9cis");
+        if (/s['’]installer|relocalis|implantation|physiquement au|pr[ée]sence au chili|lien n[ée]erlandais|entreprises fran[cç]aises|startups am[ée]ricaines|soci[ée]t[ée] us|flip/i.test(cond + " " + (f.pertinence || ""))) add(-15, "Exige une implantation ou un lien local");
+        const mult = f.devise && /^usd$/i.test(f.devise) && p.usdFcfa > 0 ? p.usdFcfa : /^usd$/i.test(f.devise || "") ? 595 : CHANGE[String(f.devise || "FCFA").toUpperCase()];
+        const tmin = f.ticket_min != null ? Number(f.ticket_min) : null, tmax = f.ticket_max != null ? Number(f.ticket_max) : null;
+        if (tmin == null && tmax == null) add(-3, "Montants non publi\xE9s : ad\xE9quation incertaine");
+        else if (mult == null) R.push({ pts: 0, texte: "Montants en devise non convertie (" + f.devise + ")" });
+        else if (tmin != null) {
+          const r = tmin * mult / besoin;
+          if (r <= 1.5) {
+            add(15, "Ticket minimal compatible avec votre besoin");
+            if (tmax != null && tmax * mult < besoin * 0.25) add(-10, "Montant faible par rapport \xE0 votre besoin");
+          } else if (r <= 5) add(4, "Ticket minimal un peu sup\xE9rieur au besoin");
+          else if (r <= 20) add(-8, "Ticket minimal tr\xE8s sup\xE9rieur au besoin");
+          else add(-18, "Ticket minimal sans commune mesure avec le besoin");
+        } else if (tmax * mult >= besoin * 0.5) add(8, "Le plafond couvre une bonne part du besoin");
+        else add(-2, "Plafond bas par rapport au besoin");
+        if (/pr[ée]-?amor[cç]age|pre-?seed|early-stage|amor[cç]age|\bmvp\b|\bseed\b|id[ée]e/i.test(cond)) add(12, "Stade pr\xE9coce accept\xE9");
+        if (/series a|s[ée]rie a|growth|croissance|post-revenue|product-market fit|revenus (s[ée]curis|[ée]tablis)|scale-up|private equity|chiffre d['’]affaires.{0,30}(400|500 000|1 m)/i.test(cond)) add(-14, "Stade plus avanc\xE9 ou revenus exig\xE9s");
+        if (["accelerateur", "subvention", "business_angel"].indexOf(f.type) >= 0) add(4, "Type adapt\xE9 \xE0 un pr\xE9-amor\xE7age");
+        if (/tous secteurs|agnostique|sector-agnostic|logiciel|saas|software|erp|num[ée]rique|tech/i.test(txt2)) add(6, "Tech et logiciels accept\xE9s");
+        if (/fintech/i.test(cond) && !/tous secteurs|logiciel|saas|software|erp/i.test(cond)) add(-8, "Th\xE8se centr\xE9e fintech");
+        if (/climat|r[ée]silience|sant[ée] uniquement|impact social/i.test(cond)) add(-8, "Th\xE8se sectorielle \xE9troite");
+        if (/\bclos(e|es)?\b|closed|ferm[ée]e?s?\b|n['’]est pas ouvert/i.test(cond)) add(-12, "Appel actuellement clos");
+        if (f.contact_formulaire || f.contact_email) add(5, "Candidature ou contact direct possible");
+        else if (nbPersonnes > 0) add(2, "Personnes ressources identifi\xE9es");
+        if (/non lue|extrait de recherche|non v[ée]rifi|page non charg/i.test(cond)) add(-4, "Information peu v\xE9rifi\xE9e");
+        n2 = Math.max(0, Math.min(100, Math.round(n2)));
+        return { note: n2, niveau: n2 >= NIV_PERT.forte ? "forte" : n2 >= NIV_PERT.moyenne ? "moyenne" : "faible", raisons: R };
+      }
+      const calc2 = { notePertinence, NIV_PERT, projeterALaDate, deck, mesurer, CRITERES, ROUTES, POIDS, SEUILS, PTS, seuils, palier, statutCritere, evaluer, scoreRoute, scores, cible, delai, simulerHypothese, montage, plan, GLOSSAIRE, F };
       G.SanixLevee = { calc: calc2 };
       if (typeof module !== "undefined" && module.exports) module.exports = { calc: calc2 };
       if (!G.document) return;
@@ -877,6 +925,323 @@ var require_levee = __commonJS({
       ${note("Montant, valorisation et part c\xE9d\xE9e viennent de l'onglet Simulation ; projections et point mort du module Financement.")}</div>
       <div id="lev-deck-out">${blocDeck()}</div>`;
       }
+      const FIN_TYPES = { business_angel: "\u{1F47C} Business angel", fonds: "\u{1F3E6} Fonds", banque: "\u{1F4B3} Banque", subvention: "\u{1F91D} Subvention", accelerateur: "\u{1F680} Acc\xE9l\xE9rateur", autre: "\u2022 Autre" };
+      const FIN_STATUTS = { a_etudier: ["\xC0 \xE9tudier", "#6b7280"], correspond: ["Correspond", "#0b7f70"], contacte: ["Contact\xE9", "#2563eb"], en_discussion: ["En discussion", "#7c3aed"], decline: ["A d\xE9clin\xE9", "#dc2626"], ecarte: ["\xC9cart\xE9", "#9ca3af"], investi: ["A investi", "#16a34a"] };
+      const FIN_REGIONS = {
+        afrique_ouest: "\u{1F30D} Afrique de l'Ouest",
+        afrique_centrale: "\u{1F30D} Afrique centrale",
+        afrique_est: "\u{1F30D} Afrique de l'Est",
+        afrique_nord: "\u{1F30D} Afrique du Nord",
+        afrique_australe: "\u{1F30D} Afrique australe",
+        afrique_panafricain: "\u{1F30D} Afrique \u2014 panafricain",
+        europe: "\u{1F1EA}\u{1F1FA} Europe",
+        amerique_nord: "\u{1F30E} Am\xE9rique du Nord",
+        amerique_latine: "\u{1F30E} Am\xE9rique latine",
+        asie: "\u{1F30F} Asie",
+        moyen_orient: "\u{1F54C} Moyen-Orient",
+        oceanie: "\u{1F30F} Oc\xE9anie",
+        international: "\u{1F310} International et institutions",
+        "": "\u2022 R\xE9gion non renseign\xE9e"
+      };
+      const finUi = { liste: null, contacts: {}, brouillons: {}, msg: null, charge: false, erreur: null, filtre: { type: "", statut: "", region: "", pertinence: "", q: "" }, edit: null, ouvertes: { afrique_ouest: true, international: true } };
+      const urlSure = (u) => /^https:\/\/[^\s"'<>]+$/i.test(String(u || ""));
+      const lienLi = (u) => /^https:\/\/([a-z0-9-]+\.)?linkedin\.com\/[^\s"'<>]*$/i.test(String(u || ""));
+      const emailOk = (v) => /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']{2,}$/.test(String(v || ""));
+      const api = (path, opt) => {
+        if (typeof window.aisApi !== "function") return Promise.reject(new Error("Connectez l'agent IA (Pilotage \u2192 Directeur IA)"));
+        return window.aisApi(path, opt);
+      };
+      async function chargerFin() {
+        finUi.charge = true;
+        finUi.erreur = null;
+        try {
+          finUi.liste = await api("/rest/v1/levee_financeurs?select=*&order=nom.asc&limit=1000") || [];
+          const cs = await api("/rest/v1/levee_contacts?select=*&order=nom.asc&limit=3000").catch(() => []);
+          finUi.contacts = {};
+          (cs || []).forEach((c) => {
+            (finUi.contacts[c.financeur_id] = finUi.contacts[c.financeur_id] || []).push(c);
+          });
+          const bs = await api("/rest/v1/levee_brouillons?select=*&order=created_at.desc&limit=500").catch(() => []);
+          finUi.brouillons = {};
+          (bs || []).forEach((b) => {
+            (finUi.brouillons[b.financeur_id] = finUi.brouillons[b.financeur_id] || []).push(b);
+          });
+        } catch (e) {
+          finUi.liste = [];
+          finUi.erreur = /session|Connectez/i.test(e.message) ? "Connectez l'agent IA (Pilotage \u2192 Directeur IA) pour afficher l'annuaire." : e.message;
+        }
+        finUi.charge = false;
+        if (ui.tab === "fin") render();
+      }
+      const PERT = { forte: ["\u2B50\u2B50\u2B50 Forte", "#16a34a", 0], moyenne: ["\u2B50\u2B50 Moyenne", "#d97706", 1], faible: ["\u2B50 Faible", "#6b7280", 2] };
+      const profilPert = () => ({ besoinFcfa: modBrut ? modBrut.recommande : 0, usdFcfa: 0 });
+      const cachePert = {};
+      const evalPert = (f) => {
+        const k = f.id + "|" + f.statut + "|" + (finUi.contacts[f.id] || []).length + "|" + (profilPert().besoinFcfa || 0);
+        return cachePert[k] || (cachePert[k] = notePertinence(f, profilPert(), (finUi.contacts[f.id] || []).length));
+      };
+      const niveauPert = (f) => evalPert(f).niveau;
+      const textePert = (f) => String(f.pertinence || "").replace(/^\s*(forte|moyenne|faible)\s*:?\s*/i, "");
+      const rangPert = (f) => 100 - evalPert(f).note;
+      const badgePert = (f) => {
+        const e = evalPert(f), n2 = e.niveau;
+        return `<details style="display:inline-block;vertical-align:top"><summary style="cursor:pointer;list-style:none"><span class="chip" style="font-size:11px;font-weight:700;color:${PERT[n2][1]};border:1px solid ${PERT[n2][1]}" title="Note calcul\xE9e : cliquez pour voir pourquoi">${PERT[n2][0]} \xB7 ${e.note}/100</span></summary><div style="font-size:11px;font-weight:400;margin:4px 0;max-width:260px">${e.raisons.map((r) => `<div>${r.pts > 0 ? "\uFF0B" + r.pts : r.pts < 0 ? "\u2212" + Math.abs(r.pts) : "\u2022"} ${esc2(r.texte)}</div>`).join("")}<div class="muted" style="margin-top:3px">Base 35 points. Note calcul\xE9e par r\xE8gles \xE0 partir de la fiche et de votre besoin.</div></div></details>`;
+      };
+      const domaine = (u) => {
+        try {
+          return new URL(u).hostname.replace(/^www\./, "");
+        } catch (e) {
+          return "";
+        }
+      };
+      const montantFin = (f) => {
+        const a = f.ticket_min != null ? F.m(f.ticket_min).replace(" FCFA", "") : null, b = f.ticket_max != null ? F.m(f.ticket_max).replace(" FCFA", "") : null;
+        if (a == null && b == null) return "\u2014";
+        return (a != null && b != null ? a + " \u2013 " + b : a != null ? "\u2265 " + a : "\u2264 " + b) + " " + esc2(f.devise || "FCFA");
+      };
+      const lien = (u, txt2, titre) => urlSure(u) ? `<a href="${esc2(u)}" target="_blank" rel="noopener noreferrer" title="${esc2(titre || u)}">${txt2}</a>` : "";
+      const contactsHtml = (f) => {
+        const g = [];
+        if (f.linkedin_url && lienLi(f.linkedin_url)) g.push(lien(f.linkedin_url, "in LinkedIn", "Page LinkedIn de l'organisation"));
+        if (f.contact_formulaire && urlSure(f.contact_formulaire)) g.push(lien(f.contact_formulaire, "\u2709 Formulaire", f.contact_formulaire));
+        if (f.contact_email && emailOk(f.contact_email)) g.push(`<a href="mailto:${esc2(f.contact_email)}">\u2709 ${esc2(f.contact_email)}</a>`);
+        if (f.contact_telephone) g.push("\u260E " + esc2(f.contact_telephone));
+        const ps = (finUi.contacts[f.id] || []).map((c) => `<div style="margin-top:3px">\u{1F464} <b>${esc2(c.nom)}</b>${c.fonction ? " \u2014 " + esc2(c.fonction) : ""} ${c.linkedin_url && lienLi(c.linkedin_url) ? lien(c.linkedin_url, "in", "Profil LinkedIn public") : ""}${c.email && emailOk(c.email) ? ` <a href="mailto:${esc2(c.email)}">\u2709</a>` : ""} ${lien(c.source_url, "\u2197", "Source : " + c.source_url)}</div>`).join("");
+        return (g.length ? '<div style="display:flex;gap:8px;flex-wrap:wrap">' + g.join("") + "</div>" : "") + ps || "\u2014";
+      };
+      const optsFin = (m, v) => Object.keys(m).filter((k) => k !== "").map((k) => `<option value="${k}" ${v === k ? "selected" : ""}>${esc2(Array.isArray(m[k]) ? m[k][0] : m[k])}</option>`).join("");
+      function tabFin() {
+        if (finUi.liste === null && !finUi.charge) {
+          chargerFin();
+        }
+        const L = finUi.liste || [], q = finUi.filtre.q.trim().toLowerCase(), fl = finUi.filtre;
+        const vues = L.filter((f) => (!fl.type || f.type === fl.type) && (!fl.statut || f.statut === fl.statut) && (!fl.region || (f.region || "") === fl.region) && (!fl.pertinence || niveauPert(f) === fl.pertinence) && (!q || [f.nom, f.pays, f.conditions, f.notes, f.pertinence].some((v) => String(v || "").toLowerCase().indexOf(q) >= 0) || (finUi.contacts[f.id] || []).some((c) => String(c.nom + " " + (c.fonction || "")).toLowerCase().indexOf(q) >= 0)));
+        const compte = {};
+        L.forEach((f) => {
+          compte[f.statut] = (compte[f.statut] || 0) + 1;
+        });
+        const nbContacts = Object.keys(finUi.contacts).reduce((n2, k) => n2 + finUi.contacts[k].length, 0);
+        const e = finUi.edit, ed = e && e !== "nouveau" ? L.filter((f) => f.id === e)[0] || {} : {};
+        const champ = (k, lib, type, ph) => `<label class="form-label" style="font-size:12px">${lib}<input class="form-input" name="${k}" type="${type || "text"}" ${type === "number" ? 'min="0" step="any"' : ""} value="${esc2(ed[k] == null ? "" : ed[k])}" placeholder="${esc2(ph || "")}"></label>`;
+        const persEdit = e && e !== "nouveau" ? (finUi.contacts[e] || []).map((c) => `<div style="display:flex;gap:8px;align-items:center;font-size:13px;margin:3px 0">\u{1F464} <span><b>${esc2(c.nom)}</b>${c.fonction ? " \u2014 " + esc2(c.fonction) : ""}</span> <button type="button" class="btn btn-sm" data-act="fin-contact-suppr" data-id="${esc2(c.id)}" title="Retirer cette personne">\u{1F5D1}\uFE0F</button></div>`).join("") : "";
+        const form = e ? `<form id="lev-fin-form" class="card" data-id="${e === "nouveau" ? "" : esc2(e)}"><div class="card-header"><span class="card-title">${e === "nouveau" ? "\u2795 Nouveau financeur" : "\u270F\uFE0F Modifier " + esc2(ed.nom || "")}</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+        ${champ("nom", "Nom", "text", "ex. Fonds Jeunes Entrepreneurs")}
+        <label class="form-label" style="font-size:12px">Type<select class="form-input" name="type">${optsFin(FIN_TYPES, ed.type || "fonds")}</select></label>
+        <label class="form-label" style="font-size:12px">R\xE9gion<select class="form-input" name="region"><option value="">\u2014</option>${optsFin(FIN_REGIONS, ed.region || "")}</select></label>
+        ${champ("pays", "Pays ou zone", "text", "ex. C\xF4te d'Ivoire")}${champ("ticket_min", "Montant minimal", "number")}${champ("ticket_max", "Montant maximal", "number")}${champ("devise", "Devise", "text", "FCFA")}
+        ${champ("url_source", "Lien de la source (https, obligatoire)", "url", "https://\u2026")}${champ("site_web", "Site web officiel", "url", "https://\u2026")}${champ("linkedin_url", "Page LinkedIn de l'organisation", "url", "https://www.linkedin.com/company/\u2026")}
+        ${champ("contact_email", "E-mail de contact (publi\xE9)", "email")}${champ("contact_telephone", "T\xE9l\xE9phone (publi\xE9)", "text")}${champ("contact_formulaire", "Formulaire de contact", "url", "https://\u2026")}
+        <label class="form-label" style="font-size:12px">Statut<select class="form-input" name="statut">${optsFin(FIN_STATUTS, ed.statut || "a_etudier")}</select></label></div>
+      <label class="form-label" style="font-size:12px;margin-top:8px">Conditions d'\xE9ligibilit\xE9<textarea class="form-input" name="conditions" rows="2">${esc2(ed.conditions || "")}</textarea></label>
+      <label class="form-label" style="font-size:12px">Pertinence pour SANIX<input class="form-input" name="pertinence" value="${esc2(ed.pertinence || "")}"></label>
+      <label class="form-label" style="font-size:12px">Notes<textarea class="form-input" name="notes" rows="2">${esc2(ed.notes || "")}</textarea></label>
+      <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:8px"><b style="font-size:13px">\u{1F464} Personnes ressources</b>${persEdit}
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:6px">
+          <input class="form-input" name="cn_nom" placeholder="Nom (nouvelle personne)"><input class="form-input" name="cn_fonction" placeholder="Fonction">
+          <input class="form-input" name="cn_linkedin" type="url" placeholder="Profil LinkedIn public (https://www.linkedin.com/in/\u2026)"><input class="form-input" name="cn_email" type="email" placeholder="E-mail publi\xE9"><input class="form-input" name="cn_source" type="url" placeholder="Source publique (https, obligatoire)"></div></div>
+      <div id="lev-fin-err" class="alert alert-warn hidden" role="alert"></div>
+      <div style="margin-top:8px"><button class="btn btn-primary btn-sm" type="submit">Enregistrer</button> <button class="btn btn-sm" type="button" data-act="fin-annuler">Annuler</button></div></form>` : "";
+        const lignes = (f) => `<tr><td><b>${urlSure(f.url_source) ? `<a href="${esc2(f.url_source)}" target="_blank" rel="noopener noreferrer" title="Source : ${esc2(f.url_source)}">${esc2(f.nom)} \u2197</a>` : esc2(f.nom)}</b>${f.ajoute_par ? ' <span title="Ajout\xE9 par un agent">\u{1F916}</span>' : ""}<div style="margin:3px 0">${badgePert(f)}${f.site_web && urlSure(f.site_web) ? ` <a href="${esc2(f.site_web)}" target="_blank" rel="noopener noreferrer" style="font-size:12px;font-weight:600" title="Ouvrir le site web">\u{1F310} ${esc2(domaine(f.site_web))}</a>` : ""}</div><div class="muted" style="font-size:11px">${esc2(f.pays || "")}</div>${f.pertinence ? `<div style="font-size:11px" class="muted">Avis de l'agent : ${esc2(textePert(f))}</div>` : ""}</td>
+      <td>${esc2(FIN_TYPES[f.type] || f.type)}</td><td style="white-space:nowrap">${montantFin(f)}</td>
+      <td style="font-size:12px;max-width:300px">${f.conditions ? `<details><summary>${esc2(String(f.conditions).slice(0, 70))}${String(f.conditions).length > 70 ? "\u2026" : ""}</summary>${esc2(f.conditions)}${f.notes ? "<br><i>" + esc2(f.notes) + "</i>" : ""}</details>` : f.notes ? "<i>" + esc2(f.notes) + "</i>" : "\u2014"}</td>
+      <td style="font-size:12px;min-width:200px">${contactsHtml(f)}</td>
+      <td><select class="form-input" data-fin-statut="${esc2(f.id)}" style="min-width:130px;color:${(FIN_STATUTS[f.statut] || ["", "#000"])[1]};font-weight:600" aria-label="Statut de ${esc2(f.nom)}">${optsFin(FIN_STATUTS, f.statut)}</select></td>
+      <td style="white-space:nowrap">${(finUi.brouillons[f.id] || []).length ? `<button class="btn btn-sm btn-primary" data-act="fin-msg" data-id="${esc2(f.id)}" title="Lire et valider le message pr\xE9par\xE9">\u2709 Message</button> ` : ""}<button class="btn btn-sm" data-act="fin-edit" data-id="${esc2(f.id)}" title="Modifier">\u270F\uFE0F</button> <button class="btn btn-sm" data-act="fin-suppr" data-id="${esc2(f.id)}" title="Supprimer">\u{1F5D1}\uFE0F</button></td></tr>`;
+        const groupes = {};
+        vues.forEach((f) => {
+          const k = FIN_REGIONS[f.region || ""] !== void 0 ? f.region || "" : "";
+          (groupes[k] = groupes[k] || []).push(f);
+        });
+        Object.keys(groupes).forEach((k) => groupes[k].sort((a, b) => rangPert(a) - rangPert(b) || String(a.nom).localeCompare(String(b.nom), "fr")));
+        const fortes = L.filter((f) => niveauPert(f) === "forte").sort((a, b) => evalPert(b).note - evalPert(a).note);
+        const carteTop = fortes.length ? `<div class="card" id="lev-fin-top"><div class="card-header"><span class="card-title">\u2B50 Les plus pertinents pour SANIX (${fortes.length})</span><button class="btn btn-sm" data-act="fin-fortes">Les isoler dans la liste</button></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px">${fortes.map((f) => `<div style="border:1px solid var(--border);border-radius:10px;padding:10px"><b>${urlSure(f.url_source) ? `<a href="${esc2(f.url_source)}" target="_blank" rel="noopener noreferrer" title="Source">${esc2(f.nom)} \u2197</a>` : esc2(f.nom)}</b>
+        <div class="muted" style="font-size:11px">${esc2(FIN_TYPES[f.type] || f.type)} \xB7 ${esc2(FIN_REGIONS[f.region || ""] || "")} \xB7 ${montantFin(f)}</div>
+        <div style="margin:4px 0">${badgePert(f)}</div><div style="font-size:12px;margin:4px 0">${f.pertinence ? "Avis de l'agent : " + esc2(textePert(f)) : ""}</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px">${f.site_web && urlSure(f.site_web) ? `<a href="${esc2(f.site_web)}" target="_blank" rel="noopener noreferrer" style="font-weight:600">\u{1F310} ${esc2(domaine(f.site_web))}</a>` : '<span class="muted">site non renseign\xE9</span>'}${f.contact_formulaire && urlSure(f.contact_formulaire) ? `<a href="${esc2(f.contact_formulaire)}" target="_blank" rel="noopener noreferrer">\u2709 Candidater / contacter</a>` : ""}</div></div>`).join("")}</div></div>` : "";
+        const dm = finUi.msg ? Object.keys(finUi.brouillons).reduce((r, k) => r || (finUi.brouillons[k] || []).filter((b) => b.id === finUi.msg)[0], null) : null, fm = dm ? L.filter((f) => f.id === dm.financeur_id)[0] : null;
+        const nbACompleter = dm ? ((dm.corps + " " + dm.objet).match(/\[(À COMPLÉTER|TO COMPLETE)/g) || []).length : 0;
+        const versions = dm ? finUi.brouillons[dm.financeur_id] || [] : [], vLangue = (l) => versions.filter((b) => b.langue === l)[0];
+        const choixLangue = dm ? '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0"><b style="font-size:12px">Langue du message :</b>' + [["fr", "\u{1F1EB}\u{1F1F7} Fran\xE7ais"], ["en", "\u{1F1EC}\u{1F1E7} English"]].map((x) => vLangue(x[0]) ? `<button class="btn btn-sm ${dm.langue === x[0] ? "btn-primary" : ""}" data-act="fin-msg-langue" data-l="${x[0]}">${x[1]}${vLangue(x[0]).statut === "envoye" ? " \u2705 envoy\xE9" : ""}</button>` : "").join("") + '<span class="muted" style="font-size:11px">Chaque langue est un message distinct : vous pouvez en envoyer un seul, ou les deux.</span></div>' : "";
+        const carteMsg = dm && fm ? `<div class="card" id="lev-fin-msg" data-id="${esc2(dm.id)}"><div class="card-header"><span class="card-title">\u2709 Message pour ${esc2(fm.nom)} <span class="chip" style="font-size:11px">${dm.langue === "en" ? "English" : "Fran\xE7ais"}</span></span><button class="btn btn-sm" data-act="fin-msg-fermer">Fermer</button></div>
+      ${choixLangue}
+      <div class="alert alert-warn">\u26A0\uFE0F <div><b>Brouillon : rien n'est envoy\xE9 par le syst\xE8me.</b> Relisez chaque phrase, v\xE9rifiez les faits, compl\xE9tez les passages entre crochets, puis envoyez vous-m\xEAme.${nbACompleter ? ` <b style="color:#dc2626">${nbACompleter} \xE9l\xE9ment(s) \xAB \xC0 COMPL\xC9TER \xBB restent dans le texte.</b>` : " <b>Aucun passage \xAB \xC0 COMPL\xC9TER \xBB restant.</b>"}</div></div>
+      <div class="muted" style="font-size:12px;margin:6px 0">${dm.canal === "email" && dm.destinataire ? "Destinataire (e-mail publi\xE9 sur son site) : <b>" + esc2(dm.destinataire) + "</b>" : dm.canal === "formulaire" ? "Canal : formulaire du financeur" + (fm.contact_formulaire && urlSure(fm.contact_formulaire) ? " \u2014 " + lien(fm.contact_formulaire, "ouvrir le formulaire \u2197") : "") : "Aucune adresse publi\xE9e : passer par le site ou le profil LinkedIn d'une personne ressource."}${dm.note ? "<br><i>" + esc2(dm.note) + "</i>" : ""}</div>
+      <label class="form-label" style="font-size:12px">Objet<input class="form-input" data-brf="objet" value="${esc2(dm.objet)}"></label>
+      <label class="form-label" style="font-size:12px">Message<textarea class="form-input" data-brf="corps" rows="16" style="font-family:inherit">${esc2(dm.corps)}</textarea></label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px"><label class="form-label" style="font-size:12px;margin:0">Statut <select class="form-input" data-brf="statut" style="display:inline-block;width:auto">${[["brouillon", "Brouillon"], ["valide", "Valid\xE9 par moi"], ["envoye", "Envoy\xE9"], ["abandonne", "Abandonn\xE9"]].map((x) => `<option value="${x[0]}" ${dm.statut === x[0] ? "selected" : ""}>${x[1]}</option>`).join("")}</select></label>
+        <button class="btn btn-primary btn-sm" data-act="fin-msg-save">\u{1F4BE} Enregistrer</button> <button class="btn btn-sm" data-act="fin-msg-copier">\u{1F4CB} Copier</button>${dm.destinataire && emailOk(dm.destinataire) ? (dm.statut === "envoye" ? ' <span class="muted" style="font-size:12px">\u2705 D\xE9j\xE0 envoy\xE9</span>' : ` <button class="btn btn-sm btn-primary" data-act="fin-msg-envoyer" title="Envoi par le Gmail de l'entreprise, apr\xE8s votre confirmation">\u{1F4E4} Envoyer en ` + (dm.langue === "en" ? "anglais" : "fran\xE7ais") + "</button>") + ' <button class="btn btn-sm" data-act="fin-msg-mailto">\u2709 Ouvrir dans ma messagerie</button>' : ""}</div></div>` : "";
+        const sections = Object.keys(FIN_REGIONS).filter((k) => groupes[k]).map((k) => `<details data-reg="${k}" ${finUi.ouvertes[k] || fl.region || q ? "open" : ""} style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;font-size:14px;padding:6px 0">${esc2(FIN_REGIONS[k])} \xB7 ${groupes[k].length}</summary>
+      <div style="overflow:auto"><table class="table" style="width:100%;font-size:13px"><thead><tr><th>Financeur</th><th>Type</th><th>Montants</th><th>Conditions</th><th>Contacts et personnes</th><th>Statut</th><th></th></tr></thead><tbody>${groupes[k].map(lignes).join("")}</tbody></table></div></details>`).join("");
+        return `<div class="alert alert-info">\u2139\uFE0F <div>Annuaire mondial des financeurs, par r\xE9gion. Chaque ligne porte le lien de sa source (\u{1F916} : ajout\xE9 par un agent). Les contacts et personnes ne sont que des <b>informations professionnelles publi\xE9es</b> ; aucune adresse n'est devin\xE9e. <b>V\xE9rifiez les conditions et les contacts sur la source</b> avant tout envoi : une page peut \xEAtre p\xE9rim\xE9e.</div></div>
+      ${carteTop}
+      <div class="card"><div class="card-header"><span class="card-title">\u{1F3DB}\uFE0F Financeurs (${L.length}) \xB7 \u{1F464} ${nbContacts} personnes</span><span><button class="btn btn-sm" data-act="fin-actualiser">\u{1F504} Actualiser</button> <button class="btn btn-sm" data-act="fin-export">\u2B07\uFE0F Export CSV</button> <button class="btn btn-sm btn-primary" data-act="fin-nouveau">\u2795 Ajouter</button></span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${Object.keys(FIN_STATUTS).map((k) => `<span class="chip" style="font-size:12px;color:${FIN_STATUTS[k][1]}">${FIN_STATUTS[k][0]} \xB7 ${compte[k] || 0}</span>`).join("")}</div>
+      <div id="lev-fin-filtres" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <input class="form-input" type="search" data-finf="q" value="${esc2(fl.q)}" placeholder="Rechercher (nom, pays, conditions, personne)\u2026" style="flex:2;min-width:180px" aria-label="Rechercher un financeur">
+        <select class="form-input" data-finf="region" style="flex:1;min-width:150px" aria-label="Filtrer par r\xE9gion"><option value="">Toutes les r\xE9gions</option>${optsFin(FIN_REGIONS, fl.region)}</select>
+        <select class="form-input" data-finf="pertinence" style="flex:1;min-width:150px" aria-label="Filtrer par pertinence"><option value="">Toutes pertinences</option>${Object.keys(PERT).map((k) => `<option value="${k}" ${fl.pertinence === k ? "selected" : ""}>${PERT[k][0]}</option>`).join("")}</select>
+        <select class="form-input" data-finf="type" style="flex:1;min-width:140px" aria-label="Filtrer par type"><option value="">Tous les types</option>${optsFin(FIN_TYPES, fl.type)}</select>
+        <select class="form-input" data-finf="statut" style="flex:1;min-width:140px" aria-label="Filtrer par statut"><option value="">Tous les statuts</option>${optsFin(FIN_STATUTS, fl.statut)}</select></div>
+      ${finUi.erreur ? `<div class="alert alert-warn">\u26A0\uFE0F <div>${esc2(finUi.erreur)}</div></div>` : ""}
+      ${finUi.charge && finUi.liste === null ? '<p class="muted">Chargement\u2026</p>' : vues.length ? sections : L.length ? "<p>Aucun financeur ne correspond aux filtres.</p>" : "<p>L'annuaire est vide. Les agents le remplissent (recherche mondiale, mission hebdomadaire) ; vous pouvez aussi ajouter vos propres pistes.</p>"}</div>${carteMsg}${form}`;
+      }
+      const msgCourant = () => finUi.msg ? Object.keys(finUi.brouillons).reduce((r, k) => r || (finUi.brouillons[k] || []).filter((b) => b.id === finUi.msg)[0], null) : null;
+      const lireMsg = () => {
+        const q = (k) => {
+          const el = document.querySelector('#lev-fin-msg [data-brf="' + k + '"]');
+          return el ? el.value : "";
+        };
+        return { objet: q("objet").trim(), corps: q("corps").trim(), statut: q("statut") || "brouillon" };
+      };
+      async function sauverMsg() {
+        const d = msgCourant();
+        if (!d) return;
+        const v = lireMsg();
+        if (v.objet.length < 2 || v.corps.length < 20) return toast("\u26A0\uFE0F Objet ou message trop court");
+        try {
+          await api("/rest/v1/levee_brouillons?id=eq." + encodeURIComponent(d.id), { method: "PATCH", body: JSON.stringify({ objet: v.objet, corps: v.corps, statut: v.statut, updated_at: (/* @__PURE__ */ new Date()).toISOString() }) });
+          Object.assign(d, v);
+          toast("\u2705 Message enregistr\xE9");
+          render();
+        } catch (e) {
+          toast("\u26A0\uFE0F " + e.message);
+        }
+      }
+      async function envoyerMsg() {
+        const d = msgCourant();
+        if (!d) return;
+        const v = lireMsg();
+        if (!d.destinataire || !emailOk(d.destinataire)) return toast("\u26A0\uFE0F Aucune adresse e-mail pour ce financeur");
+        if (d.statut === "envoye") return toast("Ce message est d\xE9j\xE0 marqu\xE9 comme envoy\xE9");
+        if (v.objet.length < 2 || v.corps.length < 20) return toast("\u26A0\uFE0F Objet ou message trop court");
+        if (/\[(À COMPLÉTER|TO COMPLETE)[^\]]*\]/i.test(v.objet + "\n" + v.corps)) return toast("\u26A0\uFE0F Compl\xE9tez d'abord les passages [TO COMPLETE : \u2026] avant d'envoyer");
+        if (!window.confirm("Envoyer maintenant ce message \xE0 " + d.destinataire + " ?\n\nObjet : " + v.objet + "\n\nIl partira du Gmail de l'entreprise et ne pourra pas \xEAtre rappel\xE9.")) return;
+        const g = typeof window.courrierSignataire === "function" ? window.courrierSignataire() : {}, nom = (g.nom || "SANIX Africa") + (g.societe ? " \u2014 " + g.societe : "");
+        try {
+          await api("/functions/v1/crm-gmail", { method: "POST", body: JSON.stringify({ action: "send", client_rid: null, to: d.destinataire, subject: v.objet, body: v.corps, from_name: nom, relance_jours: 7 }), timeout: 45e3 });
+        } catch (e) {
+          return toast("\u274C Envoi impossible : " + e.message);
+        }
+        const note2 = ((d.note || "") + " | Envoy\xE9 le " + (/* @__PURE__ */ new Date()).toLocaleString("fr-FR") + " \xE0 " + d.destinataire).slice(-1e3);
+        try {
+          await api("/rest/v1/levee_brouillons?id=eq." + encodeURIComponent(d.id), { method: "PATCH", body: JSON.stringify({ objet: v.objet, corps: v.corps, statut: "envoye", note: note2, updated_at: (/* @__PURE__ */ new Date()).toISOString() }) });
+          Object.assign(d, { objet: v.objet, corps: v.corps, statut: "envoye", note: note2 });
+        } catch (e) {
+          toast("\u2705 E-mail envoy\xE9, mais le statut n'a pas pu \xEAtre mis \xE0 jour : " + e.message);
+          render();
+          return;
+        }
+        toast("\u2705 E-mail envoy\xE9 \xE0 " + d.destinataire);
+        render();
+      }
+      async function copierMsg() {
+        const v = lireMsg(), txt2 = v.objet + "\n\n" + v.corps;
+        try {
+          await navigator.clipboard.writeText(txt2);
+          toast("\u{1F4CB} Message copi\xE9");
+        } catch (e) {
+          const t = document.querySelector('#lev-fin-msg [data-brf="corps"]');
+          if (t) {
+            t.focus();
+            t.select();
+          }
+          toast("S\xE9lectionnez le texte et copiez-le (Ctrl+C)");
+        }
+      }
+      function exportFin() {
+        const L = finUi.liste || [], cel = (v) => '"' + String(v == null ? "" : v).replace(/"/g, '""').replace(/^([=+\-@])/, "'$1") + '"';
+        const rows = [["R\xE9gion", "Nom", "Type", "Pays", "Montant min", "Montant max", "Devise", "Conditions", "Statut", "Site web", "LinkedIn", "E-mail", "T\xE9l\xE9phone", "Formulaire", "Personnes (nom \u2014 fonction \u2014 LinkedIn)", "Source", "Pertinence"]];
+        L.forEach((f) => rows.push([
+          FIN_REGIONS[f.region || ""] || "",
+          f.nom,
+          FIN_TYPES[f.type] || f.type,
+          f.pays,
+          f.ticket_min,
+          f.ticket_max,
+          f.devise,
+          f.conditions,
+          (FIN_STATUTS[f.statut] || [f.statut])[0],
+          f.site_web,
+          f.linkedin_url,
+          f.contact_email,
+          f.contact_telephone,
+          f.contact_formulaire,
+          (finUi.contacts[f.id] || []).map((c) => [c.nom, c.fonction, c.linkedin_url].filter(Boolean).join(" \u2014 ")).join(" ; "),
+          f.url_source,
+          evalPert(f).note + "/100 (" + niveauPert(f) + ") \u2014 avis agent : " + (f.pertinence || "")
+        ]));
+        const blob = new Blob(["\uFEFF" + rows.map((r) => r.map(cel).join(";")).join("\r\n")], { type: "text/csv;charset=utf-8" }), a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "financeurs-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".csv";
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          URL.revokeObjectURL(a.href);
+          a.remove();
+        }, 500);
+      }
+      async function enregistrerFin(form) {
+        const d = {};
+        new FormData(form).forEach((v, k) => {
+          d[k] = typeof v === "string" ? v.trim() : v;
+        });
+        const err = document.getElementById("lev-fin-err"), montre = (m) => {
+          if (err) {
+            err.textContent = m;
+            err.classList.remove("hidden");
+          }
+        };
+        if (!d.nom || d.nom.length < 2) return montre("Le nom est obligatoire (2 caract\xE8res minimum).");
+        if (!urlSure(d.url_source)) return montre("Le lien de la source est obligatoire et doit commencer par https://.");
+        if (d.site_web && !urlSure(d.site_web)) return montre("Le site web doit commencer par https://.");
+        if (d.contact_formulaire && !urlSure(d.contact_formulaire)) return montre("Le formulaire de contact doit commencer par https://.");
+        if (d.linkedin_url && !lienLi(d.linkedin_url)) return montre("La page LinkedIn doit \xEAtre un lien https://\u2026linkedin.com/\u2026");
+        if (d.contact_email && !emailOk(d.contact_email)) return montre("L'adresse e-mail n'est pas valide.");
+        if (d.cn_nom) {
+          if (d.cn_nom.length < 2) return montre("Le nom de la personne est trop court.");
+          if (!urlSure(d.cn_source)) return montre("Pour ajouter une personne, indiquez la source publique (https) qui \xE9tablit son nom et sa fonction.");
+          if (d.cn_linkedin && !lienLi(d.cn_linkedin)) return montre("Le profil LinkedIn doit \xEAtre un lien https://\u2026linkedin.com/\u2026");
+          if (d.cn_email && !emailOk(d.cn_email)) return montre("L'e-mail de la personne n'est pas valide.");
+        }
+        const num0 = (v) => v === "" || v == null ? null : Math.max(0, Math.round(num2(v))), nul2 = (v) => v ? v : null;
+        const corps = {
+          nom: d.nom,
+          type: d.type,
+          region: nul2(d.region),
+          pays: nul2(d.pays),
+          ticket_min: num0(d.ticket_min),
+          ticket_max: num0(d.ticket_max),
+          devise: d.devise || "FCFA",
+          conditions: nul2(d.conditions),
+          url_source: d.url_source,
+          site_web: nul2(d.site_web),
+          linkedin_url: nul2(d.linkedin_url),
+          contact_email: nul2(d.contact_email),
+          contact_telephone: nul2(d.contact_telephone),
+          contact_formulaire: nul2(d.contact_formulaire),
+          pertinence: nul2(d.pertinence),
+          statut: d.statut,
+          notes: nul2(d.notes),
+          updated_at: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        try {
+          let id = form.dataset.id;
+          if (id) await api("/rest/v1/levee_financeurs?id=eq." + encodeURIComponent(id), { method: "PATCH", body: JSON.stringify(corps) });
+          else {
+            const r = await api("/rest/v1/levee_financeurs", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(corps) });
+            id = r && r[0] && r[0].id;
+          }
+          if (d.cn_nom && id) await api("/rest/v1/levee_contacts", { method: "POST", body: JSON.stringify({ financeur_id: id, nom: d.cn_nom, fonction: nul2(d.cn_fonction), linkedin_url: nul2(d.cn_linkedin), email: nul2(d.cn_email), source_url: d.cn_source }) });
+          finUi.edit = null;
+          finUi.liste = null;
+          await chargerFin();
+          toast("\u2705 Financeur enregistr\xE9");
+        } catch (e) {
+          montre(/duplicate|unique|23505/i.test(e.message) ? "Ce financeur ou cette personne existe d\xE9j\xE0 dans l'annuaire." : e.message);
+        }
+      }
       function tabNotes() {
         return `<div class="card"><div class="card-header"><span class="card-title">\u{1F4D6} Comment lire ce module</span></div><div style="font-size:13px">
       <p><b>Mesur\xE9 ou coch\xE9.</b> Les indicateurs chiffr\xE9s sont calcul\xE9s \xE0 partir de vos commandes, de vos paiements, de votre pipeline et de la fiche soci\xE9t\xE9 ; seuls les crit\xE8res de dossier qu'aucun chiffre ne prouve (pacte, \xE9quipe, pitch deck\u2026) sont \xE0 cocher.</p>
@@ -917,8 +1282,8 @@ var require_levee = __commonJS({
           el.id = "lev-body";
           host.appendChild(el);
         }
-        const tabs = [["synthese", "\u{1F4CA} Synth\xE8se"], ["indic", "\u{1F4D0} Indicateurs"], ["elig", "\u2705 \xC9ligibilit\xE9"], ["simul", "\u{1F9EA} Simulation"], ["plan", "\u{1F9ED} Plan d'action"], ["deck", "\u{1F3A4} Pitch deck"], ["notes", "\u{1F4D6} Notes"]];
-        const corps = ui.tab === "indic" ? tabIndic() : ui.tab === "elig" ? tabElig() : ui.tab === "simul" ? tabSimul() : ui.tab === "plan" ? tabPlan() : ui.tab === "deck" ? tabDeck() : ui.tab === "notes" ? tabNotes() : tabSynthese();
+        const tabs = [["synthese", "\u{1F4CA} Synth\xE8se"], ["indic", "\u{1F4D0} Indicateurs"], ["elig", "\u2705 \xC9ligibilit\xE9"], ["simul", "\u{1F9EA} Simulation"], ["plan", "\u{1F9ED} Plan d'action"], ["deck", "\u{1F3A4} Pitch deck"], ["fin", "\u{1F3DB}\uFE0F Financeurs"], ["notes", "\u{1F4D6} Notes"]];
+        const corps = ui.tab === "indic" ? tabIndic() : ui.tab === "elig" ? tabElig() : ui.tab === "simul" ? tabSimul() : ui.tab === "plan" ? tabPlan() : ui.tab === "deck" ? tabDeck() : ui.tab === "fin" ? tabFin() : ui.tab === "notes" ? tabNotes() : tabSynthese();
         el.innerHTML = `<div class="ban"><div class="ban-deco"></div><h1 class="page-title">\u{1F680} Lev\xE9e de fonds</h1><p class="page-sub">Votre niveau de pr\xE9paration, votre \xE9ligibilit\xE9 par type de financeur et la simulation pour y arriver \u2014 d\xE9part : vos chiffres r\xE9els du CRM</p></div>
       <div class="tabs" role="tablist" style="margin-bottom:16px">${tabs.map((t) => `<div class="tab ${ui.tab === t[0] ? "active" : ""}" role="tab" tabindex="0" aria-selected="${ui.tab === t[0]}" data-tab="${t[0]}">${t[1]}</div>`).join("")}</div>${corps}
       <div id="lev-sync" class="muted" style="font-size:12px;margin-top:12px"></div>
@@ -961,6 +1326,70 @@ var require_levee = __commonJS({
             }
             w.document.write(deck(donneesDeck()).document(0.7));
             w.document.close();
+          } else if (a === "fin-nouveau") {
+            finUi.edit = "nouveau";
+            render();
+          } else if (a === "fin-annuler") {
+            finUi.edit = null;
+            render();
+          } else if (a === "fin-edit") {
+            finUi.edit = t.dataset.id;
+            render();
+            const f = document.getElementById("lev-fin-form");
+            if (f && f.scrollIntoView) f.scrollIntoView({ behavior: "smooth", block: "center" });
+          } else if (a === "fin-export") exportFin();
+          else if (a === "fin-msg") {
+            const bs = finUi.brouillons[t.dataset.id] || [];
+            finUi.msg = (bs.filter((b) => b.langue === "fr")[0] || bs[0] || {}).id || null;
+            render();
+            const c = document.getElementById("lev-fin-msg");
+            if (c && c.scrollIntoView) c.scrollIntoView({ behavior: "smooth", block: "center" });
+          } else if (a === "fin-msg-fermer") {
+            finUi.msg = null;
+            render();
+          } else if (a === "fin-msg-langue") {
+            const d = msgCourant(), cible2 = d && (finUi.brouillons[d.financeur_id] || []).filter((b) => b.langue === t.dataset.l)[0];
+            if (cible2) {
+              finUi.msg = cible2.id;
+              render();
+            }
+          } else if (a === "fin-msg-save") {
+            sauverMsg();
+          } else if (a === "fin-msg-copier") {
+            copierMsg();
+          } else if (a === "fin-msg-envoyer") {
+            envoyerMsg();
+          } else if (a === "fin-msg-mailto") {
+            const d = msgCourant();
+            if (!d) return;
+            const u = "mailto:" + encodeURIComponent(d.destinataire) + "?subject=" + encodeURIComponent(lireMsg().objet) + "&body=" + encodeURIComponent(lireMsg().corps);
+            if (u.length > 1900) {
+              toast("\u26A0\uFE0F Message trop long pour la messagerie : utilisez \xAB Copier \xBB");
+              return;
+            }
+            window.open(u, "_self");
+          } else if (a === "fin-fortes") {
+            finUi.filtre.pertinence = "forte";
+            render();
+          } else if (a === "fin-contact-suppr") {
+            api("/rest/v1/levee_contacts?id=eq." + encodeURIComponent(t.dataset.id), { method: "DELETE" }).then(() => {
+              Object.keys(finUi.contacts).forEach((k) => {
+                finUi.contacts[k] = finUi.contacts[k].filter((c) => c.id !== t.dataset.id);
+              });
+              render();
+              toast("\u{1F5D1}\uFE0F Personne retir\xE9e");
+            }).catch((x) => toast("\u26A0\uFE0F " + x.message));
+          } else if (a === "fin-actualiser") {
+            finUi.liste = null;
+            chargerFin();
+          } else if (a === "fin-suppr") {
+            const f = (finUi.liste || []).filter((x) => x.id === t.dataset.id)[0];
+            if (!f || !window.confirm("Supprimer \xAB " + f.nom + " \xBB de l'annuaire ?")) return;
+            api("/rest/v1/levee_financeurs?id=eq." + encodeURIComponent(f.id), { method: "DELETE" }).then(() => {
+              finUi.liste = finUi.liste.filter((x) => x.id !== f.id);
+              render();
+              toast("\u{1F5D1}\uFE0F Financeur supprim\xE9");
+            }).catch((x) => toast("\u26A0\uFE0F " + x.message));
           } else if (a === "what-reset") {
             ov.what = {};
             persist();
@@ -969,6 +1398,7 @@ var require_levee = __commonJS({
         });
         el.addEventListener("toggle", (e) => {
           if (e.target && e.target.id === "lev-seuils") ui.seuilsOpen = e.target.open;
+          else if (e.target && e.target.dataset && e.target.dataset.reg !== void 0) finUi.ouvertes[e.target.dataset.reg] = e.target.open;
         }, true);
         el.addEventListener("keydown", (e) => {
           if ((e.key === "Enter" || e.key === " ") && e.target.dataset && e.target.dataset.tab) {
@@ -979,6 +1409,20 @@ var require_levee = __commonJS({
         });
         el.addEventListener("input", (e) => {
           const t = e.target;
+          if (t.dataset.finf === "q") {
+            finUi.filtre.q = t.value;
+            const pos0 = t.selectionStart;
+            render();
+            const n2 = document.querySelector('[data-finf="q"]');
+            if (n2) {
+              n2.focus();
+              try {
+                n2.setSelectionRange(pos0, pos0);
+              } catch (x) {
+              }
+            }
+            return;
+          }
           if (t.dataset.sim) {
             ov.sim[t.dataset.sim] = t.value === "" ? null : num2(t.value);
             persist();
@@ -1006,8 +1450,31 @@ var require_levee = __commonJS({
             if (o) o.innerHTML = blocWhat();
           }
         });
+        el.addEventListener("submit", (e) => {
+          if (e.target && e.target.id === "lev-fin-form") {
+            e.preventDefault();
+            enregistrerFin(e.target);
+          }
+        });
         el.addEventListener("change", (e) => {
           const t = e.target;
+          if (t.dataset.finStatut) {
+            const f = (finUi.liste || []).filter((x) => x.id === t.dataset.finStatut)[0], v = t.value;
+            if (!f) return;
+            api("/rest/v1/levee_financeurs?id=eq." + encodeURIComponent(f.id), { method: "PATCH", body: JSON.stringify({ statut: v, updated_at: (/* @__PURE__ */ new Date()).toISOString() }) }).then(() => {
+              f.statut = v;
+              render();
+            }).catch((x) => {
+              toast("\u26A0\uFE0F " + x.message);
+              render();
+            });
+            return;
+          }
+          if (t.dataset.finf) {
+            finUi.filtre[t.dataset.finf] = t.value;
+            render();
+            return;
+          }
           if (t.dataset.man) {
             ov.manuel[t.dataset.man] = t.checked;
             persist();
@@ -1288,7 +1755,7 @@ var MANAGER_METHOD = `M\xC9THODE DE MANAGEMENT
 3. Ordonner par d\xE9pendances (assigner_mission avec depend_de) : recherche \u2192 enrichissement \u2192 qualification \u2192 contact \u2192 rendez-vous \u2192 offre.
 4. Une fois les missions lanc\xE9es : attendre_sous_taches. \xC0 la reprise, lis les rapports, \xE9value (evaluer_tache), corrige (modifier_agent, r\xE9attribution), puis conclus.
 5. Agent faible : r\xE9viser sa charte, lui adjoindre un compl\xE9ment, le remplacer ou le suspendre. Jamais de multiplication d'agents sans r\xE9sultat.`;
-var DG_RULES = `INTERLOCUTEUR : le Pr\xE9sident (direction de SANIX AFRICA). R\xE9ponds-lui avec repondre_president : plan d'action d\xE8s que ton organisation est en place, synth\xE8se des r\xE9sultats, question ou demande de validation. Pour une question simple (\xAB pourquoi\u2026 \xBB, \xAB analyse\u2026 \xBB), consulte les indicateurs puis r\xE9ponds directement. Au-del\xE0 de tes d\xE9l\xE9gations, demande validation ; ne pr\xE9sume jamais l'accord.`;
+var DG_RULES = `INTERLOCUTEUR : le Pr\xE9sident (direction de SANIX AFRICA). R\xE9ponds-lui avec repondre_president : plan d'action d\xE8s que ton organisation est en place, synth\xE8se des r\xE9sultats, question ou demande de validation. Pour une question simple (\xAB pourquoi\u2026 \xBB, \xAB analyse\u2026 \xBB), consulte les indicateurs puis r\xE9ponds directement. Au-del\xE0 de tes d\xE9l\xE9gations, demande validation ; ne pr\xE9sume jamais l'accord. Si l'instruction vient de WhatsApp (marqu\xE9e \xAB par WhatsApp \xBB dans la conversation), r\xE9ponds en 12 lignes maximum, sans tableau ni mise en forme lourde : texte court, chiffres cl\xE9s, d\xE9cision attendue.`;
 var SECTIONS = [
   ["identite", "Identit\xE9"],
   ["fonction", "Fonction"],
@@ -1699,6 +2166,19 @@ async function sendWhatsApp(p, text2) {
     external_id: j?.messages?.[0]?.id,
     template: !inWindow
   };
+}
+async function sendWhatsAppText(phone, text2) {
+  const token = env("WHATSAPP_TOKEN", false), phoneId = env("WHATSAPP_PHONE_NUMBER_ID", false);
+  if (!token || !phoneId) return { ok: false, statut: "a_envoyer", detail: "WhatsApp non configur\xE9" };
+  const r = await fetch(`${GRAPH}/${phoneId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", to: phone.replace(/\D/g, ""), type: "text", text: { preview_url: false, body: text2.slice(0, 4096) } }),
+    signal: AbortSignal.timeout(15e3)
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) return { ok: false, statut: "echec", detail: `WhatsApp ${r.status}: ${j?.error?.message ?? "erreur"}` };
+  return { ok: true, statut: "envoye", detail: "Envoy\xE9", external_id: j?.messages?.[0]?.id };
 }
 async function sendEmail(p, subject, text2) {
   if (p.opt_out) return { ok: false, statut: "echec", detail: "Prospect d\xE9sinscrit : envoi interdit" };
@@ -2559,6 +3039,57 @@ async function enregistrerFinanceur(agentId, i) {
   return { ok: true, id: data.id, mis_a_jour: false };
 }
 
+// functions/_shared/company/president_wa_out.ts
+var FENETRE_MS = 23 * 36e5;
+var PARTIE_MAX = 3500;
+var PARTIES_MAX = 3;
+function decouper(texte, max = PARTIE_MAX, parties = PARTIES_MAX) {
+  const t = texte.trim();
+  if (t.length <= max) return [t];
+  const out = [];
+  let reste = t;
+  while (reste.length > max && out.length < parties - 1) {
+    let cut = reste.lastIndexOf("\n", max);
+    if (cut < max * 0.5) cut = reste.lastIndexOf(" ", max);
+    if (cut < max * 0.5) cut = max;
+    out.push(reste.slice(0, cut).trim());
+    reste = reste.slice(cut).trim();
+  }
+  out.push(reste.length > max ? reste.slice(0, max - 60).trimEnd() + "\n\u2026 (suite dans le bureau ex\xE9cutif)" : reste);
+  return out;
+}
+async function flushPresidentWhatsApp() {
+  const res = { envoyes: 0, echecs: 0 };
+  const { data: w } = await db().from("ai_president_whatsapp").select("numero, actif, last_inbound_at").eq("id", 1).maybeSingle();
+  if (!w?.actif) return res;
+  if (!whatsappConfigured()) return res;
+  const { data: msgs } = await db().from("ai_executive_messages").select("id, contenu").eq("auteur", "directeur").eq("wa_statut", "en_attente").order("id").limit(5);
+  for (const m of msgs ?? []) {
+    const fenetreOuverte = !!w.last_inbound_at && Date.now() - Date.parse(w.last_inbound_at) < FENETRE_MS;
+    if (!fenetreOuverte) {
+      await db().from("ai_executive_messages").update({ wa_statut: "hors_fenetre" }).eq("id", m.id).eq("wa_statut", "en_attente");
+      continue;
+    }
+    const { data: pris } = await db().from("ai_executive_messages").update({ wa_statut: "envoi" }).eq("id", m.id).eq("wa_statut", "en_attente").select("id");
+    if (!pris?.length) continue;
+    try {
+      let detail = "Envoy\xE9";
+      for (const [i, part] of decouper(String(m.contenu)).entries()) {
+        const r = await sendWhatsAppText(w.numero, (i === 0 ? "*Directeur g\xE9n\xE9ral IA SANIX*\n" : "") + part);
+        if (!r.ok) throw new Error(r.detail);
+        detail = r.detail;
+      }
+      await db().from("ai_executive_messages").update({ wa_statut: "envoye", wa_detail: detail }).eq("id", m.id);
+      res.envoyes++;
+    } catch (e) {
+      await db().from("ai_executive_messages").update({ wa_statut: "echec", wa_detail: errMsg(e).slice(0, 300) }).eq("id", m.id);
+      await audit({ agent: "president_whatsapp", action: "envoi_echec", ok: false, payload: { message: m.id, e: errMsg(e) } });
+      res.echecs++;
+    }
+  }
+  return res;
+}
+
 // functions/_shared/company/presence.ts
 var ANIMATION_OF = {
   disponible: "idle",
@@ -3368,6 +3899,11 @@ var IMPL = {
     const { error } = await db().from("ai_executive_messages").insert({ auteur: "directeur", contenu: message, task_id: ctx.task.id });
     if (error) throw new Error(error.message);
     ctx.posted.push(message);
+    try {
+      await flushPresidentWhatsApp();
+    } catch (e) {
+      console.error("president_wa_out", errMsg(e));
+    }
     return { ok: true };
   }
 };
@@ -3488,8 +4024,8 @@ R\xE8gle d'affectation : confie une mission \xE0 l'agent qui porte le r\xF4le et
     }
   }
   if (task.type === "instruction") {
-    const { data: hist } = await db().from("ai_executive_messages").select("auteur, contenu, created_at").order("created_at", { ascending: false }).limit(12);
-    if (hist?.length) L.push("Conversation r\xE9cente avec le Pr\xE9sident (du plus ancien au plus r\xE9cent) :\n" + hist.reverse().map((h) => `${h.auteur === "president" ? "Pr\xE9sident" : "Toi"} : ${clip(h.contenu, 1200)}`).join("\n"));
+    const { data: hist } = await db().from("ai_executive_messages").select("auteur, contenu, canal, created_at").order("created_at", { ascending: false }).limit(12);
+    if (hist?.length) L.push("Conversation r\xE9cente avec le Pr\xE9sident (du plus ancien au plus r\xE9cent) :\n" + hist.reverse().map((h) => `${h.auteur === "president" ? "Pr\xE9sident" + (h.canal === "whatsapp" ? " (par WhatsApp)" : "") : "Toi"} : ${clip(h.contenu, 1200)}`).join("\n"));
   }
   L.push("Ex\xE9cute cette mission avec tes outils, puis cl\xF4ture par terminer_mission (ou attendre_sous_taches si tu attends tes subordonn\xE9s).");
   return { text: L.join("\n\n"), seeds };
@@ -4702,6 +5238,7 @@ Deno.serve(async (req) => {
       if (action === "tick") {
         const { work, ...res } = await tickCompany();
         EdgeRuntime.waitUntil(work);
+        EdgeRuntime.waitUntil(flushPresidentWhatsApp().catch((e) => audit({ agent: "president_whatsapp", action: "flush_erreur", ok: false, payload: { e: errMsg(e) } })));
         return json(req, res, 202);
       }
       EdgeRuntime.waitUntil(reportTick().catch((e) => audit({ agent: "rapport", action: "report_tick_erreur", ok: false, payload: { e: errMsg(e) } })));

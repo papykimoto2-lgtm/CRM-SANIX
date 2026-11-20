@@ -47,3 +47,9 @@ Chaque agent a une mémoire de travail, en mode API comme en mode abonnement (ta
 - **`ai_abonnement_memoriser(mission, contenu, tags, partage)`** : 5 souvenirs au plus par mission ; la mémoire partagée est réservée aux agents de niveau ≤ 3.
 - Le prompt de l'exécuteur contient la règle 14 : mettre à jour les instructions de la routine.
 - Amorçage : les 3 dernières missions terminées de chaque agent et 4 faits partagés vérifiés (règles permanentes, e-mails, relances, levée de fonds).
+
+## Mains et compétences (migration `20261212000000_mains_competences.sql`)
+
+**Actions encadrées** (service seulement ; l'acteur est l'agent de la mission en cours ; l'outil doit figurer dans `ai_agents.outils` ; plafonds par mission ; mêmes règles que le moteur) : `ai_abonnement_qualifier` (score /100 avec justification, 40), `ai_abonnement_etape` (pipeline, étapes engageantes refusées, 40), `ai_abonnement_creneaux`, `ai_abonnement_rdv` (créneau réel du commercial, 10), `ai_abonnement_compte_rendu` (10, jamais d'écrasement), `ai_abonnement_offre` (grille officielle, remise > délégation = validation direction, > plafond direction = refus, 10), `ai_abonnement_escalade` (20), `ai_abonnement_action_commerciale` (5). Aucun envoi externe. Remarque : sans opérateur commercial actif (`ai_operators`) et sans disponibilités (`ai_availability`), les rendez-vous sont impossibles et l'agent escalade.
+
+**Compétences** : 17 méthodes de métier (`ai_skills`) rattachées aux 27 agents (`ai_agent_skills`), fournies dans la clé `competences` de chaque mission réclamée (règle 16 du prompt). Elles sont modifiables en base (lecture pour la direction dans le CRM).

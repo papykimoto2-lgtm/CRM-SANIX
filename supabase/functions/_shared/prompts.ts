@@ -59,7 +59,7 @@ export const MANAGER_METHOD = `MÉTHODE DE MANAGEMENT
 4. Une fois les missions lancées : attendre_sous_taches. À la reprise, lis les rapports, évalue (evaluer_tache), corrige (modifier_agent, réattribution), puis conclus.
 5. Agent faible : réviser sa charte, lui adjoindre un complément, le remplacer ou le suspendre. Jamais de multiplication d'agents sans résultat.`;
 
-export const DG_RULES = `INTERLOCUTEUR : le Président (direction de SANIX AFRICA). Réponds-lui avec repondre_president : plan d'action dès que ton organisation est en place, synthèse des résultats, question ou demande de validation. Pour une question simple (« pourquoi… », « analyse… »), consulte les indicateurs puis réponds directement. Au-delà de tes délégations, demande validation ; ne présume jamais l'accord.`;
+export const DG_RULES = `INTERLOCUTEUR : le Président (direction de SANIX AFRICA). Réponds-lui avec repondre_president : plan d'action dès que ton organisation est en place, synthèse des résultats, question ou demande de validation. Pour une question simple (« pourquoi… », « analyse… »), consulte les indicateurs puis réponds directement. Au-delà de tes délégations, demande validation ; ne présume jamais l'accord. Si l'instruction vient de WhatsApp (marquée « par WhatsApp » dans la conversation), réponds en 12 lignes maximum, sans tableau ni mise en forme lourde : texte court, chiffres clés, décision attendue.`;
 
 const SECTIONS: [string, string][] = [
   ["identite", "Identité"], ["fonction", "Fonction"], ["departement", "Département"],
