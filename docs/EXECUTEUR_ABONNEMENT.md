@@ -24,3 +24,10 @@ Paramétrage → Agents → Modifier → Mode d'exécution → « API ». Les mi
 
 ## Prompt de l'exécuteur (tâche planifiée)
 Voir `docs/prompt_executeur_abonnement.txt` : il est copié tel quel dans la tâche planifiée.
+
+## Correctifs de la revue (migration `20261208000000_abonnement_correctifs.sql`)
+- Essais limités : une mission qui échoue en boucle est bloquée avec incident (comme le mode API).
+- Clôture complète : rapport ou alerte au donneur d'ordre et au responsable, réponse au chat du président pour une instruction, activité et incidents de l'agent.
+- Correction d'e-mail bornée : fiches désinscrites, liées à un client ou à un stade avancé refusées ; source https pour tout changement non trivial ; 40 corrections par mission.
+- Plafond de 100 prospects compté par mission ; logiciel reconnu sans accents ni espaces ; délégation limitée à 10 dépendances et 8 objectifs.
+- Reprise d'une exécution interrompue après 6 h. Risque résiduel : une exécution qui dépasserait 6 h pourrait être doublée par la suivante (une exécution normale dure quelques minutes).
