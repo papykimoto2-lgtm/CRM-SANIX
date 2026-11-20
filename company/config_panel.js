@@ -155,8 +155,8 @@ function cellForm() {
 function viewAgents() {
   return html`<div class="actions" style="margin-bottom:10px"><button class="btn pri" type="button" data-act="cfg-agent-new">＋ Créer un agent</button></div>
     <p class="small muted">Un agent est créé depuis un <b>rôle</b> (modèle de poste : niveau, outils, charte type) ; tout peut être ajusté. Suspendre ou réactiver un agent se fait depuis le bureau 3D ou l'organisation.</p>
-    <div class="scroll"><table class="tbl"><thead><tr><th>Agent</th><th>Rôle</th><th>Niv.</th><th>Responsable</th><th>État</th><th class="num">Outils</th><th></th></tr></thead><tbody>${agentsActifs().map((a) => html`<tr><td><b>${a.nom}</b><div class="small muted">${a.fonction}</div></td>
-      <td>${roleName(a.role_code)}</td><td>${a.niveau}</td><td>${a.manager_id ? agentName(a.manager_id) : "—"}</td><td>${a.etat}</td><td class="num">${(a.outils ?? []).length}</td>
+    <div class="scroll"><table class="tbl"><thead><tr><th>Agent</th><th>Rôle</th><th>Niv.</th><th>Responsable</th><th>État</th><th>Mode</th><th class="num">Outils</th><th></th></tr></thead><tbody>${agentsActifs().map((a) => html`<tr><td><b>${a.nom}</b><div class="small muted">${a.fonction}</div></td>
+      <td>${roleName(a.role_code)}</td><td>${a.niveau}</td><td>${a.manager_id ? agentName(a.manager_id) : "—"}</td><td>${a.etat}</td><td>${a.mode_execution === "abonnement" ? "🧾 abonnement" : "API"}</td><td class="num">${(a.outils ?? []).length}</td>
       <td><button class="btn sm" type="button" data-act="cfg-agent-edit" data-id="${a.id}">Modifier</button></td></tr>`)}</tbody></table></div>`;
 }
 const opts = (list, sel, label = (x) => x.nom, key = (x) => x.id) => list.map((x) => html`<option value="${key(x)}" ${key(x) === sel ? "selected" : ""}>${label(x)}</option>`);
@@ -170,6 +170,7 @@ function agentForm(a) {
     <label class="f">Département<select name="departement_id">${opts(S.depts, a?.departement_id ?? "commercial", (d) => d.nom)}</select></label>
     <label class="f">Effort<select name="effort">${["low", "medium", "high"].map((x) => html`<option ${x === (a?.effort ?? "medium") ? "selected" : ""}>${x}</option>`)}</select></label>
     <label class="f">Budget IA par jour ($, vide = défaut)<input name="budget" type="number" min="0" step="0.5" value="${a?.budget_jour_usd ?? ""}"></label>
+    ${a ? html`<label class="f" style="grid-column:1/-1">Mode d'exécution<select name="mode_execution"><option value="api" ${(a.mode_execution ?? "api") === "api" ? "selected" : ""}>API (crédit Console, en continu)</option><option value="abonnement" ${a.mode_execution === "abonnement" ? "selected" : ""}>Abonnement Claude (tâche planifiée, par vagues d'environ 1 h)</option></select><span class="small muted">En mode abonnement, le moteur ne lance plus cet agent : ses missions attendent l'exécuteur planifié de Claude Code (limites de votre abonnement, pas de coût API).</span></label>` : ""}
     ${a ? "" : html`<label class="f">Cellule<select name="cell_id"><option value="">—</option>${opts(D.cells, "", (c) => c.nom)}</select></label>`}
     <label class="f" style="grid-column:1/-1">Outils (séparés par des virgules ; vide = ceux du rôle)<textarea name="outils" rows="2">${csv(a?.outils)}</textarea></label>
     <div class="actions" style="grid-column:1/-1"><button class="btn pri" type="submit">${a ? "Enregistrer" : "Créer l'agent"}</button><button class="btn" type="button" data-act="close-modal">Annuler</button></div></form>`);
@@ -183,6 +184,7 @@ function agentForm(a) {
       if (a) {
         await rpc("ai_cfg_update_agent", { p_agent: a.id, p: { role_code: f.get("role_code") || null, nom: f.get("nom"), fonction: f.get("fonction") || a.fonction, manager_id: f.get("manager_id") || null,
           departement_id: f.get("departement_id"), effort: f.get("effort"), budget_jour_usd: f.get("budget") === "" ? null : f.get("budget"), outils } });
+        if ((f.get("mode_execution") ?? "api") !== (a.mode_execution ?? "api")) await rpc("ai_cfg_set_mode_execution", { p_agent: a.id, p_mode: f.get("mode_execution") });
       } else {
         const p = { role_code: f.get("role_code"), nom: f.get("nom"), departement_id: f.get("departement_id"), manager_id: f.get("manager_id") || null, effort: f.get("effort"),
           budget_jour_usd: f.get("budget") === "" ? null : f.get("budget"), cell_id: f.get("cell_id") || null }; if (f.get("fonction")) p.fonction = f.get("fonction"); if (outils.length) p.outils = outils;
