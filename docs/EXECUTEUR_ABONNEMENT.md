@@ -11,6 +11,8 @@ Un agent en mode `abonnement` n'est **jamais** lancé par le moteur : ses missio
 Les fonctions SQL `ai_abonnement_reclamer(n)` et `ai_abonnement_cloturer(...)` (migration `20261204000000_mode_abonnement.sql`) imposent les mêmes règles de clôture que le moteur :
 rapport factuel, au moins un résultat vérifiable pour « terminee », une seule mission en cours par agent, reprise après 3 h d'interruption.
 
+Les agents responsables (qui assignent des missions) disposent en plus de la délégation encadrée (migration `20261205000000_abonnement_delegation.sql`) : `ai_abonnement_assigner`, `ai_abonnement_attendre`, `ai_abonnement_evaluer`, avec les règles du moteur (hiérarchie, plafonds, doublons, reprise automatique).
+
 Ce que l'abonnement ne permet pas : brancher l'abonnement sur l'API (non autorisé par Anthropic). L'exécuteur est une session Claude Code ordinaire.
 
 ## Revenir au mode API
