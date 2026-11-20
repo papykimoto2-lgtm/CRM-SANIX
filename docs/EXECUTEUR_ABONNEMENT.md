@@ -15,6 +15,8 @@ Les agents responsables (qui assignent des missions) disposent en plus de la dé
 
 Les agents chasseurs peuvent créer des prospects via `ai_abonnement_creer_prospect` (migration `20261206000000_abonnement_prospects.sql`) : mêmes règles que le moteur (outil create_prospect, e-mail valide, logiciel actif, source https, 100 fiches maximum par mission, doublons refusés).
 
+L'agent Data Analyst peut corriger l'e-mail d'une fiche via `ai_abonnement_corriger_email` (migration `20261207000000_abonnement_email.sql`) : seul le champ e-mail, adresse valide, doublons refusés, ajout seulement avec une source https, chaque changement journalisé (avant, après, motif).
+
 Ce que l'abonnement ne permet pas : brancher l'abonnement sur l'API (non autorisé par Anthropic). L'exécuteur est une session Claude Code ordinaire.
 
 ## Revenir au mode API
