@@ -31,3 +31,8 @@ Voir `docs/prompt_executeur_abonnement.txt` : il est copié tel quel dans la tâ
 - Correction d'e-mail bornée : fiches désinscrites, liées à un client ou à un stade avancé refusées ; source https pour tout changement non trivial ; 40 corrections par mission.
 - Plafond de 100 prospects compté par mission ; logiciel reconnu sans accents ni espaces ; délégation limitée à 10 dépendances et 8 objectifs.
 - Reprise d'une exécution interrompue après 6 h. Risque résiduel : une exécution qui dépasserait 6 h pourrait être doublée par la suivante (une exécution normale dure quelques minutes).
+
+## Messages et relances (migration `20261209000000_abonnement_messages.sql`)
+- `ai_abonnement_message` : la routine n'envoie jamais ; elle place le message dans la file de validation du président (statut `a_valider` + approbation), avec les garde-fous du moteur (gouvernance en mode validation, prospect non désinscrit, consentement si exigé, mention « assistant IA » au premier message, 30 messages par mission).
+- `ai_abonnement_relance` : planifie une relance (2 h à 60 jours, la précédente est annulée, 50 par mission).
+- Toujours NON couverts en abonnement : prise de rendez-vous, création d'offres, changement d'étape et notation des fiches, escalade vers un humain, actions commerciales proposées.
