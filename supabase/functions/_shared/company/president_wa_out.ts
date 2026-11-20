@@ -7,6 +7,13 @@ const FENETRE_MS = 23 * 3600e3;
 const PARTIE_MAX = 3500;
 const PARTIES_MAX = 3;
 
+/** Forme canonique d'un numéro pour comparer ce que Meta envoie (wa_id) à ce qui est enregistré. Côte d'Ivoire : WhatsApp garde l'ancien format 225 + 8 chiffres,
+ *  alors que le numéro s'écrit 225 + 10 chiffres (préfixe 01, 05, 07, 21, 25, 27…) : on retire ces deux chiffres. Les autres pays : chiffres seuls. */
+export function canonNumero(n: string): string {
+  const d = String(n ?? "").replace(/\D/g, "");
+  return /^225\d{10}$/.test(d) ? "225" + d.slice(5) : d;
+}
+
 /** Découpe un texte long en parties ≤ max, aux sauts de ligne ou espaces ; au plus `parties` parties, la dernière indique la suite dans le bureau. */
 export function decouper(texte: string, max = PARTIE_MAX, parties = PARTIES_MAX): string[] {
   const t = texte.trim();

@@ -4,7 +4,7 @@ import { audit, clip, db, errMsg, neutralize } from "../core.ts";
 import { sendWhatsAppText } from "../channels.ts";
 import { createInstructionTask, runTask } from "./engine.ts";
 import { runBudgetMs } from "./tick.ts";
-import { flushPresidentWhatsApp } from "./president_wa_out.ts";
+import { canonNumero, flushPresidentWhatsApp } from "./president_wa_out.ts";
 
 export type WaInbound = { id: string; from: string; timestamp: string; type: string; text?: { body: string }; button?: { text: string }; interactive?: any };
 
@@ -21,7 +21,7 @@ export async function presidentInbound(m: WaInbound): Promise<(() => Promise<voi
   const phone = String(m.from ?? "").replace(/\D/g, "");
   if (!phone) return null;
   const { data: w } = await db().from("ai_president_whatsapp").select("numero, actif, user_id").eq("id", 1).maybeSingle();
-  if (!w?.actif || w.numero !== phone) return null;
+  if (!w?.actif || canonNumero(String(w.numero)) !== canonNumero(phone)) return null;
   return () => traiter(m, phone, w.user_id as string | null);
 }
 

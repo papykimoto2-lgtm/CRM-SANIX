@@ -1,5 +1,5 @@
 // WhatsApp du président : découpage des réponses longues et lecture des messages entrants (fonctions pures).
-import { decouper } from "../_shared/company/president_wa_out.ts";
+import { canonNumero, decouper } from "../_shared/company/president_wa_out.ts";
 import { texteEntrant } from "../_shared/company/president_wa.ts";
 
 const T = (name: string, fn: () => void) => Deno.test({ name, fn, sanitizeOps: false, sanitizeResources: false });
@@ -16,4 +16,10 @@ T("texte entrant : texte, bouton, audio", () => {
   eq(texteEntrant({ id: "1", from: "1", timestamp: "1", type: "text", text: { body: " Bonjour " } }), "Bonjour");
   eq(texteEntrant({ id: "1", from: "1", timestamp: "1", type: "button", button: { text: "Oui" } }), "Oui");
   eq(texteEntrant({ id: "1", from: "1", timestamp: "1", type: "audio" }), null);
+});
+T("numéros ivoiriens : le wa_id de Meta (225 + 8 chiffres) correspond au numéro à 10 chiffres", () => {
+  eq(canonNumero("2250102030405"), canonNumero("22502030405"));
+  eq(canonNumero("+225 07 00 00 00 00"), "22500000000");
+  if (canonNumero("2250102030405") === canonNumero("22502030406")) throw new Error("faux positif");
+  eq(canonNumero("33612345678"), "33612345678");
 });
