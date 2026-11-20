@@ -59,6 +59,21 @@ export async function sendWhatsApp(p: Prospect, text: string): Promise<SendResul
   };
 }
 
+/** Texte libre à un numéro précis (message au président, dans la fenêtre de 24 h qu'il vient d'ouvrir). Aucune règle de prospect : appelant responsable de la fenêtre. */
+export async function sendWhatsAppText(phone: string, text: string): Promise<SendResult> {
+  const token = env("WHATSAPP_TOKEN", false), phoneId = env("WHATSAPP_PHONE_NUMBER_ID", false);
+  if (!token || !phoneId) return { ok: false, statut: "a_envoyer", detail: "WhatsApp non configuré" };
+  const r = await fetch(`${GRAPH}/${phoneId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", to: phone.replace(/\D/g, ""), type: "text", text: { preview_url: false, body: text.slice(0, 4096) } }),
+    signal: AbortSignal.timeout(15000),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) return { ok: false, statut: "echec", detail: `WhatsApp ${r.status}: ${j?.error?.message ?? "erreur"}` };
+  return { ok: true, statut: "envoye", detail: "Envoyé", external_id: j?.messages?.[0]?.id };
+}
+
 export async function sendEmail(p: Prospect, subject: string, text: string): Promise<SendResult> {
   if (p.opt_out) return { ok: false, statut: "echec", detail: "Prospect désinscrit : envoi interdit" };
   if (!p.email) return { ok: false, statut: "echec", detail: "Aucune adresse e-mail" };

@@ -7,7 +7,7 @@ import { q, S } from "./state.js";
 let D = { products: [], pricing: [], aliases: [], roles: [], cells: [], members: [], rules: [], funnel: [], pilote: [], phase3: false, refs: [], refsOk: false }, sec = "logiciels", hooks = {}, apercu = null;
 /** app.js fournit le rechargement des agents (évite une importation circulaire). */
 export const setHooks = (h) => { hooks = h; };
-const SECTIONS = [["logiciels", "💻 Logiciels"], ["equipes", "🧩 Équipes"], ["agents", "🤖 Agents"], ["roles", "🎭 Rôles"], ["pilote", "🎯 Pilote"], ["references", "⭐ Références"]];
+const SECTIONS = [["logiciels", "💻 Logiciels"], ["equipes", "🧩 Équipes"], ["agents", "🤖 Agents"], ["roles", "🎭 Rôles"], ["pilote", "🎯 Pilote"], ["references", "⭐ Références"], ["whatsapp", "💬 WhatsApp DG"]];
 const lines = (a) => (a ?? []).join("\n"), csv = (a) => (a ?? []).join(", ");
 const split = (s, sep) => String(s ?? "").split(sep).map((x) => x.trim()).filter(Boolean);
 const productName = (id) => D.products.find((p) => p.id === id)?.nom ?? id ?? "—";
@@ -36,7 +36,9 @@ export async function loadConfig() {
   } catch { /* migration 20261115 non appliquée */ }
   let refs = [], refsOk = false;                                              // références clients (migration 20261118) : tolérant à son absence
   try { refs = await q(S.sb.from("ai_product_references").select("*").order("product_id").order("client")); refsOk = true; } catch { /* migration non appliquée */ }
-  D = { products: products ?? [], pricing: pricing ?? [], aliases: aliases ?? [], roles: roles ?? [], cells: cells ?? [], members: members ?? [], rules: rules ?? [], funnel: funnel ?? [], pilote: pilote ?? [], phase3, refs: refs ?? [], refsOk };
+  let wa = null, waOk = false;                                                 // WhatsApp du président (migration 20261213) : tolérant à son absence
+  try { wa = (await q(S.sb.from("ai_president_whatsapp").select("*").eq("id", 1).maybeSingle())) ?? null; waOk = true; } catch { /* migration non appliquée */ }
+  D = { products: products ?? [], pricing: pricing ?? [], aliases: aliases ?? [], roles: roles ?? [], cells: cells ?? [], members: members ?? [], rules: rules ?? [], funnel: funnel ?? [], pilote: pilote ?? [], phase3, refs: refs ?? [], refsOk, wa, waOk };
 }
 
 const rpc = async (name, args) => { try { const r = await q(S.sb.rpc(name, args)); return r ?? {}; } catch (e) { toast(e.message, "bad"); throw e; } };
@@ -45,12 +47,17 @@ async function refresh(main = $("#main")) { await loadConfig(); renderConfig(mai
 export function renderConfig(main) {
   main.innerHTML = html`<div class="head"><h2>🛠️ Paramétrage</h2><p class="muted small">Logiciels vendus, équipes, agents et rôles : tout se modifie ici, sans toucher au code. Les changements sont journalisés.</p></div>
     <div class="actions" role="tablist" style="margin-bottom:14px">${SECTIONS.map(([k, l]) => html`<button class="btn ${sec === k ? "pri" : ""}" type="button" data-act="cfg-sec" data-sec="${k}">${l}</button>`)}</div>
-    ${raw(({ logiciels: viewProducts, equipes: viewCells, agents: viewAgents, roles: viewRoles, pilote: viewPilote, references: viewRefs }[sec])().toString())}`.s;
+    ${raw(({ logiciels: viewProducts, equipes: viewCells, agents: viewAgents, roles: viewRoles, pilote: viewPilote, references: viewRefs, whatsapp: viewWhatsapp }[sec])().toString())}`.s;
   const cf = $("#cfg-consent-form");                                          // preuve de consentement pour tout le pilote d'un logiciel
   if (cf) cf.onsubmit = async (e) => {
     e.preventDefault(); const f = new FormData(cf), n = D.pilote.filter((x) => x.product_id === f.get("product")).length;
     if (!confirm(`Enregistrer cette preuve de consentement (${f.get("canal")}) pour les ${n} prospects du pilote ${productName(f.get("product"))} qui n'en ont pas ? Elle sera datée, signée par votre compte et journalisée.`)) return;
     try { const r = await rpc("ai_consentement_pilote", { p_product: f.get("product"), p_canal: f.get("canal"), p_preuve: f.get("preuve") }); toast(`Preuve enregistrée pour ${r.prospects ?? 0} prospect(s)`, "ok"); await refresh(main); } catch { /* affiché */ }
+  };
+  const wf = $("#cfg-wa-form");                                               // numéro WhatsApp du président
+  if (wf) wf.onsubmit = async (e) => {
+    e.preventDefault(); const f = new FormData(wf);
+    try { const r = await rpc("ai_president_whatsapp_set", { p_numero: f.get("numero"), p_actif: f.get("actif") === "on" }); toast(`WhatsApp du directeur général ${r.actif ? "activé" : "désactivé"} (numéro …${r.numero_fin})`, "ok"); await refresh(main); } catch { /* affiché */ }
   };
   const pf = $("#cfg-pilote-form");                                           // sélection du pilote : quotas par logiciel actif
   if (pf) pf.onsubmit = async (e) => {
@@ -62,6 +69,16 @@ export function renderConfig(main) {
       toast(manque.length ? `Pilote sélectionné — ${manque.join(" ; ")}` : "Pilote sélectionné", "ok"); await refresh(main);
     } catch { /* affiché */ }
   };
+}
+
+// ─── WhatsApp du directeur général IA ────────────────────────────────────────
+function viewWhatsapp() {
+  if (!D.waOk) return html`<p class="small muted">Migration 20261213 (WhatsApp du président) non appliquée.</p>`;
+  const w = D.wa, h = w?.last_inbound_at ? new Date(w.last_inbound_at).toLocaleString("fr-FR", { timeZone: "Africa/Abidjan" }) : "jamais";
+  return html`<p class="small muted">Écrivez au directeur général IA depuis votre WhatsApp : votre message devient une instruction, sa réponse revient sur WhatsApp. Seul le numéro enregistré ici est reconnu. Prérequis : API WhatsApp Cloud configurée (secrets WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN). La fenêtre WhatsApp est de 24 h : au-delà, la réponse attend votre prochain message.</p>
+    <p><b>État :</b> ${w ? (w.actif ? "✅ actif" : "⏸️ désactivé") : "non configuré"}${w ? html` · numéro se terminant par <b>${String(w.numero).slice(-4)}</b> · dernier message reçu : ${h}` : ""}</p>
+    <form id="cfg-wa-form" class="form"><label class="f">Votre numéro WhatsApp (format international, sans + ni espaces)<input name="numero" inputmode="numeric" placeholder="2250700000000" pattern="[0-9]{8,15}" required></label>
+      <label class="f"><span><input type="checkbox" name="actif" checked> Activer</span></label><button class="btn pri" type="submit">Enregistrer</button></form>`;
 }
 
 // ─── Logiciels ───────────────────────────────────────────────────────────────

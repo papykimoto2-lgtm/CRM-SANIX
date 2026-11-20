@@ -7,6 +7,7 @@ import { CHARTER_KEYS } from "../prompts.ts";
 import { BASE_TOOLS, CATALOG_BY_NAME, catalogText, checkGrant, EXTERNAL_TOOLS } from "./catalog.ts";
 import { type AgentRow, type Governance, loadGovernance, norm, OPEN_STATES, Org, slugCode, type TaskRow } from "./org.ts";
 import { consulterLevee, enregistrerFinanceur, FINANCEUR_STATUTS, FINANCEUR_TYPES, listerFinanceurs } from "./levee.ts";
+import { flushPresidentWhatsApp } from "./president_wa_out.ts";
 import { activityFor, type PendingMove, type Presence, publishMove } from "./presence.ts";
 
 export type CoCtx = {
@@ -570,6 +571,7 @@ const IMPL: Record<string, (ctx: CoCtx, i: Record<string, any>) => Promise<unkno
     const { error } = await db().from("ai_executive_messages").insert({ auteur: "directeur", contenu: message, task_id: ctx.task.id });
     if (error) throw new Error(error.message);
     ctx.posted.push(message);
+    try { await flushPresidentWhatsApp(); } catch (e) { console.error("president_wa_out", errMsg(e)); }   // WhatsApp du président, si le canal est actif
     return { ok: true };
   },
 };

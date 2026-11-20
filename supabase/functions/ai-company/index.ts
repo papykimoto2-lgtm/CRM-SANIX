@@ -6,6 +6,7 @@ import { BudgetError, LlmKeyMissingError, TransientLlmError } from "../_shared/l
 import { createInstructionTask, runTask } from "../_shared/company/engine.ts";
 import { assignMission, requestReport } from "../_shared/company/president.ts";
 import { runBudgetMs, tickCompany } from "../_shared/company/tick.ts";
+import { flushPresidentWhatsApp } from "../_shared/company/president_wa_out.ts";
 import { generateAndSend, reportTick, resend } from "../_shared/reports/builder.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
@@ -25,6 +26,7 @@ Deno.serve(async (req) => {
       if (action === "tick") {
         const { work, ...res } = await tickCompany();
         EdgeRuntime.waitUntil(work);
+        EdgeRuntime.waitUntil(flushPresidentWhatsApp().catch((e) => audit({ agent: "president_whatsapp", action: "flush_erreur", ok: false, payload: { e: errMsg(e) } })));
         return json(req, res, 202);
       }
       EdgeRuntime.waitUntil(reportTick().catch((e) => audit({ agent: "rapport", action: "report_tick_erreur", ok: false, payload: { e: errMsg(e) } })));

@@ -5,6 +5,7 @@ import { runAgent } from "../_shared/agent.ts";
 import { BudgetError } from "../_shared/llm.ts";
 import { recordStatus, routeInbound } from "../_shared/wacrm.ts";
 import { deps as waCrm } from "../_shared/wacrm_store.ts";
+import { presidentInbound } from "../_shared/company/president_wa.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
@@ -52,6 +53,11 @@ Deno.serve(async (req) => {
         if (statut) await db().from("ai_messages").update({ statut }).eq("canal", "whatsapp").eq("external_id", s.id);
       }
       for (const m of (v.messages ?? []) as WaMsg[]) {
+        // Le numéro du président (réglé dans la gouvernance) parle au directeur général IA : jamais traité comme un prospect.
+        try {
+          const pres = await presidentInbound(m);
+          if (pres) { EdgeRuntime.waitUntil(pres()); continue; }
+        } catch (e) { console.error("president_wa", String(e)); }
         const name = v.contacts?.find((c: any) => c.wa_id === m.from)?.profile?.name as string | undefined;
         // Réponse à un message du CRM (moins de 7 jours) : enregistrée pour un humain, l'agent IA n'intervient pas. Sinon : circuit des agents.
         let traite = false;
