@@ -36,3 +36,14 @@ Voir `docs/prompt_executeur_abonnement.txt` : il est copié tel quel dans la tâ
 - `ai_abonnement_message` : la routine n'envoie jamais ; elle place le message dans la file de validation du président (statut `a_valider` + approbation), avec les garde-fous du moteur (gouvernance en mode validation, prospect non désinscrit, consentement si exigé, mention « assistant IA » au premier message, 30 messages par mission).
 - `ai_abonnement_relance` : planifie une relance (2 h à 60 jours, la précédente est annulée, 50 par mission).
 - Toujours NON couverts en abonnement : prise de rendez-vous, création d'offres, changement d'étape et notation des fiches, escalade vers un humain, actions commerciales proposées.
+
+## Mémoire des agents (migration `20261211000000_memoire_agents.sql`)
+
+Chaque agent a une mémoire de travail, en mode API comme en mode abonnement (table `ai_agent_memory`, mémoire individuelle + mémoire partagée).
+
+- **Automatique** : à la clôture d'une mission (terminée, bloquée, échouée), un souvenir daté (titre + début du rapport) est enregistré pour l'agent, un par mission, 60 au plus par agent (les plus anciens sont retirés).
+- **À la réclamation** : `ai_abonnement_reclamer` ajoute `memoire` à chaque mission (8 souvenirs : ceux qui correspondent au titre d'abord, puis par importance et récence ; individuels + partagés).
+- **`ai_abonnement_rappeler(mission, mots-clés)`** : recherche plein texte dans la mémoire de l'agent et la mémoire partagée.
+- **`ai_abonnement_memoriser(mission, contenu, tags, partage)`** : 5 souvenirs au plus par mission ; la mémoire partagée est réservée aux agents de niveau ≤ 3.
+- Le prompt de l'exécuteur contient la règle 14 : mettre à jour les instructions de la routine.
+- Amorçage : les 3 dernières missions terminées de chaque agent et 4 faits partagés vérifiés (règles permanentes, e-mails, relances, levée de fonds).
