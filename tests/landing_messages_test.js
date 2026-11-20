@@ -69,6 +69,19 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "scripts", "pages.config.json"), "utf8"));
     ok(!/class="chip offre-x"/.test(lf) && !/Offre du mois/.test(lf), "pages publiques : aucune offre publiée tant que le texte et la date de fin ne sont pas renseignés");
     ok(lf.includes("wa.me/" + (await page.evaluate((t) => waAnalyse(t).num, cfg.whatsapp))), "numéro WhatsApp des pages = celui de scripts/pages.config.json");
+    console.log("▶ Écran Messagerie (envoi en lot)");
+    const ms = await page.evaluate(() => {
+      relanceCfg().landingActif = true; relanceCfg().landingUrl = "";
+      ["msg-objet", "msg-text"].forEach((id) => { if (!document.getElementById(id)) { const e = document.createElement("textarea"); e.id = id; e.style.display = "none"; document.body.appendChild(e); } });
+      document.getElementById("msg-objet").value = "{logiciel}"; document.getElementById("msg-text").value = "Bonjour {nom}, découvrez {logiciel}.\n\nCordialement";
+      const c = { nom: "Atelier Test", logiciel: "Sanix AluExpert ERP", phone: "0700000001" }, o = {};
+      _msg.canal = "wa"; o.wa = msgRempli(c).corps; _msg.canal = "email"; o.em = msgRempli(c).corps; o.emObjet = msgRempli(c).objet;
+      relanceCfg().landingActif = false; _msg.canal = "wa"; o.off = msgRempli(c).corps; relanceCfg().landingActif = true;
+      return o;
+    });
+    ok(/🌐 En savoir plus : https:\/\/crm-sanix\.vercel\.app\/landing\/sanix-aluexpert-erp\.html\?src=whatsapp$/.test(ms.wa), "Messagerie WhatsApp : le lien de la landing page est en dernière ligne");
+    ok(/Pour en savoir plus : [^\n]*src=email\n\nCordialement$/.test(ms.em) && !/http/.test(ms.emObjet), "Messagerie e-mail : lien avant la formule de politesse, objet inchangé");
+    ok(!/landing/.test(ms.off), "réglage désactivé : Messagerie sans lien");
     console.log("▶ Générateur : champs préremplis selon le logiciel");
     const g = await page.evaluate(() => {
       initMarketing(); const sel = document.getElementById("mkt-lp-logiciel"), v = (id) => document.getElementById(id).value, noms = [...sel.options].map((o) => o.value);
