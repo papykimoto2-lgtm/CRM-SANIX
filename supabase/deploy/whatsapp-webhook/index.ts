@@ -3284,6 +3284,10 @@ async function enregistrerFinanceur(agentId, i) {
 var FENETRE_MS2 = 23 * 36e5;
 var PARTIE_MAX = 3500;
 var PARTIES_MAX = 3;
+function canonNumero(n) {
+  const d = String(n ?? "").replace(/\D/g, "");
+  return /^225\d{10}$/.test(d) ? "225" + d.slice(5) : d;
+}
 function decouper(texte, max = PARTIE_MAX, parties = PARTIES_MAX) {
   const t = texte.trim();
   if (t.length <= max) return [t];
@@ -4400,7 +4404,7 @@ async function presidentInbound(m) {
   const phone = String(m.from ?? "").replace(/\D/g, "");
   if (!phone) return null;
   const { data: w } = await db().from("ai_president_whatsapp").select("numero, actif, user_id").eq("id", 1).maybeSingle();
-  if (!w?.actif || w.numero !== phone) return null;
+  if (!w?.actif || canonNumero(String(w.numero)) !== canonNumero(phone)) return null;
   return () => traiter(m, phone, w.user_id);
 }
 async function repondre(phone, texte) {
