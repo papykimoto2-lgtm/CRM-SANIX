@@ -85,6 +85,11 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     console.log("▶ Missions / Réunions / Performance");
     await tab(page, "tasks");
     ok((await page.locator("details.t").count()) >= 8, "arbre des missions");
+    const nbPrio = await page.locator("details.t > summary [data-act=crm-arb][data-a=prioritize]").count();
+    ok(nbPrio >= 1, "missions ouvertes de priorité 2 à 5 : bouton « Prioriser » présent (" + nbPrio + ")");
+    ok((await page.locator("details.t > summary", { hasText: "P1" }).locator("[data-act=crm-arb]").count()) === 0, "aucun bouton « Prioriser » sur une mission déjà en priorité 1");
+    await page.locator("details.t > summary [data-act=crm-arb][data-a=prioritize]").first().click(); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => window.__CALLS.some((c) => c.rpc === "crm_arbitrate_task" && c.args.p_action === "prioritize" && c.args.p_priorite === 1)), "« Prioriser » transmet crm_arbitrate_task (priorité 1)");
     await page.selectOption("#f-st", "bloquee"); await page.waitForTimeout(150);
     ok((await page.locator("details.t > summary b").allTextContents()).some((t) => t.includes("Qualifier les promoteurs")), "filtre par statut (bloquée) conserve la branche");
     await page.selectOption("#f-st", ""); 
