@@ -385,6 +385,7 @@ function renderTasks(main) {
   const subtree = (t) => match(t) || (byParent[t.id] ?? []).some(subtree);
   const row = (t) => html`<details class="t" ${(t.profondeur ?? 0) <= 1 ? "open" : ""}><summary>${pill(...TASK_ST[t.statut] ?? [t.statut, "#64748B"])}<b style="flex:1;min-width:180px">${clipT(t.titre, 110)}</b>
     <span class="small muted">${agentBy(t.agent_id)?.nom ?? "—"}</span><span class="tag">P${t.priorite}</span>${t.echeance ? html`<span class="small muted">⏱ ${fmtDT(t.echeance)}</span>` : ""}${t.evaluation != null ? html`<span class="tag">Note ${t.evaluation}/100</span>` : ""}<span class="small muted">${usd(t.cout_usd)}</span>
+    ${t.priorite > 1 && ["a_faire", "en_cours", "attente_sous_taches", "attente_validation", "bloquee"].includes(t.statut) ? html`<button class="btn sm" type="button" data-act="crm-arb" data-task="${t.id}" data-a="prioritize" title="Passer cette mission en priorité 1 (urgente)">⬆ Prioriser</button>` : ""}
     <button class="btn sm" type="button" data-act="task" data-id="${t.id}">Détail</button></summary><div class="in">${(byParent[t.id] ?? []).filter(subtree).map(row)}${t.rapport ? html`<div class="small muted" style="margin:6px 0">${clipT(t.rapport, 260)}</div>` : ""}</div></details>`;
   const roots = S.tasks.filter((t) => !t.parent_id || !ids.has(t.parent_id)).filter(subtree);
   main.innerHTML = html`<section class="panel"><h2>Missions</h2><p class="sub">Arbre des missions : instruction du président → directions → équipes. Chaque délégation et chaque transmission est tracée.</p>
