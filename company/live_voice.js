@@ -57,18 +57,18 @@ export function initJarvis(A, stage) {
   async function loadCrm() {
     if (Date.now() - crmC.at < 120000 && crmC.rows.length) return crmC.rows;
     const [c, p] = await Promise.all([
-      A.sb.from("crm_records").select("rid,nom:data->>nom,statut:data->>statut,logiciel:data->>logiciel,ville:data->>adresse,ia:data->ia,upd:updated_at").eq("entity", "clients").is("deleted_at", null).order("updated_at", { ascending: false }).limit(900),
+      A.sb.from("crm_records").select("rid,version,nom:data->>nom,statut:data->>statut,logiciel:data->>logiciel,ville:data->>adresse,ia:data->ia,upd:updated_at").eq("entity", "clients").is("deleted_at", null).order("updated_at", { ascending: false }).limit(900),
       A.sb.from("ai_prospects").select("crm_rid,stage,score,priorite,last_inbound_at,last_outbound_at,next_action_at,opt_out").not("crm_rid", "is", null).limit(1000)]);
     if (c.error) throw new Error(c.error.message);
     const ai = new Map((p.data ?? []).map((x) => [x.crm_rid, x]));
     crmC = { at: Date.now(), rows: (c.data ?? []).map((r) => { const a = ai.get(r.rid), i = r.ia ?? {};
-      return { nom: r.nom ?? "", statut: r.statut ?? "", logiciel: r.logiciel ?? "", ville: clip(r.ville ?? "", 40), etape: a?.stage ?? i.stage ?? "non traité", score: a?.score ?? i.score ?? null, envoi: a?.last_outbound_at ?? null, reponse: a?.last_inbound_at ?? null, suite: a?.next_action_at ?? null, desinscrit: !!a?.opt_out, maj: r.upd }; }) };
+      return { rid: r.rid, version: r.version ?? null, nom: r.nom ?? "", statut: r.statut ?? "", logiciel: r.logiciel ?? "", ville: clip(r.ville ?? "", 40), etape: a?.stage ?? i.stage ?? "non traité", score: a?.score ?? i.score ?? null, envoi: a?.last_outbound_at ?? null, reponse: a?.last_inbound_at ?? null, suite: a?.next_action_at ?? null, desinscrit: !!a?.opt_out, maj: r.upd }; }) };
     return crmC.rows;
   }
   const dShort = (x) => (x ? new Date(x).toLocaleDateString("fr-FR", { timeZone: "Africa/Abidjan", day: "2-digit", month: "2-digit" }) : "");
   async function crmContext(message) {
     const rows = await loadCrm(), q = norm(message), stop = new Set(["jarvis", "prospect", "prospects", "client", "clients", "situation", "quelle", "quel", "combien", "dans", "pour", "avec", "est", "sont", "les", "des", "que", "qui", "comment", "fiche", "fiches", "crm"]);
-    const toks = q.split(" ").filter((w) => w.length >= 4 && !stop.has(w)), line = (r) => ({ nom: r.nom, logiciel: r.logiciel, statut: r.statut, etape: r.desinscrit ? "désinscrit" : r.etape, score: r.score ?? "", ville: r.ville, dernier_envoi: dShort(r.envoi), derniere_reponse: dShort(r.reponse), prochaine_action: dShort(r.suite) });
+    const toks = q.split(" ").filter((w) => w.length >= 4 && !stop.has(w)), line = (r) => ({ rid: r.rid, nom: r.nom, logiciel: r.logiciel, statut: r.statut, etape: r.desinscrit ? "désinscrit" : r.etape, score: r.score ?? "", ville: r.ville, dernier_envoi: dShort(r.envoi), derniere_reponse: dShort(r.reponse), prochaine_action: dShort(r.suite) });
     const byLog = {}, byStatut = {}; let contactes = 0, repondus = 0;
     for (const r of rows) { byStatut[r.statut || "?"] = (byStatut[r.statut || "?"] ?? 0) + 1; const l = (byLog[r.logiciel || "sans logiciel"] ??= { total: 0, etapes: {} }); l.total++; l.etapes[r.etape] = (l.etapes[r.etape] ?? 0) + 1; if (r.envoi) contactes++; if (r.reponse) repondus++; }
     const match = new Map();
@@ -77,6 +77,28 @@ export function initJarvis(A, stage) {
     return { resume: { total: rows.length, par_statut: byStatut, contactes, ont_repondu: repondus, par_logiciel: Object.entries(byLog).sort((a, b) => b[1].total - a[1].total).slice(0, 8).map(([logiciel, v]) => ({ logiciel, total: v.total, etapes: v.etapes })) },
       recents: rows.slice(0, 25).map(line), trouves: [...match.values()].slice(0, 30).map(line) };
   }
+  // ───────── Écriture CRM : même chemin que l'écran CRM (crm_sync_push, réservé aux opérateurs, champs sensibles protégés par version) ─────────
+  const INTER = { note: ["Note", "📝", null], contact: ["Contact établi", "📞", 1], demo: ["Démo réalisée", "🎬", 2], proposition: ["Proposition envoyée", "📄", 3], negociation: ["Négociation", "🤝", 4], relance: ["Relance", "🔁", null], perdu: ["Perdu", "❌", 0], converti: ["Converti en client", "✅", 5] };
+  let deviceId = ""; try { deviceId = sessionStorage.getItem("jarvis_dev") || ""; if (!deviceId) { deviceId = "jarvis-" + crypto.randomUUID(); sessionStorage.setItem("jarvis_dev", deviceId); } } catch { deviceId = "jarvis-" + Math.random().toString(36).slice(2, 12) + Date.now(); }
+  const interaction = (type, note, etape) => { const [label, ico, e] = INTER[type] ?? INTER.note; const it = { date: new Date().toISOString(), type: label, note: String(note || label).slice(0, 600), ico, source: "jarvis" }; const et = etape ?? e; if (et !== null && et !== undefined) it.etape = et; return it; };
+  async function crmExec(a) {
+    crmC.at = 0; await loadCrm().catch(() => {}); const byRid = new Map(crmC.rows.map((r) => [r.rid, r])), ops = [], mk = () => crypto.randomUUID();
+    if (a.type === "crm_create") {
+      const c = a.champs, rid = "c_j" + mk().replace(/-/g, "").slice(0, 12);
+      ops.push({ op_id: mk(), entity: "clients", rid, action: "upsert", data: { nom: c.nom, phone: c.phone ?? "", email: c.email ?? "", secteur: c.secteur ?? "", logiciel: c.logiciel ?? "", adresse: c.adresse ?? "", commercial: c.commercial ?? "", valeur: c.valeur ?? 0, statut: c.statut ?? "prospect", notes: c.notes ?? "", created_at: new Date().toISOString(), source: "Jarvis", interactions: [interaction("note", "Fiche créée par Jarvis sur instruction du président.")] } });
+    } else for (const rid of a.rids) {
+      const row = byRid.get(rid); if (!row) continue;
+      if (a.type === "crm_delete") ops.push({ op_id: mk(), entity: "clients", rid, action: "delete", base_version: row.version });
+      else if (a.type === "crm_log") { const data = { interactions: [interaction(a.interaction, a.texte)] }; if (a.interaction === "converti") { data.statut = "client"; data.converted_at = new Date().toISOString(); } ops.push({ op_id: mk(), entity: "clients", rid, action: "upsert", data, base_version: row.version }); }
+      else { const { notes, ...champs } = a.champs, data = { ...champs }; if (notes) data.interactions = [interaction("note", notes)]; ops.push({ op_id: mk(), entity: "clients", rid, action: "upsert", data, base_version: row.version }); }   // les notes s'ajoutent à l'historique : jamais d'écrasement
+    }
+    if (!ops.length) return { ok: 0, ko: 0, raisons: ["aucune fiche correspondante"] };
+    const { data, error } = await A.sb.rpc("crm_sync_push", { p_device: deviceId, p_ops: ops });
+    if (error) throw new Error(error.message);
+    crmC.at = 0; const res = data?.results ?? [], ko = res.filter((r) => r.ok === false || r.conflict), same = res.filter((r) => r.ok !== false && !r.conflict && r.unchanged);
+    return { ok: res.length - ko.length - same.length, same: same.length, ko: ko.length, raisons: [...new Set(ko.map((r) => r.reason || r.error || "refusé"))].slice(0, 2) };
+  }
+  const CRM_LAB = { crm_update: "modifiée", crm_log: "mise à jour dans l'historique", crm_create: "créée", crm_delete: "supprimée" };
   async function crmLocalReply(t) {
     const rows = await loadCrm(); let sel = rows, lab = "";
     for (const [, [rx, label]] of Object.entries(PRODUCTS)) if (rx.test(t)) { sel = rows.filter((r) => rx.test(norm(r.logiciel))); lab = " " + label; break; }
@@ -136,10 +158,11 @@ export function initJarvis(A, stage) {
         else if (a.type === "focus_agent") view()?.focus(a.agent_id);
         else if (a.type === "propose_instruction" && a.texte) props.push({ kind: "instruction", texte: a.texte });
         else if (a.type === "propose_mission" && a.agent_id && a.titre) props.push({ kind: "mission", agent_id: a.agent_id, titre: a.titre, description: a.description, priorite: a.priorite });
+        else if (a.type?.startsWith("crm_")) props.push({ kind: "crm", a });
         else if (a.type === "propose_report" && a.agent_id) props.push({ kind: "report", agent_id: a.agent_id, jours: a.jours || 7 });
         else if (a.type === "propose_report_now" && a.rapport) props.push({ kind: "report_now", type: a.rapport });
       }
-      if (autoMode && props.length) { pending = null; setOrb(listening ? "listen" : ""); say(reply); for (const it of props) await sendPending(it); return reply; }   // mode autonome : exécution immédiate (actions internes uniquement)
+      if (autoMode && props.length) { const risky = props.filter((x) => x.kind === "crm" && x.a.type === "crm_delete"), safe = props.filter((x) => !risky.includes(x)); pending = risky.length > 1 ? { kind: "multi", items: risky } : risky[0] ?? null; setOrb(listening ? "listen" : ""); say(reply + (risky.length ? " La suppression demande votre confirmation : dites oui." : "")); for (const it of safe) await sendPending(it); return reply; }   // mode autonome : exécution immédiate (actions internes uniquement)
       pending = props.length > 1 ? { kind: "multi", items: props } : props[0] ?? null;
       if (pending && !/\?/.test(reply)) reply += pending.kind === "multi" ? " Laquelle dois-je lancer ? Dites un, deux, trois ou toutes." : " Dois-je le transmettre ? Dites oui pour confirmer.";
       setOrb(listening ? "listen" : ""); say(reply); return reply;
@@ -160,6 +183,7 @@ export function initJarvis(A, stage) {
     try {
       if (p.kind === "mission") { await call("ai-company", { action: "assign_mission", agent_id: p.agent_id, titre: p.titre, description: p.description, objectifs: [], priorite: p.priorite }); say(`Mission confiée à ${A.nameOf(p.agent_id)}. Vous la verrez apparaître dans la salle.`); }
       else if (p.kind === "report") { await call("ai-company", { action: "request_report", agent_id: p.agent_id, jours: p.jours }); say(`Rapport demandé à ${A.nameOf(p.agent_id)} sur ${p.jours} jours.`); }
+      else if (p.kind === "crm") { const r = await crmExec(p.a); say(r.ok ? `C'est fait : ${plural(r.ok, "fiche", "fiches")} ${CRM_LAB[p.a.type]}${r.same ? `, ${r.same} déjà à jour` : ""}${r.ko ? `, ${r.ko} refusée${r.ko > 1 ? "s" : ""} (${r.raisons.join(" ; ")})` : ""}.` : `Aucune fiche n'a pu être ${CRM_LAB[p.a.type]} : ${r.raisons.join(" ; ") || (r.same ? "elles étaient déjà à jour" : "refusé")}.`); }
       else if (p.kind === "report_now") { await call("ai-company", { action: "report_now", type: p.type }); say(`Le rapport ${p.type} est généré et envoyé.`); }
       else { const sentAt = Date.now() - 2000; await call("ai-company", { action: "instruction", contenu: p.texte }); say("Instruction transmise au directeur général. Je vous lis sa réponse dès qu'elle arrive."); watchDg(sentAt); }
       return "transmis";
@@ -247,5 +271,5 @@ export function initJarvis(A, stage) {
   $("#jv-voice").addEventListener("click", (e) => { voiceOn = !voiceOn; e.currentTarget.classList.toggle("on", voiceOn); e.currentTarget.textContent = voiceOn ? "🔊" : "🔇"; if (!voiceOn) window.speechSynthesis?.cancel(); setSt(voiceOn ? "Voix activée" : "Voix désactivée"); });
   $("#jv-hands").addEventListener("click", (e) => { hands = !hands; e.currentTarget.classList.toggle("on", hands); if (hands) { if (!SR) { hands = false; e.currentTarget.classList.remove("on"); setSt("Mains libres indisponible : micro non pris en charge."); return; } if (listening) rec.stop(); setTimeout(startRec, 150); setSt("Mains libres : dites « Jarvis »"); } else { rec?.stop(); setSt("Jarvis prêt"); } });
   addLine("jarvis", "Salle de contrôle en ligne. Dites « Jarvis, situation » ou écrivez votre demande.");
-  window.__jarvis = { crm: () => crmContext(""), insights, auto: () => autoMode, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say };
+  window.__jarvis = { crm: () => crmContext(""), crmRows: () => crmC.rows.slice(), insights, auto: () => autoMode, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say };
 }
