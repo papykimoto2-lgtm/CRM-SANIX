@@ -57,7 +57,7 @@ async function pull() {
     safe(sb.from("crm_wa_messages").select("id,status,kind,template,to_phone,sent_at,error", { count: "exact" }).gte("sent_at", since(7)).order("sent_at", { ascending: false }).limit(100), null),
     safe(sb.from("crm_wa_inbound").select("id,from_phone,body,kind,received_at", { count: "exact" }).gte("received_at", since(7)).order("received_at", { ascending: false }).limit(50), null),
     safe(sb.from("crm_wa_optout").select("phone", { count: "exact", head: true }), null),
-    safe(sb.from("crm_records").select("rid,data,updated_at").eq("entity", "commandes").is("deleted_at", null).limit(2000), null),
+    safe(sb.from("crm_records").select("rid,data,updated_at").eq("entity", "commandes").is("deleted_at", null).order("updated_at", { ascending: false }).limit(2000), null),
     safe(sb.from("ai_agent_tasks").select("id,agent_id,statut,updated_at,created_at").gte("updated_at", since(90)).order("updated_at", { ascending: false }).limit(3000), null),
     safe(sb.rpc("ai_cost_center", { p_days: 90 }), null),
   ]);
@@ -346,7 +346,7 @@ function renderBusinessIntelligence() {
   const prospects = D.salesRows || [];
   const weights = { contrat_transmis:.85, offre_acceptee:.8, negociation:.6, offre_transmise:.4, demo_realisee:.3, rdv_confirme:.2, interesse:.15 };
   const pipeline = prospects.filter(p => Object.hasOwn(weights,p.stage)).reduce((s,p) => s + Math.max(0,Number(p.potentiel_fcfa)||0) * weights[p.stage],0);
-  const costs30 = Number(D.costCenter?.mois_usd ?? D.costCenter?.periode_usd ?? 0);
+  const costs30 = Number(D.costCenter?.periode_usd ?? D.costCenter?.mois_usd ?? 0);
   const costs90 = Number(D.costCenter90?.periode_usd ?? 0);
   const tasks = D.tasks90 || [];
   const completed30 = tasks.filter(t => t.statut === "terminee" && Date.parse(t.updated_at) >= start30.getTime()).length;
