@@ -50,7 +50,7 @@ async function pull() {
     safe(sb.from("ai_approvals").select("id", { count: "exact", head: true }).eq("statut", "en_attente"), null),
     safe(sb.rpc("ai_budget_status"), null),
     safe(sb.from("ai_governance").select("actif,communication_externe").eq("id", 1).maybeSingle(), null),
-    safe(sb.from("ai_prospects").select("id,stage,potentiel_fcfa,score,next_action_at").limit(1500), null),
+    safe(sb.from("ai_prospects").select("id,entreprise,stage,potentiel_fcfa,score,next_action_at,opt_out,owner_id").limit(1500), null),
     safe(sb.from("ai_offers").select("id,total_ttc,statut,created_at").order("created_at", { ascending: false }).limit(500), null),
     safe(sb.rpc("ai_cost_center", { p_days: 30 }), null),
     safe(sb.functions.invoke("crm-whatsapp", { body: { action: "status" } }), null),
@@ -327,7 +327,7 @@ function renderBusinessIntelligence() {
   const money = n => new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(Math.round(Number(n) || 0)) + " FCFA";
   const usd = n => "$" + Number(n || 0).toFixed(2);
   const now = new Date(), dayMs = 864e5;
-  const dateOnly = v => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(v || "")) ? new Date(v + "T00:00:00Z") : null;
+  const dateOnly = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? new Date(v + "T00:00:00Z") : null;
   const validOrders = (D.orderRows || []).map(r => ({...r, d:r.data || {}})).filter(r =>
     ["confirmee","en_cours","livree"].includes(r.d.statut) && r.d.renouvellement !== true && r.d.renouvellement !== "true" && dateOnly(r.d.date));
   const ht = d => Number(d.htNet) > 0 ? Number(d.htNet) : Number(d.ttc) > 0 ? Math.round(Number(d.ttc) / 1.18) : 0;
@@ -391,6 +391,54 @@ function renderBusinessIntelligence() {
     </div>
     ${revenueRows}
     <p class="panel-note">CA signé : commandes CRM confirmées, en cours ou livrées, hors renouvellements, ramenées en HT selon la règle du connecteur. Encaissements : paiements datés des 30 derniers jours, hors suppressions ; les anciens acomptes sans détail de paiement daté ne sont pas ventilés dans cette période. Commandes IA : champ source = « IA ». Pipeline pondéré : estimation, pas du CA. Coûts IA en USD, ventes en FCFA : aucun ROI ni bénéfice n'est calculé sans taux de change, coûts complets et attribution fiable. Les historiques sont limités aux 2 000 commandes et 3 000 missions les plus récentes chargées.</p>`;
+}
+function renderPredictiveDirector() {
+  const el = $("#forecast-panel");
+  if (!el) return;
+  const now = new Date(), startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const daysElapsed = Math.max(1, Math.ceil((now - startMonth) / 864e5) + 1);
+  const daysMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+  const prospects = (D.salesRows || []).filter(p => !p.opt_out && p.stage !== "perdu" && p.stage !== "en_veille");
+  const overdue = prospects.filter(p => p.next_action_at && Date.parse(p.next_action_at) < now.getTime() &&
+    !["contrat_signe","paiement_confirme","marche_gagne","client_fidelise"].includes(p.stage));
+  const critical = overdue.filter(p => Date.now() - Date.parse(p.next_action_at) > 7*864e5);
+  const highPotential = prospects.filter(p => Number(p.score) >= 70 && Number(p.potentiel_fcfa)>0);
+  const pendingDecision = prospects.filter(p => ["offre_acceptee","contrat_transmis","paiement_attendu"].includes(p.stage));
+  const weighted = prospects.reduce((s,p) => {
+    const w = {identifie:.03,enregistre:.05,qualifie:.1,premier_contact:.12,conversation:.18,besoin_identifie:.25,interesse:.3,rdv_propose:.35,rdv_confirme:.4,demo_realisee:.45,offre_transmise:.55,negociation:.65,offre_acceptee:.8,contrat_transmis:.9,paiement_attendu:.95};
+    return s + Math.max(0,Number(p.potentiel_fcfa)||0)*(w[p.stage]||0);
+  },0);
+  const orders = (D.orderRows || []).map(r=>r.data||{}).filter(d=>["confirmee","en_cours","livree"].includes(d.statut) && d.renouvellement!==true && d.renouvellement!=="true" && /^\d{4}-\d{2}-\d{2}$/.test(String(d.date||"")));
+  const ht = d => Number(d.htNet)>0?Number(d.htNet):Number(d.ttc)>0?Math.round(Number(d.ttc)/1.18):0;
+  const monthOrders=orders.filter(d=>new Date(d.date+"T00:00:00Z")>=startMonth);
+  const mtd=monthOrders.reduce((s,d)=>s+ht(d),0);
+  const monthForecast=daysElapsed>0?mtd/daysElapsed*daysMonth:0;
+  const previousMonthStart=new Date(now.getFullYear(),now.getMonth()-1,1), previousMonthEnd=startMonth;
+  const previousMonth=orders.filter(d=>{const x=new Date(d.date+"T00:00:00Z");return x>=previousMonthStart&&x<previousMonthEnd;}).reduce((s,d)=>s+ht(d),0);
+  const budgetForecast=Number(D.costCenter?.prevision_fin_mois_usd);
+  const budgetLimit=Number(D.budget?.budget_mois_usd);
+  const alerts=[];
+  if(critical.length)alerts.push({type:"bad",title:critical.length+" relance(s) en retard de plus de 7 jours",detail:"Prioriser ces dossiers et vérifier leur statut avant toute nouvelle prise de contact."});
+  else if(overdue.length)alerts.push({type:"warn",title:overdue.length+" prochaine(s) action(s) échue(s)",detail:"Planifier ou actualiser les échéances commerciales."});
+  if(pendingDecision.length)alerts.push({type:"warn",title:pendingDecision.length+" dossier(s) proches d'une décision",detail:"Vérifier les offres, contrats transmis et paiements attendus."});
+  if(highPotential.length)alerts.push({type:"info",title:highPotential.length+" prospect(s) qualifiés à fort potentiel",detail:"Score de qualification ≥ 70/100 ; confirmer le besoin, le budget et le calendrier."});
+  if(Number.isFinite(budgetForecast)&&budgetLimit>0&&budgetForecast>budgetLimit)alerts.push({type:"bad",title:"Dépassement mensuel IA prévisionnel",detail:"Projection "+budgetForecast.toFixed(2)+" $ pour un plafond de "+budgetLimit.toFixed(2)+" $."});
+  const alertHtml=alerts.length?alerts.map(a=>`<div class="forecast-alert ${a.type}"><i></i><span><b>${esc(a.title)}</b><small>${esc(a.detail)}</small></span></div>`).join(""):'<p class="panel-muted">Aucune alerte prédictive sur les données actuellement accessibles.</p>';
+  const fmt=n=>new Intl.NumberFormat("fr-FR",{maximumFractionDigits:0}).format(Math.round(n||0))+" FCFA";
+  const delta=previousMonth>0?Math.round((mtd-previousMonth*(daysElapsed/daysMonth))/(previousMonth*(daysElapsed/daysMonth))*100):null;
+  el.innerHTML=`<div class="panel-head"><h2>Directeur prédictif · V12</h2><span class="panel-source">Prévisions & alertes · lecture seule</span></div>
+    <div class="forecast-grid">
+      <div><b>${D.orderRows===null?"n/d":fmt(monthForecast)}</b><small>CA mensuel projeté · rythme actuel</small></div>
+      <div><b>${D.orderRows===null?"n/d":fmt(mtd)}</b><small>CA signé HT · mois en cours</small></div>
+      <div><b>${fmt(weighted)}</b><small>Pipeline pondéré indicatif</small></div>
+      <div><b>${overdue.length}</b><small>Actions commerciales échues</small></div>
+    </div>
+    <div class="forecast-section"><h3>Alertes et décisions à anticiper</h3>${alertHtml}</div>
+    <div class="forecast-facts"><span>CA du mois précédent</span><b>${D.orderRows===null?"n/d":fmt(previousMonth)}</b></div>
+    <div class="forecast-facts"><span>Avancement du mois</span><b>${daysElapsed} / ${daysMonth} jours</b></div>
+    <div class="forecast-facts"><span>Prévision coûts IA fin de mois</span><b>${Number.isFinite(budgetForecast)?"$"+budgetForecast.toFixed(2):"n/d"}</b></div>
+    <div class="forecast-facts"><span>Plafond IA mensuel</span><b>${budgetLimit>0?"$"+budgetLimit.toFixed(2):"n/d"}</b></div>
+    <p class="panel-note">La projection de CA prolonge le rythme moyen du mois en cours ; elle n'est ni un engagement ni une prédiction statistique. Le pipeline pondéré est une estimation par étape, distincte du CA signé. Les alertes reposent sur les échéances saisies et les données chargées. Aucun objectif mensuel n'est inventé : il n'est pas configuré dans la source actuelle. Les alertes ne déclenchent aucun message ni changement automatique.</p>`;
 }
 function renderWhatsApp() {
   const el = $("#whatsapp-panel"); if (!el) return;
@@ -577,7 +625,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
