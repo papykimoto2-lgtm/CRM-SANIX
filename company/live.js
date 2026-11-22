@@ -134,24 +134,25 @@ function renderWorkflow() {
     ["blocked", "Blocages", counts.blocked, "blocked", "bad"],
     ["done", "Terminées", counts.done, "terminee", "done"],
   ];
-  $("#workflow-steps").innerHTML = steps.map(([key,label,n,filter,state],i) => `<button type="button" class="workflow-step ${state}" data-workflow-filter="${filter}" aria-label="Filtrer les missions : ${label}, ${n}"><span>${label}</span><b>${n}</b>${i < steps.length-1 ? '<i class="workflow-arrow" aria-hidden="true">›</i>' : ""}</button>`).join("");
+  $("#workflow-steps").innerHTML = steps.map(([key,label,n,filter,state],i) => `<button type="button" class="workflow-step ${state} ${D.taskFilter === filter ? "selected" : ""}" data-workflow-filter="${filter}" aria-pressed="${D.taskFilter === filter}" aria-label="Filtrer les missions : ${label}, ${n}"><span>${label}</span><b>${n}</b>${i < steps.length-1 ? '<i class="workflow-arrow" aria-hidden="true">›</i>' : ""}</button>`).join("");
 }
 function renderMissions() {
-  const order = { en_cours: 0, attente_sous_taches: 1, attente_validation: 2, a_faire: 3, bloquee: 4, echouee: 5 };
+  const order = { en_cours: 0, attente_sous_taches: 1, attente_validation: 2, a_faire: 3, bloquee: 4, echouee: 5, terminee: 6 };
   const all = D.tasks.filter((t) => t.statut in order && (t.statut !== "bloquee" || Date.now() - Date.parse(t.updated_at) < 24 * 3600e3));
+  const open = all.filter((t) => t.statut !== "terminee");
   const counts = {
-    run: all.filter((t) => t.statut === "en_cours").length,
-    waiting: all.filter((t) => ["a_faire", "attente_sous_taches"].includes(t.statut)).length,
-    valid: all.filter((t) => t.statut === "attente_validation").length,
-    blocked: all.filter((t) => ["bloquee", "echouee"].includes(t.statut)).length,
+    run: open.filter((t) => t.statut === "en_cours").length,
+    waiting: open.filter((t) => ["a_faire", "attente_sous_taches"].includes(t.statut)).length,
+    valid: open.filter((t) => t.statut === "attente_validation").length,
+    blocked: open.filter((t) => ["bloquee", "echouee"].includes(t.statut)).length,
   };
   const summary = $("#mission-summary");
-  if (summary) summary.textContent = `${all.length} ouvertes · ${counts.run} en cours · ${counts.waiting} en attente · ${counts.valid} à valider · ${counts.blocked} bloquées`;
+  if (summary) summary.textContent = `${open.length} ouvertes · ${counts.run} en cours · ${counts.waiting} en attente · ${counts.valid} à valider · ${counts.blocked} bloquées`;
   document.querySelectorAll("#mission-filters [data-filter]").forEach((b) => {
     const active = b.dataset.filter === D.taskFilter;
     b.classList.toggle("on", active); b.setAttribute("aria-pressed", String(active));
   });
-  const matches = (t) => D.taskFilter === "all" ||
+  const matches = (t) => (D.taskFilter === "all" && t.statut !== "terminee") ||
     (D.taskFilter === "waiting" && ["a_faire", "attente_sous_taches"].includes(t.statut)) ||
     (D.taskFilter === "blocked" && ["bloquee", "echouee"].includes(t.statut)) ||
     t.statut === D.taskFilter;
