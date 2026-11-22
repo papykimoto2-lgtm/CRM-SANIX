@@ -131,6 +131,40 @@ export function initJarvis(A, stage) {
   const ACT = { zoom_in: () => view()?.zoom(.7), zoom_out: () => view()?.zoom(1.45), reset_view: () => view()?.reset(), auto_rotate_on: () => view()?.setAuto(true), auto_rotate_off: () => view()?.setAuto(false),
     dynamic_on: () => { view()?.setDynamic(true); document.querySelector('#ctl [data-c="dyn"]')?.classList.add("on"); }, dynamic_off: () => { view()?.setDynamic(false); document.querySelector('#ctl [data-c="dyn"]')?.classList.remove("on"); },
     panels_hide: () => A.setFocus(true), panels_show: () => A.setFocus(false), fullscreen: () => A.fullscreen() };
+  // Financial data is loaded only when the president asks a finance-related question.
+  async function financeContext(message) {
+    const q = norm(message);
+    if (!/(^| )(ca|chiffre affaire|chiffres affaires|vente|ventes|commande|commandes|encaissement|encaissements|acompte|acomptes|solde|soldes|facture|factures|finance|financier|financiere|tresorerie|depense|depenses|charge|charges|marge|rentabilite|paiement|paiements|budget|comptabilite|ecriture|ecritures)( |$)/.test(q)) return null;
+    const { data, error } = await A.sb.from("crm_records").select("entity,rid,data,updated_at")
+      .in("entity", ["commandes","ecritures","documents","pil_depenses","pil_config"])
+      .is("deleted_at", null).limit(1500);
+    if (error) throw error;
+    const rows=data||[], by=entity=>rows.filter(r=>r.entity===entity).map(r=>r.data||{});
+    const orders=by("commandes").filter(d=>["confirmee","en_cours","livree"].includes(String(d.statut||"").toLowerCase()));
+    const expenses=by("pil_depenses"), entries=by("ecritures"), docs=by("documents"), config=by("pil_config")[0]||{};
+    const now=new Date(), parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Africa/Abidjan",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(now);
+    const part=k=>parts.find(p=>p.type===k)?.value||"", today=part("year")+"-"+part("month")+"-"+part("day"), month=today.slice(0,7), year=today.slice(0,4);
+    const isoDaysAgo=n=>{const d=new Date(now.getTime()-n*864e5),p=new Intl.DateTimeFormat("en-CA",{timeZone:"Africa/Abidjan",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(d),v=k=>p.find(x=>x.type===k)?.value||"";return v("year")+"-"+v("month")+"-"+v("day");};
+    const since30=isoDaysAgo(30),since90=isoDaysAgo(90);
+    const num=v=>{const n=Number(v);return Number.isFinite(n)?Math.max(0,n):0;};
+    const date=v=>/^\d{4}-\d{2}-\d{2}/.test(String(v||""))?String(v).slice(0,10):"";
+    const ht=d=>num(d.htNet)||(num(d.ttc)?Math.round(num(d.ttc)/1.18):0), sum=(a,f)=>a.reduce((s,x)=>s+f(x),0);
+    const period=(a,f,from,to)=>sum(a.filter(x=>date(x.date)&&date(x.date)>=from&&date(x.date)<=to),f);
+    const monthOrders=orders.filter(d=>date(d.date).startsWith(month)), ytdOrders=orders.filter(d=>date(d.date).startsWith(year));
+    const productMap=new Map(),statusMap={};
+    for(const d of orders){const p=String(d.logiciel||"Non renseigné").slice(0,60);productMap.set(p,(productMap.get(p)||0)+ht(d));statusMap[d.statut]=(statusMap[d.statut]||0)+1;}
+    const payments=orders.flatMap(d=>(Array.isArray(d.paiements)?d.paiements:[]).filter(p=>p&&p.estimee!==true&&p.estimee!=="true").map(p=>({date:date(p.date),montant:num(p.montant)}))).filter(p=>p.date);
+    const advances=sum(orders,d=>num(d.acompte)), balances=sum(orders,d=>num(d.solde));
+    const monthExpenses=expenses.filter(d=>String(d.mois||"")===month), realExpenses=sum(monthExpenses,d=>num(d.reel)), plannedExpenses=sum(monthExpenses,d=>num(d.prevu));
+    const objectiveRaw=config["obj_"+month], objective=objectiveRaw==null||objectiveRaw===""?null:num(objectiveRaw), costs=A.D.costCenter||{};
+    return {disponible:true,devise:"FCFA",date_analyse:today,mois:month,
+      commandes:{nombre:orders.length,ca_ht_total:sum(orders,ht),ca_ht_mois:sum(monthOrders,ht),ca_ht_30_jours:period(orders,ht,since30,today),ca_ht_90_jours:period(orders,ht,since90,today),ca_ht_annee:sum(ytdOrders,ht),par_logiciel:[...productMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,10).map(([logiciel,ca_ht])=>({logiciel,ca_ht})),par_statut:statusMap},
+      encaissements:{lignes_paiement_datees:payments.length,total_confirme:sum(payments,p=>p.montant),mois:period(payments,p=>p.montant,month+"-01",today),90_jours:period(payments,p=>p.montant,since90,today),acomptes_declares_commandes:advances,solde_a_recouvrer_declare:balances},
+      depenses_gestion:{lignes_mois:monthExpenses.length,reel_mois:realExpenses,prevision_mois:plannedExpenses},
+      objectif_ca_ht_mois:objective,comptabilite:{ecritures_enregistrees:entries.length,factures_documents:docs.filter(d=>String(d.type||"").toLowerCase()==="facture").length},
+      couts_ia:{mois_usd:num(costs.mois_usd),budget_mois_usd:num(costs.budget_mois_usd)},
+      limites:["CA calculé sur htNet, ou TTC/1,18 si HT absent, pour les commandes confirmées, en cours ou livrées.","Encaissements calculés uniquement sur les paiements datés non estimés ; acomptes déclarés présentés séparément.","Solde à recouvrer issu du champ solde des commandes, sans rapprochement bancaire.","Dépenses limitées aux lignes saisies dans Budget & actions ; les écritures comptables ne sont pas agrégées.","Aucun bénéfice net, trésorerie bancaire ou marge par logiciel ne peut être déduit de ces seuls champs.","Coûts IA en USD, séparés des montants FCFA."]};
+  }
   function snapshot() {
     const nm = (id) => A.nameOf(id), cur = (a) => { const t = D.tasks.find((x) => x.agent_id === a.id && x.statut === "en_cours") ?? D.tasks.find((x) => x.agent_id === a.id && A.OPENS.includes(x.statut)); return t ? t.titre : ""; };
     const h = A.health();
@@ -147,6 +181,7 @@ export function initJarvis(A, stage) {
     try {
       const ctx = snapshot(); try { const r = await A.sb.from("ai_executive_messages").select("auteur,contenu,created_at").order("created_at", { ascending: false }).limit(6); ctx.dg = (r.data ?? []).reverse().map((m) => ({ auteur: m.auteur, texte: m.contenu })); } catch { /* dialogue indisponible */ }
       try { ctx.crm = await crmContext(raw); } catch { /* CRM indisponible : Jarvis répond avec le reste du contexte */ }
+      try { ctx.finance = await financeContext(raw); } catch { ctx.finance = { disponible:false }; }
       const call = A.sb.functions.invoke("ai-jarvis", { body: { message: raw, history: hist.slice(-8), context: ctx } });
       const { data, error } = await Promise.race([call, new Promise((_, rej) => setTimeout(() => rej(new Error("délai dépassé")), 25000))]);
       if (error || !data?.reply) throw new Error(error ? await explain(error) : "réponse vide");
