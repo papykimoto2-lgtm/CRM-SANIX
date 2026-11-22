@@ -452,20 +452,20 @@ function renderExecutiveCommandCenter() {
   const el = $("#executive-panel"); if (!el) return;
   const money = n => new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(Math.round(Number(n) || 0)) + " FCFA";
   const now = new Date(), month = now.getFullYear() + "-" + String(now.getMonth()+1).padStart(2,"0");
-  const dateOnly = v => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(v || "")) ? new Date(v + "T00:00:00Z") : null;
+  const dateOnly = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? new Date(v + "T00:00:00Z") : null;
   const orders = (D.orderRows || []).map(r => r.data || {}).filter(d =>
     ["confirmee","en_cours","livree"].includes(d.statut) && d.renouvellement !== true && d.renouvellement !== "true" && dateOnly(d.date) && String(d.date).slice(0,7) === month);
   const ht = d => Number(d.htNet) > 0 ? Number(d.htNet) : Number(d.ttc) > 0 ? Math.round(Number(d.ttc)/1.18) : 0;
   const ca = orders.reduce((s,d)=>s+ht(d),0);
   const cfg = D.execConfig || {};
   const goalRaw = cfg["obj_"+month], goal = goalRaw === null || goalRaw === undefined || goalRaw === "" ? null : Number(goalRaw);
-  const expenses = (D.execRows || []).filter(r => r.data && /^\\d{4}-\\d{2}$/.test(String(r.data.mois||"")) && r.data.mois === month && r.data.libelle);
+  const expenses = (D.execRows || []).filter(r => r.data && /^\d{4}-\d{2}$/.test(String(r.data.mois||"")) && r.data.mois === month && r.data.libelle);
   const expenseActual = expenses.reduce((s,r)=>s+Math.max(0,Number(r.data.reel)||0),0);
   const expenseRetained = expenses.reduce((s,r)=>s+(Number(r.data.reel)>0?Number(r.data.reel):Math.max(0,Number(r.data.prevu)||0)),0);
   const attainment = goal > 0 ? Math.round(ca/goal*100) : null;
   const elapsed = Math.max(1,now.getDate()), days = new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
   const pace = goal > 0 ? Math.round(ca/goal*100*days/elapsed) : null;
-  const normalize = s => String(s||"").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLowerCase().trim().replace(/[^a-z0-9]+/g," ");
+  const normalize = s => String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim().replace(/[^a-z0-9]+/g," ");
   const aliases = new Map((D.productAliases||[]).map(a=>[normalize(a.alias),a.product_id]));
   const products = D.products || [];
   const productName = new Map(products.map(p=>[p.id,p.nom]));
