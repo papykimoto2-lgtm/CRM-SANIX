@@ -161,3 +161,67 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .wa-recent>div span,.wa-recent>div b{display:block;font-size:9px;overflow-wrap:anywhere}
 .wa-recent>div span{color:var(--mute)}
 .wa-recent>div b{color:var(--tx);font-weight:500;margin-top:2px}
+
+
+/* V5 — ergonomie de la salle de contrôle : grille stable, panneaux indépendants. */
+@media (min-width:1101px){
+  html,body{height:100%;overflow:hidden}
+  #live{height:100dvh;min-height:0;padding:8px 12px;gap:8px;overflow:hidden}
+  .hd{flex:none;min-height:42px;gap:12px}
+  .logo{gap:10px}
+  .logo b{font-size:15px;letter-spacing:.12em}
+  .logo span{font-size:11px}
+  .clock{font-size:20px}
+  .kpis{flex:none;gap:8px}
+  .kpi{padding:8px 11px;border-radius:12px}
+  .kpi small{font-size:10px;letter-spacing:.08em}
+  .kpi b{font-size:27px}
+  .kpi em{font-size:11px}
+  .grid{flex:1 1 0;height:0;min-height:0;grid-template-columns:minmax(265px,24%) minmax(340px,1fr) minmax(300px,25%);gap:8px;overflow:hidden}
+  .col{height:100%;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#294064 transparent;padding-right:2px}
+  .col.left{gap:8px}
+  .col.right{gap:7px}
+  .col .card{flex:0 0 auto;padding:10px;border-radius:12px}
+  .col .card.grow{flex:1 0 155px;min-height:155px}
+  .col.right .alerts{max-height:158px;min-height:74px;overflow-y:auto}
+  .col.right .health{min-height:104px;max-height:118px;padding:8px;gap:10px}
+  .col.right .gauge{width:82px;height:82px}
+  .col.right .gauge b{font-size:23px}
+  .col.right .hl{font-size:10.5px}
+  .col.right .hl div{padding:1px 0}
+  .col.right .business-panel,.col.right .finance-panel{gap:6px}
+  .col.right .business-grid,.col.right .finance-grid{gap:6px}
+  .col.right .business-grid>div,.col.right .finance-grid>div{padding:6px}
+  .col.right .business-grid b,.col.right .finance-grid b{font-size:15px}
+  .col.right .business-grid small,.col.right .finance-grid small{font-size:9px}
+  .col.right .panel-note{font-size:8px}
+  .col.right .whatsapp-panel{gap:6px}
+  .col.right .wa-grid{gap:5px}
+  .col.right .wa-grid>div{padding:6px}
+  .col.right .wa-grid b{font-size:15px}
+  .col.right .wa-recent>div{padding:3px 0}
+  .col.right .feed{max-height:260px}
+  .col.left .mission-card{min-height:230px}
+  .stage{height:100%;min-height:0}
+  .ticker{flex:none;min-height:38px;padding:6px 12px;gap:12px}
+}
+@media (min-width:1101px) and (max-height:820px){
+  #live{padding:6px 10px;gap:6px}
+  .hd{min-height:38px}
+  .kpi{padding:6px 10px}
+  .kpi b{font-size:25px}
+  .col.right .alerts{max-height:132px}
+  .col.right .health{min-height:92px;max-height:104px}
+  .col.right .gauge{width:72px;height:72px}
+  .col.right .card{padding:8px}
+  .ticker{min-height:34px}
+}
+@media (min-width:1101px){
+  .col::-webkit-scrollbar{width:5px}
+  .col::-webkit-scrollbar-thumb{background:#294064;border-radius:8px}
+  .col::-webkit-scrollbar-track{background:transparent}
+  .col .card h2{font-size:11px;margin-bottom:6px}
+  .col .mis{padding:7px 9px}
+  .col .mis b{font-size:12px}
+  .col .mis small{font-size:10px}
+}
