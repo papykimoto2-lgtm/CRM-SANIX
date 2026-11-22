@@ -5589,7 +5589,31 @@ function fcSenderVars(t){
   return t.replace(/{signature}/g,courrierSignature()).replace(/{gerant}/g,g.nom).replace(/{societe}/g,r.societe).replace(/{tel}/g,g.tel).replace(/{email}/g,g.email)
           .replace(/{ville}/g,r.ville).replace(/{rdv}/g,relanceRDVPhrase()).replace(/{salut}/g,fcSalut());
 }
+// Partenaires : accroche, angle et logiciels propres à chaque fiche, lus dans ses notes (ligne « Accroche : … | Angle : … | Logiciels : … »)
+const PARTENAIRE_LOGICIELS = {
+  'DistriPro ERP':"DistriPro ERP : distribution et commerce (commandes, livraisons partielles, avoirs, encours, conditions distributeur).",
+  'SANIX ComptaPro':"SANIX ComptaPro : comptabilité SYSCOHADA (écritures, grand livre, balance, bilan, lettrage, fiscalité, caisse, achats, stock).",
+  'SANIX EasyStock':"SANIX EasyStock : caisse et stock multi-points de vente (FIFO, crédit client, Mobile Money Wave, Orange et MTN, utilisable hors connexion).",
+  'SANIX CRM Pro':"SANIX CRM Pro : pipeline commercial, clients et prospects, messagerie, suivi des relances.",
+  'SANIX RH Suite':"SANIX RH Suite : personnel, contrats, paie SYSCOHADA, congés, évaluations, formations.",
+  'ImmoSuite ERP':"ImmoSuite ERP : promoteurs et gestionnaires immobiliers (programmes, lots, ventes, souscripteurs).",
+  'AutoGarage Pro':"AutoGarage Pro : garages et flottes (ordres de réparation, maintenance préventive, stock de pièces).",
+  'HotelSuite ERP':"HotelSuite ERP : hôtels (réservations, chambres, restaurant, caisse, stocks).",
+  'Sanix AluExpert ERP':"Sanix AluExpert ERP : ateliers de menuiserie aluminium (devis, fabrication, coût de revient).",
+  'MediCore Suite':"MediCore Suite : hôpitaux et cliniques (dossiers patients, consultations, laboratoire).",
+  'SANIX Factory 4.0':"SANIX Factory 4.0 : industrie (production, ordres de fabrication, maintenance, qualité)."
+};
+function partenaireInfos(c){
+  const m=/Accroche\s*:\s*([^|\n]+?)\s*\|\s*Angle\s*:\s*([^|\n]+?)\s*\|\s*Logiciels\s*:\s*([^\n]+)/i.exec(c.notes||'');
+  const noms = m ? m[3].split(/\s*;\s*/).map(x=>x.trim()).filter(Boolean) : ['DistriPro ERP','SANIX ComptaPro','SANIX CRM Pro'];
+  return {
+    accroche: m ? m[1].trim() : (c.nom||'Votre société')+' accompagne déjà des entreprises sur leurs systèmes d\'information.',
+    angle: m ? m[2].trim() : 'Nous cherchons un partenaire local pour présenter nos solutions à ses clients et les déployer.',
+    logiciels: noms.map(n=>'• '+(PARTENAIRE_LOGICIELS[n]||n)).join('\n')
+  };
+}
 function fcFill(t,c){
+  if(/\{(accroche|angle|logiciels)_partenaire\}/.test(t)){ const pi=partenaireInfos(c); t=t.replace(/{accroche_partenaire}/g,pi.accroche).replace(/{angle_partenaire}/g,pi.angle).replace(/{logiciels_partenaire}/g,pi.logiciels); }
   const log = LOGICIELS.find(l=>l.nom===c.logiciel) || {};
   const prix = (valeurFiche(c)||0).toLocaleString('fr-FR');
   return fcSenderVars(t)
@@ -6190,6 +6214,8 @@ Object.keys(FIRST_CONTACT_DEFAULT).slice().reverse().forEach(k=>{
   MSG_TEMPLATES.unshift({canal:'email',titre:'1er contact — '+t.label,msg:'Objet : '+t.emailSubject+'\n\n'+fcAddPortail(t.email,'email'),fc:k});
   MSG_TEMPLATES.unshift({canal:'wa',titre:'1er contact — '+t.label,msg:fcAddPortail(t.wa,'wa'),fc:k});
 });
+// Partenaires : message adapté à chaque fiche (accroche, angle et logiciels lus dans ses notes)
+MSG_TEMPLATES.unshift({canal:'email',titre:'Partenaires — message adapté à chaque partenaire',msg:"Objet : Partenariat {societe} : logiciels de gestion pour {nom}\n\n{salut} {destinataire},\n\nJe suis {gerant}, de {societe} (Abidjan), éditeur de logiciels de gestion pour les PME d'Afrique de l'Ouest.\n\n{accroche_partenaire}\n\n{angle_partenaire}\n\nLes logiciels qui me semblent les plus pertinents pour vous :\n{logiciels_partenaire}\n\nNotre catalogue compte 19 logiciels, par métier et pour la gestion commerciale et financière : je vous l'envoie volontiers en détail. Ce message vous parvient depuis SANIX CRM Pro, notre propre outil de suivi commercial.\n\nNous proposons aux partenaires une commission sur les ventes apportées, la formation de leur équipe, des démonstrations menées avec nous chez leurs clients et la protection des clients apportés. Nous en détaillerons les conditions ensemble.\n\nSeriez-vous disponible pour un appel de 20 minutes cette semaine ?\n\nCordialement,\n{signature}\n\nSi ce message ne vous concerne pas, répondez simplement « stop » et je ne vous écrirai plus.",fc:'partenaire'});
 // Partenaires : présentation détaillée du catalogue et du CRM (e-mail), pour un partenaire qui montre de l'intérêt ou en seconde approche
 MSG_TEMPLATES.push({canal:'email',titre:'Partenaires — présentation détaillée (catalogue et CRM)',msg:"Objet : Partenariat {societe} : 19 logiciels de gestion pour les PME d'Afrique de l'Ouest\n\n{salut} {destinataire},\n\nJe suis {gerant}, de {societe} (Abidjan). Nous éditons des logiciels de gestion métier pour les PME d'Afrique de l'Ouest, conformes SYSCOHADA. {nom} accompagne déjà des entreprises sur leurs systèmes d'information : nous cherchons un partenaire local pour présenter nos solutions à ses clients et les déployer.\n\nNOTRE CATALOGUE\n\nGestion commerciale et finance\n• DistriPro ERP : distribution et commerce (commandes, livraisons partielles, avoirs, encours, conditions distributeur).\n• SANIX ComptaPro : comptabilité SYSCOHADA (écritures, grand livre, balance, bilan, lettrage, fiscalité, caisse, achats, stock).\n• SANIX EasyStock : caisse et stock multi-points de vente (FIFO, crédit client, Mobile Money Wave, Orange et MTN, utilisable hors connexion).\n• SANIX RH Suite : personnel, contrats, paie SYSCOHADA, congés, évaluations, formations.\n• SANIX CRM Pro : pipeline commercial, clients et prospects, messagerie, suivi des relances.\n\nERP par métier\n• ImmoSuite ERP : promoteurs et gestionnaires immobiliers (programmes, lots, ventes, souscripteurs, DQE).\n• AutoGarage Pro : garages et flottes (ordres de réparation, maintenance préventive, stock de pièces).\n• MediCore Suite : hôpitaux et cliniques (dossiers patients, consultations, laboratoire, comptabilité analytique).\n• HotelSuite ERP : hôtels (réservations, chambres, restaurant, caisse, stocks).\n• SANIX Factory 4.0 : industrie (production, ordres de fabrication, maintenance, qualité et traçabilité).\n• Sanix AluExpert ERP : ateliers de menuiserie aluminium (devis, fabrication, coût de revient).\n• AFRI-BAR Manager : dépôts de boissons (emballages consignés, stock).\n• Phyto Strike Force : distributeurs de produits phytosanitaires.\n• Menko Agro : agriculture (cartographie, traçabilité par lot, campagnes).\n• AviNest Pro et Angel's Agro : élevage avicole (lots, suivi quotidien, prophylaxie, stock, ventes).\n• Angel's Livraison et Angel's Transport : livraison à moto, flotte et transport.\n• Le Grenier CI : place de marché en ligne.\n\nLE CRM QUE NOUS UTILISONS POUR VOUS CONTACTER\n\nCe message vous parvient depuis SANIX CRM Pro, notre propre outil de suivi commercial. Il nous sert à suivre chaque échange avec un prospect ou un partenaire (historique, relances, étape du dossier), à préparer et envoyer nos messages en WhatsApp et par e-mail, à situer les clients sur une carte et à suivre les commissions des apporteurs d'affaires. Votre équipe pourrait l'utiliser et le proposer à ses propres clients.\n\nCE QUE NOUS PROPOSONS À UN PARTENAIRE\n\n• une commission sur les ventes que vous apportez ;\n• la formation de votre équipe sur nos logiciels ;\n• des démonstrations menées avec nous chez vos clients ;\n• la protection des clients que vous nous apportez.\nNous en détaillerons les conditions ensemble.\n\nSeriez-vous disponible pour un appel de 20 minutes cette semaine ? Je peux aussi vous envoyer la présentation complète et vous donner accès aux démonstrations interactives des logiciels qui vous intéressent.\n\nCordialement,\n{signature}\n\nSi ce message ne vous concerne pas, répondez simplement « stop » et je ne vous écrirai plus.",fc:'partenaire'});
 
