@@ -26,3 +26,5 @@ Fenêtre d'affichage en direct de l'activité des agents, pour un second écran,
 - Réponses calculées localement sur les données réelles : situation, fiches du jour / total, qui travaille, blocages, santé, validations, budget, avancement d'un logiciel (« où en est AutoGarage ? »), ce que fait un agent.
 - Caméra à la voix : « zoom avant / arrière », « vue d'ensemble », « montre le directeur commercial », « arrête / lance la rotation », « plein cadre ».
 - Toute autre demande : Jarvis propose de la transmettre au directeur général IA ; **rien n'est envoyé sans « oui »**. La réponse du directeur est ensuite lue à voix haute dès son arrivée.
+
+**Mode dynamique (mouvement perpétuel)** — activé par défaut, bouton ✺ ou voix (« mode calme » / « active le mode dynamique ») : les agents orbitent en permanence autour du directeur général (anneaux en sens alternés, vitesses différentes), les liens suivent, la caméra « respire » doucement et suit l'agent sélectionné. Le mode calme fige les agents.

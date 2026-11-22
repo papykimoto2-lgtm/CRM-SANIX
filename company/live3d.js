@@ -4,6 +4,7 @@
 // Les états affichés viennent des missions réelles (api.agentState) ; les impulsions de chaque action viennent du journal (api.fx).
 import * as THREE from "./vendor/three.bundle.js";
 
+const OMEGA = { 2: .045, 3: -.07, 4: .09, 5: -.11 };
 const SECTOR_R = [0, 0, 7.5, 12, 16.5, 21], LEVEL_Y = [0, 0, 3.2, .9, -1.6, -4], NODE_S = [0, 2.3, 1.3, 1.1, .95, .85];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const hex = (h) => new THREE.Color(h);
@@ -29,7 +30,7 @@ export function create(host, api) {
   const glow = glowTexture(), ringTex = ringTexture();
   const cam = { theta: .6, phi: 1.1, r: 44, tx: 0, ty: 0, tz: 0 }, goal = { ...cam }, HOME = { theta: .6, phi: 1.1, r: 44, tx: 0, ty: 0, tz: 0 };
   let auto = true, lastTouch = performance.now(), speaking = false, hover = null, key = "", W = 1, H = 1, running = true, t0 = performance.now();
-  let nodes = [], byId = new Map(), edgeBase = null, edgeOn = null, flows = [], pulses = [], shocks = [];
+  let edgeNodes = [], actNodes = [], dyn = true, spin = 0, nodes = [], byId = new Map(), edgeBase = null, edgeOn = null, flows = [], pulses = [], shocks = [];
 
   // décor : étoiles, anneaux de niveau
   const sp = new Float32Array(900 * 3); for (let i = 0; i < 900; i++) { const r = 60 + Math.random() * 120, a = Math.random() * 6.2832, b = Math.acos(2 * Math.random() - 1); sp.set([r * Math.sin(b) * Math.cos(a), r * Math.cos(b), r * Math.sin(b) * Math.sin(a)], i * 3); }
@@ -47,7 +48,7 @@ export function create(host, api) {
       const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: hex(col), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: .8 })); halo.scale.setScalar(s * 3.4);
       const ring = new THREE.Mesh(new THREE.TorusGeometry(s * 1.15, .05, 8, 48), new THREE.MeshBasicMaterial({ color: 0x22D3EE, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); ring.rotation.x = Math.PI / 2;
       grp.add(core, halo, ring); grp.position.set(x, y, z); world.add(grp);
-      const n = { id: a.id, a, grp, core, halo, ring, s, lvl, st: "idle", ph: Math.random() * 6.28, base: new THREE.Vector3(x, y, z), label: null, col }; nodes.push(n); byId.set(a.id, n);
+      const n = { id: a.id, a, grp, core, halo, ring, s, lvl, st: "idle", ph: Math.random() * 6.28, base: new THREE.Vector3(x, y, z), home: new THREE.Vector3(x, y, z), ang: 0, label: null, col }; nodes.push(n); byId.set(a.id, n);
     };
     dg.forEach((a, i) => add(a, (i - (dg.length - 1) / 2) * 4, 0, 0, 1));
     depts.forEach((d, di) => {
@@ -59,16 +60,16 @@ export function create(host, api) {
     const core = nodes.find((n) => n.lvl === 1), pos = [], colr = [];
     for (const n of nodes) { if (n.lvl === 1) continue; const m = byId.get(n.a.manager_id) ?? core; if (!m) continue; pos.push(m.base.x, m.base.y, m.base.z, n.base.x, n.base.y, n.base.z); colr.push(.2, .3, .55, .2, .3, .55); n.parent = m; }
     const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("color", new THREE.Float32BufferAttribute(colr, 3));
-    edgeBase = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: .55 })); world.add(edgeBase);
-    edgeOn = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x67E8F9, transparent: true, opacity: .95, blending: THREE.AdditiveBlending })); world.add(edgeOn);
-    flows = [];
+    edgeBase = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: .55 })); edgeBase.frustumCulled = false; world.add(edgeBase); edgeNodes = nodes.filter((n) => n.parent);
+    edgeOn = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x67E8F9, transparent: true, opacity: .95, blending: THREE.AdditiveBlending })); edgeOn.frustumCulled = false; world.add(edgeOn);
+    flows = []; actNodes = [];
   }
   function update() {
     const k = api.D.agents.map((a) => a.id + a.niveau + a.departement_id).join("|"); if (k !== key) { key = k; build(); }
     const act = [];
     for (const n of nodes) { n.st = api.agentState(n.a); if ((n.st === "run" || n.st === "wait") && n.parent) act.push(n); }
     const p = []; for (const n of act) p.push(n.parent.base.x, n.parent.base.y, n.parent.base.z, n.base.x, n.base.y, n.base.z);
-    edgeOn.geometry.setAttribute("position", new THREE.Float32BufferAttribute(p, 3)); edgeOn.geometry.computeBoundingSphere();
+    edgeOn.geometry.setAttribute("position", new THREE.Float32BufferAttribute(p, 3)); actNodes = act;
     flows = act.map((n) => ({ n, ph: Math.random() })); setFlowPoints();
     for (const n of nodes) { const want = n.lvl === 1 || n.id === sel; if (want && !n.label) { n.label = labelSprite(api.clip(n.a.nom.replace(/^IA\s+/i, ""), 26), n.st === "run" ? "#E8FBFF" : "#BFD0F0"); n.label.position.set(0, n.s * 1.9, 0); n.grp.add(n.label); } else if (!want && n.label) { n.grp.remove(n.label); n.label.material.map.dispose(); n.label.material.dispose(); n.label = null; } }
   }
@@ -83,13 +84,13 @@ export function create(host, api) {
     if (created) { const rs = new THREE.Sprite(new THREE.SpriteMaterial({ map: ringTex, color: 0x22C55E, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); rs.position.copy(n.base); world.add(rs); shocks.push({ rs, t0: performance.now(), d: 1800 }); }
   }
   // caméra
-  const apply = () => { const sp = Math.sin(cam.phi); camera.position.set(cam.tx + cam.r * sp * Math.sin(cam.theta), cam.ty + cam.r * Math.cos(cam.phi), cam.tz + cam.r * sp * Math.cos(cam.theta)); camera.lookAt(cam.tx, cam.ty, cam.tz); };
+  const apply = (tt = 0) => { const br = dyn && !sel ? 1 + .05 * Math.sin(tt * .35) : 1, ph = dyn && !sel ? .06 * Math.sin(tt * .22) : 0; const R = cam.r * br, PH = cam.phi + ph; const sp = Math.sin(PH); camera.position.set(cam.tx + R * sp * Math.sin(cam.theta), cam.ty + R * Math.cos(PH), cam.tz + R * sp * Math.cos(cam.theta)); camera.lookAt(cam.tx, cam.ty, cam.tz); };
   const view = {
-    update, fx, nodes: () => nodes, state: () => ({ ...goal, auto, kind: "3d" }), get selected() { return sel; },
+    update, fx, nodes: () => nodes, state: () => ({ ...goal, auto, dyn, kind: "3d" }), get selected() { return sel; },
     zoom(f) { goal.r = clamp(goal.r * f, 8, 95); lastTouch = performance.now(); }, reset() { Object.assign(goal, HOME); sel = null; api.onSelect?.(null); update(); },
     setAuto(v) { auto = !!v; lastTouch = performance.now(); }, toggleAuto() { auto = !auto; lastTouch = performance.now(); return auto; },
     focus(id) { const n = byId.get(id); if (!n) return false; sel = id; goal.tx = n.base.x; goal.ty = n.base.y; goal.tz = n.base.z; goal.r = 15; lastTouch = performance.now(); update(); api.onSelect?.(id); return true; },
-    speaking(v) { speaking = !!v; }, resize,
+    speaking(v) { speaking = !!v; }, setDynamic(v) { dyn = !!v; return dyn; }, toggleDynamic() { dyn = !dyn; return dyn; }, isDynamic: () => dyn, resize,
   };
   function resize() { const b = host.getBoundingClientRect(); W = Math.max(200, b.width); H = Math.max(200, b.height); renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); renderer.setSize(W, H, false); camera.aspect = W / H; camera.updateProjectionMatrix(); }
   // interactions
@@ -118,7 +119,11 @@ export function create(host, api) {
   function loop(now) {
     if (!running) return; requestAnimationFrame(loop); if (document.hidden) return; const dt = Math.min(.1, (now - last) / 1000); last = now; frame++; const t = (now - t0) / 1000;
     if (auto && now - lastTouch > 6000 && !sel) goal.theta += dt * .09;
-    const k = 1 - Math.pow(.0016, dt); for (const f of ["theta", "phi", "r", "tx", "ty", "tz"]) cam[f] += (goal[f] - cam[f]) * k; apply();
+    if (dyn) { spin += dt; for (const n of nodes) { if (n.lvl === 1) continue; n.ang += (OMEGA[n.lvl] ?? .05) * dt; const c = Math.cos(n.ang), sn = Math.sin(n.ang); n.base.set(n.home.x * c + n.home.z * sn, n.home.y, -n.home.x * sn + n.home.z * c); n.grp.position.x = n.base.x; n.grp.position.z = n.base.z; }
+      if (sel) { const m = byId.get(sel); if (m) { goal.tx = m.base.x; goal.ty = m.base.y; goal.tz = m.base.z; } }
+      if (edgeBase) { const a = edgeBase.geometry.attributes.position.array; edgeNodes.forEach((n, i) => { const m = n.parent.base, b = n.base; a.set([m.x, m.y, m.z, b.x, b.y, b.z], i * 6); }); edgeBase.geometry.attributes.position.needsUpdate = true; }
+      if (edgeOn && actNodes.length) { const at = edgeOn.geometry.attributes.position; if (at && at.array.length === actNodes.length * 6) { actNodes.forEach((n, i) => { const m = n.parent.base, b = n.base; at.array.set([m.x, m.y, m.z, b.x, b.y, b.z], i * 6); }); at.needsUpdate = true; } } }
+    const k = 1 - Math.pow(.0016, dt); for (const f of ["theta", "phi", "r", "tx", "ty", "tz"]) cam[f] += (goal[f] - cam[f]) * k; apply(t);
     stars.rotation.y += dt * .004;
     for (const n of nodes) {
       const run = n.st === "run", wait = n.st === "wait", bad = n.st === "bad", off = n.st === "off", c = api.STATES[n.st][1];
@@ -128,7 +133,7 @@ export function create(host, api) {
       n.grp.position.y = n.base.y + Math.sin(t * .8 + n.ph) * .25;
       if (n.id === sel) n.core.scale.setScalar(sc * 1.35);
     }
-    if (flowPts) { const a = flowPts.geometry.attributes.position; flows.forEach((f, i) => { const p = (t * .5 + f.ph) % 1, s = f.n.parent.base, e = f.n.base; a.setXYZ(i, s.x + (e.x - s.x) * p, s.y + (e.y - s.y) * p + .0, s.z + (e.z - s.z) * p); }); a.needsUpdate = true; }
+    if (flowPts) { const a = flowPts.geometry.attributes.position; flows.forEach((f, i) => { const p = (t * (dyn ? .8 : .5) + f.ph) % 1, s = f.n.parent.base, e = f.n.base; a.setXYZ(i, s.x + (e.x - s.x) * p, s.y + (e.y - s.y) * p + .0, s.z + (e.z - s.z) * p); }); a.needsUpdate = true; }
     const nowMs = performance.now();
     pulses = pulses.filter((p) => { const k = (nowMs - p.t0) / p.d; if (k >= 1) { world.remove(p.sp); p.sp.material.dispose(); return false; } const e = k * k * (3 - 2 * k); p.sp.position.lerpVectors(p.from, p.to, e); p.sp.scale.setScalar(2.4 * (1 - k * .5)); return true; });
     shocks = shocks.filter((s) => { const k = (nowMs - s.t0) / s.d; if (k >= 1) { world.remove(s.rs); s.rs.material.dispose(); return false; } s.rs.scale.setScalar(2 + k * 16); s.rs.material.opacity = 1 - k; return true; });
@@ -137,6 +142,6 @@ export function create(host, api) {
   resize(); apply(); requestAnimationFrame(loop);
   view.dispose = () => { running = false; renderer.dispose(); cvs.remove(); };
   view.screenOf = (id) => { const n = byId.get(id); return n ? screenOf(n) : null; };
-  view.debug = () => ({ cam: { ...cam }, goal: { ...goal }, nodes: nodes.length, sel, frame, auto });
+  view.debug = () => ({ cam: { ...cam }, goal: { ...goal }, nodes: nodes.length, sel, frame, auto, dyn, spin });
   return view;
 }
