@@ -6,6 +6,7 @@ const norm = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-
 const clip = (s, n) => { s = String(s ?? ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
+const WAKE = /\b(jarvis|jarvi|jarvice|jarviss|jarvys|gervais|gervaise|charvis|djarvis|sanix)\b/;
 const PRODUCTS = { autogarage: [/auto ?garage|garage/, "AutoGarage Pro"], angels: [/angel|livraison/, "Angel's Livraison"], immosuite: [/immo/, "ImmoSuite"], avicosuite: [/avico|avicole|avinest|agro/, "AvicoSuite"], aluexpert: [/alu/, "AluExpert"] };
 
 export function initJarvis(A, stage) {
@@ -17,7 +18,7 @@ export function initJarvis(A, stage) {
     <button type="button" id="jv-send" class="jb" title="Envoyer">➤</button><button type="button" id="jv-voice" class="jb on" title="Voix de Jarvis">🔊</button><button type="button" id="jv-hands" class="jb" title="Mains libres : dites « Jarvis » pour m'appeler">🖐</button></div>`;
   stage.appendChild(dock);
   const $ = (s) => dock.querySelector(s), logEl = $("#jv-log"), inEl = $("#jv-in"), st = $("#jv-st"), orb = $("#jv-orb");
-  let voiceOn = true, hands = false, listening = false, speaking = false, rec = null, pending = null, awakeUntil = 0, lastSpeechEnd = 0, poll = null;
+  let guard = null, voiceOn = true, hands = false, listening = false, speaking = false, rec = null, pending = null, awakeUntil = 0, lastSpeechEnd = 0, poll = null;
   const lines = []; const setSt = (t) => { st.textContent = t; }; const setOrb = (c) => { orb.className = "orb " + c; };
 
   function addLine(who, text) { lines.push({ who, text }); if (lines.length > 40) lines.shift();
@@ -26,6 +27,7 @@ export function initJarvis(A, stage) {
   const clean = (t) => String(t).replace(/[*_`#>]/g, "").replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "").replace(/\s+/g, " ").trim();
   function say(text, who = "jarvis") {
     addLine(who, text); if (!voiceOn || !TTS || !text) return;
+    clearTimeout(guard); guard = setTimeout(() => { if (speaking) { speaking = false; lastSpeechEnd = Date.now(); A.view?.speaking(false); setOrb(listening ? "listen" : ""); } }, clean(text).length * 90 + 2500);
     try { window.speechSynthesis.cancel(); const parts = clean(text).match(/[^.!?]+[.!?]?/g) ?? [clean(text)];
       parts.slice(0, 8).forEach((p, i, arr) => { const u = new SpeechSynthesisUtterance(p.trim()); u.lang = "fr-FR"; u.rate = 1; u.pitch = .9; const v = voiceFr(); if (v) u.voice = v;
         if (i === 0) u.onstart = () => { speaking = true; A.view?.speaking(true); setOrb("speak"); setSt("Jarvis parle…"); };
@@ -61,7 +63,7 @@ export function initJarvis(A, stage) {
         for (const m of rows) { seen.add(m.id); say(clip(clean(m.contenu), 900), "dg"); } } catch { /* nouvel essai au prochain cycle */ } }, 4000); }
 
   async function handle(raw) {
-    let t = norm(raw).replace(/^(ok |hey |dis |salut |bonjour )?(jarvis|sanix|assistant)( |$)/, "").trim(); if (!t) { say("À vos ordres."); return "À vos ordres."; }
+    let t = norm(raw).replace(/^(ok |hey |dis |salut |bonjour )?(jarvis|jarvi|jarvice|jarviss|jarvys|gervais|gervaise|charvis|djarvis|sanix|assistant)( |$)/, "").trim(); if (!t) { say("À vos ordres."); return "À vos ordres."; }
     addLine("me", raw); const reply = (s) => { say(s); return s; };
     if (pending) { if (/^(oui|ok|confirme|vas y|transmets|envoie|d accord|affirmatif)\b/.test(t)) { const p = pending; pending = null; await sendInstruction(p); return "transmis"; }
       if (/^(non|annule|laisse tomber|stop|negatif)\b/.test(t)) { pending = null; return reply("D'accord, j'annule."); } pending = null; }
@@ -98,12 +100,13 @@ export function initJarvis(A, stage) {
     if (!SR) { setSt("Micro non pris en charge : utilisez le clavier."); return; }
     if (!rec) { rec = new SR(); rec.lang = "fr-FR"; rec.interimResults = true; rec.maxAlternatives = 1;
       rec.onstart = () => { listening = true; setOrb(speaking ? "speak" : "listen"); setSt(hands ? "Mains libres : dites « Jarvis »" : "Je vous écoute…"); };
-      rec.onresult = (ev) => { if (speaking || Date.now() - lastSpeechEnd < 700) return; let fin = "", itm = ""; for (let i = ev.resultIndex; i < ev.results.length; i++) { const r = ev.results[i]; (r.isFinal ? (fin += r[0].transcript) : (itm += r[0].transcript)); }
+      rec.onresult = (ev) => { if ((speaking && window.speechSynthesis?.speaking) || Date.now() - lastSpeechEnd < 700) return; let fin = "", itm = ""; for (let i = ev.resultIndex; i < ev.results.length; i++) { const r = ev.results[i]; (r.isFinal ? (fin += r[0].transcript) : (itm += r[0].transcript)); }
         if (itm) setSt("… " + itm); if (!fin.trim()) return; const txt = fin.trim();
-        if (hands && !/jarvis|sanix/.test(norm(txt)) && Date.now() > awakeUntil) return;   // mains libres : seul « Jarvis » réveille
-        if (hands && /^(ok |hey |dis )?(jarvis|sanix)$/.test(norm(txt))) { awakeUntil = Date.now() + 9000; say("À vos ordres."); return; }
+        const nt = norm(txt); setSt("Entendu : « " + clip(txt, 60) + " »");
+        if (hands && !WAKE.test(nt) && Date.now() > awakeUntil) { setSt("Entendu : « " + clip(txt, 40) + " » — dites d'abord « Jarvis »"); return; }   // mains libres : seul « Jarvis » réveille
+        if (hands && WAKE.test(nt) && nt.replace(WAKE, "").replace(/\b(ok|hey|dis|salut)\b/g, "").trim() === "") { awakeUntil = Date.now() + 9000; say("À vos ordres."); return; }
         window.speechSynthesis?.cancel(); awakeUntil = Date.now() + 9000; handle(txt); };
-      rec.onerror = (e) => { const msg = { "not-allowed": "Autorisez le microphone dans le navigateur.", "no-speech": "Aucune parole détectée.", "audio-capture": "Microphone introuvable." }[e.error]; if (msg) setSt(msg); if (e.error === "not-allowed") hands = false; };
+      rec.onerror = (e) => { const msg = { "not-allowed": "Autorisez le microphone dans le navigateur.", "no-speech": "Aucune parole détectée.", "audio-capture": "Microphone introuvable." }[e.error]; setSt(msg ?? "Micro : " + e.error); if (e.error === "not-allowed") hands = false; };
       rec.onend = () => { listening = false; setOrb(""); if (hands) { try { rec.start(); } catch { /* déjà actif */ } } else setSt("Jarvis prêt"); }; }
     rec.continuous = hands; try { rec.start(); } catch { /* déjà actif */ }
   }

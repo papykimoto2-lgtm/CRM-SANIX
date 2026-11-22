@@ -58,6 +58,15 @@ const { launch, ok, newPage } = require("./harness.js");
     await ask("non"); ok(await page.evaluate(() => window.__jarvis.pending() === null), "« non » annule la transmission");
     await page.fill("#jv-in", "où en est angel"); await page.press("#jv-in", "Enter"); await page.waitForTimeout(200); ok((await page.locator("#jv-log .ln").count()) >= 2, "saisie clavier prise en compte");
     await page.screenshot({ path: require("./harness.js").OUT + "/live_3d.png" });
+    console.log("▶ Micro (reconnaissance simulée)");
+    const fake = `window.__recs = []; window.SpeechRecognition = class { constructor() { window.__recs.push(this); } start() { this.onstart?.(); } stop() { this.onend?.(); } };
+      window.__say = (rec, txt, fin = true) => rec.onresult({ resultIndex: 0, results: Object.assign([Object.assign([{ transcript: txt }], { isFinal: fin })], { length: 1 }) });`;
+    const mp = (await newPage(browser, { w: 1200, h: 800, init: fake })).page; await mp.goto(`http://localhost:${port}/company/live.html?debug=1&fast=1`); await mp.waitForSelector("#live:not([hidden])"); await mp.waitForTimeout(1500);
+    await mp.click("#jv-hands"); await mp.waitForTimeout(400);
+    const lines = () => mp.evaluate(() => window.__jarvis.lines().map((l) => l.who + ":" + l.text).join(" | "));
+    const l0 = await mp.evaluate(() => window.__jarvis.lines().length); await mp.evaluate(() => window.__say(window.__recs[0], "bonjour tout le monde")); ok((await mp.evaluate(() => window.__jarvis.lines().length)) === l0 && /dites d.abord/.test(await mp.locator("#jv-st").textContent()), "mains libres : sans « Jarvis », rien n'est exécuté et l'écran dit pourquoi");
+    for (const w of ["Jarvis situation", "Gervais situation", "ok Jarvis, situation"]) { const n = (await mp.evaluate(() => window.__jarvis.lines().length)); await mp.waitForTimeout(900); await mp.evaluate((t) => window.__say(window.__recs[0], t), w); await mp.waitForTimeout(300); ok((await mp.evaluate(() => window.__jarvis.lines().length)) > n && /travaill/.test(await lines()), `mains libres : « ${w} » → réponse`); }
+    await mp.close();
     console.log("▶ Repli 2D");
     const p2 = await ctx.newPage(); await p2.goto(`http://localhost:${port}/company/live.html?debug=1&fast=1&2d`); await p2.waitForSelector("#live:not([hidden])"); await p2.waitForFunction(() => window.__live.nodes().length > 0); await p2.waitForTimeout(1200);
     const px = await p2.evaluate(() => { const c = document.getElementById("net"), d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4 * 97) if (d[i] > 0) n++; return n; });
