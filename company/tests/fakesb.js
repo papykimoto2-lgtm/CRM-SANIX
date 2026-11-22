@@ -88,6 +88,7 @@
       FX.crm.dashboard.missions_en_retard = FX.crm.dashboard.missions_en_retard.filter((m) => m.id !== args.p_task);
       return Promise.resolve({ data: null, error: null });
     }
+    if (name === "ai_envoi_etat") return Promise.resolve({ data: { planifie: true, jours: [1, 2, 3, 4, 5, 6], debut: "08:00", fin: "18:00", plafond_wa_jour: 20, fenetre_ouverte: false, prochain_creneau: "2026-11-23T08:00:00Z", wa_envoyes_aujourdhui: 3, wa_restants_aujourdhui: 17, a_valider: 5, en_file: 2, relances_planifiees: 1 }, error: null });
     if (name === "crm_sync_push") {
       const rows = T("crm_records"), results = args.p_ops.map((op) => {
         const r = rows.find((x) => x.rid === op.rid);

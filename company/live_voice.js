@@ -160,6 +160,7 @@ export function initJarvis(A, stage) {
     try {
       const ctx = snapshot(); try { const r = await A.sb.from("ai_executive_messages").select("auteur,contenu,created_at").order("created_at", { ascending: false }).limit(6); ctx.dg = (r.data ?? []).reverse().map((m) => ({ auteur: m.auteur, texte: m.contenu })); } catch { /* dialogue indisponible */ }
       try { ctx.crm = await crmContext(raw); } catch { /* CRM indisponible : Jarvis répond avec le reste du contexte */ }
+      try { const r = await A.sb.rpc("ai_envoi_etat"); if (r?.data && !r.error) { const e = r.data; ctx.kpi.envoi_planifie = { fenetre_ouverte: e.fenetre_ouverte, prochain_creneau: e.prochain_creneau ? new Date(e.prochain_creneau).toLocaleString("fr-FR", { timeZone: "Africa/Abidjan", weekday: "short", hour: "2-digit", minute: "2-digit" }) : null, horaires: `${e.debut}-${e.fin}`, wa_aujourdhui: `${e.wa_envoyes_aujourdhui}/${e.plafond_wa_jour}`, en_file: e.en_file, a_valider: e.a_valider }; } } catch { /* planification non installée */ }
       const call = A.sb.functions.invoke("ai-jarvis", { body: { message: raw, history: hist.slice(-8), context: ctx } });
       const { data, error } = await Promise.race([call, new Promise((_, rej) => setTimeout(() => rej(new Error("délai dépassé")), 25000))]);
       if (error || !data?.reply) throw new Error(error ? await explain(error) : "réponse vide");

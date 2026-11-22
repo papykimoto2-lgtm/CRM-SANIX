@@ -67,6 +67,7 @@ const { launch, ok, newPage } = require("./harness.js");
     ok(/agents au travail et \d+ fiches/.test(await ask2("comment se passe la journée ?")), "question libre : réponse du serveur en langage naturel");
     const call = await page.evaluate(() => window.__CALLS.filter((c) => c.fn === "ai-jarvis").at(-1).body);
     ok(call.context.agents.length >= 20 && call.context.kpi && call.context.missions.length > 0 && typeof call.context.heure === "string", "contexte en direct envoyé (agents, missions, indicateurs)");
+    { const kp = (await page.evaluate(() => window.__CALLS.filter((c) => c.fn === "ai-jarvis").at(-1).body.context.kpi)).envoi_planifie; ok(kp && kp.fenetre_ouverte === false && kp.horaires === "08:00-18:00" && kp.wa_aujourdhui === "3/20" && kp.a_valider === 5, "Jarvis connaît la planification des envois (fenêtre, horaires, 3/20, à valider)"); }
     await ask2("et les fiches ?"); const call2 = await page.evaluate(() => window.__CALLS.filter((c) => c.fn === "ai-jarvis").at(-1).body);
     ok(call2.history.length === 2 && call2.history[0].role === "user", "mémoire de la conversation transmise (tours précédents)");
     const z1 = await page.evaluate(() => window.__live.view3d.debug().goal.r); await ask2("fais un gros plan"); ok((await page.evaluate(() => window.__live.view3d.debug().goal.r)) < z1, "le serveur commande la caméra (zoom)");

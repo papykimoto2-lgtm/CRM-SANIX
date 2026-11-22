@@ -503,6 +503,24 @@ function creditCard() {
     <p class="muted small" style="margin:8px 0 0">Base : ${usd(c.base_usd ?? 0)} ${c.base_at ? "le " + fmtDT(c.base_at) : "(aucun solde constaté)"} · recharges depuis : ${usd(c.recharges_depuis_usd)} · dépensé depuis : ${usd(c.depense_depuis_usd)}${c.derniere_recharge ? ` · dernière recharge : ${usd(c.derniere_recharge.montant_usd)} le ${fmtDT(c.derniere_recharge.at)}` : ""}</p>
     ${form}${aide}</div>`;
 }
+const JOURS_ENVOI = [[1, "Lun"], [2, "Mar"], [3, "Mer"], [4, "Jeu"], [5, "Ven"], [6, "Sam"], [7, "Dim"]];
+function envoiCard(g) {
+  const j = new Set(g.envoi_jours ?? []), hm = (t) => String(t ?? "").slice(0, 5);
+  return html`<form id="envoi-form" class="card" style="margin-top:12px"><h3 style="margin-top:0">Planification des envois (WhatsApp, e-mail)</h3>
+    <p class="sub" style="margin:0 0 8px">Les messages validés ne partent que dans cette fenêtre (heure d'Abidjan) ; hors fenêtre ou plafond atteint, ils restent en file et partent au prochain créneau.</p>
+    <label class="chk"><input type="checkbox" id="e-on" ${g.envoi_planifie ? "checked" : ""}> Planification active (décocher = envoi dès la validation, à toute heure)</label>
+    <div class="form" style="margin-top:8px"><div class="f" style="grid-column:1/-1">Jours d'envoi<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">${JOURS_ENVOI.map(([n, l]) => html`<label class="chk"><input type="checkbox" class="e-j" value="${n}" ${j.has(n) ? "checked" : ""}> ${l}</label>`)}</div></div>
+      <label class="f">De<input type="time" id="e-debut" value="${hm(g.envoi_debut)}" required></label><label class="f">À<input type="time" id="e-fin" value="${hm(g.envoi_fin)}" required></label>
+      <label class="f">Plafond WhatsApp par jour<input type="number" id="e-plafond" min="0" max="1000" step="1" value="${g.envoi_plafond_wa_jour}" required></label></div>
+    <div id="e-etat" class="sub" style="margin:8px 0">…</div><div class="actions"><button class="btn pri" type="submit">Enregistrer la planification</button></div></form>`;
+}
+async function loadEnvoiEtat() {
+  const el = $("#e-etat"); if (!el) return;
+  try {
+    const e = await q(S.sb.rpc("ai_envoi_etat")), fmt = (t) => new Date(t).toLocaleString("fr-FR", { timeZone: "Africa/Abidjan", weekday: "long", hour: "2-digit", minute: "2-digit" });
+    el.textContent = `${e.fenetre_ouverte ? "🟢 Fenêtre ouverte" : "🟠 Fenêtre fermée"}${e.fenetre_ouverte ? "" : e.prochain_creneau ? ` · prochain créneau : ${fmt(e.prochain_creneau)}` : ""} · WhatsApp aujourd'hui : ${e.wa_envoyes_aujourdhui} / ${e.plafond_wa_jour} · en file : ${e.en_file} · à valider : ${e.a_valider} · relances planifiées : ${e.relances_planifiees}`;
+  } catch { el.textContent = "État indisponible."; }
+}
 function renderGov(main) {
   const g = S.gov, b = S.budget;
   if (!g) { main.innerHTML = html`<section class="panel"><div class="card muted">Gouvernance non disponible.</div></section>`.s; return; }
@@ -515,6 +533,7 @@ function renderGov(main) {
       <label class="f" style="margin-top:10px">Communication externe (WhatsApp, e-mail aux prospects)<select id="g-comm"><option value="interdite" ${g.communication_externe === "interdite" ? "selected" : ""}>Interdite</option><option value="validation" ${g.communication_externe === "validation" ? "selected" : ""}>Chaque message validé par le président</option><option value="autonome" ${g.communication_externe === "autonome" ? "selected" : ""}>Autonome (messages envoyés directement)</option></select></label>
       <label class="f" style="margin-top:10px">Modèle d'IA (direction)<select id="g-model">${["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"].map((m) => html`<option ${g.modele === m ? "selected" : ""}>${m}</option>`)}</select></label>
       ${"modele_operationnel" in g ? html`<label class="f" style="margin-top:10px">Modèle des agents d'exécution (moins cher)<select id="g-model-op"><option value="" ${!g.modele_operationnel ? "selected" : ""}>Identique à la direction</option>${["claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5"].map((m) => html`<option ${g.modele_operationnel === m ? "selected" : ""}>${m}</option>`)}</select></label><p class="small muted">Les agents de niveau 4 et 5 (qualification, rédaction, recherche) utilisent ce modèle ; la direction garde le modèle ci-dessus. Un modèle moins cher multiplie le nombre de missions possibles avec le même budget.</p>` : ""}</div></div>
+    ${"envoi_planifie" in g ? envoiCard(g) : ""}
     ${creditCard()}
     <form id="gov-form" class="card" style="margin-top:12px"><h3 style="margin-top:0">Limites</h3><div class="form">${GOV_NUM.map(([k, l, mn, mx, st]) => html`<label class="f">${l}<input type="number" name="${k}" min="${mn}" max="${mx}" step="${st}" value="${g[k]}" required></label>`)}</div>
     <div class="actions"><button class="btn pri" type="submit">Enregistrer la gouvernance</button></div></form></section>`.s;
@@ -545,6 +564,21 @@ function renderGov(main) {
       } catch (err) { toast(err.message, "bad"); annuler(); }
     };
   }
+  loadEnvoiEtat();
+  const ef = $("#envoi-form");
+  if (ef) ef.onsubmit = async (e) => {
+    e.preventDefault();
+    const jours = [...ef.querySelectorAll(".e-j:checked")].map((x) => Number(x.value)), debut = $("#e-debut").value, fin = $("#e-fin").value, plafond = Number($("#e-plafond").value), on = $("#e-on").checked;
+    if (on && !jours.length) { toast("Choisissez au moins un jour d'envoi", "bad"); return; }
+    if (!debut || !fin || debut >= fin) { toast("L'heure de début doit précéder l'heure de fin", "bad"); return; }
+    if (!Number.isInteger(plafond) || plafond < 0 || plafond > 1000) { toast("Plafond invalide (0 à 1000)", "bad"); return; }
+    const patch = { envoi_planifie: on, envoi_jours: jours, envoi_debut: debut, envoi_fin: fin, envoi_plafond_wa_jour: plafond };
+    try {
+      const rows = await q(S.sb.from("ai_governance").update(patch).eq("id", 1).select("id"));
+      if (!rows?.length) throw new Error("Enregistrement refusé : ce réglage est réservé à la direction");
+      Object.assign(S.gov, patch); toast("Planification enregistrée", "ok"); loadEnvoiEtat();
+    } catch (err) { toast(err.message, "bad"); }
+  };
   $("#gov-form").oninput = () => { govDirty = true; };
   $("#gov-form").onsubmit = async (e) => {
     e.preventDefault();
