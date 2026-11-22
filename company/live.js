@@ -16,7 +16,7 @@ const ORIGIN = location.origin;
 const STATES = { run: ["Au travail", "#22D3EE"], wait: ["Coordonne ses équipes", "#A855F7"], valid: ["Attend une validation", "#F59E0B"], bad: ["Mission bloquée", "#EF4444"], queue: ["Mission en attente", "#64748B"], idle: ["Disponible", "#3B5A94"], off: ["Suspendu", "#475569"] };
 const TASK_C = { en_cours: "#22D3EE", attente_sous_taches: "#A855F7", attente_validation: "#F59E0B", a_faire: "#64748B", bloquee: "#EF4444", echouee: "#EF4444", terminee: "#22C55E" };
 const TASK_L = { en_cours: "En cours", attente_sous_taches: "Attend ses équipes", attente_validation: "À valider", a_faire: "À faire", bloquee: "Bloquée", echouee: "Échouée", terminee: "Terminée", annulee: "Annulée" };
-const D = { agents: [], depts: [], tasks: [], actions: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, salesRows: null, offerRows: null, gov: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0 };
+const D = { agents: [], depts: [], tasks: [], actions: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, salesRows: null, offerRows: null, whatsapp: null, gov: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0 };
 let sb = null;
 
 // ───────── Configuration et session ─────────
@@ -38,7 +38,7 @@ const since = (d) => new Date(Date.now() - d * 86400e3).toISOString();
 async function pull() {
   const day = new Date(); day.setUTCHours(0, 0, 0, 0);
   safe.err = null;
-  const [ag, tk, ac, cr, nT, nA, rc, td, ap, bu, gv, sales, offers, costs] = await Promise.all([
+  const [ag, tk, ac, cr, nT, nA, rc, td, ap, bu, gv, sales, offers, costs, waStatus, waOut, waIn, waOpt] = await Promise.all([
     safe(sb.from("ai_agents").select("id,code,nom,fonction,niveau,manager_id,departement_id,etat,activite"), null),
     safe(sb.from("ai_agent_tasks").select("id,agent_id,donneur_agent_id,parent_id,type,titre,objectifs,statut,priorite,produit,started_at,updated_at,created_at,executions").gte("updated_at", since(7)).order("updated_at", { ascending: false }).limit(600), null),
     safe(sb.from("ai_actions").select("id,action,agent_id,task_id,payload,ok,at").order("at", { ascending: false }).limit(60), null),
@@ -53,6 +53,10 @@ async function pull() {
     safe(sb.from("ai_prospects").select("id,stage,potentiel_fcfa,score,next_action_at").limit(1500), null),
     safe(sb.from("ai_offers").select("id,total_ttc,statut,created_at").order("created_at", { ascending: false }).limit(500), null),
     safe(sb.rpc("ai_cost_center", { p_days: 30 }), null),
+    safe(sb.functions.invoke("crm-whatsapp", { body: { action: "status" } }), null),
+    safe(sb.from("crm_wa_messages").select("id,status,kind,template,to_phone,sent_at,error", { count: "exact" }).gte("sent_at", since(7)).order("sent_at", { ascending: false }).limit(100), null),
+    safe(sb.from("crm_wa_inbound").select("id,from_phone,body,kind,received_at", { count: "exact" }).gte("received_at", since(7)).order("received_at", { ascending: false }).limit(50), null),
+    safe(sb.from("crm_wa_optout").select("phone", { count: "exact", head: true }), null),
   ]);
   if (!ag?.data || !tk?.data) throw safe.err ?? new Error("Données indisponibles");
   if (!D.depts.length) { const dp = await safe(sb.from("ai_departments").select("id,nom,couleur"), null); D.depts = dp?.data ?? []; }
@@ -61,6 +65,7 @@ async function pull() {
   D.nToday = nT?.count ?? D.nToday; D.nTotal = nA?.count ?? D.nTotal; D.recent = rc?.data ?? D.recent; D.todayRows = td?.data ?? D.todayRows;
   D.approvals = ap?.count ?? D.approvals; D.budget = bu?.data ?? D.budget; D.gov = gv?.data ?? D.gov;
   D.salesRows = sales?.data ?? D.salesRows; D.offerRows = offers?.data ?? D.offerRows; D.costCenter = costs?.data ?? D.costCenter;
+  D.whatsapp = { status: waStatus?.data ?? null, outgoing: waOut?.data ?? null, outgoingCount: waOut?.count ?? null, incoming: waIn?.data ?? null, incomingCount: waIn?.count ?? null, optoutCount: waOpt?.count ?? null };
 }
 
 // ───────── États dérivés ─────────
@@ -191,6 +196,33 @@ function renderFinance() {
     <div class="business-foot"><span>Consommation du budget mensuel</span><b>${pct === null ? "Budget non configuré" : pct + " %"}</b></div>
     <div class="top-costs"><small>Agents les plus coûteux</small>${top.length ? top.map(a => `<div><span>${esc(a.nom)}</span><b>${money(a.cout_usd)}</b></div>`).join("") : '<p class="panel-muted">Aucun coût agent sur la période.</p>'}</div>
     <p class="panel-note">Prévision calculée au rythme de dépense observé. Ce panneau suit les coûts IA, pas la trésorerie ni les charges comptables de l'entreprise.</p>`;
+}
+function renderWhatsApp() {
+  const el = $("#whatsapp-panel"); if (!el) return;
+  const w = D.whatsapp;
+  if (!w) { el.innerHTML = '<h2>WhatsApp Business</h2><p class="panel-muted">État WhatsApp indisponible avec les autorisations actuelles.</p>'; return; }
+  const st = w.status || {}, rows = Array.isArray(w.outgoing) ? w.outgoing : [], inbound = Array.isArray(w.incoming) ? w.incoming : [];
+  const n = (status) => rows.filter(m => m.status === status).length;
+  const configured = st.configure === true, webhookSecrets = st.webhook === true;
+  const missing = Array.isArray(st.manquants) ? st.manquants : [];
+  const masked = (phone) => { const p = String(phone || "").replace(/\D/g, ""); return p.length > 4 ? "•••• " + p.slice(-4) : "numéro masqué"; };
+  const statusText = configured ? "API configurée" : "Configuration incomplète";
+  const statusClass = configured ? "wa-ok" : "wa-warn";
+  const recent = inbound.slice(0, 3);
+  el.innerHTML = `<div class="panel-head"><h2>WhatsApp Business</h2><span class="panel-source">Meta Cloud API</span></div>
+    <div class="wa-status ${statusClass}"><i></i><b>${statusText}</b><span>${webhookSecrets ? "Secrets webhook présents" : "Secrets webhook manquants"}</span></div>
+    ${!configured ? `<p class="panel-note">À configurer côté Supabase : ${esc(missing.join(", ") || "secrets d'API non vérifiés")}.</p>` : ""}
+    <div class="wa-grid">
+      <div><b>${w.outgoingCount === null ? "—" : Number(w.outgoingCount).toLocaleString("fr-FR")}</b><small>Messages sortants · 7 j</small></div>
+      <div><b>${w.incomingCount === null ? "—" : Number(w.incomingCount).toLocaleString("fr-FR")}</b><small>Réponses reçues · 7 j</small></div>
+      <div><b>${n("remis") + n("lu")}</b><small>Remis / lus parmi les 100 derniers</small></div>
+      <div><b>${n("echec")}</b><small>Échecs parmi les 100 derniers</small></div>
+    </div>
+    <div class="business-foot"><span>Désinscriptions enregistrées</span><b>${w.optoutCount === null ? "—" : Number(w.optoutCount).toLocaleString("fr-FR")}</b></div>
+    <div class="wa-recent"><small>Dernières réponses reçues</small>
+      ${recent.length ? recent.map(m => `<div><span>${esc(masked(m.from_phone))} · ${ago(m.received_at)}</span><b>${esc(clip(m.body || "[" + (m.kind || "message") + "]", 54))}</b></div>`).join("") : '<p class="panel-muted">Aucune réponse enregistrée sur les 7 derniers jours.</p>'}
+    </div>
+    <p class="panel-note">Vue de supervision en lecture seule. Le statut « secrets webhook présents » ne prouve pas à lui seul que l'abonnement Meta au webhook est actif. Les volumes sortants couvrent les 7 derniers jours ; les statuts sont calculés sur les 100 derniers messages.</p>`;
 }
 function renderAlerts() {
   const now = Date.now(), day = 24 * 3600e3;
@@ -347,7 +379,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); renderKpis(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); renderKpis(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
