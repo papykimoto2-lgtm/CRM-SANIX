@@ -16,7 +16,7 @@ const ORIGIN = location.origin;
 const STATES = { run: ["Au travail", "#22D3EE"], wait: ["Coordonne ses équipes", "#A855F7"], valid: ["Attend une validation", "#F59E0B"], bad: ["Mission bloquée", "#EF4444"], queue: ["Mission en attente", "#64748B"], idle: ["Disponible", "#3B5A94"], off: ["Suspendu", "#475569"] };
 const TASK_C = { en_cours: "#22D3EE", attente_sous_taches: "#A855F7", attente_validation: "#F59E0B", a_faire: "#64748B", bloquee: "#EF4444", echouee: "#EF4444", terminee: "#22C55E" };
 const TASK_L = { en_cours: "En cours", attente_sous_taches: "Attend ses équipes", attente_validation: "À valider", a_faire: "À faire", bloquee: "Bloquée", echouee: "Échouée", terminee: "Terminée", annulee: "Annulée" };
-const D = { agents: [], depts: [], tasks: [], actions: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, salesRows: null, offerRows: null, whatsapp: null, gov: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0 };
+const D = { agents: [], depts: [], tasks: [], tasks90: null, orderRows: null, actions: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, costCenter90: null, salesRows: null, offerRows: null, whatsapp: null, gov: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0 };
 let sb = null;
 
 // ───────── Configuration et session ─────────
@@ -38,7 +38,7 @@ const since = (d) => new Date(Date.now() - d * 86400e3).toISOString();
 async function pull() {
   const day = new Date(); day.setUTCHours(0, 0, 0, 0);
   safe.err = null;
-  const [ag, tk, ac, cr, nT, nA, rc, td, ap, bu, gv, sales, offers, costs, waStatus, waOut, waIn, waOpt] = await Promise.all([
+  const [ag, tk, ac, cr, nT, nA, rc, td, ap, bu, gv, sales, offers, costs, waStatus, waOut, waIn, waOpt, orders, tasks90, costs90] = await Promise.all([
     safe(sb.from("ai_agents").select("id,code,nom,fonction,niveau,manager_id,departement_id,etat,activite"), null),
     safe(sb.from("ai_agent_tasks").select("id,agent_id,donneur_agent_id,parent_id,type,titre,objectifs,statut,priorite,produit,started_at,updated_at,created_at,executions").gte("updated_at", since(7)).order("updated_at", { ascending: false }).limit(600), null),
     safe(sb.from("ai_actions").select("id,action,agent_id,task_id,payload,ok,at").order("at", { ascending: false }).limit(60), null),
@@ -57,6 +57,9 @@ async function pull() {
     safe(sb.from("crm_wa_messages").select("id,status,kind,template,to_phone,sent_at,error", { count: "exact" }).gte("sent_at", since(7)).order("sent_at", { ascending: false }).limit(100), null),
     safe(sb.from("crm_wa_inbound").select("id,from_phone,body,kind,received_at", { count: "exact" }).gte("received_at", since(7)).order("received_at", { ascending: false }).limit(50), null),
     safe(sb.from("crm_wa_optout").select("phone", { count: "exact", head: true }), null),
+    safe(sb.from("crm_records").select("rid,data,updated_at").eq("entity", "commandes").is("deleted_at", null).limit(2000), null),
+    safe(sb.from("ai_agent_tasks").select("id,agent_id,statut,updated_at,created_at").gte("updated_at", since(90)).order("updated_at", { ascending: false }).limit(3000), null),
+    safe(sb.rpc("ai_cost_center", { p_days: 90 }), null),
   ]);
   if (!ag?.data || !tk?.data) throw safe.err ?? new Error("Données indisponibles");
   if (!D.depts.length) { const dp = await safe(sb.from("ai_departments").select("id,nom,couleur"), null); D.depts = dp?.data ?? []; }
@@ -66,6 +69,9 @@ async function pull() {
   D.approvals = ap?.count ?? D.approvals; D.budget = bu?.data ?? D.budget; D.gov = gv?.data ?? D.gov;
   D.salesRows = sales?.data ?? D.salesRows; D.offerRows = offers?.data ?? D.offerRows; D.costCenter = costs?.data ?? D.costCenter;
   D.whatsapp = { status: waStatus?.data ?? null, outgoing: waOut?.data ?? null, outgoingCount: waOut?.count ?? null, incoming: waIn?.data ?? null, incomingCount: waIn?.count ?? null, optoutCount: waOpt?.count ?? null };
+  if (orders?.data) D.orderRows = orders.data;
+  if (tasks90?.data) D.tasks90 = tasks90.data;
+  if (costs90?.data) D.costCenter90 = costs90.data;
 }
 
 // ───────── États dérivés ─────────
@@ -315,6 +321,77 @@ function renderOperationsDirector() {
     <div class="ops-section"><h3>Charge par département</h3>${deptHtml}</div>
     <p class="panel-note">Analyse des missions actualisées sur 7 jours (maximum 600), des 60 derniers événements et des agents actifs. Seuils d'alerte indicatifs, non assimilables à une évaluation RH. Les réaffectations sont des propositions : aucune mission n'est modifiée. La rentabilité par département n'est pas calculable sans données fiables de revenus et de coûts analytiques rapprochées.</p>`;
 }
+function renderBusinessIntelligence() {
+  const el = $("#bi-panel");
+  if (!el) return;
+  const money = n => new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(Math.round(Number(n) || 0)) + " FCFA";
+  const usd = n => "$" + Number(n || 0).toFixed(2);
+  const now = new Date(), dayMs = 864e5;
+  const dateOnly = v => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(v || "")) ? new Date(v + "T00:00:00Z") : null;
+  const validOrders = (D.orderRows || []).map(r => ({...r, d:r.data || {}})).filter(r =>
+    ["confirmee","en_cours","livree"].includes(r.d.statut) && r.d.renouvellement !== true && r.d.renouvellement !== "true" && dateOnly(r.d.date));
+  const ht = d => Number(d.htNet) > 0 ? Number(d.htNet) : Number(d.ttc) > 0 ? Math.round(Number(d.ttc) / 1.18) : 0;
+  const start30 = new Date(now.getTime() - 30 * dayMs), start90 = new Date(now.getTime() - 90 * dayMs), start60 = new Date(now.getTime() - 60 * dayMs);
+  const orders30 = validOrders.filter(r => dateOnly(r.d.date) >= start30);
+  const orders90 = validOrders.filter(r => dateOnly(r.d.date) >= start90);
+  const signed30 = orders30.reduce((s,r) => s + ht(r.d), 0), signed90 = orders90.reduce((s,r) => s + ht(r.d), 0);
+  const ai30 = orders30.filter(r => String(r.d.source || "").toLowerCase() === "ia").reduce((s,r) => s + ht(r.d), 0);
+  const cash30 = validOrders.reduce((s,r) => {
+    const ratio = Number(r.d.ttc) > 0 ? ht(r.d) / Number(r.d.ttc) : 1;
+    return s + (Array.isArray(r.d.paiements) ? r.d.paiements : []).filter(p => p && p.supprime !== true && p.supprime !== "true" && dateOnly(p.date) >= start30)
+      .reduce((t,p) => t + Math.max(0, Number(p.montant) || 0) * ratio, 0);
+  }, 0);
+  const prev30 = validOrders.filter(r => { const d=dateOnly(r.d.date); return d >= start60 && d < start30; }).reduce((s,r) => s + ht(r.d), 0);
+  const growth = prev30 > 0 ? Math.round((signed30 - prev30) / prev30 * 100) : null;
+  const prospects = D.salesRows || [];
+  const weights = { contrat_transmis:.85, offre_acceptee:.8, negociation:.6, offre_transmise:.4, demo_realisee:.3, rdv_confirme:.2, interesse:.15 };
+  const pipeline = prospects.filter(p => Object.hasOwn(weights,p.stage)).reduce((s,p) => s + Math.max(0,Number(p.potentiel_fcfa)||0) * weights[p.stage],0);
+  const costs30 = Number(D.costCenter?.mois_usd ?? D.costCenter?.periode_usd ?? 0);
+  const costs90 = Number(D.costCenter90?.periode_usd ?? 0);
+  const tasks = D.tasks90 || [];
+  const completed30 = tasks.filter(t => t.statut === "terminee" && Date.parse(t.updated_at) >= start30.getTime()).length;
+  const completedPrev30 = tasks.filter(t => t.statut === "terminee" && Date.parse(t.updated_at) >= start60.getTime() && Date.parse(t.updated_at) < start30.getTime()).length;
+  const completed90 = tasks.filter(t => t.statut === "terminee").length;
+  const productivityDelta = completedPrev30 > 0 ? Math.round((completed30-completedPrev30)/completedPrev30*100) : null;
+  const costByAgent = new Map((D.costCenter?.agents || []).map(a => [a.agent_id, Number(a.cout_usd)||0]));
+  const byAgent = D.agents.map(a => ({
+    a,
+    done: tasks.filter(t => t.agent_id === a.id && t.statut === "terminee" && Date.parse(t.updated_at) >= start30.getTime()).length,
+    cost: costByAgent.get(a.id) ?? null
+  })).filter(x => x.done || x.cost !== null).sort((a,b) => b.done-a.done).slice(0,6);
+  const fmtDelta = n => n === null ? "n/d" : (n > 0 ? "+" : "") + n + " %";
+  const bars = [0,1,2].map(i => {
+    const from = new Date(now.getFullYear(),now.getMonth()-2+i,1);
+    const to = new Date(now.getFullYear(),now.getMonth()-1+i,1);
+    const value = validOrders.filter(r => dateOnly(r.d.date) >= from && dateOnly(r.d.date) < to).reduce((s,r)=>s+ht(r.d),0);
+    return { label:from.toLocaleDateString("fr-FR",{month:"short"}),value };
+  });
+  const maxBar = Math.max(1,...bars.map(x=>x.value));
+  const revenueRows = D.orderRows === null ? '<p class="panel-muted">Commandes CRM non accessibles avec la session actuelle. Vérifier les droits RLS sur crm_records.</p>' :
+    !validOrders.length ? '<p class="panel-muted">Aucune commande confirmée, en cours ou livrée avec une date exploitable sur les lignes chargées.</p>' : "";
+  el.innerHTML = `<div class="panel-head"><h2>Business Intelligence Center</h2><span class="panel-source">CRM + IA · données réelles</span></div>
+    <div class="bi-grid">
+      <div><b>${D.orderRows === null ? "n/d" : money(signed30)}</b><small>CA signé HT · 30 jours</small></div>
+      <div><b>${D.orderRows === null ? "n/d" : money(cash30)}</b><small>Encaissements HT datés · 30 j</small></div>
+      <div><b>${usd(costs30)}</b><small>Coût IA · 30 jours</small></div>
+      <div><b>${D.orderRows === null ? "n/d" : money(ai30)}</b><small>Commandes attribuées à l'IA · 30 j</small></div>
+    </div>
+    <div class="bi-section"><h3>Évolution commerciale</h3>
+      <div class="bi-bars">${bars.map(b=>`<div class="bi-bar-wrap"><div class="bi-bar-value">${b.value ? money(b.value) : "—"}</div><div class="bi-bar" style="height:${Math.max(3,Math.round(b.value/maxBar*62))}px"></div><small>${esc(b.label)}</small></div>`).join("")}</div>
+      <div class="bi-facts"><span>CA signé HT · 90 jours</span><b>${D.orderRows === null ? "n/d" : money(signed90)}</b></div>
+      <div class="bi-facts"><span>Évolution vs 30 jours précédents</span><b>${fmtDelta(growth)}</b></div>
+      <div class="bi-facts"><span>Pipeline pondéré indicatif</span><b>${money(pipeline)}</b></div>
+    </div>
+    <div class="bi-section"><h3>Productivité et consommation IA</h3>
+      <div class="bi-facts"><span>Missions terminées · 30 jours</span><b>${D.tasks90 === null ? "n/d" : completed30}</b></div>
+      <div class="bi-facts"><span>Évolution vs 30 jours précédents</span><b>${fmtDelta(productivityDelta)}</b></div>
+      <div class="bi-facts"><span>Missions terminées · 90 jours</span><b>${D.tasks90 === null ? "n/d" : completed90}</b></div>
+      <div class="bi-facts"><span>Coût IA · 90 jours</span><b>${D.costCenter90 ? usd(costs90) : "n/d"}</b></div>
+      ${byAgent.length ? `<div class="bi-agent-head"><span>Agent</span><span>Terminées · 30 j</span><span>Coût IA · 30 j</span></div>${byAgent.map(x=>`<div class="bi-agent"><b>${esc(x.a.nom)}</b><span>${x.done}</span><span>${x.cost===null?"n/d":usd(x.cost)}</span></div>`).join("")}` : '<p class="panel-muted">Données individuelles insuffisantes.</p>'}
+    </div>
+    ${revenueRows}
+    <p class="panel-note">CA signé : commandes CRM confirmées, en cours ou livrées, hors renouvellements, ramenées en HT selon la règle du connecteur. Encaissements : paiements datés des 30 derniers jours, hors suppressions ; les anciens acomptes sans détail de paiement daté ne sont pas ventilés dans cette période. Commandes IA : champ source = « IA ». Pipeline pondéré : estimation, pas du CA. Coûts IA en USD, ventes en FCFA : aucun ROI ni bénéfice n'est calculé sans taux de change, coûts complets et attribution fiable. Les historiques sont limités aux 2 000 commandes et 3 000 missions les plus récentes chargées.</p>`;
+}
 function renderWhatsApp() {
   const el = $("#whatsapp-panel"); if (!el) return;
   const w = D.whatsapp;
@@ -500,7 +577,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
