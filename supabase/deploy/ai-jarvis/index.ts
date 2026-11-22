@@ -397,8 +397,12 @@ async function loadFinanceSnapshot() {
   const payments = orders.flatMap((d) => (Array.isArray(d.paiements) ? d.paiements : []).filter((p) => p && p.estimee !== true && p.estimee !== "true").map((p) => ({ date: date(p.date), montant: num(p.montant) }))).filter((p) => p.date);
   const advances = sum(orders, (d) => num(d.acompte)), balances = sum(orders, (d) => num(d.solde));
   const monthExpenses = expenses.filter((d) => String(d.mois ?? "") === month), objectiveRaw = config["obj_" + month], objective = objectiveRaw == null || objectiveRaw === "" ? null : num(objectiveRaw);
-  const costResult = await db().rpc("ai_cost_center", { p_days: 30 }).catch(() => ({ data: null }));
-  const costs = costResult?.data ?? null;
+  const [costRowsResult, budgetResult] = await Promise.all([
+    db().from("ai_actions").select("cout_usd").eq("action", "llm_turn").gte("at", month + "-01T00:00:00Z").limit(5000),
+    db().from("ai_governance").select("budget_mois_usd").eq("id", 1).maybeSingle()
+  ]);
+  const costRows = costRowsResult.error ? null : costRowsResult.data ?? [];
+  const aiBudget = budgetResult.error ? null : budgetResult.data?.budget_mois_usd ?? null;
   return {
     disponible: true, devise: "FCFA", date_analyse: today, mois: month,
     commandes: { nombre: orders.length, ca_ht_total: sum(orders, ht), ca_ht_mois: sum(monthOrders, ht), ca_ht_30_jours: period(orders, ht, daysAgo(30), today), ca_ht_90_jours: period(orders, ht, daysAgo(90), today), ca_ht_annee: sum(ytdOrders, ht), par_logiciel: [...productMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([logiciel, ca_ht]) => ({ logiciel, ca_ht })), par_statut: statusMap },
@@ -406,7 +410,7 @@ async function loadFinanceSnapshot() {
     depenses_gestion: { lignes_mois: monthExpenses.length, reel_mois: sum(monthExpenses, (d) => num(d.reel)), prevision_mois: sum(monthExpenses, (d) => num(d.prevu)) },
     objectif_ca_ht_mois: objective,
     comptabilite: { ecritures_enregistrees: entries.length, factures_documents: docs.filter((d) => String(d.type ?? "").toLowerCase() === "facture").length },
-    couts_ia: { mois_usd: num(costs?.mois_usd), budget_mois_usd: num(costs?.budget_mois_usd) },
+    couts_ia: { mois_usd: costRows === null ? null : sum(costRows, (r) => num(r.cout_usd)), budget_mois_usd: aiBudget === null ? null : num(aiBudget), lignes: costRows?.length ?? null },
     limites: ["CA calculé sur htNet, ou TTC/1,18 si HT absent, pour les commandes confirmées, en cours ou livrées.", "Encaissements calculés uniquement sur les paiements datés non estimés ; acomptes déclarés présentés séparément.", "Solde à recouvrer issu du champ solde des commandes, sans rapprochement bancaire.", "Dépenses limitées aux lignes saisies dans Budget & actions ; les écritures comptables ne sont pas agrégées.", "Aucun bénéfice net, trésorerie bancaire ou marge par logiciel ne peut être déduit de ces seuls champs.", "Coûts IA en USD, séparés des montants FCFA."]
   };
 }
