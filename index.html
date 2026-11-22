@@ -9309,6 +9309,7 @@ function editClient(id) {
   { const e=document.getElementById('c-effectif'); if(e)e.value=c.effectif||''; const a=document.getElementById('c-ca'); if(a)a.value=c.caEstime||''; const b=document.getElementById('c-etabs'); if(b)b.value=c.etablissements||''; }
   document.getElementById('c-adresse').value = c.adresse||'';
   document.getElementById('c-notes').value = c.notes||'';
+  { const cs=document.getElementById('c-secteur'); if(c.secteur && ![...cs.options].some(o=>o.value===c.secteur)){ const o=document.createElement('option'); o.textContent=c.secteur; cs.appendChild(o); } }   // secteur hors liste (ex. « Partenaire ») : conservé à l'enregistrement
   document.getElementById('c-secteur').value = c.secteur||'Immobilier';
   document.getElementById('c-logiciel').value = c.logiciel||'';
   document.getElementById('c-statut').value = c.statut||'prospect';
