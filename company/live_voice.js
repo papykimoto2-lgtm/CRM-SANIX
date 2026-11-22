@@ -15,7 +15,7 @@ export function initJarvis(A, stage) {
   dock.innerHTML = `<div id="jv-log" aria-live="polite"></div>
     <div class="jv-bar"><button type="button" id="jv-orb" class="orb" aria-label="Parler à Jarvis" title="Parler à Jarvis"><i></i></button>
     <div class="jv-mid"><input id="jv-in" type="text" autocomplete="off" placeholder="Parlez ou écrivez…" title="Ex. : « où en est AutoGarage ? »" aria-label="Message à Jarvis"><small id="jv-st">Jarvis prêt${SR ? "" : " (micro non pris en charge : utilisez le clavier)"}</small></div>
-    <button type="button" id="jv-send" class="jb" title="Envoyer">➤</button><button type="button" id="jv-voice" class="jb on" title="Voix de Jarvis">🔊</button><button type="button" id="jv-hands" class="jb" title="Mains libres : dites « Jarvis » pour m'appeler">🖐</button></div>`;
+    <button type="button" id="jv-ideas" class="jb" title="Propositions d'amélioration de Jarvis">💡<em id="jv-badge" hidden></em></button><button type="button" id="jv-send" class="jb" title="Envoyer">➤</button><button type="button" id="jv-voice" class="jb on" title="Voix de Jarvis">🔊</button><button type="button" id="jv-hands" class="jb" title="Mains libres : dites « Jarvis » pour m'appeler">🖐</button></div>`;
   stage.appendChild(dock);
   const $ = (s) => dock.querySelector(s), logEl = $("#jv-log"), inEl = $("#jv-in"), st = $("#jv-st"), orb = $("#jv-orb");
   let guard = null, voiceOn = true, hands = false, listening = false, speaking = false, rec = null, pending = null, convo = false, gotResult = false, llmDown = 0, hist = [], awakeUntil = 0, lastSpeechEnd = 0, poll = null;
@@ -51,6 +51,28 @@ export function initJarvis(A, stage) {
   const view = () => A.view;
   const HELP = "Je peux : donner la situation, le nombre de fiches, qui travaille, les blocages, l'avancement d'un logiciel (par exemple AutoGarage), ce que fait un agent, piloter la caméra (zoom, vue d'ensemble, montre tel agent, rotation, plein cadre) et transmettre une demande au directeur général après votre confirmation.";
 
+  const RANK = { haute: 0, moyenne: 1, basse: 2 };
+  function insights() {
+    const out = [], h = A.health(), now = Date.now(), day = 864e5, I = (gravite, constat, piste, texte) => out.push({ gravite, constat, piste, action: texte ? { kind: "instruction", texte } : null });
+    const blocked = D.tasks.filter((t) => ["bloquee", "echouee"].includes(t.statut) && now - Date.parse(t.updated_at) < day);
+    if (blocked.length) I(blocked.length >= 3 ? "haute" : "moyenne", `${plural(blocked.length, "mission bloquée", "missions bloquées")} sur 24 heures : ${blocked.slice(0, 2).map((t) => clip(t.titre, 50)).join(" ; ")}`, "analyser les causes et relancer autrement", `Analyse les ${blocked.length} missions bloquées ou échouées des dernières 24 heures (${blocked.slice(0, 3).map((t) => t.titre).join(" ; ")}), identifie la cause de chaque blocage et propose-moi un plan de reprise.`);
+    if (h.stale) I("haute", `${plural(h.stale, "mission figée", "missions figées")} depuis plus de 90 minutes`, "vérifier et débloquer les agents concernés", "Vérifie les missions en cours depuis plus de 90 minutes sans progression, débloque-les ou reprogramme-les, et dis-moi la cause.");
+    const prosp = D.tasks.filter((t) => t.produit && /prospect/i.test(t.titre) && ["terminee", "bloquee", "echouee"].includes(t.statut) && now - Date.parse(t.updated_at) < 2 * day), byP = {};
+    for (const t of prosp) { const b = (byP[t.produit] ??= { c: 0, g: 0 }); b.c += D.created[t.id] ?? 0; b.g += A.targetOf(t) || 20; }
+    for (const [pid, b] of Object.entries(byP)) if (b.c < b.g * .25) { const lab = PRODUCTS[pid]?.[1] ?? pid; I("haute", `Prospection ${lab} : ${b.c} fiches créées pour ${b.g} visées`, "changer de sources (sites propres, annuaires professionnels, réseaux)", `La prospection ${lab} sous-performe (${b.c} fiches pour ${b.g} visées). Propose une stratégie de recherche différente (sources avec coordonnées publiques) et relance les chasseurs concernés.`); }
+    if (h.qual !== null && h.qual < 70) I("moyenne", `${h.qual} % seulement des fiches du jour ont un contact et une source`, "faire contrôler et compléter les fiches", "Demande au Data Analyst de contrôler les fiches créées aujourd'hui et de compléter les contacts et sources manquants.");
+    if (h.rate !== null && h.rate < 60) I("moyenne", `Taux de réussite des missions : ${h.rate} % sur 7 jours`, "revoir les consignes des missions qui échouent", "Analyse les missions échouées ou bloquées des 7 derniers jours, trouve les causes communes et propose des consignes plus précises.");
+    if (D.approvals) I("moyenne", `${plural(D.approvals, "décision attend", "décisions attendent")} votre validation`, "les traiter depuis le Bureau", null);
+    const b = D.budget; if (b && Number(b.jour_usd) < Number(b.budget_jour_usd) * .2 && openT((t) => t.statut === "a_faire").length >= 4) I("basse", `Capacité IA peu utilisée (${Number(b.jour_usd).toFixed(2)} $ sur ${Number(b.budget_jour_usd).toFixed(0)} $) alors que ${openT((t) => t.statut === "a_faire").length} missions attendent`, "passer les agents clés en mode API pour accélérer (réglage Gouvernance)", null);
+    for (const [pid, [, lab]] of Object.entries(PRODUCTS)) if (D.tasks.some((t) => t.produit) && !D.tasks.some((t) => t.produit === pid && !["annulee"].includes(t.statut))) I("basse", `Aucune mission récente pour ${lab}`, "lancer une prospection ou un plan d'action", `Prépare un plan d'action commercial pour ${lab} : cibles, canal, objectifs de la semaine.`);
+    return out.sort((a, b2) => RANK[a.gravite] - RANK[b2.gravite]).slice(0, 6);
+  }
+  function ideasReply() {
+    const top = insights().slice(0, 3); if (!top.length) return "Tout est sous contrôle : je ne détecte aucun problème. Je peux proposer d'étendre la prospection si vous le souhaitez.";
+    const ord = ["Un", "Deux", "Trois"], items = top.map((x) => (x.action ? { kind: "instruction", texte: x.action.texte } : null));
+    pending = items.some(Boolean) ? { kind: "multi", items } : null;
+    return `J'ai ${plural(top.length, "proposition", "propositions")}. ` + top.map((x, i) => `${ord[i]} : ${x.constat}. Piste : ${x.piste}.`).join(" ") + (pending ? " Laquelle dois-je lancer ? Dites un, deux, trois ou toutes." : "");
+  }
   const ACT = { zoom_in: () => view()?.zoom(.7), zoom_out: () => view()?.zoom(1.45), reset_view: () => view()?.reset(), auto_rotate_on: () => view()?.setAuto(true), auto_rotate_off: () => view()?.setAuto(false),
     dynamic_on: () => { view()?.setDynamic(true); document.querySelector('#ctl [data-c="dyn"]')?.classList.add("on"); }, dynamic_off: () => { view()?.setDynamic(false); document.querySelector('#ctl [data-c="dyn"]')?.classList.remove("on"); },
     panels_hide: () => A.setFocus(true), panels_show: () => A.setFocus(false), fullscreen: () => A.fullscreen() };
@@ -59,6 +81,7 @@ export function initJarvis(A, stage) {
     const h = A.health();
     return { heure: new Intl.DateTimeFormat("fr-FR", { timeZone: "Africa/Abidjan", dateStyle: "full", timeStyle: "short" }).format(new Date()),
       kpi: { agents_au_travail: run().length, agents_actifs: D.agents.filter((a) => !["suspendu", "archive"].includes(a.etat)).length, missions_en_cours: D.tasks.filter((t) => t.statut === "en_cours").length, missions_en_attente: openT((t) => t.statut === "a_faire").length, fiches_creees_aujourdhui: D.nToday, prospects_en_base: D.nTotal, decisions_a_valider: D.approvals, sante_0_100: h.score, missions_figees: h.stale, blocages_24h: h.blocked, cout_ia_jour_usd: D.budget?.jour_usd ?? null, budget_jour_usd: D.budget?.budget_jour_usd ?? null },
+      insights: insights().map((x) => ({ gravite: x.gravite, constat: x.constat, piste: x.piste })),
       agents: D.agents.filter((a) => a.etat !== "archive").slice(0, 40).map((a) => ({ id: a.id, nom: a.nom, fonction: a.fonction, etat: A.STATES[A.agentState(a)][0], mission: cur(a) })),
       missions: D.tasks.slice(0, 30).map((t) => ({ statut: t.statut, agent: nm(t.agent_id), produit: t.produit ?? "", titre: t.titre, fiches: A.targetOf(t) ? `${D.created[t.id] ?? 0}/${A.targetOf(t)}` : "" })),
       recent: (D.actions ?? []).slice(0, 10).map((a) => ({ quand: new Date(a.at).toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan", hour: "2-digit", minute: "2-digit" }), agent: nm(a.agent_id), action: String(a.action ?? "") })) };
@@ -72,13 +95,15 @@ export function initJarvis(A, stage) {
       if (error || !data?.reply) throw new Error(error?.message ?? "réponse vide");
       hist.push({ role: "user", content: raw }, { role: "assistant", content: data.reply }); if (hist.length > 16) hist.splice(0, hist.length - 16);
       let reply = String(data.reply); const acts = Array.isArray(data.actions) ? data.actions : [];
+      const props = [];
       for (const a of acts) {
         if (ACT[a.type]) ACT[a.type]();
         else if (a.type === "focus_agent") view()?.focus(a.agent_id);
-        else if (a.type === "propose_instruction" && a.texte) pending = { kind: "instruction", texte: a.texte };
-        else if (a.type === "propose_mission" && a.agent_id && a.titre) pending = { kind: "mission", agent_id: a.agent_id, titre: a.titre, description: a.description, priorite: a.priorite };
+        else if (a.type === "propose_instruction" && a.texte) props.push({ kind: "instruction", texte: a.texte });
+        else if (a.type === "propose_mission" && a.agent_id && a.titre) props.push({ kind: "mission", agent_id: a.agent_id, titre: a.titre, description: a.description, priorite: a.priorite });
       }
-      if (pending && !/\?/.test(reply)) reply += " Dois-je le transmettre ? Dites oui pour confirmer.";
+      pending = props.length > 1 ? { kind: "multi", items: props } : props[0] ?? null;
+      if (pending && !/\?/.test(reply)) reply += pending.kind === "multi" ? " Laquelle dois-je lancer ? Dites un, deux, trois ou toutes." : " Dois-je le transmettre ? Dites oui pour confirmer.";
       setOrb(listening ? "listen" : ""); say(reply); return reply;
     } catch (e) { llmDown = Date.now() + 45000; setOrb(listening ? "listen" : ""); setSt("Mode local : " + clip(e.message, 50)); return null; }
   }
@@ -109,8 +134,18 @@ export function initJarvis(A, stage) {
   async function handle(raw) {
     let t = norm(raw).replace(/^(ok |hey |dis |salut |bonjour )?(jarvis|jarvi|jarvice|jarviss|jarvys|gervais|gervaise|charvis|djarvis|sanix|assistant)( |$)/, "").trim(); if (!t) { say("À vos ordres."); return "À vos ordres."; }
     addLine("me", raw); const reply = (s) => { say(s); return s; };
-    if (pending) { if (/^(oui|ok|confirme|vas y|transmets|envoie|d accord|affirmatif)\b/.test(t)) { const p = pending; pending = null; await sendPending(p); return "transmis"; }
-      if (/^(non|annule|laisse tomber|stop|negatif)\b/.test(t)) { pending = null; return reply("D'accord, j'annule."); } pending = null; }
+    if (pending) {
+      const yes = /^(oui|ok|confirme|vas y|transmets|envoie|d accord|affirmatif|lance)\b/.test(t), no = /^(non|annule|laisse tomber|stop|negatif)\b/.test(t);
+      if (pending.kind === "multi") {
+        const all = /\b(toutes|tout|les trois|les deux|les 3|les 2)\b/.test(t), n = all ? 0 : /\b(3|trois|troisieme)\b/.test(t) ? 3 : /\b(2|deux|deuxieme|seconde)\b/.test(t) ? 2 : /\b(1|un|une|premier|premiere)\b/.test(t) ? 1 : null;
+        if (no) { pending = null; return reply("D'accord, j'annule."); }
+        if (all || n) { const p = pending, sel = all ? p.items.filter(Boolean) : [p.items[n - 1]].filter(Boolean); if (!sel.length) return reply("Cette proposition est à traiter par vous : je n'ai pas d'action à lancer."); pending = null; for (const it of sel) await sendPending(it); return "transmis"; }
+        if (yes) return reply("Laquelle ? Dites un, deux, trois ou toutes.");
+        pending = null;
+      } else if (yes) { const p = pending; pending = null; await sendPending(p); return "transmis"; }
+      else if (no) { pending = null; return reply("D'accord, j'annule."); }
+      else pending = null;
+    }
     if (/zoom(e)? (avant|plus)|rapproche|agrandi|plus pres/.test(t)) { if (!view()) return reply("La vue 3D n'est pas disponible sur cet appareil."); view().zoom(.7); return reply("Zoom avant."); }
     if (/zoom(e)? (arriere|moins)|recule|eloigne|plus loin|reduis la vue/.test(t)) { if (!view()) return reply("La vue 3D n'est pas disponible."); view().zoom(1.45); return reply("Zoom arrière."); }
     if (/vue d ensemble|reinitialis|recentre|remets la vue|vue globale/.test(t)) { view()?.reset(); return reply("Vue d'ensemble."); }
@@ -127,6 +162,7 @@ export function initJarvis(A, stage) {
     if (/^(aide|que sais tu|tu sais faire quoi|commandes|que peux tu)/.test(t)) return reply(HELP);
     for (const [id, [rx, label]] of Object.entries(PRODUCTS)) if (rx.test(t) && /(ou en est|avancement|point sur|situation|bilan|combien|progress|fiches|mission)/.test(t)) return reply(productReply(id, label));
     if (/(que fait|sur quoi travaille|ou en est) (.+)/.test(t)) { const a = findAgent(t.replace(/^.*(que fait|sur quoi travaille|ou en est)/, "")); if (a) return reply(agentReply(a)); }
+    if (/(proposition|amelior|suggest|conseil|recommand|optimis|que dois je|que faut il|quoi faire)/.test(t)) return reply(ideasReply());
     if (/(etat|situation|bilan|resume|rapport|comment (ca|vont) |tout va bien|point general)/.test(t)) return reply(summary());
     if (/combien.*(fiche|prospect)/.test(t)) return reply(/aujourd|ce jour|jour/.test(t) ? `${plural(D.nToday, "fiche créée aujourd'hui", "fiches créées aujourd'hui")}.` : `${D.nTotal} prospects en base, dont ${D.nToday} créés aujourd'hui.`);
     if (/(qui|quels agents).*(travaill|actif|occupe|en mission)/.test(t)) { const r = run(); return reply(r.length ? `${plural(r.length, "agent travaille", "agents travaillent")} : ${r.slice(0, 6).map((a) => a.nom.replace(/^IA /, "")).join(", ")}${r.length > 6 ? "…" : ""}.` : "Aucun agent n'est au travail pour le moment."); }
@@ -157,9 +193,13 @@ export function initJarvis(A, stage) {
   }
   orb.addEventListener("click", () => { if (listening && !hands) { rec?.stop(); return; } if (speaking) { window.speechSynthesis?.cancel(); return; } startRec(); });
   const sendTxt = () => { const v = inEl.value.trim(); if (!v) return; inEl.value = ""; handle(v); };
+  $("#jv-ideas").addEventListener("click", () => handle("Jarvis, quelles améliorations me proposes-tu ?"));
+  let announced = false;
+  const refreshIdeas = () => { try { const n = insights().length, b = $("#jv-badge"); b.hidden = !n; b.textContent = n; if (n && !announced && D.agents.length) { announced = true; addLine("jarvis", `J'ai ${plural(n, "proposition d'amélioration", "propositions d'amélioration")}. Touchez 💡 ou dites « propositions ».`); } } catch { /* données pas encore chargées */ } };
+  setInterval(refreshIdeas, 15000); setTimeout(refreshIdeas, 3500);
   $("#jv-send").addEventListener("click", sendTxt); inEl.addEventListener("keydown", (e) => { if (e.key === "Enter") sendTxt(); e.stopPropagation(); });
   $("#jv-voice").addEventListener("click", (e) => { voiceOn = !voiceOn; e.currentTarget.classList.toggle("on", voiceOn); e.currentTarget.textContent = voiceOn ? "🔊" : "🔇"; if (!voiceOn) window.speechSynthesis?.cancel(); setSt(voiceOn ? "Voix activée" : "Voix désactivée"); });
   $("#jv-hands").addEventListener("click", (e) => { hands = !hands; e.currentTarget.classList.toggle("on", hands); if (hands) { if (!SR) { hands = false; e.currentTarget.classList.remove("on"); setSt("Mains libres indisponible : micro non pris en charge."); return; } if (listening) rec.stop(); setTimeout(startRec, 150); setSt("Mains libres : dites « Jarvis »"); } else { rec?.stop(); setSt("Jarvis prêt"); } });
   addLine("jarvis", "Salle de contrôle en ligne. Dites « Jarvis, situation » ou écrivez votre demande.");
-  window.__jarvis = { setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say };
+  window.__jarvis = { insights, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say };
 }

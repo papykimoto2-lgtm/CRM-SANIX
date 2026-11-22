@@ -3,6 +3,8 @@ const assert = require("assert"); const J = require(process.argv[2] || "/tmp/jt/
 const ctx = { heure: "10:00", kpi: { n: 1 }, agents: [{ id: "a1", nom: "IA Hunter 1", fonction: "Chasseur", etat: "Au travail", mission: "Prospection" }], missions: [{ statut: "en_cours", titre: "x", agent: "IA Hunter 1", produit: "autogarage", fiches: "1/20" }], recent: [] };
 const known = J.knownIds(ctx); assert.deepStrictEqual([...known], ["a1"]);
 assert(J.buildContext(ctx).includes("a1 | IA Hunter 1"));
+assert(J.buildContext({ ...ctx, insights: [{ gravite: "haute", constat: "3 missions bloquées", piste: "Relancer" }] }).includes("haute | 3 missions bloquées | Relancer"), "constats détectés transmis");
+assert(J.SYSTEM.includes("AU PLUS TROIS"));
 assert(J.buildContext({ agents: Array.from({ length: 500 }, (_, i) => ({ id: "i" + i, nom: "n".repeat(500) })) }).length <= 14000, "contexte borné");
 const ok = J.parseReply(JSON.stringify({ reply: "Bonjour.", actions: [{ type: "zoom_in", agent_id: "", texte: "", titre: "", description: "", priorite: 0 }, { type: "focus_agent", agent_id: "a1", texte: "", titre: "", description: "", priorite: 0 }, { type: "propose_mission", agent_id: "a1", titre: "Relancer la prospection", description: "Cibler 20 garages avec contact public.", priorite: 9 }, { type: "focus_agent", agent_id: "zzz" }, { type: "supprimer_tout" }, { type: "propose_mission", agent_id: "inconnu", titre: "abc", description: "desc desc desc" }, { type: "propose_instruction", texte: "ab" }] }), known);
 assert.deepStrictEqual(ok.actions.map((a) => a.type), ["zoom_in", "focus_agent", "propose_mission"], "actions inconnues, agent inexistant et consigne trop courte écartés");

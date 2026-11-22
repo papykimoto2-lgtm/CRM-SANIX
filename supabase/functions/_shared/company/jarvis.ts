@@ -32,6 +32,7 @@ VÉRITÉ : tu t'appuies UNIQUEMENT sur le CONTEXTE fourni (état en direct de l'
 POUVOIRS (champ actions, 0 à 4) :
 - Interface, exécutée aussitôt : zoom_in, zoom_out, reset_view, auto_rotate_on/off, dynamic_on/off (mouvement perpétuel des agents), panels_hide/panels_show, fullscreen, focus_agent (agent_id = identifiant EXACT pris dans le contexte).
 - propose_instruction (texte) : une consigne à transmettre au directeur général IA. propose_mission (agent_id exact, titre, description, priorite 1 à 5) : une mission à confier à un agent précis. Ces deux actions sont seulement PROPOSÉES : le président doit dire « oui ». Dans ce cas ta réponse reformule en une phrase ce que tu t'apprêtes à transmettre et demande confirmation. Tu ne peux ni envoyer de message à un prospect, ni modifier la base, ni dépenser : si on te le demande, explique que cela passe par une mission validée.
+PROPOSITIONS D'AMÉLIORATION : quand le président demande des améliorations, des conseils, « que dois-je faire », ou quand tu fais un point, analyse le contexte (section CONSTATS DÉTECTÉS comprise) et propose AU PLUS TROIS améliorations concrètes, classées par impact : chacune = un constat chiffré tiré du contexte + une action précise. Dis-les à voix haute numérotées (« Un : … Deux : … »), puis demande laquelle lancer. Pour chacune, joins l'action correspondante (propose_mission vers l'agent le plus adapté, ou propose_instruction pour le directeur général), dans le MÊME ORDRE que ta numérotation. N'invente aucun constat absent du contexte ; si tout va bien, dis-le et propose une seule optimisation réaliste.
 Pour une simple question, actions = []. Remplis les champs inutiles d'une action avec une chaîne vide (priorite 0).
 Si la demande est ambiguë, pose UNE question courte.`;
 
@@ -48,6 +49,8 @@ export function buildContext(raw: unknown): string {
   for (const a of arr("agents", 40)) { const x = a as Record<string, unknown>; out.push(`${clipS(x.id, 40)} | ${clipS(x.nom, 40)} | ${clipS(x.fonction, 50)} | ${clipS(x.etat, 30)} | ${clipS(x.mission, 90)}`); }
   out.push("MISSIONS RÉCENTES (statut | agent | logiciel | titre | fiches créées/cible) :");
   for (const m of arr("missions", 30)) { const x = m as Record<string, unknown>; out.push(`${clipS(x.statut, 20)} | ${clipS(x.agent, 30)} | ${clipS(x.produit, 20)} | ${clipS(x.titre, 90)} | ${clipS(x.fiches, 12)}`); }
+  out.push("CONSTATS DÉTECTÉS (gravité | constat | piste) :");
+  for (const a of arr("insights", 8)) { const x = a as Record<string, unknown>; out.push(`${clipS(x.gravite, 10)} | ${clipS(x.constat, 160)} | ${clipS(x.piste, 160)}`); }
   out.push("ACTIVITÉ RÉCENTE :");
   for (const a of arr("recent", 12)) { const x = a as Record<string, unknown>; out.push(`${clipS(x.quand, 20)} | ${clipS(x.agent, 30)} | ${clipS(x.action, 80)}`); }
   return out.join("\n").slice(0, 14000);
