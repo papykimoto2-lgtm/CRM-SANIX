@@ -21,4 +21,16 @@ assert(J.buildContext({ dg: [{ auteur: "directeur", texte: "Plan prêt" }] }).in
 const cx = J.buildContext({ crm: { resume: { total: 3 }, recents: [{ nom: "GARAGE X", logiciel: "AutoGarage Pro", statut: "prospect", etape: "non traité" }], trouves: [{ nom: "MIDAS", etape: "premier_contact", derniere_reponse: "22/11" }] } });
 assert(cx.includes("CRM — RÉSUMÉ") && cx.includes("GARAGE X | AutoGarage Pro | prospect | non traité") && cx.includes("MIDAS") && cx.includes("réponse 22/11"), "CRM transmis à Jarvis");
 assert(!/téléphone|phone|@/.test(cx.split("CRM — FICHES")[1].split("ACTIVITÉ")[0]), "aucun contact personnel dans le contexte CRM");
+const kc = new Set(["c_1", "c_2"]);
+const w = J.parseReply(JSON.stringify({ reply: "ok", actions: [
+  { type: "crm_update", rids: ["c_1", "c_inconnu", "c_2"], statut: "client", valeur: 500000, logiciel: "", secteur: "", adresse: "", commercial: "", notes: "", nom: "", phone: "", email: "" },
+  { type: "crm_update", rids: ["c_1"], statut: "supprimé", valeur: -1 },
+  { type: "crm_log", rids: ["c_1"], interaction: "demo", texte: "Démo réalisée chez le garage" },
+  { type: "crm_log", rids: ["c_1"], interaction: "piratage", texte: "x" },
+  { type: "crm_delete", rids: ["c_inconnu"] }] }), known, kc);
+assert.deepStrictEqual(w.actions, [{ type: "crm_update", rids: ["c_1", "c_2"], champs: { statut: "client", valeur: 500000 } }, { type: "crm_log", rids: ["c_1"], interaction: "demo", texte: "Démo réalisée chez le garage" }], "CRM : fiches inconnues, statuts et interactions invalides écartés");
+const cr = J.parseReply(JSON.stringify({ reply: "ok", actions: [{ type: "crm_create", nom: "GARAGE TEST", phone: "+225 07 00 00 00 00", email: "pas-un-email", valeur: -1, statut: "prospect" }, { type: "crm_create", nom: "x" }] }), known, kc);
+assert.deepStrictEqual(cr.actions, [{ type: "crm_create", champs: { nom: "GARAGE TEST", phone: "+225 07 00 00 00 00", statut: "prospect" } }], "création : e-mail invalide et nom trop court écartés");
+assert.deepStrictEqual([...J.knownCrmIds({ crm: { recents: [{ rid: "c_9" }], trouves: [{ rid: "c_8" }] } })], ["c_9", "c_8"]);
+assert(J.buildContext({ crm: { recents: [{ rid: "c_9", nom: "X" }] } }).includes("c_9 | X"), "l'id de fiche est transmis");
 console.log("jarvis (logique pure) : OK");

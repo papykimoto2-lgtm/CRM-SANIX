@@ -3,12 +3,18 @@
 // ou une mission ; l'envoi n'a lieu qu'après confirmation explicite du président dans la Salle de contrôle.
 
 export const UI_ACTIONS = ["zoom_in", "zoom_out", "reset_view", "auto_rotate_on", "auto_rotate_off", "dynamic_on", "dynamic_off", "panels_hide", "panels_show", "fullscreen", "focus_agent"] as const;
+export const INTERACTIONS = ["note", "contact", "demo", "proposition", "negociation", "relance", "perdu", "converti"] as const;
+export const STATUTS = ["prospect", "client", "inactif"] as const;
 export type JarvisAction =
   | { type: (typeof UI_ACTIONS)[number]; agent_id?: string }
   | { type: "propose_instruction"; texte: string }
   | { type: "propose_mission"; agent_id: string; titre: string; description: string; priorite: number }
   | { type: "propose_report"; agent_id: string; jours: number }
-  | { type: "propose_report_now"; rapport: "quotidien" | "hebdomadaire" | "mensuel" };
+  | { type: "propose_report_now"; rapport: "quotidien" | "hebdomadaire" | "mensuel" }
+  | { type: "crm_update"; rids: string[]; champs: Record<string, string | number> }
+  | { type: "crm_log"; rids: string[]; interaction: (typeof INTERACTIONS)[number]; texte: string }
+  | { type: "crm_create"; champs: Record<string, string | number> }
+  | { type: "crm_delete"; rids: string[] };
 export type JarvisReply = { reply: string; actions: JarvisAction[] };
 
 export const JARVIS_FORMAT = {
@@ -18,10 +24,12 @@ export const JARVIS_FORMAT = {
     actions: {
       type: "array",
       items: {
-        type: "object", additionalProperties: false, required: ["type", "agent_id", "texte", "titre", "description", "priorite", "jours", "rapport"],
+        type: "object", additionalProperties: false, required: ["type", "agent_id", "texte", "titre", "description", "priorite", "jours", "rapport", "rids", "interaction", "nom", "statut", "logiciel", "secteur", "adresse", "commercial", "notes", "phone", "email", "valeur"],
         properties: {
-          type: { type: "string", enum: [...UI_ACTIONS, "propose_instruction", "propose_mission", "propose_report", "propose_report_now"] },
+          type: { type: "string", enum: [...UI_ACTIONS, "propose_instruction", "propose_mission", "propose_report", "propose_report_now", "crm_update", "crm_log", "crm_create", "crm_delete"] },
           agent_id: { type: "string" }, texte: { type: "string" }, titre: { type: "string" }, description: { type: "string" }, priorite: { type: "integer" }, jours: { type: "integer" }, rapport: { type: "string" },
+          rids: { type: "array", items: { type: "string" } }, interaction: { type: "string" }, nom: { type: "string" }, statut: { type: "string" }, logiciel: { type: "string" }, secteur: { type: "string" },
+          adresse: { type: "string" }, commercial: { type: "string" }, notes: { type: "string" }, phone: { type: "string" }, email: { type: "string" }, valeur: { type: "integer" },
         },
       },
     },
@@ -37,7 +45,13 @@ POUVOIRS (champ actions, 0 à 4) :
 PROPOSITIONS D'AMÉLIORATION : quand le président demande des améliorations, des conseils, « que dois-je faire », ou quand tu fais un point, analyse le contexte (section CONSTATS DÉTECTÉS comprise) et propose AU PLUS TROIS améliorations concrètes, classées par impact : chacune = un constat chiffré tiré du contexte + une action précise. Dis-les à voix haute numérotées (« Un : … Deux : … »), puis demande laquelle lancer. Pour chacune, joins l'action correspondante (propose_mission vers l'agent le plus adapté, ou propose_instruction pour le directeur général), dans le MÊME ORDRE que ta numérotation. N'invente aucun constat absent du contexte ; si tout va bien, dis-le et propose une seule optimisation réaliste.
 - propose_report (agent_id exact, jours 1 à 30) : demander à un agent un rapport d'activité. propose_report_now (rapport = quotidien, hebdomadaire ou mensuel) : générer et envoyer au président le rapport de direction.
 MODE : le contexte indique MODE PRUDENT ou MODE AUTONOME. En prudent, les propositions attendent le « oui » du président (tu demandes confirmation). En AUTONOME, elles sont exécutées aussitôt par l'interface : ta réponse annonce ce que tu lances (« Je transmets… », « Je confie… ») et ne demande PAS de confirmation. Dans les deux modes tu restes limité à ces actions internes.
-CRM : tu vois le CRM EN LECTURE SEULE (sections CRM : résumé par logiciel et par étape, derniers prospects, fiches correspondant à la demande). Tu peux dire combien de prospects, à quelle étape, qui a été contacté ou a répondu, quelles fiches sont sans suite. Étape « non traité » = aucune qualification ni contact enregistré. Tu ne vois ni téléphone ni e-mail ; pour modifier une fiche ou écrire à un prospect, passe par une mission validée.
+CRM : tu vois le CRM EN LECTURE SEULE (sections CRM : résumé par logiciel et par étape, derniers prospects, fiches correspondant à la demande). Tu peux dire combien de prospects, à quelle étape, qui a été contacté ou a répondu, quelles fiches sont sans suite. Étape « non traité » = aucune qualification ni contact enregistré. Tu ne vois ni téléphone ni e-mail ; pour écrire à un prospect, passe par une mission validée.
+ÉCRITURE CRM (pleins pouvoirs sur les fiches clients et prospects, via les actions ci-dessous) :
+- crm_update : modifier des fiches (rids = ids EXACTS de la colonne « id » des sections CRM, 25 au plus) ; renseigne seulement les champs à changer parmi statut (prospect, client ou inactif), logiciel, secteur, adresse, commercial, notes, nom, phone, email, valeur (entier en FCFA, -1 si inchangé) et laisse les autres vides.
+- crm_log : ajouter à l'historique de fiches une interaction (rids ; interaction = note, contact, demo, proposition, negociation, relance, perdu ou converti ; texte = la note). « contact » = contact établi ; « converti » passe aussi la fiche en client. Cela fait avancer l'étape du pipeline.
+- crm_create : créer une fiche (nom obligatoire ; logiciel, secteur, adresse, phone, email, notes, valeur facultatifs).
+- crm_delete : supprimer des fiches (rids) ; TOUJOURS soumis à confirmation, même en mode autonome.
+Les actions CRM suivent le mode prudent (confirmation) ou autonome (exécution immédiate). N'enregistre QUE ce que le président affirme ou ce qui figure dans le contexte : aucun fait inventé, aucune coordonnée devinée. Tu ne peux toujours pas envoyer de message à un prospect : « contact » consigne seulement qu'un contact a eu lieu.
 DIALOGUE DU DIRECTEUR : la section DERNIERS ÉCHANGES AVEC LE DIRECTEUR GÉNÉRAL te permet de résumer ce qu'il a répondu ou décidé.
 Pour une simple question, actions = []. Remplis les champs inutiles d'une action avec une chaîne vide (priorite 0, jours 0).
 Si la demande est ambiguë, pose UNE question courte.`;
@@ -61,9 +75,9 @@ export function buildContext(raw: unknown): string {
   out.push("DERNIERS ÉCHANGES AVEC LE DIRECTEUR GÉNÉRAL (ancien → récent) :");
   for (const a of arr("dg", 6)) { const x = a as Record<string, unknown>; out.push(`${clipS(x.auteur, 12)} : ${clipS(x.texte, 300)}`); }
   const crm = (c.crm && typeof c.crm === "object" ? c.crm : {}) as Record<string, unknown>;
-  const fl = (x: unknown) => { const o = (x ?? {}) as Record<string, unknown>; return `${clipS(o.nom, 50)} | ${clipS(o.logiciel, 24)} | ${clipS(o.statut, 12)} | ${clipS(o.etape, 20)} | ${clipS(o.score, 5)} | ${clipS(o.ville, 30)} | envoi ${clipS(o.dernier_envoi, 6)} | réponse ${clipS(o.derniere_reponse, 6)} | suite ${clipS(o.prochaine_action, 6)}`; };
+  const fl = (x: unknown) => { const o = (x ?? {}) as Record<string, unknown>; return `${clipS(o.rid, 30)} | ${clipS(o.nom, 50)} | ${clipS(o.logiciel, 24)} | ${clipS(o.statut, 12)} | ${clipS(o.etape, 20)} | ${clipS(o.score, 5)} | ${clipS(o.ville, 30)} | envoi ${clipS(o.dernier_envoi, 6)} | réponse ${clipS(o.derniere_reponse, 6)} | suite ${clipS(o.prochaine_action, 6)}`; };
   if (crm.resume) out.push("CRM — RÉSUMÉ : " + clipS(JSON.stringify(crm.resume), 2200));
-  out.push("CRM — DERNIERS PROSPECTS (nom | logiciel | statut | étape | score | ville | dernier envoi | dernière réponse | prochaine action) :");
+  out.push("CRM — DERNIERS PROSPECTS (id | nom | logiciel | statut | étape | score | ville | dernier envoi | dernière réponse | prochaine action) :");
   for (const a of (Array.isArray(crm.recents) ? crm.recents : []).slice(0, 25)) out.push(fl(a));
   out.push("CRM — FICHES CORRESPONDANT À LA DEMANDE :");
   for (const a of (Array.isArray(crm.trouves) ? crm.trouves : []).slice(0, 30)) out.push(fl(a));
@@ -84,7 +98,19 @@ export function cleanHistory(raw: unknown): { role: "user" | "assistant"; conten
 }
 
 /** Valide la sortie du modèle : actions connues uniquement, agent_id présent dans le contexte, champs bornés. */
-export function parseReply(text: string, knownAgentIds: Set<string>): JarvisReply {
+const RE_EMAIL = /^[^\s@]{1,64}@[^\s@]{1,120}\.[a-z]{2,}$/i, RE_PHONE = /^\+?[0-9][0-9 .-]{7,20}$/;
+/** Champs CRM autorisés, validés et bornés : tout le reste est ignoré. */
+export function cleanChamps(x: Record<string, unknown>): Record<string, string | number> {
+  const c: Record<string, string | number> = {};
+  const st = String(x.statut ?? "").trim().toLowerCase(); if ((STATUTS as readonly string[]).includes(st)) c.statut = st;
+  for (const [k, n] of [["nom", 120], ["logiciel", 60], ["secteur", 80], ["adresse", 160], ["commercial", 60], ["notes", 2000]] as const) { const v = clipS(x[k], n); if (v) c[k] = v; }
+  const ph = String(x.phone ?? "").trim(); if (ph && RE_PHONE.test(ph)) c.phone = ph;
+  const em = String(x.email ?? "").trim(); if (em && RE_EMAIL.test(em)) c.email = em.toLowerCase();
+  const v = Math.trunc(Number(x.valeur)); if (Number.isFinite(v) && v >= 0 && v <= 1_000_000_000) c.valeur = v;
+  return c;
+}
+
+export function parseReply(text: string, knownAgentIds: Set<string>, knownCrm: Set<string> = new Set()): JarvisReply {
   let j: Record<string, unknown> = {};
   try { j = JSON.parse(text); } catch {
     const m = /"reply"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(text);   // sortie tronquée : on récupère au moins la réponse parlée
@@ -100,6 +126,15 @@ export function parseReply(text: string, knownAgentIds: Set<string>): JarvisRepl
     } else if (t === "propose_instruction") { const texte = clipS(x.texte, 1500); if (texte.length >= 3) actions.push({ type: "propose_instruction", texte }); }
     else if (t === "propose_report") { const id = String(x.agent_id ?? ""); if (knownAgentIds.has(id)) actions.push({ type: "propose_report", agent_id: id, jours: Math.min(30, Math.max(1, Math.trunc(Number(x.jours)) || 7)) }); }
     else if (t === "propose_report_now") { const r = String(x.rapport ?? ""); if (r === "quotidien" || r === "hebdomadaire" || r === "mensuel") actions.push({ type: "propose_report_now", rapport: r }); }
+    else if (t === "crm_update" || t === "crm_log" || t === "crm_delete") {
+      const rids = [...new Set((Array.isArray(x.rids) ? x.rids : []).map((r) => String(r)).filter((r) => knownCrm.has(r)))].slice(0, 25);
+      if (!rids.length) continue;
+      if (t === "crm_delete") actions.push({ type: "crm_delete", rids });
+      else if (t === "crm_update") { const champs = cleanChamps(x); if (Object.keys(champs).length) actions.push({ type: "crm_update", rids, champs }); }
+      else { const it = String(x.interaction ?? ""), texte = clipS(x.texte, 600); if ((INTERACTIONS as readonly string[]).includes(it) && (texte.length >= 3 || it === "converti")) actions.push({ type: "crm_log", rids, interaction: it as (typeof INTERACTIONS)[number], texte }); }
+    } else if (t === "crm_create") {
+      const champs = cleanChamps(x); if (champs.nom && String(champs.nom).length >= 2) actions.push({ type: "crm_create", champs });
+    }
     else if (t === "propose_mission") {
       const id = String(x.agent_id ?? ""), titre = clipS(x.titre, 200), description = clipS(x.description, 3000);
       if (knownAgentIds.has(id) && titre.length >= 3 && description.length >= 10) actions.push({ type: "propose_mission", agent_id: id, titre, description, priorite: Math.min(5, Math.max(1, Math.trunc(Number(x.priorite)) || 2)) });
@@ -108,6 +143,12 @@ export function parseReply(text: string, knownAgentIds: Set<string>): JarvisRepl
   return { reply, actions };
 }
 
+export function knownCrmIds(raw: unknown): Set<string> {
+  const c = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>, crm = (c.crm && typeof c.crm === "object" ? c.crm : {}) as Record<string, unknown>;
+  const out = new Set<string>();
+  for (const k of ["recents", "trouves"]) for (const a of Array.isArray(crm[k]) ? crm[k] as unknown[] : []) { const id = String((a as Record<string, unknown>)?.rid ?? ""); if (id) out.add(id); }
+  return out;
+}
 export function knownIds(raw: unknown): Set<string> {
   const c = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   return new Set((Array.isArray(c.agents) ? c.agents : []).map((a) => String((a as Record<string, unknown>)?.id ?? "")).filter(Boolean));

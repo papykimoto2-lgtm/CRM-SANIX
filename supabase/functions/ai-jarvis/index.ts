@@ -2,7 +2,7 @@
 // Corps : { message, history?, context } → { reply, actions }. Modèle Sonnet, budget IA appliqué par callClaude.
 import { audit, cors, db, errMsg, HttpError, json, requireOperator } from "../_shared/core.ts";
 import { BudgetError, callClaude, LlmKeyMissingError, ProviderBillingError, ProviderConfigurationError, TransientLlmError } from "../_shared/llm.ts";
-import { buildContext, cleanHistory, JARVIS_FORMAT, knownIds, parseReply, SYSTEM } from "../_shared/company/jarvis.ts";
+import { buildContext, cleanHistory, JARVIS_FORMAT, knownCrmIds, knownIds, parseReply, SYSTEM } from "../_shared/company/jarvis.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors(req) });
@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
       format: JARVIS_FORMAT as unknown as Record<string, unknown>,
     });
     const text = out.content.map((b) => (b.type === "text" ? b.text : "")).join("");
-    const r = parseReply(text, knownIds(body.context));
+    const r = parseReply(text, knownIds(body.context), knownCrmIds(body.context));
     await audit({ agent: "jarvis", action: "jarvis_reponse", ok: true, payload: { par: op.user_id, nb_actions: r.actions.length } });
     return json(req, r, 200);
   } catch (e) {

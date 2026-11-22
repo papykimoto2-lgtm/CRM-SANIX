@@ -88,6 +88,17 @@
       FX.crm.dashboard.missions_en_retard = FX.crm.dashboard.missions_en_retard.filter((m) => m.id !== args.p_task);
       return Promise.resolve({ data: null, error: null });
     }
+    if (name === "crm_sync_push") {
+      const rows = T("crm_records"), results = args.p_ops.map((op) => {
+        const r = rows.find((x) => x.rid === op.rid);
+        if (op.action === "delete") { if (!r) return { op_id: op.op_id, ok: true, unchanged: true }; r.deleted_at = new Date().toISOString(); r.version = (r.version ?? 1) + 1; return { op_id: op.op_id, ok: true, deleted: true }; }
+        if (window.__crmReject) return { op_id: op.op_id, ok: false, error: "refusé par le serveur" };
+        if (!r) { rows.push({ rid: op.rid, entity: op.entity, deleted_at: null, version: 1, updated_at: new Date().toISOString(), data: { ...op.data } }); return { op_id: op.op_id, ok: true, created: true }; }
+        for (const [k, v] of Object.entries(op.data)) r.data[k] = k === "interactions" ? [...(r.data.interactions ?? []), ...v] : v;
+        r.version = (r.version ?? 1) + 1; return { op_id: op.op_id, ok: true };
+      });
+      return Promise.resolve({ data: { ok: true, results, cursor: 1 }, error: null });
+    }
     return Promise.resolve({ data: null, error: { message: `rpc inconnue ${name}` } });
   };
   const invoke = async (fn, { body }) => {
@@ -98,6 +109,11 @@
       if (/mission/.test(m)) return { data: { reply: `Je propose de confier cette mission à ${ag[0].nom}. Dois-je la transmettre ?`, actions: [{ type: "propose_mission", agent_id: ag[0].id, titre: "Relancer la prospection", description: "Cibler vingt garages avec contact public.", priorite: 2 }] }, error: null };
       if (/amélior|proposition/.test(m)) return { data: { reply: "Deux propositions. Un : relancer les missions bloquées. Deux : confier un contrôle des fiches au Data Analyst. Laquelle dois-je lancer ?", actions: [{ type: "propose_instruction", texte: "Analyse les missions bloquées et propose un plan de reprise." }, { type: "propose_mission", agent_id: ag[0].id, titre: "Contrôler les fiches du jour", description: "Contrôler et compléter les fiches créées aujourd'hui.", priorite: 2 }] }, error: null };
       if (/exécute la consigne/.test(m)) return { data: { reply: "Je transmets cette consigne au directeur général.", actions: [{ type: "propose_instruction", texte: "Relance la prospection AutoGarage avec auto.ci. " + (/DOUBLON/.test(m) ? "DOUBLON" : "") }] }, error: null };
+      if (/CRMTEST/.test(m)) { const f = body.context.crm.trouves, ids = f.map((x) => x.rid), k = (m.match(/CRMTEST-(\w+)/) ?? [])[1];
+        if (k === "demo") return { data: { reply: "J'enregistre la démonstration.", actions: [{ type: "crm_log", rids: [ids[0]], interaction: "demo", texte: "Démonstration réalisée sur place." }] }, error: null };
+        if (k === "update") return { data: { reply: "Je passe ces fiches en client.", actions: [{ type: "crm_update", rids: ids, champs: { statut: "client", valeur: 400000 } }] }, error: null };
+        if (k === "create") return { data: { reply: "Je crée la fiche.", actions: [{ type: "crm_create", champs: { nom: "GARAGE NOUVEAU TEST", phone: "+225 07 11 22 33 44", logiciel: "AutoGarage Pro" } }] }, error: null };
+        if (k === "delete") return { data: { reply: "Je supprime cette fiche.", actions: [{ type: "crm_delete", rids: [ids[0]] }] }, error: null }; }
       if (/gros plan/.test(m)) return { data: { reply: "Bien sûr, je rapproche la vue.", actions: [{ type: "zoom_in" }] }, error: null };
       return { data: { reply: `Il y a ${body.context.kpi.agents_au_travail} agents au travail et ${body.context.kpi.fiches_creees_aujourdhui} fiches créées aujourd'hui.`, actions: [] }, error: null };
     }
