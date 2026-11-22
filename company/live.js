@@ -16,7 +16,7 @@ const ORIGIN = location.origin;
 const STATES = { run: ["Au travail", "#22D3EE"], wait: ["Coordonne ses équipes", "#A855F7"], valid: ["Attend une validation", "#F59E0B"], bad: ["Mission bloquée", "#EF4444"], queue: ["Mission en attente", "#64748B"], idle: ["Disponible", "#3B5A94"], off: ["Suspendu", "#475569"] };
 const TASK_C = { en_cours: "#22D3EE", attente_sous_taches: "#A855F7", attente_validation: "#F59E0B", a_faire: "#64748B", bloquee: "#EF4444", echouee: "#EF4444", terminee: "#22C55E" };
 const TASK_L = { en_cours: "En cours", attente_sous_taches: "Attend ses équipes", attente_validation: "À valider", a_faire: "À faire", bloquee: "Bloquée", echouee: "Échouée", terminee: "Terminée", annulee: "Annulée" };
-const D = { agents: [], depts: [], tasks: [], actions: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, gov: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0 };
+const D = { agents: [], depts: [], tasks: [], actions: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, salesRows: null, offerRows: null, gov: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0 };
 let sb = null;
 
 // ───────── Configuration et session ─────────
@@ -38,7 +38,7 @@ const since = (d) => new Date(Date.now() - d * 86400e3).toISOString();
 async function pull() {
   const day = new Date(); day.setUTCHours(0, 0, 0, 0);
   safe.err = null;
-  const [ag, tk, ac, cr, nT, nA, rc, td, ap, bu, gv] = await Promise.all([
+  const [ag, tk, ac, cr, nT, nA, rc, td, ap, bu, gv, sales, offers, costs] = await Promise.all([
     safe(sb.from("ai_agents").select("id,code,nom,fonction,niveau,manager_id,departement_id,etat,activite"), null),
     safe(sb.from("ai_agent_tasks").select("id,agent_id,donneur_agent_id,parent_id,type,titre,objectifs,statut,priorite,produit,started_at,updated_at,created_at,executions").gte("updated_at", since(7)).order("updated_at", { ascending: false }).limit(600), null),
     safe(sb.from("ai_actions").select("id,action,agent_id,task_id,payload,ok,at").order("at", { ascending: false }).limit(60), null),
@@ -50,6 +50,9 @@ async function pull() {
     safe(sb.from("ai_approvals").select("id", { count: "exact", head: true }).eq("statut", "en_attente"), null),
     safe(sb.rpc("ai_budget_status"), null),
     safe(sb.from("ai_governance").select("actif,communication_externe").eq("id", 1).maybeSingle(), null),
+    safe(sb.from("ai_prospects").select("id,stage,potentiel_fcfa,score,next_action_at").limit(1500), null),
+    safe(sb.from("ai_offers").select("id,total_ttc,statut,created_at").order("created_at", { ascending: false }).limit(500), null),
+    safe(sb.rpc("ai_cost_center", { p_days: 30 }), null),
   ]);
   if (!ag?.data || !tk?.data) throw safe.err ?? new Error("Données indisponibles");
   if (!D.depts.length) { const dp = await safe(sb.from("ai_departments").select("id,nom,couleur"), null); D.depts = dp?.data ?? []; }
@@ -57,6 +60,7 @@ async function pull() {
   if (cr?.data) { D.created = {}; for (const r of cr.data) if (r.task_id) D.created[r.task_id] = (D.created[r.task_id] ?? 0) + 1; }
   D.nToday = nT?.count ?? D.nToday; D.nTotal = nA?.count ?? D.nTotal; D.recent = rc?.data ?? D.recent; D.todayRows = td?.data ?? D.todayRows;
   D.approvals = ap?.count ?? D.approvals; D.budget = bu?.data ?? D.budget; D.gov = gv?.data ?? D.gov;
+  D.salesRows = sales?.data ?? D.salesRows; D.offerRows = offers?.data ?? D.offerRows; D.costCenter = costs?.data ?? D.costCenter;
 }
 
 // ───────── États dérivés ─────────
@@ -144,6 +148,49 @@ function renderFeed(markNew) {
   const fresh = D.actions.filter((a) => a.id > D.lastId);
   $("#feed").innerHTML = D.actions.slice(0, 40).map((a) => { const [ic, tx] = actView(a); return `<div class="it ${markNew && a.id > D.lastId ? "new" : ""}"><span class="ic">${ic}</span><div><b>${esc(nameOf(a.agent_id))}</b> ${tx.replace(/</g, "&lt;")}<small>${ago(a.at)}</small></div></div>`; }).join("") || `<div class="muted">Aucune action récente.</div>`;
   if (markNew) for (const a of fresh.slice(0, 6).reverse()) (view3d ? view3d.fx(a) : fx(a)); if (D.actions.length) D.lastId = Math.max(D.lastId, ...D.actions.map((a) => a.id));
+}
+function renderBusiness() {
+  const el = $("#business-panel"); if (!el) return;
+  if (!Array.isArray(D.salesRows)) { el.innerHTML = '<h2>Pilotage commercial</h2><p class="panel-muted">Indicateurs commerciaux indisponibles avec les autorisations actuelles.</p>'; return; }
+  const closed = new Set(["perdu", "en_veille", "marche_gagne", "client_fidelise"]);
+  const qualified = new Set(["qualifie", "premier_contact", "conversation", "besoin_identifie", "interesse", "rdv_propose", "rdv_confirme", "demo_realisee", "offre_transmise", "negociation", "offre_acceptee", "contrat_transmis"]);
+  const rdv = new Set(["rdv_propose", "rdv_confirme", "demo_realisee"]);
+  const active = D.salesRows.filter(p => !closed.has(p.stage));
+  const potential = active.reduce((s,p) => s + Math.max(0, Number(p.potentiel_fcfa) || 0), 0);
+  const qualifiedCount = D.salesRows.filter(p => qualified.has(p.stage)).length;
+  const rdvCount = D.salesRows.filter(p => rdv.has(p.stage)).length;
+  const accepted = (D.offerRows || []).filter(o => o.statut === "acceptee");
+  const acceptedAmount = accepted.reduce((s,o) => s + Math.max(0, Number(o.total_ttc) || 0), 0);
+  const fmt = n => new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(n) + " FCFA";
+  el.innerHTML = `<div class="panel-head"><h2>Pilotage commercial</h2><span class="panel-source">CRM · données réelles</span></div>
+    <div class="business-grid">
+      <div><b>${active.length.toLocaleString("fr-FR")}</b><small>Prospects actifs</small></div>
+      <div><b>${qualifiedCount.toLocaleString("fr-FR")}</b><small>Qualifiés et avancés</small></div>
+      <div><b>${rdvCount.toLocaleString("fr-FR")}</b><small>RDV / démonstrations</small></div>
+      <div><b>${accepted.length.toLocaleString("fr-FR")}</b><small>Offres acceptées</small></div>
+    </div>
+    <div class="business-foot"><span>Potentiel déclaré du pipeline</span><b>${fmt(potential)}</b></div>
+    <div class="business-foot"><span>Montant TTC des offres acceptées (500 dernières max.)</span><b>${fmt(acceptedAmount)}</b></div>
+    <p class="panel-note">Le potentiel du pipeline n'est pas du chiffre d'affaires réalisé. Les offres acceptées ne valent pas preuve d'encaissement.</p>`;
+}
+function renderFinance() {
+  const el = $("#finance-panel"); if (!el) return;
+  const c = D.costCenter;
+  if (!c || typeof c !== "object") { el.innerHTML = '<h2>Direction financière</h2><p class="panel-muted">Centre de coûts détaillé indisponible. Le coût journalier reste visible dans les indicateurs du haut.</p>'; return; }
+  const money = v => "$" + Number(v || 0).toFixed(2);
+  const month = Number(c.mois_usd || 0), forecast = Number(c.prevision_fin_mois_usd || 0), budget = Number(c.budget_mois_usd || 0);
+  const pct = budget > 0 ? Math.round(month / budget * 100) : null;
+  const top = (c.agents || []).slice(0, 3);
+  el.innerHTML = `<div class="panel-head"><h2>Direction financière</h2><span class="panel-source">Coûts IA · 30 jours</span></div>
+    <div class="finance-grid">
+      <div><b>${money(month)}</b><small>Dépensé ce mois</small></div>
+      <div><b>${money(forecast)}</b><small>Prévision fin de mois</small></div>
+      <div><b>${budget > 0 ? money(budget) : "Non défini"}</b><small>Budget mensuel</small></div>
+    </div>
+    <div class="budget-line"><span style="width:${pct === null ? 0 : Math.min(100,pct)}%"></span></div>
+    <div class="business-foot"><span>Consommation du budget mensuel</span><b>${pct === null ? "Budget non configuré" : pct + " %"}</b></div>
+    <div class="top-costs"><small>Agents les plus coûteux</small>${top.length ? top.map(a => `<div><span>${esc(a.nom)}</span><b>${money(a.cout_usd)}</b></div>`).join("") : '<p class="panel-muted">Aucun coût agent sur la période.</p>'}</div>
+    <p class="panel-note">Prévision calculée au rythme de dépense observé. Ce panneau suit les coûts IA, pas la trésorerie ni les charges comptables de l'entreprise.</p>`;
 }
 function renderAlerts() {
   const now = Date.now(), day = 24 * 3600e3;
@@ -300,7 +347,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); renderKpis(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); renderKpis(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
