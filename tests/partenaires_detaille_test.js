@@ -27,6 +27,8 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(r.accolades.length === 0, "aucune variable laissée telle quelle : " + r.accolades.join(","));
     ok(!/\d\s?%|FCFA|prix de/i.test(r.rempli), "aucun taux ni prix dans le message");
     ok(r.surGarage !== "" && r.surPartenaire === "", "garde-fou : bloqué pour un garage, libre pour un partenaire");
+    { const t = await page.evaluate(() => MSG_TEMPLATES.filter((x) => x.fc === "partenaire" && x.canal === "email" && /adapté|détaillée/.test(x.titre)).map((x) => x.msg));
+      ok(t.length >= 1 && t.every((m) => /BUREAU VIRTUEL SANIX AI/.test(m) && /salle de contrôle/i.test(m) && /Jarvis/.test(m) && /aucun message ne part vers un prospect sans validation/i.test(m) && /n'envoie jamais de message à un prospect/.test(m)), "le message présente le bureau virtuel d'agents, la salle de contrôle et Jarvis, avec leurs garde-fous"); }
     ok(errors.length === 0, "aucune erreur JavaScript" + (errors.length ? " : " + errors[0] : ""));
     console.log("\nTOUT EST OK");
   } finally { await browser.close(); server.close(); }
