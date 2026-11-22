@@ -145,6 +145,29 @@ function renderFeed(markNew) {
   $("#feed").innerHTML = D.actions.slice(0, 40).map((a) => { const [ic, tx] = actView(a); return `<div class="it ${markNew && a.id > D.lastId ? "new" : ""}"><span class="ic">${ic}</span><div><b>${esc(nameOf(a.agent_id))}</b> ${tx.replace(/</g, "&lt;")}<small>${ago(a.at)}</small></div></div>`; }).join("") || `<div class="muted">Aucune action récente.</div>`;
   if (markNew) for (const a of fresh.slice(0, 6).reverse()) (view3d ? view3d.fx(a) : fx(a)); if (D.actions.length) D.lastId = Math.max(D.lastId, ...D.actions.map((a) => a.id));
 }
+function renderAlerts() {
+  const now = Date.now(), day = 24 * 3600e3;
+  const items = [];
+  for (const t of D.tasks) {
+    if (["bloquee", "echouee"].includes(t.statut) && now - Date.parse(t.updated_at) < day) {
+      items.push({ level: "bad", title: t.statut === "echouee" ? "Mission échouée" : "Mission bloquée", detail: t.titre, agent: t.agent_id, at: Date.parse(t.updated_at) || 0 });
+    } else if (t.statut === "en_cours" && t.started_at && now - Date.parse(t.started_at) > 90 * 60000) {
+      items.push({ level: "warn", title: "Mission sans évolution détectée", detail: t.titre, agent: t.agent_id, at: Date.parse(t.started_at) || 0 });
+    }
+  }
+  for (const a of D.actions) {
+    if (a.ok === false && now - Date.parse(a.at) < day) {
+      items.push({ level: "bad", title: "Action en erreur", detail: String(a.action || "Action inconnue").replace(/^abonnement_/, "").replace(/_/g, " "), agent: a.agent_id, at: Date.parse(a.at) || 0 });
+    }
+  }
+  const b = D.budget, budgetPct = b && Number(b.budget_jour_usd) > 0 ? 100 * Number(b.jour_usd ?? 0) / Number(b.budget_jour_usd) : null;
+  if (budgetPct !== null && budgetPct >= 90) items.push({ level: "warn", title: "Budget IA proche de sa limite", detail: `${Math.round(budgetPct)} % du budget journalier consommé`, at: now });
+  items.sort((a, b) => (a.level === b.level ? b.at - a.at : a.level === "bad" ? -1 : 1));
+  const shown = items.slice(0, 6), count = items.length;
+  const el = $("#alerts");
+  el.innerHTML = `<div class="alerts-head"><h2>Points à surveiller</h2><span class="alerts-count ${count ? "has-alert" : ""}">${count} ${count > 1 ? "alertes" : "alerte"}</span></div>` +
+    (shown.length ? shown.map((a) => `<button type="button" class="alert-item ${a.level}" ${a.agent ? `data-alert-agent="${esc(a.agent)}"` : ""}><i></i><span><b>${esc(a.title)}</b><small>${esc(a.detail)}${a.agent ? " · " + esc(nameOf(a.agent)) : ""}</small></span></button>`).join("") : `<p class="alerts-clear">Aucun incident détecté sur les données disponibles.</p>`);
+}
 function renderHealth() {
   const h = health(), col = h.score >= 85 ? "#22C55E" : h.score >= 65 ? "#22D3EE" : h.score >= 40 ? "#F59E0B" : "#EF4444", lab = h.score >= 85 ? "Excellent" : h.score >= 65 ? "Sous contrôle" : h.score >= 40 ? "À surveiller" : "Critique";
   const C = 2 * Math.PI * 44, b = D.budget, pb = b && Number(b.budget_jour_usd) ? Math.round(100 * Number(b.jour_usd ?? 0) / Number(b.budget_jour_usd)) : null;
@@ -246,6 +269,7 @@ cv.addEventListener("pointermove", (ev) => {
 });
 cv.addEventListener("pointerleave", () => { hover = null; tip.hidden = true; });
 cv.addEventListener("click", (ev) => { const { n } = pick(ev); D.sel = n && n.id !== D.sel ? n.id : null; renderDetail(); });
+$("#alerts").addEventListener("click", (ev) => { const item = ev.target.closest("[data-alert-agent]"); if (!item) return; D.sel = item.dataset.alertAgent; view3d?.focus(D.sel); renderDetail(); });
 $("#mission-filters").addEventListener("click", (ev) => { const b = ev.target.closest("[data-filter]"); if (!b) return; D.taskFilter = b.dataset.filter; renderMissions(); });
 $("#missions").addEventListener("click", (ev) => { const m = ev.target.closest("[data-agent]"); if (m) { D.sel = m.dataset.agent; view3d?.focus(D.sel); renderDetail(); } });
 
@@ -276,7 +300,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); renderKpis(); renderMissions(); renderFeed(!D.first); renderHealth(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); renderKpis(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
