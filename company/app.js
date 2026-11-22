@@ -682,6 +682,13 @@ document.addEventListener("keydown", (e) => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches?.(".node[data-act], tr[data-act]")) { e.preventDefault(); e.target.click(); }
 });
 $("#modal").addEventListener("click", (e) => { if (e.target.id === "modal") ACT["close-modal"](); });
+// Salle de contrôle : fenêtre d'affichage en direct. Ouverte par window.open (sans noopener) pour hériter de la session ; c'est CE bureau qui renouvelle le jeton et le lui transmet.
+$("#open-live")?.addEventListener("click", () => { window.open("live.html", "sanix-live", "popup=yes,width=1600,height=900"); });
+window.addEventListener("message", async (ev) => {
+  if (ev.origin !== location.origin || ev.data?.type !== "sanix-live-need-session" || !ev.source) return;
+  const { data: { session } } = await S.sb.auth.getSession();
+  if (session?.access_token) ev.source.postMessage({ type: "sanix-session", access_token: session.access_token, refresh_token: session.refresh_token }, location.origin);
+});
 $("#logout").addEventListener("click", async () => { await S.sb.auth.signOut(); location.reload(); });
 window.addEventListener("hashchange", () => { const t = location.hash.slice(1); if (t && t !== S.tab) go(t); });
 

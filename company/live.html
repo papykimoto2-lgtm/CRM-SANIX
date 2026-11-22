@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>SANIX AI · Salle de contrôle</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#050B16">
+<link rel="icon" href="../icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="live.css">
+</head>
+<body>
+<div id="gate" hidden><div class="gatebox"><h1>Salle de contrôle</h1><p id="gate-msg"></p><a class="btn" href="./">Ouvrir le Bureau SANIX AI</a></div></div>
+<div id="live" hidden>
+  <header class="hd">
+    <div class="logo"><i class="pulse"></i><div><b>SANIX AI · SALLE DE CONTRÔLE</b><span>Entreprise virtuelle — activité des agents en direct</span></div></div>
+    <div class="grow"></div>
+    <div class="clock" id="clock" aria-live="off"></div>
+    <div class="conn" id="conn"><i></i><span>Connexion…</span></div>
+    <button class="btn" id="fs" type="button" title="Plein écran">⛶</button>
+  </header>
+  <section class="kpis" id="kpis" aria-label="Indicateurs"></section>
+  <main class="grid">
+    <aside class="col left">
+      <div class="card" id="detail" hidden></div>
+      <div class="card grow"><h2>Missions en direct</h2><div id="missions" class="list"></div></div>
+    </aside>
+    <section class="stage">
+      <canvas id="net" aria-label="Réseau des agents : un point lumineux par agent, animé quand il travaille"></canvas>
+      <div class="legend" id="legend"></div>
+      <div class="tip" id="tip" hidden></div>
+    </section>
+    <aside class="col right">
+      <div class="card health" id="health"></div>
+      <div class="card grow"><h2>Flux d'actions</h2><div id="feed" class="list feed"></div></div>
+    </aside>
+  </main>
+  <footer class="ticker"><b>NOUVELLES FICHES</b><div class="marquee"><div class="track" id="ticker"><span class="muted">En attente des premières fiches…</span></div></div></footer>
+</div>
+<script src="vendor/supabase.umd.js"></script>
+<script type="module" src="live.js"></script>
+</body>
+</html>
