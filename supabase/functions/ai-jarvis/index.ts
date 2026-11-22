@@ -3,14 +3,15 @@
 import { audit, cors, db, errMsg, HttpError, json, requireOperator } from "../_shared/core.ts";
 import { BudgetError, callClaude, LlmKeyMissingError, ProviderBillingError, ProviderConfigurationError, TransientLlmError } from "../_shared/llm.ts";
 import { buildContext, cleanHistory, JARVIS_FORMAT, knownCrmIds, knownIds, parseReply, SYSTEM } from "../_shared/company/jarvis.ts";
+import { commissions, compta, FINANCE_LIMITES, knownFinanceIds, levee } from "../_shared/company/jarvis_finance.ts";
 
 
 // Financial snapshot is built server-side after requireOperator: never trust browser-supplied financial figures.
 function asksFinance(message: string): boolean {
   const q = message.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/['’]/g, " ").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
-  return /(^| )(ca|chiffre d affaires|chiffre affaires|chiffre affaire|chiffres affaires|vente|ventes|commande|commandes|encaissement|encaissements|acompte|acomptes|solde|soldes|facture|factures|finance|financier|financiere|tresorerie|depense|depenses|charge|charges|marge|rentabilite|paiement|paiements|budget|comptabilite|ecriture|ecritures|benefice|profit|resultat)( |$)/.test(q);
+  return /(^| )(ca|chiffre d affaires|chiffre affaires|chiffre affaire|chiffres affaires|vente|ventes|commande|commandes|encaissement|encaissements|acompte|acomptes|solde|soldes|facture|factures|finance|financier|financiere|tresorerie|depense|depenses|charge|charges|marge|rentabilite|paiement|paiements|budget|comptabilite|ecriture|ecritures|benefice|profit|resultat|commission|commissions|levee|financeur|financeurs|financement|tva|creance|creances|syscohada|journal|balance|grand livre|sig|fec|investisseur|investisseurs|subvention|banque|banques)( |$)/.test(q);
 }
-async function loadFinanceSnapshot(): Promise<Record<string, unknown>> {
+async function loadFinanceSnapshot(message = ""): Promise<Record<string, unknown>> {
   const { data, error } = await db().from("crm_records").select("entity,rid,data,updated_at")
     .in("entity", ["commandes", "ecritures", "documents", "pil_depenses", "pil_config"])
     .is("deleted_at", null).limit(1500);
@@ -52,10 +53,24 @@ async function loadFinanceSnapshot(): Promise<Record<string, unknown>> {
     db().from("ai_actions").select("cout_usd").eq("action", "llm_turn").gte("at", month + "-01T00:00:00Z").limit(5000),
     db().from("ai_governance").select("budget_mois_usd").eq("id", 1).maybeSingle(),
   ]);
+  // Onglets Comptabilité, Commissions et Levée de fonds : calculés côté serveur (jamais à partir de chiffres fournis par le navigateur)
+  const lite = await db().from("crm_records").select("entity,client:data->>client,commercial:data->>commercial,logiciel:data->>logiciel,stage:data->>stage,tva:data->>tva,date:data->>date,statut:data->>statut,montant:data->>montant,cmdId:data->>cmdId")
+    .in("entity", ["deals", "contrats", "config"]).is("deleted_at", null).limit(4000);
+  const lr = (lite.data ?? []) as unknown as Record<string, unknown>[], of = (e: string) => lr.filter((r) => r.entity === e);
+  const tva = Number(of("config")[0]?.tva) || 18;
+  const [fin, con, bro] = await Promise.all([
+    db().from("levee_financeurs").select("id,nom,type,pays,region,statut,pertinence,ticket_min,ticket_max,devise,notes").limit(1000),
+    db().from("levee_contacts").select("id,financeur_id").limit(3000), db().from("levee_brouillons").select("id,financeur_id,canal,objet,statut,created_at").limit(1000)]);
+  const ordersFull = by("commandes"), contrats = of("contrats").map((r) => ({ ...r, cmdId: r.cmdId || undefined }));
+  const extra = {
+    compta_syscohada: compta({ commandes: ordersFull, contrats, tva }),
+    commissions: commissions({ deals: of("deals"), commandes: ordersFull, tva }),
+    levee: fin.error ? { disponible: false } : levee({ financeurs: fin.data ?? [], contacts: con.data ?? [], brouillons: bro.data ?? [] }, message),
+  };
   const costRows = costRowsResult.error ? null : (costRowsResult.data ?? []);
   const aiBudget = budgetResult.error ? null : budgetResult.data?.budget_mois_usd ?? null;
   return {
-    disponible: true, devise: "FCFA", date_analyse: today, mois: month,
+    ...extra, disponible: true, devise: "FCFA", date_analyse: today, mois: month,
     commandes: {
       nombre: orders.length, ca_ht_total: sum(orders, ht), ca_ht_mois: sum(monthOrders, ht),
       ca_ht_30_jours: period(orders, ht, daysAgo(30), today), ca_ht_90_jours: period(orders, ht, daysAgo(90), today),
@@ -82,6 +97,7 @@ async function loadFinanceSnapshot(): Promise<Record<string, unknown>> {
       "Dépenses limitées aux lignes saisies dans Budget & actions ; les écritures comptables ne sont pas agrégées.",
       "Aucun bénéfice net, trésorerie bancaire ou marge par logiciel ne peut être déduit de ces seuls champs.",
       "Coûts IA en USD, séparés des montants FCFA.",
+      ...FINANCE_LIMITES,
     ],
   };
 }
@@ -100,7 +116,7 @@ Deno.serve(async (req) => {
     const context = body.context && typeof body.context === "object" ? { ...(body.context as Record<string, unknown>) } : {};
     delete context.finance; // les chiffres financiers fournis par le navigateur ne sont jamais fiables
     if (asksFinance(message)) {
-      try { context.finance = await loadFinanceSnapshot(); }
+      try { context.finance = await loadFinanceSnapshot(message); }
       catch { context.finance = { disponible: false }; }
     }
     const user = `CONTEXTE EN DIRECT\n${buildContext(context)}\n\nDEMANDE DU PRÉSIDENT : ${message}`;
@@ -110,7 +126,7 @@ Deno.serve(async (req) => {
       format: JARVIS_FORMAT as unknown as Record<string, unknown>,
     });
     const text = out.content.map((b) => (b.type === "text" ? b.text : "")).join("");
-    const r = parseReply(text, knownIds(context), knownCrmIds(context));
+    const r = parseReply(text, knownIds(context), knownCrmIds(context), knownFinanceIds(context.finance));
     await audit({ agent: "jarvis", action: "jarvis_reponse", ok: true, payload: { par: op.user_id, nb_actions: r.actions.length } });
     return json(req, r, 200);
   } catch (e) {
