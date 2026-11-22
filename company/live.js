@@ -222,6 +222,46 @@ function renderFinance() {
     <div class="top-costs"><small>Agents les plus coûteux</small>${top.length ? top.map(a => `<div><span>${esc(a.nom)}</span><b>${money(a.cout_usd)}</b></div>`).join("") : '<p class="panel-muted">Aucun coût agent sur la période.</p>'}</div>
     <p class="panel-note">Prévision calculée au rythme de dépense observé. Ce panneau suit les coûts IA, pas la trésorerie ni les charges comptables de l'entreprise.</p>`;
 }
+function renderAgentPerformance() {
+  const el = $("#performance-panel");
+  if (!el) return;
+  const active = D.agents.filter(a => !["suspendu", "archive"].includes(a.etat));
+  const costs = new Map((D.costCenter?.agents || []).map(a => [String(a.nom || "").trim().toLocaleLowerCase(), Number(a.cout_usd) || 0]));
+  const rows = active.map(a => {
+    const mine = D.tasks.filter(t => t.agent_id === a.id);
+    const actions = D.actions.filter(x => x.agent_id === a.id);
+    const evaluated = actions.filter(x => typeof x.ok === "boolean");
+    const successes = evaluated.filter(x => x.ok === true).length;
+    return {
+      agent: a,
+      done: mine.filter(t => t.statut === "terminee").length,
+      open: mine.filter(t => OPENS.includes(t.statut)).length,
+      blocked: mine.filter(t => ["bloquee", "echouee"].includes(t.statut)).length,
+      actions: actions.length,
+      evaluated: evaluated.length,
+      successes,
+      cost: costs.get(String(a.nom || "").trim().toLocaleLowerCase()) ?? null
+    };
+  }).sort((a,b) => b.done-a.done || b.open-a.open || b.actions-a.actions);
+  const evaluated = D.actions.filter(x => typeof x.ok === "boolean");
+  const success = evaluated.filter(x => x.ok === true).length;
+  const rate = evaluated.length ? Math.round(success * 100 / evaluated.length) : null;
+  const fmtCost = v => "$" + Number(v || 0).toFixed(2);
+  el.innerHTML = `<div class="panel-head"><h2>Performance des agents</h2><span class="panel-source">Activité · 7 jours</span></div>
+    <div class="performance-summary">
+      <div><b>${active.length}</b><small>Agents actifs</small></div>
+      <div><b>${D.tasks.filter(t => t.statut === "terminee").length}</b><small>Missions terminées</small></div>
+      <div><b>${rate === null ? "n/d" : rate + " %"}</b><small>Actions réussies*</small></div>
+    </div>
+    <div class="performance-head"><span>Agent</span><span>Terminées</span><span>Ouvertes</span><span>Actions*</span><span>Coût 30 j</span></div>
+    <div class="performance-list">${rows.slice(0,10).map(r => `<button type="button" class="performance-row" data-performance-agent="${esc(r.agent.id)}" aria-label="Afficher les missions de ${esc(r.agent.nom)}">
+      <span class="performance-name"><b>${esc(r.agent.nom)}</b><small>${esc(r.agent.fonction || "Agent")}</small></span>
+      <b class="performance-done">${r.done}</b><b>${r.open}</b>
+      <span class="performance-actions">${r.evaluated ? `${r.successes}/${r.evaluated}` : `${r.actions} · n/d`}</span>
+      <b class="performance-cost">${r.cost === null ? "n/d" : fmtCost(r.cost)}</b>
+    </button>`).join("")}</div>
+    <p class="panel-note">Missions : tâches actualisées sur 7 jours. * Actions : 60 événements les plus récents, uniquement ceux dont le résultat est renseigné. Coûts : fenêtre de 30 jours. Ce classement décrit l'activité observée, pas une note individuelle ni une comparaison corrigée de la difficulté des missions.</p>`;
+}
 function renderWhatsApp() {
   const el = $("#whatsapp-panel"); if (!el) return;
   const w = D.whatsapp;
@@ -376,6 +416,7 @@ cv.addEventListener("click", (ev) => { const { n } = pick(ev); D.sel = n && n.id
 $("#alerts").addEventListener("click", (ev) => { const item = ev.target.closest("[data-alert-agent]"); if (!item) return; D.sel = item.dataset.alertAgent; view3d?.focus(D.sel); renderDetail(); });
 $("#mission-filters").addEventListener("click", (ev) => { const b = ev.target.closest("[data-filter]"); if (!b) return; D.taskFilter = b.dataset.filter; renderWorkflow(); renderMissions(); });
 $("#workflow-steps").addEventListener("click", (ev) => { const b = ev.target.closest("[data-workflow-filter]"); if (!b) return; D.taskFilter = b.dataset.workflowFilter; renderWorkflow(); renderMissions(); });
+$("#performance-panel").addEventListener("click", (ev) => { const b = ev.target.closest("[data-performance-agent]"); if (!b) return; D.sel = b.dataset.performanceAgent; view3d?.focus(D.sel); renderDetail(); });
 $("#missions").addEventListener("click", (ev) => { const m = ev.target.closest("[data-agent]"); if (m) { D.sel = m.dataset.agent; view3d?.focus(D.sel); renderDetail(); } });
 
 // ───────── Vue 3D (repli 2D si WebGL indisponible ou ?2d) ─────────
@@ -405,7 +446,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
