@@ -2,23 +2,23 @@
 
 Statut : **brouillons**. Rien n'est envoyé automatiquement. Chaque message est relu par le président, personnalisé avec le nom du garage, et envoyé par une personne (ou placé dans la file de validation des agents commerciaux).
 
-Faits utilisés, tous issus de la fiche produit : ERP garage (fiches véhicules, ordres de réparation, diagnostics et entretiens, stock de pièces, rendez-vous, caisse, facturation), version de démonstration de 15 jours. **Aucun prix, aucune promesse de résultat, aucune référence client** dans le premier message.
+Faits utilisés, tous issus de la fiche produit : ERP garage (fiches véhicules, ordres de réparation, diagnostics et entretiens, stock de pièces, rendez-vous, caisse, facturation), démonstration gratuite de 20 minutes. **Aucun prix, aucune promesse de résultat, aucune référence client** dans le premier message.
 
 ## Variante A — garage généraliste / mécanique
 > Bonjour {Nom du garage}, ici {Prénom} de SANIX.
 > Nous avons développé AutoGarage Pro, un logiciel pour garages : ordres de réparation, stock de pièces, rendez-vous, caisse et facturation au même endroit.
-> Aimeriez-vous essayer une version de démonstration de 15 jours dans votre garage ?
+> Aimeriez-vous essayer une démonstration gratuite de 20 minutes dans votre garage ?
 > Si ce message ne vous concerne pas, répondez STOP : nous ne vous écrirons plus.
 
 ## Variante B — carrosserie / peinture
 > Bonjour {Nom du garage}, ici {Prénom} de SANIX.
 > AutoGarage Pro aide les ateliers à suivre chaque véhicule de l'entrée à la facture : ordres de réparation, pièces, planning des mécaniciens, devis et facturation.
-> Voulez-vous voir comment cela fonctionnerait pour votre atelier, avec une démonstration de 15 jours ?
+> Voulez-vous voir comment cela fonctionnerait pour votre atelier, avec une démonstration gratuite de 20 minutes ?
 > Répondez STOP pour ne plus recevoir de message de notre part.
 
 ## Variante C — garage qui semble déjà équipé (ex. AUTO EXPERT)
 > Bonjour {Nom du garage}, ici {Prénom} de SANIX.
-> Votre site mentionne un espace de gestion interne. Nous proposons AutoGarage Pro (ordres de réparation, stock de pièces, rendez-vous, caisse, facturation) : seriez-vous ouverts à comparer, sans engagement, avec une démonstration de 15 jours ?
+> Votre site mentionne un espace de gestion interne. Nous proposons AutoGarage Pro (ordres de réparation, stock de pièces, rendez-vous, caisse, facturation) : seriez-vous ouverts à comparer, sans engagement, avec une démonstration gratuite de 20 minutes ?
 > Répondez STOP pour ne plus recevoir de message de notre part.
 
 ## Règles d'envoi
