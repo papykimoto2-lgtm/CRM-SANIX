@@ -52,6 +52,38 @@ export function initJarvis(A, stage) {
   const HELP = "Je peux : donner la situation, le nombre de fiches, qui travaille, les blocages, l'avancement d'un logiciel (par exemple AutoGarage), ce que fait un agent, piloter la caméra (zoom, vue d'ensemble, montre tel agent, rotation, plein cadre) et transmettre une demande au directeur général après votre confirmation.";
 
   let autoMode = false;
+  // ───────── CRM en lecture seule : prospects, clients et leur situation (cache 2 min) ─────────
+  let crmC = { at: 0, rows: [] };
+  async function loadCrm() {
+    if (Date.now() - crmC.at < 120000 && crmC.rows.length) return crmC.rows;
+    const [c, p] = await Promise.all([
+      A.sb.from("crm_records").select("rid,nom:data->>nom,statut:data->>statut,logiciel:data->>logiciel,ville:data->>adresse,ia:data->ia,upd:updated_at").eq("entity", "clients").is("deleted_at", null).order("updated_at", { ascending: false }).limit(900),
+      A.sb.from("ai_prospects").select("crm_rid,stage,score,priorite,last_inbound_at,last_outbound_at,next_action_at,opt_out").not("crm_rid", "is", null).limit(1000)]);
+    if (c.error) throw new Error(c.error.message);
+    const ai = new Map((p.data ?? []).map((x) => [x.crm_rid, x]));
+    crmC = { at: Date.now(), rows: (c.data ?? []).map((r) => { const a = ai.get(r.rid), i = r.ia ?? {};
+      return { nom: r.nom ?? "", statut: r.statut ?? "", logiciel: r.logiciel ?? "", ville: clip(r.ville ?? "", 40), etape: a?.stage ?? i.stage ?? "non traité", score: a?.score ?? i.score ?? null, envoi: a?.last_outbound_at ?? null, reponse: a?.last_inbound_at ?? null, suite: a?.next_action_at ?? null, desinscrit: !!a?.opt_out, maj: r.upd }; }) };
+    return crmC.rows;
+  }
+  const dShort = (x) => (x ? new Date(x).toLocaleDateString("fr-FR", { timeZone: "Africa/Abidjan", day: "2-digit", month: "2-digit" }) : "");
+  async function crmContext(message) {
+    const rows = await loadCrm(), q = norm(message), stop = new Set(["jarvis", "prospect", "prospects", "client", "clients", "situation", "quelle", "quel", "combien", "dans", "pour", "avec", "est", "sont", "les", "des", "que", "qui", "comment", "fiche", "fiches", "crm"]);
+    const toks = q.split(" ").filter((w) => w.length >= 4 && !stop.has(w)), line = (r) => ({ nom: r.nom, logiciel: r.logiciel, statut: r.statut, etape: r.desinscrit ? "désinscrit" : r.etape, score: r.score ?? "", ville: r.ville, dernier_envoi: dShort(r.envoi), derniere_reponse: dShort(r.reponse), prochaine_action: dShort(r.suite) });
+    const byLog = {}, byStatut = {}; let contactes = 0, repondus = 0;
+    for (const r of rows) { byStatut[r.statut || "?"] = (byStatut[r.statut || "?"] ?? 0) + 1; const l = (byLog[r.logiciel || "sans logiciel"] ??= { total: 0, etapes: {} }); l.total++; l.etapes[r.etape] = (l.etapes[r.etape] ?? 0) + 1; if (r.envoi) contactes++; if (r.reponse) repondus++; }
+    const match = new Map();
+    for (const [, [rx]] of Object.entries(PRODUCTS)) if (rx.test(q)) for (const r of rows) if (rx.test(norm(r.logiciel))) match.set(r.nom + r.maj, r);
+    for (const r of rows) if (toks.some((w) => norm(r.nom).includes(w))) match.set(r.nom + r.maj, r);
+    return { resume: { total: rows.length, par_statut: byStatut, contactes, ont_repondu: repondus, par_logiciel: Object.entries(byLog).sort((a, b) => b[1].total - a[1].total).slice(0, 8).map(([logiciel, v]) => ({ logiciel, total: v.total, etapes: v.etapes })) },
+      recents: rows.slice(0, 25).map(line), trouves: [...match.values()].slice(0, 30).map(line) };
+  }
+  async function crmLocalReply(t) {
+    const rows = await loadCrm(); let sel = rows, lab = "";
+    for (const [, [rx, label]] of Object.entries(PRODUCTS)) if (rx.test(t)) { sel = rows.filter((r) => rx.test(norm(r.logiciel))); lab = " " + label; break; }
+    if (!sel.length) return "Je ne trouve aucun prospect" + (lab ? " pour" + lab : "") + " dans le CRM.";
+    const et = {}; for (const r of sel) et[r.etape] = (et[r.etape] ?? 0) + 1;
+    return `${plural(sel.length, "fiche", "fiches")} dans le CRM${lab ? " pour" + lab : ""} : ` + Object.entries(et).map(([k, n]) => `${n} ${k}`).join(", ") + `. ${sel.filter((r) => r.envoi).length} contactées, ${sel.filter((r) => r.reponse).length} ont répondu.`;
+  }
   const RANK = { haute: 0, moyenne: 1, basse: 2 };
   function insights() {
     const out = [], h = A.health(), now = Date.now(), day = 864e5, I = (gravite, constat, piste, texte) => out.push({ gravite, constat, piste, action: texte ? { kind: "instruction", texte } : null });
@@ -92,6 +124,7 @@ export function initJarvis(A, stage) {
     setOrb("think"); setSt("Jarvis réfléchit…");
     try {
       const ctx = snapshot(); try { const r = await A.sb.from("ai_executive_messages").select("auteur,contenu,created_at").order("created_at", { ascending: false }).limit(6); ctx.dg = (r.data ?? []).reverse().map((m) => ({ auteur: m.auteur, texte: m.contenu })); } catch { /* dialogue indisponible */ }
+      try { ctx.crm = await crmContext(raw); } catch { /* CRM indisponible : Jarvis répond avec le reste du contexte */ }
       const call = A.sb.functions.invoke("ai-jarvis", { body: { message: raw, history: hist.slice(-8), context: ctx } });
       const { data, error } = await Promise.race([call, new Promise((_, rej) => setTimeout(() => rej(new Error("délai dépassé")), 25000))]);
       if (error || !data?.reply) throw new Error(error ? await explain(error) : "réponse vide");
@@ -168,6 +201,7 @@ export function initJarvis(A, stage) {
     if (/mode (autonome|plein pouvoir|pleine capacite|plein regime)|(passe|mets|active).*(autonome)/.test(t)) { setAuto(true); return reply("Mode autonome activé. Je lance moi-même les consignes, missions et rapports, sans vous demander confirmation. Rien n'est envoyé à l'extérieur."); }
     if (/mode (prudent|manuel|confirmation)|(desactive|quitte).*(autonome)/.test(t)) { setAuto(false); return reply("Mode prudent. Je vous demanderai confirmation avant chaque action."); }
     { const L = await askLLM(raw); if (L) return L; }   // conversation : Jarvis comprend la demande en langage naturel ; sans serveur, repli sur les réponses locales ci-dessous
+    if (/(prospect|crm|clients?\b|fiches? (client|prospect))/.test(t)) { try { return reply(await crmLocalReply(t)); } catch { /* CRM indisponible */ } }
     if (/quelle heure|il est quelle heure/.test(t)) return reply("Il est " + new Intl.DateTimeFormat("fr-FR", { timeZone: "Africa/Abidjan", hour: "2-digit", minute: "2-digit" }).format(new Date()).replace(":", " heures ") + " à Abidjan.");
     if (/^(aide|que sais tu|tu sais faire quoi|commandes|que peux tu)/.test(t)) return reply(HELP);
     for (const [id, [rx, label]] of Object.entries(PRODUCTS)) if (rx.test(t) && /(ou en est|avancement|point sur|situation|bilan|combien|progress|fiches|mission)/.test(t)) return reply(productReply(id, label));
@@ -213,5 +247,5 @@ export function initJarvis(A, stage) {
   $("#jv-voice").addEventListener("click", (e) => { voiceOn = !voiceOn; e.currentTarget.classList.toggle("on", voiceOn); e.currentTarget.textContent = voiceOn ? "🔊" : "🔇"; if (!voiceOn) window.speechSynthesis?.cancel(); setSt(voiceOn ? "Voix activée" : "Voix désactivée"); });
   $("#jv-hands").addEventListener("click", (e) => { hands = !hands; e.currentTarget.classList.toggle("on", hands); if (hands) { if (!SR) { hands = false; e.currentTarget.classList.remove("on"); setSt("Mains libres indisponible : micro non pris en charge."); return; } if (listening) rec.stop(); setTimeout(startRec, 150); setSt("Mains libres : dites « Jarvis »"); } else { rec?.stop(); setSt("Jarvis prêt"); } });
   addLine("jarvis", "Salle de contrôle en ligne. Dites « Jarvis, situation » ou écrivez votre demande.");
-  window.__jarvis = { insights, auto: () => autoMode, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say };
+  window.__jarvis = { crm: () => crmContext(""), insights, auto: () => autoMode, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say };
 }
