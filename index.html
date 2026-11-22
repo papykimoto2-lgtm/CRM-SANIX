@@ -8664,6 +8664,7 @@ function msgPret(sel){
 function msgRender(){
   const v=document.getElementById('view-messagerie'); if(!v) return;
   const SM=SanixMessagerie, email=_msg.canal==='email', res=_msg.cible=msgCiblage(), sel=msgSelection(res);
+  { const k=msgSegDominant(); if(k!==_msg.segReco){ _msg.segReco=k; msgRenderModeles(); } }   // modèles recommandés pour ces destinataires
   document.getElementById('msg-objet-wrap').style.display=email?'':'none';
   document.getElementById('msg-cible-count').textContent=sel.length;
   // synthèse + liste
@@ -8845,13 +8846,20 @@ function msgModeles(){
   const perso=(CONFIG.messagerieModeles||[]).map(m=>({id:'u'+m.id,rid:m.id,canal:m.canal,titre:m.titre,msg:m.msg,seg:'perso',perso:true}));
   const base=MSG_TEMPLATES.map((t,i)=>({id:'b'+i,canal:t.canal,titre:t.titre,msg:t.msg,seg:t.fc||'gen'}));
   const seg=_msgG('msg-tpl-seg');
-  return perso.concat(base).filter(t=>t.canal===_msg.canal && (!seg || t.seg===seg));
+  const reco=msgSegDominant(), l=perso.concat(base).filter(t=>t.canal===_msg.canal && (!seg || t.seg===seg));
+  l.forEach(t=>{ t.reco = !!reco && reco!=='generic' && t.seg===reco; });
+  return l.filter(t=>t.reco).concat(l.filter(t=>!t.reco));   // le modèle du segment des destinataires passe en tête
+}
+/** Segment commun à tous les destinataires retenus (ex. « partenaire »), ou '' s'ils sont mélangés ou absents. */
+function msgSegDominant(){
+  const r=(_msg.cible&&_msg.cible.retenus)||[]; if(!r.length) return '';
+  const k=fcSegment(r[0].c); return r.every(x=>fcSegment(x.c)===k) ? k : '';
 }
 function msgRenderModeles(){
   const el=document.getElementById('msg-templates'); if(!el) return;
   const l=msgModeles();
   el.innerHTML=l.length ? l.map(t=>'<div class="msg-template'+(_msg.tplId===t.id?' selected':'')+'" onclick="msgChoisirModele(\''+t.id+'\')">'
-    +'<div class="flex items-center gap-2 justify-between"><div style="font-weight:600;font-size:12px">'+_msgEsc(t.titre)+'</div><span style="display:flex;gap:6px;align-items:center">'+(t.perso?'<span class="badge badge-muted">Mon modèle</span><button class="msg-suppr" title="Supprimer ce modèle" onclick="event.stopPropagation();msgSupprimerModele(\''+_msgEsc(t.rid)+'\')">🗑</button>':'')+'<span class="badge '+(t.canal==='wa'?'badge-success':'badge-primary')+'">'+(t.canal==='wa'?'WhatsApp':'Email')+'</span></span></div>'
+    +'<div class="flex items-center gap-2 justify-between"><div style="font-weight:600;font-size:12px">'+(t.reco?'<span class="badge badge-success" style="margin-right:6px">Recommandé</span>':'')+_msgEsc(t.titre)+'</div><span style="display:flex;gap:6px;align-items:center">'+(t.perso?'<span class="badge badge-muted">Mon modèle</span><button class="msg-suppr" title="Supprimer ce modèle" onclick="event.stopPropagation();msgSupprimerModele(\''+_msgEsc(t.rid)+'\')">🗑</button>':'')+'<span class="badge '+(t.canal==='wa'?'badge-success':'badge-primary')+'">'+(t.canal==='wa'?'WhatsApp':'Email')+'</span></span></div>'
     +'<div class="msg-sous" style="margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_msgEsc(SanixMessagerie.separerObjet(t.msg).corps.replace(/\s+/g,' ').slice(0,90))+'…</div></div>').join('')
     : '<div class="msg-vide">Aucun modèle pour ce canal et ce filtre.</div>';
 }
