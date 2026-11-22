@@ -92,6 +92,14 @@
   };
   const invoke = async (fn, { body }) => {
     Q.push({ fn, action: body.action }); CALLS.push({ fn, body });
+    if (fn === "ai-jarvis") {
+      const m = body.message, ag = body.context.agents;
+      if (window.__jarvisDown) return { data: null, error: { message: "Service IA indisponible" } };
+      if (/mission/.test(m)) return { data: { reply: `Je propose de confier cette mission à ${ag[0].nom}. Dois-je la transmettre ?`, actions: [{ type: "propose_mission", agent_id: ag[0].id, titre: "Relancer la prospection", description: "Cibler vingt garages avec contact public.", priorite: 2 }] }, error: null };
+      if (/amélior|proposition/.test(m)) return { data: { reply: "Deux propositions. Un : relancer les missions bloquées. Deux : confier un contrôle des fiches au Data Analyst. Laquelle dois-je lancer ?", actions: [{ type: "propose_instruction", texte: "Analyse les missions bloquées et propose un plan de reprise." }, { type: "propose_mission", agent_id: ag[0].id, titre: "Contrôler les fiches du jour", description: "Contrôler et compléter les fiches créées aujourd'hui.", priorite: 2 }] }, error: null };
+      if (/gros plan/.test(m)) return { data: { reply: "Bien sûr, je rapproche la vue.", actions: [{ type: "zoom_in" }] }, error: null };
+      return { data: { reply: `Il y a ${body.context.kpi.agents_au_travail} agents au travail et ${body.context.kpi.fiches_creees_aujourdhui} fiches créées aujourd'hui.`, actions: [] }, error: null };
+    }
     if (body.action === "instruction") {
       T("ai_executive_messages").push({ id: uid(), user_id: OP, auteur: "president", contenu: body.contenu, created_at: new Date().toISOString() });
       setTimeout(() => { T("ai_executive_messages").push({ id: uid(), user_id: null, auteur: "directeur", contenu: "Bien reçu. Je prépare le plan et reviens vers vous.", created_at: new Date().toISOString() }); window.__emit("ai_executive_messages", "INSERT", T("ai_executive_messages")[T("ai_executive_messages").length - 1]); }, 400);
