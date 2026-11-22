@@ -87,3 +87,6 @@ body.focus .stage{min-height:calc(100dvh - 120px)}
 @keyframes orb{0%{transform:scale(1);opacity:.8}100%{transform:scale(1.45);opacity:0}}
 body.focus #jarvis{bottom:18px}
 @media (max-width:640px){#jv-log{max-height:96px}.hint{display:none}}
+/* Mobile : légende en haut (ne masque plus Jarvis), dock compact, scène plus haute */
+@media (max-width:1100px){.legend{bottom:auto;top:10px;left:10px;right:64px;gap:4px 10px;font-size:10.5px;padding:4px 8px}.legend i{width:8px;height:8px;margin-right:4px}}
+@media (max-width:640px){.stage{min-height:560px}#jarvis{bottom:8px;width:calc(100% - 16px)}.jv-bar{padding:6px 8px;gap:6px}.orb{width:40px;height:40px}.jb{width:32px;height:32px}.jv-mid input{font-size:16px}#jv-log .ln{font-size:12px}}
