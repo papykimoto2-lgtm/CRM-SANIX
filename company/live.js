@@ -3,6 +3,7 @@
 // Fenêtre ouverte depuis le Bureau (window.open) : la session est copiée puis renouvelée par le Bureau (postMessage), jamais par cette fenêtre,
 // pour éviter que deux fenêtres renouvellent le même jeton.
 import { SUPABASE_DEFAULT } from "./config.js";
+import { initJarvis } from "./live_voice.js";
 
 const $ = (s) => document.querySelector(s);
 const LS = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
@@ -122,7 +123,7 @@ const actView = (a) => { const d = ACT[a.action], p = a.payload ?? {}; if (!d) r
 function renderFeed(markNew) {
   const fresh = D.actions.filter((a) => a.id > D.lastId);
   $("#feed").innerHTML = D.actions.slice(0, 40).map((a) => { const [ic, tx] = actView(a); return `<div class="it ${markNew && a.id > D.lastId ? "new" : ""}"><span class="ic">${ic}</span><div><b>${esc(nameOf(a.agent_id))}</b> ${tx.replace(/</g, "&lt;")}<small>${ago(a.at)}</small></div></div>`; }).join("") || `<div class="muted">Aucune action récente.</div>`;
-  if (markNew) for (const a of fresh.slice(0, 6).reverse()) fx(a); if (D.actions.length) D.lastId = Math.max(D.lastId, ...D.actions.map((a) => a.id));
+  if (markNew) for (const a of fresh.slice(0, 6).reverse()) (view3d ? view3d.fx(a) : fx(a)); if (D.actions.length) D.lastId = Math.max(D.lastId, ...D.actions.map((a) => a.id));
 }
 function renderHealth() {
   const h = health(), col = h.score >= 85 ? "#22C55E" : h.score >= 65 ? "#22D3EE" : h.score >= 40 ? "#F59E0B" : "#EF4444", lab = h.score >= 85 ? "Excellent" : h.score >= 65 ? "Sous contrôle" : h.score >= 40 ? "À surveiller" : "Critique";
@@ -184,7 +185,7 @@ function fx(a) {
   if (a.action === "abonnement_prospect_cree") rings.push({ x: n.x, y: n.y, t0: performance.now(), col });
 }
 function draw(now) {
-  requestAnimationFrame(draw); if (!W) return; const t = now / 1000;
+  requestAnimationFrame(draw); if (!W || view3d) return; const t = now / 1000;
   ctx.clearRect(0, 0, W, H);
   const cx = W / 2, cy = H / 2, R = Math.min(W, H) / 2 - 34;
   for (const s of stars) { ctx.globalAlpha = .25 + .35 * Math.sin(t * s.s + s.p); ctx.fillStyle = "#9FB6E6"; ctx.fillRect(s.x, s.y, 1.4, 1.4); } ctx.globalAlpha = 1;
@@ -225,7 +226,26 @@ cv.addEventListener("pointermove", (ev) => {
 });
 cv.addEventListener("pointerleave", () => { hover = null; tip.hidden = true; });
 cv.addEventListener("click", (ev) => { const { n } = pick(ev); D.sel = n && n.id !== D.sel ? n.id : null; renderDetail(); });
-$("#missions").addEventListener("click", (ev) => { const m = ev.target.closest("[data-agent]"); if (m) { D.sel = m.dataset.agent; renderDetail(); } });
+$("#missions").addEventListener("click", (ev) => { const m = ev.target.closest("[data-agent]"); if (m) { D.sel = m.dataset.agent; view3d?.focus(D.sel); renderDetail(); } });
+
+// ───────── Vue 3D (repli 2D si WebGL indisponible ou ?2d) ─────────
+let view3d = null;
+const api3d = {
+  get D() { return D; }, STATES, clip, agentState, deptColor, onSelect: (id) => { D.sel = id; renderDetail(); },
+  onHover: (h) => { if (!h) { tip.hidden = true; return; } const n = h.n, cur = D.tasks.find((t) => t.agent_id === n.id && t.statut === "en_cours") ?? D.tasks.find((t) => t.agent_id === n.id && OPENS.includes(t.statut));
+    tip.innerHTML = `<b>${esc(n.a.nom)}</b><span class="muted">${esc(n.a.fonction ?? "")}</span><br><span class="tag" style="--c:${STATES[n.st][1]}">${esc(STATES[n.st][0])}</span>${cur ? `<br>${esc(clip(cur.titre, 90))}` : ""}`; tip.hidden = false; tip.style.left = Math.min(W - 290, h.x + 14) + "px"; tip.style.top = Math.max(6, h.y - 10) + "px"; },
+};
+async function init3d() {
+  if (/[?&]2d/.test(location.search)) return;
+  try { const m = await import("./live3d.js"); view3d = m.create($("#stage3d"), api3d); cv.hidden = true; new ResizeObserver(() => view3d?.resize()).observe($("#stage3d")); }
+  catch (e) { console.warn("Vue 3D indisponible, repli sur la vue 2D :", e.message); view3d = null; $("#ctl").hidden = true; $("#hint").hidden = true; }
+}
+function initControls() {
+  $("#ctl").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-c]"); if (!b || !view3d) return; const c = b.dataset.c;
+    if (c === "in") view3d.zoom(.72); else if (c === "out") view3d.zoom(1.4); else if (c === "reset") view3d.reset(); else if (c === "auto") b.classList.toggle("on", view3d.toggleAuto());
+    else if (c === "focus") { document.body.classList.toggle("focus"); setTimeout(() => view3d.resize(), 60); } });
+  setTimeout(() => $("#hint")?.classList.add("off"), 9000);
+}
 
 // ───────── Boucle principale ─────────
 function tick() {
@@ -235,7 +255,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); renderKpis(); renderMissions(); renderFeed(!D.first); renderHealth(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); renderKpis(); renderMissions(); renderFeed(!D.first); renderHealth(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
@@ -247,8 +267,11 @@ async function boot() {
   $("#gate").hidden = true; $("#live").hidden = false; renderLegend(); resize(); new ResizeObserver(resize).observe(cv.parentElement);
   $("#fs").addEventListener("click", () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.()));
   requestAnimationFrame(draw); tick(); setInterval(tick, 1000); askSession(); setInterval(askSession, 20 * 60000);
+  await init3d(); initControls();
+  window.__jarvisApi = { D, sb, STATES, health, agentState, nameOf, agentById, OPENS, TASK_L, targetOf, get view() { return view3d; }, setFocus: (on) => { document.body.classList.toggle("focus", on); setTimeout(() => view3d?.resize(), 60); }, isFocus: () => document.body.classList.contains("focus"), fullscreen: () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.()), refresh: () => cycle() };
+  initJarvis(window.__jarvisApi, $("#stage3d").parentElement);
   await cycle(); setInterval(() => cycle(), /[?&]fast/.test(location.search) ? 800 : 6000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) cycle(); });
 }
-if (/[?&]debug/.test(location.search)) window.__live = { D, nodes: () => nodes, cycle };
+if (/[?&]debug/.test(location.search)) window.__live = { D, nodes: () => nodes, cycle, get view3d() { return view3d; } };
 boot();

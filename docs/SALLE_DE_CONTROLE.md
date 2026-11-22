@@ -13,3 +13,16 @@ Fenêtre d'affichage en direct de l'activité des agents, pour un second écran,
 - Le statut d'un agent est déduit de ses missions (les agents en mode abonnement ne publient pas d'activité détaillée).
 - La fenêtre hérite de la session du Bureau (`window.open`) ; c'est le Bureau qui renouvelle le jeton et le lui transmet (`postMessage`, même origine). Si le Bureau est fermé, la salle fonctionne jusqu'à l'expiration du jeton, puis demande de la rouvrir depuis le Bureau.
 - `?kiosk=1` masque les boutons (affichage mural). Test : `node company/tests/live_test.js`.
+
+## Vue 3D et assistant vocal « Jarvis »
+
+**Vue 3D** (Three.js, locale, aucune dépendance externe) : le directeur général au centre, les agents en anneaux par niveau et par département. Un agent au travail s'allume et un anneau tourne autour de lui ; les liens hiérarchiques actifs s'illuminent ; chaque nouvelle fiche déclenche une impulsion lumineuse de l'agent vers le centre.
+- Glisser : tourner · molette / pincement : zoomer · clic droit, Maj+glisser ou deux doigts : déplacer · double-clic : vue d'ensemble · clic sur un agent : la caméra s'en approche et sa fiche s'ouvre.
+- Boutons : zoom +/−, vue d'ensemble, rotation automatique, plein cadre (masque les panneaux).
+- Repli automatique en vue 2D si WebGL est indisponible ; `?2d` force la vue 2D.
+
+**Jarvis** (Web Speech API du navigateur, sans clé ni service tiers ; Chrome/Edge/Safari) :
+- 🎤 (orbe) : parler une fois ; 🖐 mains libres : dire « Jarvis » pour l'appeler ; 🔊 voix on/off ; saisie au clavier toujours possible.
+- Réponses calculées localement sur les données réelles : situation, fiches du jour / total, qui travaille, blocages, santé, validations, budget, avancement d'un logiciel (« où en est AutoGarage ? »), ce que fait un agent.
+- Caméra à la voix : « zoom avant / arrière », « vue d'ensemble », « montre le directeur commercial », « arrête / lance la rotation », « plein cadre ».
+- Toute autre demande : Jarvis propose de la transmettre au directeur général IA ; **rien n'est envoyé sans « oui »**. La réponse du directeur est ensuite lue à voix haute dès son arrivée.
