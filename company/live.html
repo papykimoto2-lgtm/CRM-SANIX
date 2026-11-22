@@ -26,6 +26,10 @@
       <div class="card grow mission-card"><div class="mission-head"><h2>Missions en direct</h2><span id="mission-summary" class="mission-summary" aria-live="polite">Chargement…</span></div><nav class="mission-filters" id="mission-filters" aria-label="Filtrer les missions"><button type="button" data-filter="all" class="on" aria-pressed="true">Toutes</button><button type="button" data-filter="en_cours" aria-pressed="false">En cours</button><button type="button" data-filter="waiting" aria-pressed="false">En attente</button><button type="button" data-filter="attente_validation" aria-pressed="false">À valider</button><button type="button" data-filter="blocked" aria-pressed="false">Bloquées</button></nav><div id="missions" class="list"></div></div>
     </aside>
     <section class="stage">
+      <section class="workflow-panel" id="workflow-panel" aria-label="Cartographie des workflows">
+        <div class="workflow-top"><div><b>WORKFLOW ROUTING</b><small>Missions chargées sur 7 jours · actualisation automatique</small></div><div class="agent-health" id="agent-health"></div></div>
+        <div class="workflow-steps" id="workflow-steps" aria-live="polite"></div>
+      </section>
       <div id="stage3d"></div>
       <canvas id="net" aria-label="Réseau des agents : un point lumineux par agent, animé quand il travaille"></canvas>
       <div class="ctl" id="ctl" role="toolbar" aria-label="Caméra">

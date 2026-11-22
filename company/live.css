@@ -272,3 +272,33 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
   .col.right .health{flex-basis:126px;min-height:126px;max-height:126px}
   .col.right .health .gauge{width:70px;height:70px}
 }
+
+
+/* V8 — SANIX AI Command Center : cartographie opérationnelle des workflows. */
+.workflow-panel{position:absolute;z-index:4;top:12px;left:12px;right:62px;display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid rgba(71,102,153,.55);border-radius:13px;background:linear-gradient(135deg,rgba(7,17,35,.94),rgba(10,24,47,.84));box-shadow:0 12px 32px rgba(0,0,0,.28);backdrop-filter:blur(9px)}
+.workflow-top{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+.workflow-top>div:first-child{display:flex;flex-direction:column;gap:1px;min-width:0}
+.workflow-top b{font-size:10px;letter-spacing:.16em;color:#C7D8F5}
+.workflow-top small{font-size:9px;color:var(--mute)}
+.agent-health{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;font-size:9px;color:#B7C8E7}
+.agent-health span{white-space:nowrap;display:flex;align-items:center;gap:4px}
+.agent-health .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+.agent-health .run{background:#22D3EE;box-shadow:0 0 7px #22D3EE}
+.agent-health .wait{background:#A855F7;box-shadow:0 0 7px #A855F7}
+.agent-health .idle{background:#64748B}
+.workflow-steps{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px}
+.workflow-step{position:relative;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:6px 8px;border:1px solid rgba(66,91,132,.6);border-radius:8px;background:rgba(9,21,42,.88);color:var(--mute);text-align:left;cursor:pointer;transition:border-color .2s,background .2s,transform .2s}
+.workflow-step:hover{border-color:var(--cy);background:rgba(34,211,238,.09);transform:translateY(-1px)}
+.workflow-step span{font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.workflow-step b{font:700 17px/1.1 ui-monospace,monospace;color:var(--tx)}
+.workflow-step .workflow-arrow{position:absolute;right:-7px;top:16px;z-index:2;color:#607BA8;font:16px/1 system-ui;font-style:normal}
+.workflow-step.run{border-color:rgba(34,211,238,.45)}.workflow-step.run b{color:#22D3EE}
+.workflow-step.wait{border-color:rgba(168,85,247,.45)}.workflow-step.wait b{color:#C084FC}
+.workflow-step.valid{border-color:rgba(245,158,11,.45)}.workflow-step.valid b{color:#FBBF24}
+.workflow-step.bad{border-color:rgba(239,68,68,.5)}.workflow-step.bad b{color:#F87171}
+.workflow-step.done{border-color:rgba(34,197,94,.4)}.workflow-step.done b{color:#4ADE80}
+@media (max-width:1100px){.workflow-panel{left:10px;right:58px;top:10px;padding:8px}.workflow-steps{grid-template-columns:repeat(3,minmax(0,1fr))}.workflow-step .workflow-arrow{display:none}}
+@media (max-width:640px){.workflow-panel{left:8px;right:54px;top:8px;padding:7px;gap:6px}.workflow-top{align-items:flex-start;flex-direction:column}.agent-health{justify-content:flex-start;gap:8px}.workflow-step{padding:5px}.workflow-step b{font-size:15px}.workflow-step span{font-size:8px}}
+
+.workflow-step.selected{border-color:var(--cy);background:linear-gradient(135deg,rgba(34,211,238,.16),rgba(34,211,238,.05));box-shadow:inset 0 0 0 1px rgba(34,211,238,.22),0 0 12px rgba(34,211,238,.08)}
+.workflow-step.selected span{color:#E8FBFF}

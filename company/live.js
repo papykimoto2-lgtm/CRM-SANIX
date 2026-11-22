@@ -112,22 +112,47 @@ function renderKpis() {
   $("#k-usd").textContent = b ? `${Number(b.jour_usd ?? 0).toFixed(2)} $` : "–";
   $("#k-usd-e").textContent = b ? `sur ${usd(b.budget_jour_usd)} · mois ${usd(b.mois_usd)}` : "";
 }
-function renderMissions() {
-  const order = { en_cours: 0, attente_sous_taches: 1, attente_validation: 2, a_faire: 3, bloquee: 4, echouee: 5 };
-  const all = D.tasks.filter((t) => t.statut in order && (t.statut !== "bloquee" || Date.now() - Date.parse(t.updated_at) < 24 * 3600e3));
+function renderWorkflow() {
   const counts = {
-    run: all.filter((t) => t.statut === "en_cours").length,
-    waiting: all.filter((t) => ["a_faire", "attente_sous_taches"].includes(t.statut)).length,
-    valid: all.filter((t) => t.statut === "attente_validation").length,
-    blocked: all.filter((t) => ["bloquee", "echouee"].includes(t.statut)).length,
+    todo: D.tasks.filter(t => t.statut === "a_faire").length,
+    running: D.tasks.filter(t => t.statut === "en_cours").length,
+    coordination: D.tasks.filter(t => t.statut === "attente_sous_taches").length,
+    validation: D.tasks.filter(t => t.statut === "attente_validation").length,
+    blocked: D.tasks.filter(t => ["bloquee", "echouee"].includes(t.statut)).length,
+    done: D.tasks.filter(t => t.statut === "terminee").length,
+  };
+  const active = D.agents.filter(a => !["suspendu", "archive"].includes(a.etat));
+  const working = active.filter(a => agentState(a) === "run").length;
+  const waiting = active.filter(a => ["wait", "valid", "queue"].includes(agentState(a))).length;
+  const idle = Math.max(0, active.length - working - waiting);
+  $("#agent-health").innerHTML = `<span><i class="dot run"></i>${working} au travail</span><span><i class="dot wait"></i>${waiting} en attente</span><span><i class="dot idle"></i>${idle} disponibles</span>`;
+  const steps = [
+    ["todo", "À traiter", counts.todo, "a_faire", "muted"],
+    ["running", "Exécution", counts.running, "en_cours", "run"],
+    ["coordination", "Coordination", counts.coordination, "attente_sous_taches", "wait"],
+    ["validation", "Validation", counts.validation, "attente_validation", "valid"],
+    ["blocked", "Blocages", counts.blocked, "blocked", "bad"],
+    ["done", "Terminées", counts.done, "terminee", "done"],
+  ];
+  $("#workflow-steps").innerHTML = steps.map(([key,label,n,filter,state],i) => `<button type="button" class="workflow-step ${state} ${D.taskFilter === filter ? "selected" : ""}" data-workflow-filter="${filter}" aria-pressed="${D.taskFilter === filter}" aria-label="Filtrer les missions : ${label}, ${n}"><span>${label}</span><b>${n}</b>${i < steps.length-1 ? '<i class="workflow-arrow" aria-hidden="true">›</i>' : ""}</button>`).join("");
+}
+function renderMissions() {
+  const order = { en_cours: 0, attente_sous_taches: 1, attente_validation: 2, a_faire: 3, bloquee: 4, echouee: 5, terminee: 6 };
+  const all = D.tasks.filter((t) => t.statut in order && (t.statut !== "bloquee" || Date.now() - Date.parse(t.updated_at) < 24 * 3600e3));
+  const open = all.filter((t) => t.statut !== "terminee");
+  const counts = {
+    run: open.filter((t) => t.statut === "en_cours").length,
+    waiting: open.filter((t) => ["a_faire", "attente_sous_taches"].includes(t.statut)).length,
+    valid: open.filter((t) => t.statut === "attente_validation").length,
+    blocked: open.filter((t) => ["bloquee", "echouee"].includes(t.statut)).length,
   };
   const summary = $("#mission-summary");
-  if (summary) summary.textContent = `${all.length} ouvertes · ${counts.run} en cours · ${counts.waiting} en attente · ${counts.valid} à valider · ${counts.blocked} bloquées`;
+  if (summary) summary.textContent = `${open.length} ouvertes · ${counts.run} en cours · ${counts.waiting} en attente · ${counts.valid} à valider · ${counts.blocked} bloquées`;
   document.querySelectorAll("#mission-filters [data-filter]").forEach((b) => {
     const active = b.dataset.filter === D.taskFilter;
     b.classList.toggle("on", active); b.setAttribute("aria-pressed", String(active));
   });
-  const matches = (t) => D.taskFilter === "all" ||
+  const matches = (t) => (D.taskFilter === "all" && t.statut !== "terminee") ||
     (D.taskFilter === "waiting" && ["a_faire", "attente_sous_taches"].includes(t.statut)) ||
     (D.taskFilter === "blocked" && ["bloquee", "echouee"].includes(t.statut)) ||
     t.statut === D.taskFilter;
@@ -349,7 +374,8 @@ cv.addEventListener("pointermove", (ev) => {
 cv.addEventListener("pointerleave", () => { hover = null; tip.hidden = true; });
 cv.addEventListener("click", (ev) => { const { n } = pick(ev); D.sel = n && n.id !== D.sel ? n.id : null; renderDetail(); });
 $("#alerts").addEventListener("click", (ev) => { const item = ev.target.closest("[data-alert-agent]"); if (!item) return; D.sel = item.dataset.alertAgent; view3d?.focus(D.sel); renderDetail(); });
-$("#mission-filters").addEventListener("click", (ev) => { const b = ev.target.closest("[data-filter]"); if (!b) return; D.taskFilter = b.dataset.filter; renderMissions(); });
+$("#mission-filters").addEventListener("click", (ev) => { const b = ev.target.closest("[data-filter]"); if (!b) return; D.taskFilter = b.dataset.filter; renderWorkflow(); renderMissions(); });
+$("#workflow-steps").addEventListener("click", (ev) => { const b = ev.target.closest("[data-workflow-filter]"); if (!b) return; D.taskFilter = b.dataset.workflowFilter; renderWorkflow(); renderMissions(); });
 $("#missions").addEventListener("click", (ev) => { const m = ev.target.closest("[data-agent]"); if (m) { D.sel = m.dataset.agent; view3d?.focus(D.sel); renderDetail(); } });
 
 // ───────── Vue 3D (repli 2D si WebGL indisponible ou ?2d) ─────────
@@ -379,7 +405,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); renderKpis(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
