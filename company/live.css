@@ -348,3 +348,26 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .ops-dept>span:not(:first-child){text-align:right}
 .ops-hot b{color:#F87171}.ops-warn b{color:#FBBF24}
 @media(max-width:480px){.ops-summary b{font-size:15px}.ops-transfer{grid-template-columns:minmax(0,1fr) auto minmax(65px,.7fr);gap:4px}.ops-transfer button{font-size:8px}}
+
+/* V11 — Business Intelligence : commandes CRM, encaissements datés et coûts IA. */
+.bi-panel{min-height:0}
+.bi-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:9px 0}
+.bi-grid>div{padding:9px;border:1px solid var(--line);border-radius:9px;background:rgba(7,19,39,.78);min-width:0}
+.bi-grid b{display:block;color:var(--cy);font:700 15px/1.3 ui-monospace,monospace;overflow-wrap:anywhere}
+.bi-grid small{display:block;color:var(--mute);font-size:9px;line-height:1.35}
+.bi-section{margin-top:12px}
+.bi-section h3{margin:0 0 6px;color:#C7D8F5;font-size:9px;letter-spacing:.1em;text-transform:uppercase}
+.bi-bars{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;align-items:end;min-height:105px;padding:6px 2px}
+.bi-bar-wrap{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;min-width:0}
+.bi-bar-value{font-size:8px;color:var(--mute);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bi-bar{width:70%;min-height:3px;border-radius:4px 4px 0 0;background:linear-gradient(180deg,#22D3EE,#2563EB);box-shadow:0 0 10px rgba(34,211,238,.16)}
+.bi-bar-wrap small{font-size:9px;color:var(--mute);text-transform:capitalize}
+.bi-facts{display:flex;justify-content:space-between;gap:8px;padding:6px 2px;border-bottom:1px solid rgba(42,62,99,.42);font-size:9px}
+.bi-facts span{color:var(--mute)}
+.bi-facts b{color:var(--tx);text-align:right;font:600 10px ui-monospace,monospace}
+.bi-agent-head,.bi-agent{display:grid;grid-template-columns:minmax(0,1.3fr) .8fr .9fr;gap:6px;align-items:center;padding:6px 3px}
+.bi-agent-head{margin-top:8px;color:var(--mute);font-size:8px;text-transform:uppercase}
+.bi-agent{border-top:1px solid rgba(42,62,99,.4);font-size:9px}
+.bi-agent b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bi-agent span{text-align:right;font:600 9px ui-monospace,monospace}
+@media(max-width:480px){.bi-grid b{font-size:12px}.bi-facts{font-size:8px}.bi-agent-head,.bi-agent{grid-template-columns:minmax(0,1fr) .7fr .8fr;gap:3px}}
