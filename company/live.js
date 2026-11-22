@@ -262,6 +262,59 @@ function renderAgentPerformance() {
     </button>`).join("")}</div>
     <p class="panel-note">Missions : tâches actualisées sur 7 jours. * Actions : 60 événements les plus récents, uniquement ceux dont le résultat est renseigné. Coûts : fenêtre de 30 jours. Ce classement décrit l'activité observée, pas une note individuelle ni une comparaison corrigée de la difficulté des missions.</p>`;
 }
+function renderOperationsDirector() {
+  const el = $("#ops-panel");
+  if (!el) return;
+  const now = Date.now(), hour = 3600e3, day = 24 * hour;
+  const activeAgents = D.agents.filter(a => !["suspendu", "archive"].includes(a.etat));
+  const openTasks = D.tasks.filter(t => OPENS.includes(t.statut));
+  const byAgent = new Map(activeAgents.map(a => [a.id, openTasks.filter(t => t.agent_id === a.id)]));
+  const overloaded = activeAgents.filter(a => (byAgent.get(a.id) || []).length >= 4)
+    .sort((a,b) => byAgent.get(b.id).length - byAgent.get(a.id).length);
+  const idle = activeAgents.filter(a => agentState(a) === "idle" && !(byAgent.get(a.id) || []).length);
+  const stalled = D.tasks.filter(t => t.statut === "en_cours" && t.started_at &&
+    Number.isFinite(Date.parse(t.started_at)) && now - Date.parse(t.started_at) > 90 * 60000);
+  const blocked = D.tasks.filter(t => ["bloquee", "echouee"].includes(t.statut) &&
+    Number.isFinite(Date.parse(t.updated_at)) && now - Date.parse(t.updated_at) < day);
+  const repeated = D.tasks.filter(t => OPENS.includes(t.statut) && Number(t.executions) >= 3);
+  const failures = new Map();
+  for (const a of D.actions) {
+    if (a.ok !== false || !a.agent_id || !a.action || !Number.isFinite(Date.parse(a.at)) || now - Date.parse(a.at) > day) continue;
+    const key = a.agent_id + "|" + a.action;
+    failures.set(key, (failures.get(key) || 0) + 1);
+  }
+  const repeatedFailures = [...failures.entries()].filter(([,n]) => n >= 2);
+  const suggestions = [];
+  for (const t of [...stalled, ...blocked].slice(0, 8)) {
+    const owner = agentById(t.agent_id);
+    if (!owner) continue;
+    const target = idle.find(a => a.id !== owner.id && a.departement_id && a.departement_id === owner.departement_id);
+    if (target) suggestions.push({ task:t, owner, target, reason: t.statut === "en_cours" ? "Mission sans évolution depuis plus de 90 min" : "Mission bloquée ou échouée sur les dernières 24 h" });
+  }
+  const deptRows = D.depts.map(d => {
+    const members = activeAgents.filter(a => a.departement_id === d.id);
+    const load = openTasks.filter(t => members.some(a => a.id === t.agent_id)).length;
+    const ratio = members.length ? load / members.length : 0;
+    return { d, members:members.length, load, ratio };
+  }).filter(x => x.members || x.load).sort((a,b) => b.ratio-a.ratio);
+  const fmtAgent = a => esc(a?.nom || "Agent non identifié");
+  const alertCount = stalled.length + blocked.length + repeated.length + repeatedFailures.length + overloaded.length;
+  const recs = [];
+  if (stalled.length) recs.push({level:"warn",title: `${stalled.length} mission(s) sans évolution`,detail:"Vérifier les dépendances, les accès et le dernier résultat avant toute relance."});
+  if (blocked.length) recs.push({level:"bad",title: `${blocked.length} blocage(s) récent(s)`,detail:"Examiner la cause et décider d'une reprise ou d'une escalade."});
+  if (overloaded.length) recs.push({level:"warn",title: `${overloaded.length} agent(s) avec 4 missions ouvertes ou plus`,detail:overloaded.slice(0,3).map(a => `${a.nom} : ${byAgent.get(a.id).length}`).join(" · ")});
+  if (repeated.length) recs.push({level:"warn",title: `${repeated.length} mission(s) avec au moins 3 exécutions déclarées`,detail:"Contrôler les critères de sortie et le risque de boucle avant de relancer."});
+  if (repeatedFailures.length) recs.push({level:"bad",title: `${repeatedFailures.length} séquence(s) d'échecs répétitifs`,detail:"Même agent et même type d'action en échec au moins deux fois sur les événements disponibles."});
+  const recommendationHtml = recs.length ? recs.slice(0,5).map(r => `<div class="ops-recommendation ${r.level}"><i></i><span><b>${esc(r.title)}</b><small>${esc(r.detail)}</small></span></div>`).join("") : '<p class="panel-muted">Aucun signal de dysfonctionnement détecté dans les données chargées.</p>';
+  const transferHtml = suggestions.length ? suggestions.slice(0,4).map(s => `<div class="ops-transfer"><span><b>${esc(clip(s.task.titre,48))}</b><small>${esc(s.reason)} · ${fmtAgent(s.owner)}</small></span><span class="ops-arrow">→</span><button type="button" data-ops-agent="${esc(s.target.id)}" title="Examiner l'agent proposé">${fmtAgent(s.target)}</button></div>`).join("") : '<p class="panel-muted">Aucune réaffectation candidate fiable : il faut un agent disponible du même département.</p>';
+  const deptHtml = deptRows.length ? deptRows.slice(0,5).map(x => `<div class="ops-dept"><span><b>${esc(x.d.nom)}</b><small>${x.members} agent(s)</small></span><span><b>${x.load}</b><small>missions ouvertes</small></span><span class="${x.ratio >= 4 ? "ops-hot" : x.ratio >= 2 ? "ops-warn" : ""}"><b>${x.ratio.toFixed(1)}</b><small>missions / agent</small></span></div>`).join("") : '<p class="panel-muted">Répartition par département indisponible.</p>';
+  el.innerHTML = `<div class="panel-head"><h2>Directeur opérationnel</h2><span class="panel-source">Analyse · lecture seule</span></div>
+    <div class="ops-summary"><div><b>${alertCount}</b><small>Signaux à examiner</small></div><div><b>${overloaded.length}</b><small>Agents surchargés</small></div><div><b>${suggestions.length}</b><small>Réaffectations candidates</small></div></div>
+    <div class="ops-section"><h3>Recommandations de pilotage</h3>${recommendationHtml}</div>
+    <div class="ops-section"><h3>Réaffectations à examiner</h3>${transferHtml}</div>
+    <div class="ops-section"><h3>Charge par département</h3>${deptHtml}</div>
+    <p class="panel-note">Analyse des missions actualisées sur 7 jours (maximum 600), des 60 derniers événements et des agents actifs. Seuils d'alerte indicatifs, non assimilables à une évaluation RH. Les réaffectations sont des propositions : aucune mission n'est modifiée. La rentabilité par département n'est pas calculable sans données fiables de revenus et de coûts analytiques rapprochées.</p>`;
+}
 function renderWhatsApp() {
   const el = $("#whatsapp-panel"); if (!el) return;
   const w = D.whatsapp;
@@ -416,6 +469,7 @@ cv.addEventListener("click", (ev) => { const { n } = pick(ev); D.sel = n && n.id
 $("#alerts").addEventListener("click", (ev) => { const item = ev.target.closest("[data-alert-agent]"); if (!item) return; D.sel = item.dataset.alertAgent; view3d?.focus(D.sel); renderDetail(); });
 $("#mission-filters").addEventListener("click", (ev) => { const b = ev.target.closest("[data-filter]"); if (!b) return; D.taskFilter = b.dataset.filter; renderWorkflow(); renderMissions(); });
 $("#workflow-steps").addEventListener("click", (ev) => { const b = ev.target.closest("[data-workflow-filter]"); if (!b) return; D.taskFilter = b.dataset.workflowFilter; renderWorkflow(); renderMissions(); });
+$("#ops-panel").addEventListener("click", (ev) => { const b = ev.target.closest("[data-ops-agent]"); if (!b) return; D.sel = b.dataset.opsAgent; view3d?.focus(D.sel); renderDetail(); });
 $("#performance-panel").addEventListener("click", (ev) => { const b = ev.target.closest("[data-performance-agent]"); if (!b) return; D.sel = b.dataset.performanceAgent; view3d?.focus(D.sel); renderDetail(); });
 $("#missions").addEventListener("click", (ev) => { const m = ev.target.closest("[data-agent]"); if (m) { D.sel = m.dataset.agent; view3d?.focus(D.sel); renderDetail(); } });
 
@@ -446,7 +500,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
