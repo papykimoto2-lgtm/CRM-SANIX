@@ -16,7 +16,7 @@ const ORIGIN = location.origin;
 const STATES = { run: ["Au travail", "#22D3EE"], wait: ["Coordonne ses équipes", "#A855F7"], valid: ["Attend une validation", "#F59E0B"], bad: ["Mission bloquée", "#EF4444"], queue: ["Mission en attente", "#64748B"], idle: ["Disponible", "#3B5A94"], off: ["Suspendu", "#475569"] };
 const TASK_C = { en_cours: "#22D3EE", attente_sous_taches: "#A855F7", attente_validation: "#F59E0B", a_faire: "#64748B", bloquee: "#EF4444", echouee: "#EF4444", terminee: "#22C55E" };
 const TASK_L = { en_cours: "En cours", attente_sous_taches: "Attend ses équipes", attente_validation: "À valider", a_faire: "À faire", bloquee: "Bloquée", echouee: "Échouée", terminee: "Terminée", annulee: "Annulée" };
-const D = { agents: [], depts: [], tasks: [], tasks90: null, orderRows: null, actions: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, costCenter90: null, salesRows: null, offerRows: null, whatsapp: null, gov: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0 };
+const D = { agents: [], depts: [], tasks: [], tasks90: null, orderRows: null, execRows: null, execConfig: null, products: null, productAliases: null, actions: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, costCenter90: null, salesRows: null, offerRows: null, whatsapp: null, gov: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0 };
 let sb = null;
 
 // ───────── Configuration et session ─────────
@@ -38,7 +38,7 @@ const since = (d) => new Date(Date.now() - d * 86400e3).toISOString();
 async function pull() {
   const day = new Date(); day.setUTCHours(0, 0, 0, 0);
   safe.err = null;
-  const [ag, tk, ac, cr, nT, nA, rc, td, ap, bu, gv, sales, offers, costs, waStatus, waOut, waIn, waOpt, orders, tasks90, costs90] = await Promise.all([
+  const [ag, tk, ac, cr, nT, nA, rc, td, ap, bu, gv, sales, offers, costs, waStatus, waOut, waIn, waOpt, orders, tasks90, costs90, execRows, execConfig, products, productAliases] = await Promise.all([
     safe(sb.from("ai_agents").select("id,code,nom,fonction,niveau,manager_id,departement_id,etat,activite"), null),
     safe(sb.from("ai_agent_tasks").select("id,agent_id,donneur_agent_id,parent_id,type,titre,objectifs,statut,priorite,produit,started_at,updated_at,created_at,executions").gte("updated_at", since(7)).order("updated_at", { ascending: false }).limit(600), null),
     safe(sb.from("ai_actions").select("id,action,agent_id,task_id,payload,ok,at").order("at", { ascending: false }).limit(60), null),
@@ -60,6 +60,10 @@ async function pull() {
     safe(sb.from("crm_records").select("rid,data,updated_at").eq("entity", "commandes").is("deleted_at", null).order("updated_at", { ascending: false }).limit(2000), null),
     safe(sb.from("ai_agent_tasks").select("id,agent_id,statut,updated_at,created_at").gte("updated_at", since(90)).order("updated_at", { ascending: false }).limit(3000), null),
     safe(sb.rpc("ai_cost_center", { p_days: 90 }), null),
+    safe(sb.from("crm_records").select("rid,data,updated_at").in("entity", ["pil_depenses","pil_config"]).is("deleted_at", null).limit(1200), null),
+    safe(sb.from("crm_records").select("rid,data").eq("entity", "pil_config").eq("rid", "main").is("deleted_at", null).maybeSingle(), null),
+    safe(sb.from("ai_products").select("id,nom,actif").eq("actif", true).order("nom"), null),
+    safe(sb.from("ai_product_aliases").select("alias,product_id"), null),
   ]);
   if (!ag?.data || !tk?.data) throw safe.err ?? new Error("Données indisponibles");
   if (!D.depts.length) { const dp = await safe(sb.from("ai_departments").select("id,nom,couleur"), null); D.depts = dp?.data ?? []; }
@@ -72,6 +76,10 @@ async function pull() {
   if (orders?.data) D.orderRows = orders.data;
   if (tasks90?.data) D.tasks90 = tasks90.data;
   if (costs90?.data) D.costCenter90 = costs90.data;
+  if (execRows?.data) D.execRows = execRows.data;
+  if (execConfig?.data?.data) D.execConfig = execConfig.data.data;
+  if (products?.data) D.products = products.data;
+  if (productAliases?.data) D.productAliases = productAliases.data;
 }
 
 // ───────── États dérivés ─────────
@@ -440,6 +448,68 @@ function renderPredictiveDirector() {
     <div class="forecast-facts"><span>Plafond IA mensuel</span><b>${budgetLimit>0?"$"+budgetLimit.toFixed(2):"n/d"}</b></div>
     <p class="panel-note">La projection de CA prolonge le rythme moyen du mois en cours ; elle n'est ni un engagement ni une prédiction statistique. Le pipeline pondéré est une estimation par étape, distincte du CA signé. Les alertes reposent sur les échéances saisies et les données chargées. Aucun objectif mensuel n'est inventé : il n'est pas configuré dans la source actuelle. Les alertes ne déclenchent aucun message ni changement automatique.</p>`;
 }
+function renderExecutiveCommandCenter() {
+  const el = $("#executive-panel"); if (!el) return;
+  const money = n => new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(Math.round(Number(n) || 0)) + " FCFA";
+  const now = new Date(), month = now.getFullYear() + "-" + String(now.getMonth()+1).padStart(2,"0");
+  const dateOnly = v => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(v || "")) ? new Date(v + "T00:00:00Z") : null;
+  const orders = (D.orderRows || []).map(r => r.data || {}).filter(d =>
+    ["confirmee","en_cours","livree"].includes(d.statut) && d.renouvellement !== true && d.renouvellement !== "true" && dateOnly(d.date) && String(d.date).slice(0,7) === month);
+  const ht = d => Number(d.htNet) > 0 ? Number(d.htNet) : Number(d.ttc) > 0 ? Math.round(Number(d.ttc)/1.18) : 0;
+  const ca = orders.reduce((s,d)=>s+ht(d),0);
+  const cfg = D.execConfig || {};
+  const goalRaw = cfg["obj_"+month], goal = goalRaw === null || goalRaw === undefined || goalRaw === "" ? null : Number(goalRaw);
+  const expenses = (D.execRows || []).filter(r => r.data && /^\\d{4}-\\d{2}$/.test(String(r.data.mois||"")) && r.data.mois === month && r.data.libelle);
+  const expenseActual = expenses.reduce((s,r)=>s+Math.max(0,Number(r.data.reel)||0),0);
+  const expenseRetained = expenses.reduce((s,r)=>s+(Number(r.data.reel)>0?Number(r.data.reel):Math.max(0,Number(r.data.prevu)||0)),0);
+  const attainment = goal > 0 ? Math.round(ca/goal*100) : null;
+  const elapsed = Math.max(1,now.getDate()), days = new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
+  const pace = goal > 0 ? Math.round(ca/goal*100*days/elapsed) : null;
+  const normalize = s => String(s||"").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLowerCase().trim().replace(/[^a-z0-9]+/g," ");
+  const aliases = new Map((D.productAliases||[]).map(a=>[normalize(a.alias),a.product_id]));
+  const products = D.products || [];
+  const productName = new Map(products.map(p=>[p.id,p.nom]));
+  const productCA = new Map();
+  for (const d of orders) {
+    const label = normalize(d.logiciel), pid = products.find(p=>normalize(p.id)===label||normalize(p.nom)===label)?.id || aliases.get(label) || null;
+    const key = pid || "hors_perimetre";
+    productCA.set(key,(productCA.get(key)||0)+ht(d));
+  }
+  const productRows = [...productCA.entries()].sort((a,b)=>b[1]-a[1]);
+  const missing = D.orderRows === null || D.execRows === null || D.execConfig === null || D.products === null;
+  const fmtPct = n => n === null ? "n/d" : n.toLocaleString("fr-FR")+" %";
+  const alerts = [];
+  if (goal === null || !(goal>0)) alerts.push("Objectif de chiffre d’affaires non renseigné pour ce mois.");
+  else if (attainment !== null && attainment < Math.round(elapsed/days*100)) alerts.push("Le rythme de CA est inférieur à la progression calendaire de l’objectif.");
+  if (D.execRows !== null && !expenses.length) alerts.push("Aucune dépense de gestion saisie pour le mois.");
+  if (productRows.some(([id])=>id==="hors_perimetre")) alerts.push("Certaines commandes ne sont pas encore rattachées à un logiciel du catalogue.");
+  const report = "RAPPORT DE DIRECTION SANIX — "+month+"\nCA signé HT : "+money(ca)+"\nObjectif : "+(goal>0?money(goal):"non défini")+"\nAtteinte : "+fmtPct(attainment)+"\nDépenses réelles saisies : "+(D.execRows===null?"indisponibles":money(expenseActual))+"\nDépenses retenues (réel sinon prévu) : "+(D.execRows===null?"indisponibles":money(expenseRetained))+"\nSolde après dépenses suivies (indicateur simplifié, pas un bénéfice) : "+(D.execRows===null?"non calculé":money(ca-expenseRetained));
+  el.innerHTML = `<div class="panel-head"><h2>Executive Command Center · V13</h2><span class="panel-source">Pilotage global · lecture seule</span></div>
+    <div class="executive-grid">
+      <div><b>${D.orderRows===null?"n/d":money(ca)}</b><small>CA signé HT · mois en cours</small></div>
+      <div><b>${goal===null?"Non défini":money(goal)}</b><small>Objectif mensuel paramétré</small></div>
+      <div><b>${fmtPct(attainment)}</b><small>Atteinte de l’objectif</small></div>
+      <div><b>${D.execRows===null?"n/d":money(expenseActual)}</b><small>Dépenses réelles saisies</small></div>
+      <div><b>${D.execRows===null?"n/d":money(expenseRetained)}</b><small>Dépenses retenues · réel sinon prévu</small></div>
+      <div><b>${D.execRows===null?"n/d":money(ca-expenseRetained)}</b><small>Solde après dépenses suivies · indicatif</small></div>
+    </div>
+    <div class="executive-section"><h3>Performance par logiciel · CA HT</h3>
+      ${productRows.length ? productRows.slice(0,8).map(([id,value])=>`<div class="executive-product"><span>${esc(id==="hors_perimetre"?"Hors périmètre":productName.get(id)||id)}</span><b>${money(value)}</b></div>`).join("") : '<p class="panel-muted">Aucune vente exploitable sur le mois.</p>'}
+    </div>
+    <div class="executive-section"><h3>Rapport quotidien de direction</h3>
+      <p class="panel-note">${esc("Au "+now.toLocaleDateString("fr-FR")+", le CA signé HT du mois atteint "+money(ca)+". "+(goal>0?"L’objectif est atteint à "+fmtPct(attainment)+".":"Aucun objectif mensuel n’est paramétré.")+" Les dépenses suivies totalisent "+(D.execRows===null?"un montant indisponible":money(expenseRetained))+".")}</p>
+      <div class="executive-facts"><span>Rythme projeté d’atteinte de l’objectif</span><b>${fmtPct(pace)}</b></div>
+      <div class="executive-facts"><span>Commandes prises en compte</span><b>${D.orderRows===null?"n/d":orders.length}</b></div>
+      <div class="executive-alerts">${alerts.length?alerts.map(a=>`<div class="executive-alert"><i></i><span>${esc(a)}</span></div>`).join(""):'<p class="panel-muted">Aucun écart de gestion détecté sur les données accessibles.</p>'}</div>
+    </div>
+    <p class="panel-note">Le solde affiché est le CA HT moins les seules dépenses enregistrées dans le module Budget & actions ; ce n’est ni un bénéfice net ni une marge comptable. Les dépenses ne sont pas ventilées par logiciel : la rentabilité par produit reste indisponible. Les coûts IA restent suivis séparément en USD. ${missing?"Certaines sources de données sont indisponibles avec la session actuelle.":""}</p>
+    <button type="button" class="executive-copy" data-executive-copy>Copier le rapport de direction</button>`;
+  const copy = el.querySelector("[data-executive-copy]");
+  if (copy) copy.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(report); copy.textContent="Rapport copié"; }
+    catch { copy.textContent="Copie non autorisée par le navigateur"; }
+  }, { once:true });
+}
 function renderWhatsApp() {
   const el = $("#whatsapp-panel"); if (!el) return;
   const w = D.whatsapp;
@@ -625,7 +695,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
