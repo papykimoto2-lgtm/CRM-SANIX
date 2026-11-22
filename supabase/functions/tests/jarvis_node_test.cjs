@@ -33,4 +33,8 @@ const cr = J.parseReply(JSON.stringify({ reply: "ok", actions: [{ type: "crm_cre
 assert.deepStrictEqual(cr.actions, [{ type: "crm_create", champs: { nom: "GARAGE TEST", phone: "+225 07 00 00 00 00", statut: "prospect" } }], "création : e-mail invalide et nom trop court écartés");
 assert.deepStrictEqual([...J.knownCrmIds({ crm: { recents: [{ rid: "c_9" }], trouves: [{ rid: "c_8" }] } })], ["c_9", "c_8"]);
 assert(J.buildContext({ crm: { recents: [{ rid: "c_9", nom: "X" }] } }).includes("c_9 | X"), "l'id de fiche est transmis");
+const finance = { disponible: true, devise: "FCFA", commandes: { ca_ht_mois: 1500000 }, encaissements: { total_confirme: 500000 }, depenses_gestion: { reel_mois: 100000 } };
+const financeCtx = J.buildContext({ finance });
+assert(financeCtx.includes("FINANCE CRM") && financeCtx.includes("1500000") && financeCtx.includes("500000"), "données financières transmises à Jarvis");
+assert(J.SYSTEM.includes("Distingue toujours CA, encaissements") && J.SYSTEM.includes("bénéfice"), "règles de lecture financière présentes");
 console.log("jarvis (logique pure) : OK");

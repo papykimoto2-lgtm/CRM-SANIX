@@ -212,6 +212,7 @@ POUVOIRS (champ actions, 0 \xE0 4) :
 PROPOSITIONS D'AM\xC9LIORATION : quand le pr\xE9sident demande des am\xE9liorations, des conseils, \xAB que dois-je faire \xBB, ou quand tu fais un point, analyse le contexte (section CONSTATS D\xC9TECT\xC9S comprise) et propose AU PLUS TROIS am\xE9liorations concr\xE8tes, class\xE9es par impact : chacune = un constat chiffr\xE9 tir\xE9 du contexte + une action pr\xE9cise. Dis-les \xE0 voix haute num\xE9rot\xE9es (\xAB Un : \u2026 Deux : \u2026 \xBB), puis demande laquelle lancer. Pour chacune, joins l'action correspondante (propose_mission vers l'agent le plus adapt\xE9, ou propose_instruction pour le directeur g\xE9n\xE9ral), dans le M\xCAME ORDRE que ta num\xE9rotation. N'invente aucun constat absent du contexte ; si tout va bien, dis-le et propose une seule optimisation r\xE9aliste.
 - propose_report (agent_id exact, jours 1 \xE0 30) : demander \xE0 un agent un rapport d'activit\xE9. propose_report_now (rapport = quotidien, hebdomadaire ou mensuel) : g\xE9n\xE9rer et envoyer au pr\xE9sident le rapport de direction.
 MODE : le contexte indique MODE PRUDENT ou MODE AUTONOME. En prudent, les propositions attendent le \xAB oui \xBB du pr\xE9sident (tu demandes confirmation). En AUTONOME, elles sont ex\xE9cut\xE9es aussit\xF4t par l'interface : ta r\xE9ponse annonce ce que tu lances (\xAB Je transmets\u2026 \xBB, \xAB Je confie\u2026 \xBB) et ne demande PAS de confirmation. Dans les deux modes tu restes limit\xE9 \xE0 ces actions internes.
+FINANCE : pour une question financière, tu reçois une section FINANCE CRM chargée en lecture seule depuis les commandes, paiements datés, soldes, Budget & actions, documents et écritures. Tu peux répondre sur le CA HT total, mensuel, 30/90 jours et annuel, les ventes par logiciel, les paiements réellement datés, les acomptes déclarés, les soldes à recouvrer, les dépenses saisies et l’objectif mensuel lorsqu’ils figurent dans cette section. Distingue toujours CA, encaissements, acomptes déclarés et soldes. N’assimile jamais le CA à la trésorerie ou au bénéfice. Si les écritures ou dépenses sont absentes, dis qu’elles ne sont pas enregistrées ou accessibles ; n’invente aucun montant. Les coûts IA sont en USD, séparés des montants FCFA. Tu es en lecture seule sur ces données : aucune écriture comptable, modification de commande, paiement, facture ou dépense ne peut être créée ou modifiée par une simple réponse.
 CRM : tu vois le CRM (sections CRM : r\xE9sum\xE9 par logiciel et par \xE9tape, derniers prospects, fiches correspondant \xE0 la demande). Tu peux dire combien de prospects, \xE0 quelle \xE9tape, qui a \xE9t\xE9 contact\xE9 ou a r\xE9pondu, quelles fiches sont sans suite. \xC9tape \xAB non trait\xE9 \xBB = aucune qualification ni contact enregistr\xE9. Tu ne vois ni t\xE9l\xE9phone ni e-mail ; pour \xE9crire \xE0 un prospect, passe par une mission valid\xE9e.
 \xC9CRITURE CRM (pleins pouvoirs sur les fiches clients et prospects, via les actions ci-dessous) :
 - crm_update : modifier des fiches (rids = ids EXACTS de la colonne \xAB id \xBB des sections CRM, 25 au plus) ; renseigne seulement les champs \xE0 changer parmi statut (prospect, client ou inactif), logiciel, secteur, adresse, commercial, notes, nom, phone, email, valeur (entier en FCFA, -1 si inchang\xE9) et laisse les autres vides.
@@ -259,6 +260,7 @@ function buildContext(raw) {
     return `${clipS(o.rid, 30)} | ${clipS(o.nom, 50)} | ${clipS(o.logiciel, 24)} | ${clipS(o.statut, 12)} | ${clipS(o.etape, 20)} | ${clipS(o.score, 5)} | ${clipS(o.ville, 30)} | envoi ${clipS(o.dernier_envoi, 6)} | r\xE9ponse ${clipS(o.derniere_reponse, 6)} | suite ${clipS(o.prochaine_action, 6)}`;
   };
   if (crm.resume) out.push("CRM \u2014 R\xC9SUM\xC9 : " + clipS(JSON.stringify(crm.resume), 2200));
+  if (c.finance && typeof c.finance === "object") out.push("FINANCE CRM (lecture seule, données structurées) : " + clipS(JSON.stringify(c.finance), 6500));
   out.push("CRM \u2014 DERNIERS PROSPECTS (id | nom | logiciel | statut | \xE9tape | score | ville | dernier envoi | derni\xE8re r\xE9ponse | prochaine action) :");
   for (const a of (Array.isArray(crm.recents) ? crm.recents : []).slice(0, 25)) out.push(fl(a));
   out.push("CRM \u2014 FICHES CORRESPONDANT \xC0 LA DEMANDE :");
@@ -368,6 +370,51 @@ function knownIds(raw) {
 }
 
 // functions/ai-jarvis/index.ts
+function asksFinance(message) {
+  const q = message.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/['’]/g, " ").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  return /(^| )(ca|chiffre d affaires|chiffre affaires|chiffre affaire|chiffres affaires|vente|ventes|commande|commandes|encaissement|encaissements|acompte|acomptes|solde|soldes|facture|factures|finance|financier|financiere|tresorerie|depense|depenses|charge|charges|marge|rentabilite|paiement|paiements|budget|comptabilite|ecriture|ecritures|benefice|profit|resultat)( |$)/.test(q);
+}
+async function loadFinanceSnapshot() {
+  const { data, error } = await db().from("crm_records").select("entity,rid,data,updated_at")
+    .in("entity", ["commandes", "ecritures", "documents", "pil_depenses", "pil_config"])
+    .is("deleted_at", null).limit(1500);
+  if (error) throw error;
+  const rows = data ?? [], by = (entity) => rows.filter((r) => r.entity === entity).map((r) => r.data ?? {});
+  const num = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, n) : 0; };
+  const date = (v) => /^\d{4}-\d{2}-\d{2}/.test(String(v ?? "")) ? String(v).slice(0, 10) : "";
+  const sum = (a, f) => a.reduce((s, x) => s + f(x), 0);
+  const period = (a, f, from, to) => sum(a.filter((x) => date(x.date) && date(x.date) >= from && date(x.date) <= to), f);
+  const orders = by("commandes").filter((d) => ["confirmee", "en_cours", "livree"].includes(String(d.statut ?? "").toLowerCase()));
+  const expenses = by("pil_depenses"), entries = by("ecritures"), docs = by("documents"), config = by("pil_config")[0] ?? {};
+  const now = new Date(), parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Abidjan", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+  const part = (k) => parts.find((p) => p.type === k)?.value ?? "";
+  const today = part("year") + "-" + part("month") + "-" + part("day"), month = today.slice(0, 7), year = today.slice(0, 4);
+  const daysAgo = (n) => { const d = new Date(now.getTime() - n * 864e5), p = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Abidjan", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d), v = (k) => p.find((x) => x.type === k)?.value ?? ""; return v("year") + "-" + v("month") + "-" + v("day"); };
+  const ht = (d) => num(d.htNet) || (num(d.ttc) ? Math.round(num(d.ttc) / 1.18) : 0);
+  const monthOrders = orders.filter((d) => date(d.date).startsWith(month)), ytdOrders = orders.filter((d) => date(d.date).startsWith(year));
+  const productMap = new Map(), statusMap = {};
+  for (const d of orders) { const product = String(d.logiciel ?? "Non renseigné").slice(0, 60); productMap.set(product, (productMap.get(product) ?? 0) + ht(d)); const status = String(d.statut ?? "inconnu"); statusMap[status] = (statusMap[status] ?? 0) + 1; }
+  const payments = orders.flatMap((d) => (Array.isArray(d.paiements) ? d.paiements : []).filter((p) => p && p.estimee !== true && p.estimee !== "true").map((p) => ({ date: date(p.date), montant: num(p.montant) }))).filter((p) => p.date);
+  const advances = sum(orders, (d) => num(d.acompte)), balances = sum(orders, (d) => num(d.solde));
+  const monthExpenses = expenses.filter((d) => String(d.mois ?? "") === month), objectiveRaw = config["obj_" + month], objective = objectiveRaw == null || objectiveRaw === "" ? null : num(objectiveRaw);
+  const [costRowsResult, budgetResult] = await Promise.all([
+    db().from("ai_actions").select("cout_usd").eq("action", "llm_turn").gte("at", month + "-01T00:00:00Z").limit(5000),
+    db().from("ai_governance").select("budget_mois_usd").eq("id", 1).maybeSingle()
+  ]);
+  const costRows = costRowsResult.error ? null : costRowsResult.data ?? [];
+  const aiBudget = budgetResult.error ? null : budgetResult.data?.budget_mois_usd ?? null;
+  return {
+    disponible: true, devise: "FCFA", date_analyse: today, mois: month,
+    commandes: { nombre: orders.length, ca_ht_total: sum(orders, ht), ca_ht_mois: sum(monthOrders, ht), ca_ht_30_jours: period(orders, ht, daysAgo(30), today), ca_ht_90_jours: period(orders, ht, daysAgo(90), today), ca_ht_annee: sum(ytdOrders, ht), par_logiciel: [...productMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([logiciel, ca_ht]) => ({ logiciel, ca_ht })), par_statut: statusMap },
+    encaissements: { lignes_paiement_datees: payments.length, total_confirme: sum(payments, (p) => p.montant), mois: period(payments, (p) => p.montant, month + "-01", today), "90_jours": period(payments, (p) => p.montant, daysAgo(90), today), acomptes_declares_commandes: advances, solde_a_recouvrer_declare: balances },
+    depenses_gestion: { lignes_mois: monthExpenses.length, reel_mois: sum(monthExpenses, (d) => num(d.reel)), prevision_mois: sum(monthExpenses, (d) => num(d.prevu)) },
+    objectif_ca_ht_mois: objective,
+    comptabilite: { ecritures_enregistrees: entries.length, factures_documents: docs.filter((d) => String(d.type ?? "").toLowerCase() === "facture").length },
+    couts_ia: { mois_usd: costRows === null ? null : sum(costRows, (r) => num(r.cout_usd)), budget_mois_usd: aiBudget === null ? null : num(aiBudget), lignes: costRows?.length ?? null },
+    limites: ["CA calculé sur htNet, ou TTC/1,18 si HT absent, pour les commandes confirmées, en cours ou livrées.", "Encaissements calculés uniquement sur les paiements datés non estimés ; acomptes déclarés présentés séparément.", "Solde à recouvrer issu du champ solde des commandes, sans rapprochement bancaire.", "Dépenses limitées aux lignes saisies dans Budget & actions ; les écritures comptables ne sont pas agrégées.", "Aucun bénéfice net, trésorerie bancaire ou marge par logiciel ne peut être déduit de ces seuls champs.", "Coûts IA en USD, séparés des montants FCFA."]
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors(req) });
   if (req.method !== "POST") return json(req, { error: "M\xE9thode non autoris\xE9e" }, 405);
@@ -379,8 +426,14 @@ Deno.serve(async (req) => {
     if (message.length < 1) throw new HttpError(400, "Message vide");
     if (message.length > 1500) throw new HttpError(400, "Message trop long");
     const history = cleanHistory(body.history);
+    const context = body.context && typeof body.context === "object" && !Array.isArray(body.context) ? { ...body.context } : {};
+    delete context.finance;
+    if (asksFinance(message)) {
+      try { context.finance = await loadFinanceSnapshot(); }
+      catch { context.finance = { disponible: false }; }
+    }
     const user = `CONTEXTE EN DIRECT
-${buildContext(body.context)}
+${buildContext(context)}
 
 DEMANDE DU PR\xC9SIDENT : ${message}`;
     const messages = [...history, { role: "user", content: user }];
@@ -394,7 +447,7 @@ DEMANDE DU PR\xC9SIDENT : ${message}`;
       format: JARVIS_FORMAT
     });
     const text = out.content.map((b) => b.type === "text" ? b.text : "").join("");
-    const r = parseReply(text, knownIds(body.context), knownCrmIds(body.context));
+    const r = parseReply(text, knownIds(context), knownCrmIds(context));
     await audit({ agent: "jarvis", action: "jarvis_reponse", ok: true, payload: { par: op.user_id, nb_actions: r.actions.length } });
     return json(req, r, 200);
   } catch (e) {
