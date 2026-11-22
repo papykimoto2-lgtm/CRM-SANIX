@@ -327,7 +327,7 @@ function renderBusinessIntelligence() {
   const money = n => new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(Math.round(Number(n) || 0)) + " FCFA";
   const usd = n => "$" + Number(n || 0).toFixed(2);
   const now = new Date(), dayMs = 864e5;
-  const dateOnly = v => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(v || "")) ? new Date(v + "T00:00:00Z") : null;
+  const dateOnly = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? new Date(v + "T00:00:00Z") : null;
   const validOrders = (D.orderRows || []).map(r => ({...r, d:r.data || {}})).filter(r =>
     ["confirmee","en_cours","livree"].includes(r.d.statut) && r.d.renouvellement !== true && r.d.renouvellement !== "true" && dateOnly(r.d.date));
   const ht = d => Number(d.htNet) > 0 ? Number(d.htNet) : Number(d.ttc) > 0 ? Math.round(Number(d.ttc) / 1.18) : 0;
@@ -408,7 +408,7 @@ function renderPredictiveDirector() {
     const w = {identifie:.03,enregistre:.05,qualifie:.1,premier_contact:.12,conversation:.18,besoin_identifie:.25,interesse:.3,rdv_propose:.35,rdv_confirme:.4,demo_realisee:.45,offre_transmise:.55,negociation:.65,offre_acceptee:.8,contrat_transmis:.9,paiement_attendu:.95};
     return s + Math.max(0,Number(p.potentiel_fcfa)||0)*(w[p.stage]||0);
   },0);
-  const orders = (D.orderRows || []).map(r=>r.data||{}).filter(d=>["confirmee","en_cours","livree"].includes(d.statut) && d.renouvellement!==true && d.renouvellement!=="true" && /^\\d{4}-\\d{2}-\\d{2}$/.test(String(d.date||"")));
+  const orders = (D.orderRows || []).map(r=>r.data||{}).filter(d=>["confirmee","en_cours","livree"].includes(d.statut) && d.renouvellement!==true && d.renouvellement!=="true" && /^\d{4}-\d{2}-\d{2}$/.test(String(d.date||"")));
   const ht = d => Number(d.htNet)>0?Number(d.htNet):Number(d.ttc)>0?Math.round(Number(d.ttc)/1.18):0;
   const monthOrders=orders.filter(d=>new Date(d.date+"T00:00:00Z")>=startMonth);
   const mtd=monthOrders.reduce((s,d)=>s+ht(d),0);
