@@ -42,7 +42,7 @@
       if (s.lim !== null) out = out.slice(0, s.lim);
       if (s.op === "select" || s.ret) {
         if (s.cols.includes("ai_prospects(")) out = out.map((r) => ({ ...r, ai_prospects: r.prospect_id ? (({ entreprise, decideur, phone_norm, telephone, whatsapp }) => ({ entreprise: entreprise ?? null, decideur, phone_norm, telephone, whatsapp }))(T("ai_prospects").find((p) => p.id === r.prospect_id) ?? {}) : null }));
-        else if (s.cols !== "*") { const cols = s.cols.split(",").map((c) => c.trim()); out = out.map((r) => Object.fromEntries(cols.map((c) => [c, r[c]]))); }
+        else if (s.cols !== "*") { const cols = s.cols.split(",").map((c) => c.trim()); out = out.map((r) => Object.fromEntries(cols.map((c) => { const m = /^(\w+):(\w+)(?:->>?(\w+))?$/.exec(c); return m ? [m[1], m[3] ? r[m[2]]?.[m[3]] : r[m[2]]] : [c, r[c]]; }))); }
       }
       if (s.head) return { data: null, error: null, count: out.length };
       if (s.op !== "select" && !s.ret) return { data: null, error: null };

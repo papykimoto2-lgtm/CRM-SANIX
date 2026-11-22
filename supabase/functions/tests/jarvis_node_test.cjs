@@ -18,4 +18,7 @@ assert.deepStrictEqual(rp.actions, [{ type: "propose_report", agent_id: "a1", jo
 assert.strictEqual(J.parseReply('{"reply":"Dix-sept agents travaillent, dont \\"Hunter\\" et","actions":[{"type":"zoo', known).reply, 'Dix-sept agents travaillent, dont "Hunter" et', "JSON tronqué : la réponse parlée est récupérée");
 assert(J.buildContext({ mode: "autonome" }).includes("MODE AUTONOME") && J.buildContext({}).includes("MODE PRUDENT"));
 assert(J.buildContext({ dg: [{ auteur: "directeur", texte: "Plan prêt" }] }).includes("directeur : Plan prêt"));
+const cx = J.buildContext({ crm: { resume: { total: 3 }, recents: [{ nom: "GARAGE X", logiciel: "AutoGarage Pro", statut: "prospect", etape: "non traité" }], trouves: [{ nom: "MIDAS", etape: "premier_contact", derniere_reponse: "22/11" }] } });
+assert(cx.includes("CRM — RÉSUMÉ") && cx.includes("GARAGE X | AutoGarage Pro | prospect | non traité") && cx.includes("MIDAS") && cx.includes("réponse 22/11"), "CRM transmis à Jarvis");
+assert(!/téléphone|phone|@/.test(cx.split("CRM — FICHES")[1].split("ACTIVITÉ")[0]), "aucun contact personnel dans le contexte CRM");
 console.log("jarvis (logique pure) : OK");

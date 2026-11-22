@@ -37,6 +37,7 @@ POUVOIRS (champ actions, 0 à 4) :
 PROPOSITIONS D'AMÉLIORATION : quand le président demande des améliorations, des conseils, « que dois-je faire », ou quand tu fais un point, analyse le contexte (section CONSTATS DÉTECTÉS comprise) et propose AU PLUS TROIS améliorations concrètes, classées par impact : chacune = un constat chiffré tiré du contexte + une action précise. Dis-les à voix haute numérotées (« Un : … Deux : … »), puis demande laquelle lancer. Pour chacune, joins l'action correspondante (propose_mission vers l'agent le plus adapté, ou propose_instruction pour le directeur général), dans le MÊME ORDRE que ta numérotation. N'invente aucun constat absent du contexte ; si tout va bien, dis-le et propose une seule optimisation réaliste.
 - propose_report (agent_id exact, jours 1 à 30) : demander à un agent un rapport d'activité. propose_report_now (rapport = quotidien, hebdomadaire ou mensuel) : générer et envoyer au président le rapport de direction.
 MODE : le contexte indique MODE PRUDENT ou MODE AUTONOME. En prudent, les propositions attendent le « oui » du président (tu demandes confirmation). En AUTONOME, elles sont exécutées aussitôt par l'interface : ta réponse annonce ce que tu lances (« Je transmets… », « Je confie… ») et ne demande PAS de confirmation. Dans les deux modes tu restes limité à ces actions internes.
+CRM : tu vois le CRM EN LECTURE SEULE (sections CRM : résumé par logiciel et par étape, derniers prospects, fiches correspondant à la demande). Tu peux dire combien de prospects, à quelle étape, qui a été contacté ou a répondu, quelles fiches sont sans suite. Étape « non traité » = aucune qualification ni contact enregistré. Tu ne vois ni téléphone ni e-mail ; pour modifier une fiche ou écrire à un prospect, passe par une mission validée.
 DIALOGUE DU DIRECTEUR : la section DERNIERS ÉCHANGES AVEC LE DIRECTEUR GÉNÉRAL te permet de résumer ce qu'il a répondu ou décidé.
 Pour une simple question, actions = []. Remplis les champs inutiles d'une action avec une chaîne vide (priorite 0, jours 0).
 Si la demande est ambiguë, pose UNE question courte.`;
@@ -59,9 +60,16 @@ export function buildContext(raw: unknown): string {
   for (const a of arr("insights", 8)) { const x = a as Record<string, unknown>; out.push(`${clipS(x.gravite, 10)} | ${clipS(x.constat, 160)} | ${clipS(x.piste, 160)}`); }
   out.push("DERNIERS ÉCHANGES AVEC LE DIRECTEUR GÉNÉRAL (ancien → récent) :");
   for (const a of arr("dg", 6)) { const x = a as Record<string, unknown>; out.push(`${clipS(x.auteur, 12)} : ${clipS(x.texte, 300)}`); }
+  const crm = (c.crm && typeof c.crm === "object" ? c.crm : {}) as Record<string, unknown>;
+  const fl = (x: unknown) => { const o = (x ?? {}) as Record<string, unknown>; return `${clipS(o.nom, 50)} | ${clipS(o.logiciel, 24)} | ${clipS(o.statut, 12)} | ${clipS(o.etape, 20)} | ${clipS(o.score, 5)} | ${clipS(o.ville, 30)} | envoi ${clipS(o.dernier_envoi, 6)} | réponse ${clipS(o.derniere_reponse, 6)} | suite ${clipS(o.prochaine_action, 6)}`; };
+  if (crm.resume) out.push("CRM — RÉSUMÉ : " + clipS(JSON.stringify(crm.resume), 2200));
+  out.push("CRM — DERNIERS PROSPECTS (nom | logiciel | statut | étape | score | ville | dernier envoi | dernière réponse | prochaine action) :");
+  for (const a of (Array.isArray(crm.recents) ? crm.recents : []).slice(0, 25)) out.push(fl(a));
+  out.push("CRM — FICHES CORRESPONDANT À LA DEMANDE :");
+  for (const a of (Array.isArray(crm.trouves) ? crm.trouves : []).slice(0, 30)) out.push(fl(a));
   out.push("ACTIVITÉ RÉCENTE :");
   for (const a of arr("recent", 12)) { const x = a as Record<string, unknown>; out.push(`${clipS(x.quand, 20)} | ${clipS(x.agent, 30)} | ${clipS(x.action, 80)}`); }
-  return out.join("\n").slice(0, 14000);
+  return out.join("\n").slice(0, 24000);
 }
 
 export function cleanHistory(raw: unknown): { role: "user" | "assistant"; content: string }[] {

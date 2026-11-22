@@ -198,6 +198,7 @@ POUVOIRS (champ actions, 0 \xE0 4) :
 PROPOSITIONS D'AM\xC9LIORATION : quand le pr\xE9sident demande des am\xE9liorations, des conseils, \xAB que dois-je faire \xBB, ou quand tu fais un point, analyse le contexte (section CONSTATS D\xC9TECT\xC9S comprise) et propose AU PLUS TROIS am\xE9liorations concr\xE8tes, class\xE9es par impact : chacune = un constat chiffr\xE9 tir\xE9 du contexte + une action pr\xE9cise. Dis-les \xE0 voix haute num\xE9rot\xE9es (\xAB Un : \u2026 Deux : \u2026 \xBB), puis demande laquelle lancer. Pour chacune, joins l'action correspondante (propose_mission vers l'agent le plus adapt\xE9, ou propose_instruction pour le directeur g\xE9n\xE9ral), dans le M\xCAME ORDRE que ta num\xE9rotation. N'invente aucun constat absent du contexte ; si tout va bien, dis-le et propose une seule optimisation r\xE9aliste.
 - propose_report (agent_id exact, jours 1 \xE0 30) : demander \xE0 un agent un rapport d'activit\xE9. propose_report_now (rapport = quotidien, hebdomadaire ou mensuel) : g\xE9n\xE9rer et envoyer au pr\xE9sident le rapport de direction.
 MODE : le contexte indique MODE PRUDENT ou MODE AUTONOME. En prudent, les propositions attendent le \xAB oui \xBB du pr\xE9sident (tu demandes confirmation). En AUTONOME, elles sont ex\xE9cut\xE9es aussit\xF4t par l'interface : ta r\xE9ponse annonce ce que tu lances (\xAB Je transmets\u2026 \xBB, \xAB Je confie\u2026 \xBB) et ne demande PAS de confirmation. Dans les deux modes tu restes limit\xE9 \xE0 ces actions internes.
+CRM : tu vois le CRM EN LECTURE SEULE (sections CRM : r\xE9sum\xE9 par logiciel et par \xE9tape, derniers prospects, fiches correspondant \xE0 la demande). Tu peux dire combien de prospects, \xE0 quelle \xE9tape, qui a \xE9t\xE9 contact\xE9 ou a r\xE9pondu, quelles fiches sont sans suite. \xC9tape \xAB non trait\xE9 \xBB = aucune qualification ni contact enregistr\xE9. Tu ne vois ni t\xE9l\xE9phone ni e-mail ; pour modifier une fiche ou \xE9crire \xE0 un prospect, passe par une mission valid\xE9e.
 DIALOGUE DU DIRECTEUR : la section DERNIERS \xC9CHANGES AVEC LE DIRECTEUR G\xC9N\xC9RAL te permet de r\xE9sumer ce qu'il a r\xE9pondu ou d\xE9cid\xE9.
 Pour une simple question, actions = []. Remplis les champs inutiles d'une action avec une cha\xEEne vide (priorite 0, jours 0).
 Si la demande est ambigu\xEB, pose UNE question courte.`;
@@ -232,12 +233,22 @@ function buildContext(raw) {
     const x = a;
     out.push(`${clipS(x.auteur, 12)} : ${clipS(x.texte, 300)}`);
   }
+  const crm = c.crm && typeof c.crm === "object" ? c.crm : {};
+  const fl = (x) => {
+    const o = x ?? {};
+    return `${clipS(o.nom, 50)} | ${clipS(o.logiciel, 24)} | ${clipS(o.statut, 12)} | ${clipS(o.etape, 20)} | ${clipS(o.score, 5)} | ${clipS(o.ville, 30)} | envoi ${clipS(o.dernier_envoi, 6)} | r\xE9ponse ${clipS(o.derniere_reponse, 6)} | suite ${clipS(o.prochaine_action, 6)}`;
+  };
+  if (crm.resume) out.push("CRM \u2014 R\xC9SUM\xC9 : " + clipS(JSON.stringify(crm.resume), 2200));
+  out.push("CRM \u2014 DERNIERS PROSPECTS (nom | logiciel | statut | \xE9tape | score | ville | dernier envoi | derni\xE8re r\xE9ponse | prochaine action) :");
+  for (const a of (Array.isArray(crm.recents) ? crm.recents : []).slice(0, 25)) out.push(fl(a));
+  out.push("CRM \u2014 FICHES CORRESPONDANT \xC0 LA DEMANDE :");
+  for (const a of (Array.isArray(crm.trouves) ? crm.trouves : []).slice(0, 30)) out.push(fl(a));
   out.push("ACTIVIT\xC9 R\xC9CENTE :");
   for (const a of arr("recent", 12)) {
     const x = a;
     out.push(`${clipS(x.quand, 20)} | ${clipS(x.agent, 30)} | ${clipS(x.action, 80)}`);
   }
-  return out.join("\n").slice(0, 14e3);
+  return out.join("\n").slice(0, 24e3);
 }
 function cleanHistory(raw) {
   if (!Array.isArray(raw)) return [];
