@@ -134,7 +134,7 @@ export function initJarvis(A, stage) {
   // Financial data is loaded only when the president asks a finance-related question.
   async function financeContext(message) {
     const q = norm(message);
-    if (!/(^| )(ca|chiffre affaire|chiffres affaires|vente|ventes|commande|commandes|encaissement|encaissements|acompte|acomptes|solde|soldes|facture|factures|finance|financier|financiere|tresorerie|depense|depenses|charge|charges|marge|rentabilite|paiement|paiements|budget|comptabilite|ecriture|ecritures)( |$)/.test(q)) return null;
+    if (!/(^| )(ca|chiffre d affaires|chiffre affaires|chiffre affaire|chiffres affaires|vente|ventes|commande|commandes|encaissement|encaissements|acompte|acomptes|solde|soldes|facture|factures|finance|financier|financiere|tresorerie|depense|depenses|charge|charges|marge|rentabilite|paiement|paiements|budget|comptabilite|ecriture|ecritures|benefice|profit|resultat)( |$)/.test(q)) return null;
     const { data, error } = await A.sb.from("crm_records").select("entity,rid,data,updated_at")
       .in("entity", ["commandes","ecritures","documents","pil_depenses","pil_config"])
       .is("deleted_at", null).limit(1500);
