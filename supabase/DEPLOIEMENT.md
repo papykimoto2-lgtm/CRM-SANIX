@@ -31,6 +31,7 @@ Supabase → **Edge Functions** → **Deploy a new function** → **Via Editor**
 
 | Nom (exact) | Fichier à coller | Verify JWT |
 |---|---|---|
+| `ai-jarvis` (assistant conversationnel de la Salle de contrôle ; modèle Haiku, budget IA appliqué) | `supabase/deploy/ai-jarvis/index.ts` | **désactivé** |
 | `ai-company` | `supabase/deploy/ai-company/index.ts` | **désactivé** |
 | `ai-sales-director` | `supabase/deploy/ai-sales-director/index.ts` | **désactivé** |
 | `whatsapp-webhook` | `supabase/deploy/whatsapp-webhook/index.ts` | **désactivé** |
