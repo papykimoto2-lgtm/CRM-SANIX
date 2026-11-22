@@ -159,6 +159,8 @@ input,textarea,select{font-family:var(--font-b);outline:none}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
 .grid-auto{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+/* Un élément de grille ne doit jamais dépasser sa colonne (texte long, liste, sélecteur) : sans cela le contenu est rogné sur mobile et tablette */
+.grid-2>*,.grid-3>*,.grid-auto>*{min-width:0}
 /* Tableaux : scroll horizontal fluide sur mobile avec min-width pour lisibilité */
 .client-table{width:100%;border-collapse:collapse}
 @media(max-width:768px){
@@ -479,7 +481,7 @@ select.form-input{cursor:pointer}
 /* ─── RESPONSIVE APP (non-login) ─────────────────────── */
 @media(max-width:768px){
   .stats-grid{grid-template-columns:1fr 1fr !important}
-  .grid-2,.grid-3{grid-template-columns:1fr !important}
+  .grid-2,.grid-3{grid-template-columns:minmax(0,1fr) !important}
   .sidebar{position:fixed;left:0;top:0;bottom:0;transform:translateX(-100%)}
   .sidebar.open{transform:translateX(0)}
   .hamburger{display:flex}
@@ -508,6 +510,20 @@ select.form-input{cursor:pointer}
   .modal-box,.modal{max-width:100% !important}
   /* Réduire padding cartes */
   .card{padding:14px}
+}
+/* Tablette et mobile : une carte qui contient directement un tableau défile à l'intérieur au lieu d'être rognée ; les rangées de boutons passent à la ligne */
+@media(max-width:1024px){
+  .card{min-width:0;max-width:100%}
+  .card:has(table.client-table){overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .card-header .form-input,.card-header input[type=text]{max-width:100%;min-width:0}
+  .soft-actions{flex-wrap:wrap}
+  #view-users > .flex.justify-between{flex-wrap:wrap;gap:10px}
+  #view-users div[style*="display:flex"][style*="FFFBEB"]{flex-wrap:wrap}
+}
+@media(max-width:560px){
+  .flex.gap-2{flex-wrap:wrap}
+  .msg-channel{flex-wrap:wrap}
+  .msg-channel .channel-btn{flex:1 1 140px}
 }
 @media(max-width:560px){
   /* SMARTPHONE : tout en une seule colonne */
