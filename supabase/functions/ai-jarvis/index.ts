@@ -48,7 +48,12 @@ async function loadFinanceSnapshot(): Promise<Record<string, unknown>> {
   const advances = sum(orders, d => num(d.acompte)), balances = sum(orders, d => num(d.solde));
   const monthExpenses = expenses.filter(d => String(d.mois ?? "") === month);
   const objectiveRaw = config["obj_" + month], objective = objectiveRaw == null || objectiveRaw === "" ? null : num(objectiveRaw);
-  const costs = await db().rpc("ai_cost_center", { p_days: 30 }).then(r => r.data).catch(() => null) as Record<string, unknown> | null;
+  const [costRowsResult, budgetResult] = await Promise.all([
+    db().from("ai_actions").select("cout_usd").eq("action", "llm_turn").gte("at", month + "-01T00:00:00Z").limit(5000),
+    db().from("ai_governance").select("budget_mois_usd").eq("id", 1).maybeSingle(),
+  ]);
+  const costRows = costRowsResult.error ? null : (costRowsResult.data ?? []);
+  const aiBudget = budgetResult.error ? null : budgetResult.data?.budget_mois_usd ?? null;
   return {
     disponible: true, devise: "FCFA", date_analyse: today, mois: month,
     commandes: {
@@ -69,7 +74,7 @@ async function loadFinanceSnapshot(): Promise<Record<string, unknown>> {
     },
     objectif_ca_ht_mois: objective,
     comptabilite: { ecritures_enregistrees: entries.length, factures_documents: docs.filter(d => String(d.type ?? "").toLowerCase() === "facture").length },
-    couts_ia: { mois_usd: num(costs?.mois_usd), budget_mois_usd: num(costs?.budget_mois_usd) },
+    couts_ia: { mois_usd: costRows === null ? null : sum(costRows, r => num(r.cout_usd)), budget_mois_usd: aiBudget === null ? null : num(aiBudget), lignes: costRows?.length ?? null },
     limites: [
       "CA calculé sur htNet, ou TTC/1,18 si HT absent, pour les commandes confirmées, en cours ou livrées.",
       "Encaissements calculés uniquement sur les paiements datés non estimés ; acomptes déclarés présentés séparément.",
