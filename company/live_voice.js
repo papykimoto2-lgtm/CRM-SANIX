@@ -98,6 +98,19 @@ export function initJarvis(A, stage) {
     crmC.at = 0; const res = data?.results ?? [], ko = res.filter((r) => r.ok === false || r.conflict), same = res.filter((r) => r.ok !== false && !r.conflict && r.unchanged);
     return { ok: res.length - ko.length - same.length, same: same.length, ko: ko.length, raisons: [...new Set(ko.map((r) => r.reason || r.error || "refusé"))].slice(0, 2) };
   }
+  // ───────── Finance : levée de fonds (tables serveur, droits direction). Toujours confirmé ; « envoye » jamais : l'envoi reste humain. ─────────
+  const LEVEE_ST = ["a_etudier", "correspond", "contacte", "en_discussion", "decline", "ecarte", "investi"], FIN_LAB = { fin_levee_statut: "financeur(s) mis à jour", fin_levee_note: "financeur(s) annoté(s)", fin_brouillon: "brouillon(s) traité(s)" };
+  async function finExec(a) {
+    const ids = (a.rids ?? []).slice(0, 25); if (!ids.length) throw new Error("aucune fiche");
+    if (a.type === "fin_levee_statut") { if (!LEVEE_ST.includes(a.statut)) throw new Error("statut inconnu"); const { data, error } = await A.sb.from("levee_financeurs").update({ statut: a.statut }).in("id", ids).select("id"); if (error) throw new Error(error.message); return (data ?? []).length; }
+    if (a.type === "fin_brouillon") { if (!["valide", "abandonne"].includes(a.statut)) throw new Error("statut de brouillon interdit"); const { data, error } = await A.sb.from("levee_brouillons").update({ statut: a.statut }).in("id", ids).eq("statut", "brouillon").select("id"); if (error) throw new Error(error.message); return (data ?? []).length; }
+    if (a.type === "fin_levee_note") {
+      const cur = await A.sb.from("levee_financeurs").select("id,notes").in("id", ids); if (cur.error) throw new Error(cur.error.message); let n = 0; const d = new Date().toLocaleDateString("fr-FR", { timeZone: "Africa/Abidjan" });
+      for (const f of cur.data ?? []) { const notes = ((f.notes ? f.notes + "\n" : "") + `[${d}, Jarvis] ${a.texte}`).slice(-2900); const r = await A.sb.from("levee_financeurs").update({ notes }).eq("id", f.id); if (r.error) throw new Error(r.error.message); n++; }
+      return n;
+    }
+    throw new Error("action finance inconnue");
+  }
   const CRM_LAB = { crm_update: "modifiée", crm_log: "mise à jour dans l'historique", crm_create: "créée", crm_delete: "supprimée" };
   async function crmLocalReply(t) {
     const rows = await loadCrm(); let sel = rows, lab = "";
@@ -159,10 +172,11 @@ export function initJarvis(A, stage) {
         else if (a.type === "propose_instruction" && a.texte) props.push({ kind: "instruction", texte: a.texte });
         else if (a.type === "propose_mission" && a.agent_id && a.titre) props.push({ kind: "mission", agent_id: a.agent_id, titre: a.titre, description: a.description, priorite: a.priorite });
         else if (a.type?.startsWith("crm_")) props.push({ kind: "crm", a });
+        else if (a.type?.startsWith("fin_")) props.push({ kind: "fin", a });
         else if (a.type === "propose_report" && a.agent_id) props.push({ kind: "report", agent_id: a.agent_id, jours: a.jours || 7 });
         else if (a.type === "propose_report_now" && a.rapport) props.push({ kind: "report_now", type: a.rapport });
       }
-      if (autoMode && props.length) { const risky = props.filter((x) => x.kind === "crm" && x.a.type === "crm_delete"), safe = props.filter((x) => !risky.includes(x)); pending = risky.length > 1 ? { kind: "multi", items: risky } : risky[0] ?? null; setOrb(listening ? "listen" : ""); say(reply + (risky.length ? " La suppression demande votre confirmation : dites oui." : "")); for (const it of safe) await sendPending(it); return reply; }   // mode autonome : exécution immédiate (actions internes uniquement)
+      if (autoMode && props.length) { const risky = props.filter((x) => x.kind === "fin" || (x.kind === "crm" && x.a.type === "crm_delete")), safe = props.filter((x) => !risky.includes(x)); pending = risky.length > 1 ? { kind: "multi", items: risky } : risky[0] ?? null; setOrb(listening ? "listen" : ""); say(reply + (risky.length ? " Cette action demande votre confirmation : dites oui." : "")); for (const it of safe) await sendPending(it); return reply; }   // mode autonome : exécution immédiate (actions internes uniquement)
       pending = props.length > 1 ? { kind: "multi", items: props } : props[0] ?? null;
       if (pending && !/\?/.test(reply)) reply += pending.kind === "multi" ? " Laquelle dois-je lancer ? Dites un, deux, trois ou toutes." : " Dois-je le transmettre ? Dites oui pour confirmer.";
       setOrb(listening ? "listen" : ""); say(reply); return reply;
@@ -184,6 +198,7 @@ export function initJarvis(A, stage) {
       if (p.kind === "mission") { await call("ai-company", { action: "assign_mission", agent_id: p.agent_id, titre: p.titre, description: p.description, objectifs: [], priorite: p.priorite }); say(`Mission confiée à ${A.nameOf(p.agent_id)}. Vous la verrez apparaître dans la salle.`); }
       else if (p.kind === "report") { await call("ai-company", { action: "request_report", agent_id: p.agent_id, jours: p.jours }); say(`Rapport demandé à ${A.nameOf(p.agent_id)} sur ${p.jours} jours.`); }
       else if (p.kind === "crm") { const r = await crmExec(p.a); say(r.ok ? `C'est fait : ${plural(r.ok, "fiche", "fiches")} ${CRM_LAB[p.a.type]}${r.same ? `, ${r.same} déjà à jour` : ""}${r.ko ? `, ${r.ko} refusée${r.ko > 1 ? "s" : ""} (${r.raisons.join(" ; ")})` : ""}.` : `Aucune fiche n'a pu être ${CRM_LAB[p.a.type]} : ${r.raisons.join(" ; ") || (r.same ? "elles étaient déjà à jour" : "refusé")}.`); }
+      else if (p.kind === "fin") { const n = await finExec(p.a); say(n ? `C'est fait : ${n} ${FIN_LAB[p.a.type]}.` : "Rien n'a été modifié : les éléments étaient déjà à jour ou introuvables."); }
       else if (p.kind === "report_now") { await call("ai-company", { action: "report_now", type: p.type }); say(`Le rapport ${p.type} est généré et envoyé.`); }
       else { const sentAt = Date.now() - 2000; await call("ai-company", { action: "instruction", contenu: p.texte }); say("Instruction transmise au directeur général. Je vous lis sa réponse dès qu'elle arrive."); watchDg(sentAt); }
       return "transmis";

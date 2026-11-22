@@ -161,6 +161,154 @@ async function callClaude(o) {
   return { message, cost };
 }
 
+// functions/_shared/company/jarvis_finance.ts
+var num = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+var nrm = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9' ]+/g, " ").replace(/\s+/g, " ").trim();
+var key = (s) => nrm(s).replace(/[^a-z0-9]/g, "");
+var clip = (s, n) => {
+  const t = String(s ?? "");
+  return t.length > n ? t.slice(0, n - 1) + "\u2026" : t;
+};
+var CA_STATUTS = ["confirmee", "en_cours", "livree"];
+var LEVEE_STATUTS = ["a_etudier", "correspond", "contacte", "en_discussion", "decline", "ecarte", "investi"];
+var BROUILLON_STATUTS = ["valide", "abandonne"];
+var MODE_COMPTE = { especes: "571000", mobile_money: "552000", virement: "521000", cheque: "521000", nature: "471000", inconnu: "552000" };
+var cmdHT = (c, tva = 18) => {
+  const ttc = num(c.ttc), ht = num(c.htNet);
+  return ht > 0 ? ht : c.sansTva ? ttc : Math.round(ttc / (1 + tva / 100));
+};
+function paiementsDe(c) {
+  const mode = (m) => typeof m === "string" && MODE_COMPTE[m] ? m : "inconnu";
+  if (Array.isArray(c.paiements)) return c.paiements.filter((p) => p && !p.supprime && num(p.montant) > 0).map((p) => ({ montant: num(p.montant), mode: mode(p.mode) }));
+  return num(c.acompte) > 0 ? [{ montant: num(c.acompte), mode: "inconnu" }] : [];
+}
+function compta(o = {}) {
+  const tva = o.tva ?? 18, now = o.now ?? /* @__PURE__ */ new Date(), annee = o.annee ?? now.getFullYear();
+  const vent = (o.commandes ?? []).filter((c) => CA_STATUTS.includes(String(c.statut)) && num(c.ttc) > 0);
+  const ctr = (o.contrats ?? []).filter((c) => ["signe", "en_cours"].includes(String(c.statut)) && !c.cmdId && num(c.montant) > 0);
+  const solde = { "411000": 0, "706000": 0, "4431": 0, "521000": 0, "552000": 0, "571000": 0, "471000": 0 };
+  const mois = {}, parClient = {}, parMode = {};
+  let nEcr = 0, ht = 0, ttcT = 0, tvaT = 0, enc = 0, htAn = 0;
+  const addMois = (d, h) => {
+    const k = String(d ?? "").slice(0, 7);
+    if (/^\d{4}-\d{2}$/.test(k)) mois[k] = (mois[k] ?? 0) + h;
+  };
+  for (const c of vent) {
+    const ttc = num(c.ttc), h = cmdHT(c, tva), t = c.sansTva ? 0 : num(c.tva) || ttc - h, d = String(c.date ?? "");
+    solde["411000"] += ttc;
+    solde["706000"] += h;
+    solde["4431"] += t;
+    ht += h;
+    ttcT += ttc;
+    tvaT += t;
+    nEcr++;
+    addMois(d, h);
+    if (d.startsWith(String(annee))) htAn += h;
+    let payeC = 0;
+    for (const p of paiementsDe(c)) {
+      const m = Math.min(p.montant, Math.max(0, ttc - payeC));
+      if (m <= 0) continue;
+      payeC += m;
+      enc += m;
+      nEcr++;
+      solde[MODE_COMPTE[p.mode]] += m;
+      solde["411000"] -= m;
+      parMode[p.mode] = (parMode[p.mode] ?? 0) + m;
+    }
+    const reste = ttc - payeC;
+    if (reste > 0) {
+      const cl = String(c.client ?? "?");
+      parClient[cl] = (parClient[cl] ?? 0) + reste;
+    }
+  }
+  for (const c of ctr) {
+    const ttc = num(c.montant), h = Math.round(ttc / (1 + tva / 100)), d = String(c.date ?? "");
+    solde["411000"] += ttc;
+    solde["706000"] += h;
+    solde["4431"] += ttc - h;
+    ht += h;
+    ttcT += ttc;
+    tvaT += ttc - h;
+    nEcr++;
+    addMois(d, h);
+    if (d.startsWith(String(annee))) htAn += h;
+    const cl = String(c.client ?? "?");
+    parClient[cl] = (parClient[cl] ?? 0) + ttc;
+  }
+  const k12 = [...Array(12)].map((_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - 11 + i, 1);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+  });
+  return {
+    exercice: annee,
+    nb_ecritures_auto: nEcr,
+    ventes_ht: Math.round(ht),
+    ventes_ht_exercice: Math.round(htAn),
+    tva_collectee: Math.round(tvaT),
+    facture_ttc: Math.round(ttcT),
+    encaisse: Math.round(enc),
+    creances_clients: Math.max(0, Math.round(solde["411000"])),
+    tresorerie_encaissee: Math.round(solde["521000"] + solde["552000"] + solde["571000"]),
+    attente_nature_471: Math.round(solde["471000"]),
+    encaisse_par_mode: Object.fromEntries(Object.entries(parMode).map(([k, v]) => [k, Math.round(v)])),
+    ca_ht_12_derniers_mois: k12.map((k) => ({ mois: k, ht: Math.round(mois[k] ?? 0) })),
+    plus_grosses_creances: Object.entries(parClient).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([client2, reste]) => ({ client: client2, reste: Math.round(reste) }))
+  };
+}
+function commissions(o = {}) {
+  const real = (o.commandes ?? []).filter((c) => CA_STATUTS.includes(String(c.statut))), out = [], vus = /* @__PURE__ */ new Set();
+  for (const d of (o.deals ?? []).filter((x) => x.stage === "gagne")) {
+    const k = `${d.client}|${d.commercial ?? ""}`;
+    if (vus.has(k)) continue;
+    vus.add(k);
+    const base = real.filter((c) => key(c.client) === key(d.client) && (!d.logiciel || c.logiciel === d.logiciel) && !c.renouvellement).reduce((t, c) => t + cmdHT(c, o.tva ?? 18), 0);
+    if (!(base > 0)) continue;
+    const type = String(d.commercial ?? "").includes("Apporteur") ? "apporteur" : "salarie", taux = type === "apporteur" ? 10 : 5;
+    out.push({ commercial: d.commercial || "\u2014", client: d.client, logiciel: d.logiciel || "", base_ht: Math.round(base), taux, montant: Math.round(base * taux / 100) });
+  }
+  out.sort((a, b) => num(b.montant) - num(a.montant));
+  return { nb: out.length, total_calcule: out.reduce((t, x) => t + num(x.montant), 0), liste: out.slice(0, 12), statuts_de_paiement: "non lisibles (enregistr\xE9s dans le navigateur du CRM)" };
+}
+function levee(d = {}, msg = "") {
+  const fin = d.financeurs ?? [], bro = d.brouillons ?? [];
+  const toks = nrm(msg).split(" ").filter((w) => w.length >= 4 && !["jarvis", "levee", "financeur", "financeurs", "fonds", "combien", "situation", "contact", "contacts", "brouillon", "brouillons", "finance", "financement"].includes(w));
+  const cnt = (arr, k) => arr.reduce((o, x) => {
+    const v = String(x[k] ?? "?");
+    o[v] = (o[v] ?? 0) + 1;
+    return o;
+  }, {});
+  const nomF = new Map(fin.map((f) => [String(f.id), String(f.nom)])), line = (f) => ({ id: f.id, nom: f.nom, type: f.type, pays: f.pays ?? "", statut: f.statut, pertinence: clip(f.pertinence, 120), ticket: f.ticket_max ? `${f.ticket_min ?? 0}-${f.ticket_max} ${f.devise ?? ""}` : "", notes: clip(f.notes, 160) });
+  const hit = (x, w) => {
+    const y = nrm(x).replace(/_/g, " ");
+    return y.includes(w) || y.length >= 4 && w.startsWith(y);
+  };
+  return {
+    financeurs: { total: fin.length, par_statut: cnt(fin, "statut"), par_type: cnt(fin, "type") },
+    contacts: (d.contacts ?? []).length,
+    brouillons: { total: bro.length, par_statut: cnt(bro, "statut") },
+    a_valider: bro.filter((b) => b.statut === "brouillon").slice(0, 10).map((b) => ({ id: b.id, objet: clip(b.objet, 90), financeur: nomF.get(String(b.financeur_id)) ?? "", canal: b.canal })),
+    en_discussion: fin.filter((f) => ["en_discussion", "contacte"].includes(String(f.statut))).slice(0, 10).map(line),
+    trouves: fin.filter((f) => toks.some((w) => hit(f.nom, w) || hit(f.type, w) || hit(f.pays, w) || hit(f.statut, w))).slice(0, 12).map(line)
+  };
+}
+var FINANCE_LIMITES = [
+  "Comptabilit\xE9 calcul\xE9e depuis les commandes confirm\xE9es/en cours/livr\xE9es, leurs paiements et les contrats sign\xE9s ; les \xE9critures manuelles et le grand livre complet ne sont pas lus.",
+  "Statuts de paiement des commissions, mod\xE8le Financement et configuration locale de la lev\xE9e : enregistr\xE9s dans le navigateur du CRM, non visibles.",
+  "Aucune \xE9criture comptable, commission ou paiement n'est modifiable par Jarvis ; la lev\xE9e de fonds (statut, notes, validation de brouillons) l'est, apr\xE8s confirmation."
+];
+function knownFinanceIds(finance) {
+  const out = /* @__PURE__ */ new Set(), lv = (finance ?? {}).levee;
+  if (!lv) return out;
+  for (const k of ["a_valider", "en_discussion", "trouves"]) for (const x of Array.isArray(lv[k]) ? lv[k] : []) {
+    const id = String(x?.id ?? "");
+    if (id) out.add(id);
+  }
+  return out;
+}
+
 // functions/_shared/company/jarvis.ts
 var UI_ACTIONS = ["zoom_in", "zoom_out", "reset_view", "auto_rotate_on", "auto_rotate_off", "dynamic_on", "dynamic_off", "panels_hide", "panels_show", "fullscreen", "focus_agent"];
 var INTERACTIONS = ["note", "contact", "demo", "proposition", "negociation", "relance", "perdu", "converti"];
@@ -178,7 +326,7 @@ var JARVIS_FORMAT = {
         additionalProperties: false,
         required: ["type", "agent_id", "texte", "titre", "description", "priorite", "jours", "rapport", "rids", "interaction", "nom", "statut", "logiciel", "secteur", "adresse", "commercial", "notes", "phone", "email", "valeur"],
         properties: {
-          type: { type: "string", enum: [...UI_ACTIONS, "propose_instruction", "propose_mission", "propose_report", "propose_report_now", "crm_update", "crm_log", "crm_create", "crm_delete"] },
+          type: { type: "string", enum: [...UI_ACTIONS, "propose_instruction", "propose_mission", "propose_report", "propose_report_now", "crm_update", "crm_log", "crm_create", "crm_delete", "fin_levee_statut", "fin_levee_note", "fin_brouillon"] },
           agent_id: { type: "string" },
           texte: { type: "string" },
           titre: { type: "string" },
@@ -212,8 +360,9 @@ POUVOIRS (champ actions, 0 \xE0 4) :
 PROPOSITIONS D'AM\xC9LIORATION : quand le pr\xE9sident demande des am\xE9liorations, des conseils, \xAB que dois-je faire \xBB, ou quand tu fais un point, analyse le contexte (section CONSTATS D\xC9TECT\xC9S comprise) et propose AU PLUS TROIS am\xE9liorations concr\xE8tes, class\xE9es par impact : chacune = un constat chiffr\xE9 tir\xE9 du contexte + une action pr\xE9cise. Dis-les \xE0 voix haute num\xE9rot\xE9es (\xAB Un : \u2026 Deux : \u2026 \xBB), puis demande laquelle lancer. Pour chacune, joins l'action correspondante (propose_mission vers l'agent le plus adapt\xE9, ou propose_instruction pour le directeur g\xE9n\xE9ral), dans le M\xCAME ORDRE que ta num\xE9rotation. N'invente aucun constat absent du contexte ; si tout va bien, dis-le et propose une seule optimisation r\xE9aliste.
 - propose_report (agent_id exact, jours 1 \xE0 30) : demander \xE0 un agent un rapport d'activit\xE9. propose_report_now (rapport = quotidien, hebdomadaire ou mensuel) : g\xE9n\xE9rer et envoyer au pr\xE9sident le rapport de direction.
 MODE : le contexte indique MODE PRUDENT ou MODE AUTONOME. En prudent, les propositions attendent le \xAB oui \xBB du pr\xE9sident (tu demandes confirmation). En AUTONOME, elles sont ex\xE9cut\xE9es aussit\xF4t par l'interface : ta r\xE9ponse annonce ce que tu lances (\xAB Je transmets\u2026 \xBB, \xAB Je confie\u2026 \xBB) et ne demande PAS de confirmation. Dans les deux modes tu restes limit\xE9 \xE0 ces actions internes.
-FINANCE : pour une question financière, tu reçois une section FINANCE CRM chargée en lecture seule depuis les commandes, paiements datés, soldes, Budget & actions, documents et écritures. Tu peux répondre sur le CA HT total, mensuel, 30/90 jours et annuel, les ventes par logiciel, les paiements réellement datés, les acomptes déclarés, les soldes à recouvrer, les dépenses saisies et l’objectif mensuel lorsqu’ils figurent dans cette section. Distingue toujours CA, encaissements, acomptes déclarés et soldes. N’assimile jamais le CA à la trésorerie ou au bénéfice. Si les écritures ou dépenses sont absentes, dis qu’elles ne sont pas enregistrées ou accessibles ; n’invente aucun montant. Les coûts IA sont en USD, séparés des montants FCFA. Tu es en lecture seule sur ces données : aucune écriture comptable, modification de commande, paiement, facture ou dépense ne peut être créée ou modifiée par une simple réponse.
 CRM : tu vois le CRM (sections CRM : r\xE9sum\xE9 par logiciel et par \xE9tape, derniers prospects, fiches correspondant \xE0 la demande). Tu peux dire combien de prospects, \xE0 quelle \xE9tape, qui a \xE9t\xE9 contact\xE9 ou a r\xE9pondu, quelles fiches sont sans suite. \xC9tape \xAB non trait\xE9 \xBB = aucune qualification ni contact enregistr\xE9. Tu ne vois ni t\xE9l\xE9phone ni e-mail ; pour \xE9crire \xE0 un prospect, passe par une mission valid\xE9e.
+FINANCE : pour une question financi\xE8re, tu re\xE7ois une section FINANCE CRM charg\xE9e en lecture seule depuis les commandes, paiements dat\xE9s, soldes, Budget & actions, documents et \xE9critures. Tu peux r\xE9pondre sur le CA HT total, mensuel, 30/90 jours et annuel, les ventes par logiciel, les paiements r\xE9ellement dat\xE9s, les acomptes d\xE9clar\xE9s, les soldes \xE0 recouvrer, les d\xE9penses saisies et l\u2019objectif mensuel lorsqu\u2019ils figurent dans cette section. Distingue toujours CA, encaissements, acomptes d\xE9clar\xE9s et soldes. N\u2019assimile jamais le CA \xE0 la tr\xE9sorerie ou au b\xE9n\xE9fice. Si les \xE9critures ou d\xE9penses sont absentes, dis qu\u2019elles ne sont pas enregistr\xE9es ou accessibles ; n\u2019invente aucun montant. Les co\xFBts IA sont en USD, s\xE9par\xE9s des montants FCFA. Tu es en lecture seule sur ces donn\xE9es : aucune \xE9criture comptable, modification de commande, paiement, facture ou d\xE9pense ne peut \xEAtre cr\xE9\xE9e ou modifi\xE9e par une simple r\xE9ponse.
+FINANCE (module Finance et ses onglets) : la section FINANCE CRM couvre : Comptabilit\xE9 (ventes HT, TVA collect\xE9e, encaissements par mode, cr\xE9ances clients et plus grosses cr\xE9ances, CA sur 12 mois : \xE9quivalents des onglets Journal, Balance, SIG et TVA ; le fichier FEC et le grand livre d\xE9taill\xE9 restent dans le CRM), Commissions (calcul\xE9es selon les r\xE8gles du CRM : 5 % salari\xE9, 10 % apporteur ; les statuts de paiement ne sont PAS visibles), Financement (mod\xE8le local au navigateur : non visible, dis-le) et Lev\xE9e de fonds (financeurs par statut et type, contacts, brouillons \xE0 valider, financeurs cit\xE9s). Pour la lev\xE9e de fonds seulement, tu peux agir : fin_levee_statut (rids = ids de financeurs EXACTS de la section FINANCE ; statut = a_etudier, correspond, contacte, en_discussion, decline, ecarte ou investi), fin_levee_note (rids ; texte = la note ajout\xE9e) et fin_brouillon (rids = ids de brouillons \xE0 valider ; statut = valide ou abandonne : \xAB valide \xBB autorise l'envoi par un humain, tu n'envoies jamais). Ces actions exigent TOUJOURS la confirmation du pr\xE9sident, m\xEAme en mode autonome. Tu ne peux modifier ni \xE9critures, ni commissions, ni paiements, ni factures : propose alors une consigne au directeur g\xE9n\xE9ral.
 \xC9CRITURE CRM (pleins pouvoirs sur les fiches clients et prospects, via les actions ci-dessous) :
 - crm_update : modifier des fiches (rids = ids EXACTS de la colonne \xAB id \xBB des sections CRM, 25 au plus) ; renseigne seulement les champs \xE0 changer parmi statut (prospect, client ou inactif), logiciel, secteur, adresse, commercial, notes, nom, phone, email, valeur (entier en FCFA, -1 si inchang\xE9) et laisse les autres vides.
 - crm_log : ajouter \xE0 l'historique de fiches une interaction (rids ; interaction = note, contact, demo, proposition, negociation, relance, perdu ou converti ; texte = la note). \xAB contact \xBB = contact \xE9tabli ; \xAB converti \xBB passe aussi la fiche en client. Cela fait avancer l'\xE9tape du pipeline.
@@ -260,7 +409,7 @@ function buildContext(raw) {
     return `${clipS(o.rid, 30)} | ${clipS(o.nom, 50)} | ${clipS(o.logiciel, 24)} | ${clipS(o.statut, 12)} | ${clipS(o.etape, 20)} | ${clipS(o.score, 5)} | ${clipS(o.ville, 30)} | envoi ${clipS(o.dernier_envoi, 6)} | r\xE9ponse ${clipS(o.derniere_reponse, 6)} | suite ${clipS(o.prochaine_action, 6)}`;
   };
   if (crm.resume) out.push("CRM \u2014 R\xC9SUM\xC9 : " + clipS(JSON.stringify(crm.resume), 2200));
-  if (c.finance && typeof c.finance === "object") out.push("FINANCE CRM (lecture seule, données structurées) : " + clipS(JSON.stringify(c.finance), 6500));
+  if (c.finance && typeof c.finance === "object") out.push("FINANCE CRM (lecture seule, donn\xE9es structur\xE9es) : " + clipS(JSON.stringify(c.finance), 14e3));
   out.push("CRM \u2014 DERNIERS PROSPECTS (id | nom | logiciel | statut | \xE9tape | score | ville | dernier envoi | derni\xE8re r\xE9ponse | prochaine action) :");
   for (const a of (Array.isArray(crm.recents) ? crm.recents : []).slice(0, 25)) out.push(fl(a));
   out.push("CRM \u2014 FICHES CORRESPONDANT \xC0 LA DEMANDE :");
@@ -270,7 +419,7 @@ function buildContext(raw) {
     const x = a;
     out.push(`${clipS(x.quand, 20)} | ${clipS(x.agent, 30)} | ${clipS(x.action, 80)}`);
   }
-  return out.join("\n").slice(0, 24e3);
+  return out.join("\n").slice(0, 32e3);
 }
 function cleanHistory(raw) {
   if (!Array.isArray(raw)) return [];
@@ -302,7 +451,7 @@ function cleanChamps(x) {
   if (Number.isFinite(v) && v >= 0 && v <= 1e9) c.valeur = v;
   return c;
 }
-function parseReply(text, knownAgentIds, knownCrm = /* @__PURE__ */ new Set()) {
+function parseReply(text, knownAgentIds, knownCrm = /* @__PURE__ */ new Set(), knownFin = /* @__PURE__ */ new Set()) {
   let j = {};
   try {
     j = JSON.parse(text);
@@ -345,6 +494,18 @@ function parseReply(text, knownAgentIds, knownCrm = /* @__PURE__ */ new Set()) {
         const it = String(x.interaction ?? ""), texte = clipS(x.texte, 600);
         if (INTERACTIONS.includes(it) && (texte.length >= 3 || it === "converti")) actions.push({ type: "crm_log", rids, interaction: it, texte });
       }
+    } else if (t === "fin_levee_statut" || t === "fin_levee_note" || t === "fin_brouillon") {
+      const rids = [...new Set((Array.isArray(x.rids) ? x.rids : []).map((r) => String(r)).filter((r) => knownFin.has(r)))].slice(0, 25);
+      if (!rids.length) continue;
+      const st = String(x.statut ?? "").trim().toLowerCase();
+      if (t === "fin_levee_statut") {
+        if (LEVEE_STATUTS.includes(st)) actions.push({ type: "fin_levee_statut", rids, statut: st });
+      } else if (t === "fin_brouillon") {
+        if (BROUILLON_STATUTS.includes(st)) actions.push({ type: "fin_brouillon", rids, statut: st });
+      } else {
+        const texte = clipS(x.texte, 600);
+        if (texte.length >= 3) actions.push({ type: "fin_levee_note", rids, texte });
+      }
     } else if (t === "crm_create") {
       const champs = cleanChamps(x);
       if (champs.nom && String(champs.nom).length >= 2) actions.push({ type: "crm_create", champs });
@@ -372,49 +533,108 @@ function knownIds(raw) {
 // functions/ai-jarvis/index.ts
 function asksFinance(message) {
   const q = message.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/['’]/g, " ").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
-  return /(^| )(ca|chiffre d affaires|chiffre affaires|chiffre affaire|chiffres affaires|vente|ventes|commande|commandes|encaissement|encaissements|acompte|acomptes|solde|soldes|facture|factures|finance|financier|financiere|tresorerie|depense|depenses|charge|charges|marge|rentabilite|paiement|paiements|budget|comptabilite|ecriture|ecritures|benefice|profit|resultat)( |$)/.test(q);
+  return /(^| )(ca|chiffre d affaires|chiffre affaires|chiffre affaire|chiffres affaires|vente|ventes|commande|commandes|encaissement|encaissements|acompte|acomptes|solde|soldes|facture|factures|finance|financier|financiere|tresorerie|depense|depenses|charge|charges|marge|rentabilite|paiement|paiements|budget|comptabilite|ecriture|ecritures|benefice|profit|resultat|commission|commissions|levee|financeur|financeurs|financement|tva|creance|creances|syscohada|journal|balance|grand livre|sig|fec|investisseur|investisseurs|subvention|banque|banques)( |$)/.test(q);
 }
-async function loadFinanceSnapshot() {
-  const { data, error } = await db().from("crm_records").select("entity,rid,data,updated_at")
-    .in("entity", ["commandes", "ecritures", "documents", "pil_depenses", "pil_config"])
-    .is("deleted_at", null).limit(1500);
+async function loadFinanceSnapshot(message = "") {
+  const { data, error } = await db().from("crm_records").select("entity,rid,data,updated_at").in("entity", ["commandes", "ecritures", "documents", "pil_depenses", "pil_config"]).is("deleted_at", null).limit(1500);
   if (error) throw error;
-  const rows = data ?? [], by = (entity) => rows.filter((r) => r.entity === entity).map((r) => r.data ?? {});
-  const num = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, n) : 0; };
+  const rows = data ?? [];
+  const by = (entity) => rows.filter((r) => r.entity === entity).map((r) => r.data ?? {});
+  const num2 = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.max(0, n) : 0;
+  };
   const date = (v) => /^\d{4}-\d{2}-\d{2}/.test(String(v ?? "")) ? String(v).slice(0, 10) : "";
   const sum = (a, f) => a.reduce((s, x) => s + f(x), 0);
   const period = (a, f, from, to) => sum(a.filter((x) => date(x.date) && date(x.date) >= from && date(x.date) <= to), f);
   const orders = by("commandes").filter((d) => ["confirmee", "en_cours", "livree"].includes(String(d.statut ?? "").toLowerCase()));
   const expenses = by("pil_depenses"), entries = by("ecritures"), docs = by("documents"), config = by("pil_config")[0] ?? {};
-  const now = new Date(), parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Abidjan", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+  const now = /* @__PURE__ */ new Date();
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Abidjan", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
   const part = (k) => parts.find((p) => p.type === k)?.value ?? "";
   const today = part("year") + "-" + part("month") + "-" + part("day"), month = today.slice(0, 7), year = today.slice(0, 4);
-  const daysAgo = (n) => { const d = new Date(now.getTime() - n * 864e5), p = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Abidjan", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d), v = (k) => p.find((x) => x.type === k)?.value ?? ""; return v("year") + "-" + v("month") + "-" + v("day"); };
-  const ht = (d) => num(d.htNet) || (num(d.ttc) ? Math.round(num(d.ttc) / 1.18) : 0);
+  const daysAgo = (n) => {
+    const d = new Date(now.getTime() - n * 864e5);
+    const p = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Abidjan", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+    const v = (k) => p.find((x) => x.type === k)?.value ?? "";
+    return v("year") + "-" + v("month") + "-" + v("day");
+  };
+  const ht = (d) => num2(d.htNet) || (num2(d.ttc) ? Math.round(num2(d.ttc) / 1.18) : 0);
   const monthOrders = orders.filter((d) => date(d.date).startsWith(month)), ytdOrders = orders.filter((d) => date(d.date).startsWith(year));
-  const productMap = new Map(), statusMap = {};
-  for (const d of orders) { const product = String(d.logiciel ?? "Non renseigné").slice(0, 60); productMap.set(product, (productMap.get(product) ?? 0) + ht(d)); const status = String(d.statut ?? "inconnu"); statusMap[status] = (statusMap[status] ?? 0) + 1; }
-  const payments = orders.flatMap((d) => (Array.isArray(d.paiements) ? d.paiements : []).filter((p) => p && p.estimee !== true && p.estimee !== "true").map((p) => ({ date: date(p.date), montant: num(p.montant) }))).filter((p) => p.date);
-  const advances = sum(orders, (d) => num(d.acompte)), balances = sum(orders, (d) => num(d.solde));
-  const monthExpenses = expenses.filter((d) => String(d.mois ?? "") === month), objectiveRaw = config["obj_" + month], objective = objectiveRaw == null || objectiveRaw === "" ? null : num(objectiveRaw);
+  const productMap = /* @__PURE__ */ new Map(), statusMap = {};
+  for (const d of orders) {
+    const product = String(d.logiciel ?? "Non renseign\xE9").slice(0, 60);
+    productMap.set(product, (productMap.get(product) ?? 0) + ht(d));
+    const status = String(d.statut ?? "inconnu");
+    statusMap[status] = (statusMap[status] ?? 0) + 1;
+  }
+  const payments = orders.flatMap((d) => (Array.isArray(d.paiements) ? d.paiements : []).filter((p) => p && p.estimee !== true && p.estimee !== "true").map((p) => ({ date: date(p.date), montant: num2(p.montant) }))).filter((p) => p.date);
+  const advances = sum(orders, (d) => num2(d.acompte)), balances = sum(orders, (d) => num2(d.solde));
+  const monthExpenses = expenses.filter((d) => String(d.mois ?? "") === month);
+  const objectiveRaw = config["obj_" + month], objective = objectiveRaw == null || objectiveRaw === "" ? null : num2(objectiveRaw);
   const [costRowsResult, budgetResult] = await Promise.all([
-    db().from("ai_actions").select("cout_usd").eq("action", "llm_turn").gte("at", month + "-01T00:00:00Z").limit(5000),
+    db().from("ai_actions").select("cout_usd").eq("action", "llm_turn").gte("at", month + "-01T00:00:00Z").limit(5e3),
     db().from("ai_governance").select("budget_mois_usd").eq("id", 1).maybeSingle()
   ]);
+  const lite = await db().from("crm_records").select("entity,client:data->>client,commercial:data->>commercial,logiciel:data->>logiciel,stage:data->>stage,tva:data->>tva,date:data->>date,statut:data->>statut,montant:data->>montant,cmdId:data->>cmdId").in("entity", ["deals", "contrats", "config"]).is("deleted_at", null).limit(4e3);
+  const lr = lite.data ?? [], of = (e) => lr.filter((r) => r.entity === e);
+  const tva = Number(of("config")[0]?.tva) || 18;
+  const [fin, con, bro] = await Promise.all([
+    db().from("levee_financeurs").select("id,nom,type,pays,region,statut,pertinence,ticket_min,ticket_max,devise,notes").limit(1e3),
+    db().from("levee_contacts").select("id,financeur_id").limit(3e3),
+    db().from("levee_brouillons").select("id,financeur_id,canal,objet,statut,created_at").limit(1e3)
+  ]);
+  const ordersFull = by("commandes"), contrats = of("contrats").map((r) => ({ ...r, cmdId: r.cmdId || void 0 }));
+  const extra = {
+    compta_syscohada: compta({ commandes: ordersFull, contrats, tva }),
+    commissions: commissions({ deals: of("deals"), commandes: ordersFull, tva }),
+    levee: fin.error ? { disponible: false } : levee({ financeurs: fin.data ?? [], contacts: con.data ?? [], brouillons: bro.data ?? [] }, message)
+  };
   const costRows = costRowsResult.error ? null : costRowsResult.data ?? [];
   const aiBudget = budgetResult.error ? null : budgetResult.data?.budget_mois_usd ?? null;
   return {
-    disponible: true, devise: "FCFA", date_analyse: today, mois: month,
-    commandes: { nombre: orders.length, ca_ht_total: sum(orders, ht), ca_ht_mois: sum(monthOrders, ht), ca_ht_30_jours: period(orders, ht, daysAgo(30), today), ca_ht_90_jours: period(orders, ht, daysAgo(90), today), ca_ht_annee: sum(ytdOrders, ht), par_logiciel: [...productMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([logiciel, ca_ht]) => ({ logiciel, ca_ht })), par_statut: statusMap },
-    encaissements: { lignes_paiement_datees: payments.length, total_confirme: sum(payments, (p) => p.montant), mois: period(payments, (p) => p.montant, month + "-01", today), "90_jours": period(payments, (p) => p.montant, daysAgo(90), today), acomptes_declares_commandes: advances, solde_a_recouvrer_declare: balances },
-    depenses_gestion: { lignes_mois: monthExpenses.length, reel_mois: sum(monthExpenses, (d) => num(d.reel)), prevision_mois: sum(monthExpenses, (d) => num(d.prevu)) },
+    ...extra,
+    disponible: true,
+    devise: "FCFA",
+    date_analyse: today,
+    mois: month,
+    commandes: {
+      nombre: orders.length,
+      ca_ht_total: sum(orders, ht),
+      ca_ht_mois: sum(monthOrders, ht),
+      ca_ht_30_jours: period(orders, ht, daysAgo(30), today),
+      ca_ht_90_jours: period(orders, ht, daysAgo(90), today),
+      ca_ht_annee: sum(ytdOrders, ht),
+      par_logiciel: [...productMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([logiciel, ca_ht]) => ({ logiciel, ca_ht })),
+      par_statut: statusMap
+    },
+    encaissements: {
+      lignes_paiement_datees: payments.length,
+      total_confirme: sum(payments, (p) => p.montant),
+      mois: period(payments, (p) => p.montant, month + "-01", today),
+      "90_jours": period(payments, (p) => p.montant, daysAgo(90), today),
+      acomptes_declares_commandes: advances,
+      solde_a_recouvrer_declare: balances
+    },
+    depenses_gestion: {
+      lignes_mois: monthExpenses.length,
+      reel_mois: sum(monthExpenses, (d) => num2(d.reel)),
+      prevision_mois: sum(monthExpenses, (d) => num2(d.prevu))
+    },
     objectif_ca_ht_mois: objective,
     comptabilite: { ecritures_enregistrees: entries.length, factures_documents: docs.filter((d) => String(d.type ?? "").toLowerCase() === "facture").length },
-    couts_ia: { mois_usd: costRows === null ? null : sum(costRows, (r) => num(r.cout_usd)), budget_mois_usd: aiBudget === null ? null : num(aiBudget), lignes: costRows?.length ?? null },
-    limites: ["CA calculé sur htNet, ou TTC/1,18 si HT absent, pour les commandes confirmées, en cours ou livrées.", "Encaissements calculés uniquement sur les paiements datés non estimés ; acomptes déclarés présentés séparément.", "Solde à recouvrer issu du champ solde des commandes, sans rapprochement bancaire.", "Dépenses limitées aux lignes saisies dans Budget & actions ; les écritures comptables ne sont pas agrégées.", "Aucun bénéfice net, trésorerie bancaire ou marge par logiciel ne peut être déduit de ces seuls champs.", "Coûts IA en USD, séparés des montants FCFA."]
+    couts_ia: { mois_usd: costRows === null ? null : sum(costRows, (r) => num2(r.cout_usd)), budget_mois_usd: aiBudget === null ? null : num2(aiBudget), lignes: costRows?.length ?? null },
+    limites: [
+      "CA calcul\xE9 sur htNet, ou TTC/1,18 si HT absent, pour les commandes confirm\xE9es, en cours ou livr\xE9es.",
+      "Encaissements calcul\xE9s uniquement sur les paiements dat\xE9s non estim\xE9s ; acomptes d\xE9clar\xE9s pr\xE9sent\xE9s s\xE9par\xE9ment.",
+      "Solde \xE0 recouvrer issu du champ solde des commandes, sans rapprochement bancaire.",
+      "D\xE9penses limit\xE9es aux lignes saisies dans Budget & actions ; les \xE9critures comptables ne sont pas agr\xE9g\xE9es.",
+      "Aucun b\xE9n\xE9fice net, tr\xE9sorerie bancaire ou marge par logiciel ne peut \xEAtre d\xE9duit de ces seuls champs.",
+      "Co\xFBts IA en USD, s\xE9par\xE9s des montants FCFA.",
+      ...FINANCE_LIMITES
+    ]
   };
 }
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors(req) });
   if (req.method !== "POST") return json(req, { error: "M\xE9thode non autoris\xE9e" }, 405);
@@ -426,11 +646,14 @@ Deno.serve(async (req) => {
     if (message.length < 1) throw new HttpError(400, "Message vide");
     if (message.length > 1500) throw new HttpError(400, "Message trop long");
     const history = cleanHistory(body.history);
-    const context = body.context && typeof body.context === "object" && !Array.isArray(body.context) ? { ...body.context } : {};
+    const context = body.context && typeof body.context === "object" ? { ...body.context } : {};
     delete context.finance;
     if (asksFinance(message)) {
-      try { context.finance = await loadFinanceSnapshot(); }
-      catch { context.finance = { disponible: false }; }
+      try {
+        context.finance = await loadFinanceSnapshot(message);
+      } catch {
+        context.finance = { disponible: false };
+      }
     }
     const user = `CONTEXTE EN DIRECT
 ${buildContext(context)}
@@ -447,7 +670,7 @@ DEMANDE DU PR\xC9SIDENT : ${message}`;
       format: JARVIS_FORMAT
     });
     const text = out.content.map((b) => b.type === "text" ? b.text : "").join("");
-    const r = parseReply(text, knownIds(context), knownCrmIds(context));
+    const r = parseReply(text, knownIds(context), knownCrmIds(context), knownFinanceIds(context.finance));
     await audit({ agent: "jarvis", action: "jarvis_reponse", ok: true, payload: { par: op.user_id, nb_actions: r.actions.length } });
     return json(req, r, 200);
   } catch (e) {

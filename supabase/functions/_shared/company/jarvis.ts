@@ -4,6 +4,7 @@
 
 export const UI_ACTIONS = ["zoom_in", "zoom_out", "reset_view", "auto_rotate_on", "auto_rotate_off", "dynamic_on", "dynamic_off", "panels_hide", "panels_show", "fullscreen", "focus_agent"] as const;
 export const INTERACTIONS = ["note", "contact", "demo", "proposition", "negociation", "relance", "perdu", "converti"] as const;
+import { BROUILLON_STATUTS, LEVEE_STATUTS } from "./jarvis_finance.ts";
 export const STATUTS = ["prospect", "client", "inactif"] as const;
 export type JarvisAction =
   | { type: (typeof UI_ACTIONS)[number]; agent_id?: string }
@@ -14,7 +15,10 @@ export type JarvisAction =
   | { type: "crm_update"; rids: string[]; champs: Record<string, string | number> }
   | { type: "crm_log"; rids: string[]; interaction: (typeof INTERACTIONS)[number]; texte: string }
   | { type: "crm_create"; champs: Record<string, string | number> }
-  | { type: "crm_delete"; rids: string[] };
+  | { type: "crm_delete"; rids: string[] }
+  | { type: "fin_levee_statut"; rids: string[]; statut: string }
+  | { type: "fin_levee_note"; rids: string[]; texte: string }
+  | { type: "fin_brouillon"; rids: string[]; statut: string };
 export type JarvisReply = { reply: string; actions: JarvisAction[] };
 
 export const JARVIS_FORMAT = {
@@ -26,7 +30,7 @@ export const JARVIS_FORMAT = {
       items: {
         type: "object", additionalProperties: false, required: ["type", "agent_id", "texte", "titre", "description", "priorite", "jours", "rapport", "rids", "interaction", "nom", "statut", "logiciel", "secteur", "adresse", "commercial", "notes", "phone", "email", "valeur"],
         properties: {
-          type: { type: "string", enum: [...UI_ACTIONS, "propose_instruction", "propose_mission", "propose_report", "propose_report_now", "crm_update", "crm_log", "crm_create", "crm_delete"] },
+          type: { type: "string", enum: [...UI_ACTIONS, "propose_instruction", "propose_mission", "propose_report", "propose_report_now", "crm_update", "crm_log", "crm_create", "crm_delete", "fin_levee_statut", "fin_levee_note", "fin_brouillon"] },
           agent_id: { type: "string" }, texte: { type: "string" }, titre: { type: "string" }, description: { type: "string" }, priorite: { type: "integer" }, jours: { type: "integer" }, rapport: { type: "string" },
           rids: { type: "array", items: { type: "string" } }, interaction: { type: "string" }, nom: { type: "string" }, statut: { type: "string" }, logiciel: { type: "string" }, secteur: { type: "string" },
           adresse: { type: "string" }, commercial: { type: "string" }, notes: { type: "string" }, phone: { type: "string" }, email: { type: "string" }, valeur: { type: "integer" },
@@ -47,6 +51,7 @@ PROPOSITIONS D'AMÉLIORATION : quand le président demande des améliorations, d
 MODE : le contexte indique MODE PRUDENT ou MODE AUTONOME. En prudent, les propositions attendent le « oui » du président (tu demandes confirmation). En AUTONOME, elles sont exécutées aussitôt par l'interface : ta réponse annonce ce que tu lances (« Je transmets… », « Je confie… ») et ne demande PAS de confirmation. Dans les deux modes tu restes limité à ces actions internes.
 CRM : tu vois le CRM (sections CRM : résumé par logiciel et par étape, derniers prospects, fiches correspondant à la demande). Tu peux dire combien de prospects, à quelle étape, qui a été contacté ou a répondu, quelles fiches sont sans suite. Étape « non traité » = aucune qualification ni contact enregistré. Tu ne vois ni téléphone ni e-mail ; pour écrire à un prospect, passe par une mission validée.
 FINANCE : pour une question financière, tu reçois une section FINANCE CRM chargée en lecture seule depuis les commandes, paiements datés, soldes, Budget & actions, documents et écritures. Tu peux répondre sur le CA HT total, mensuel, 30/90 jours et annuel, les ventes par logiciel, les paiements réellement datés, les acomptes déclarés, les soldes à recouvrer, les dépenses saisies et l’objectif mensuel lorsqu’ils figurent dans cette section. Distingue toujours CA, encaissements, acomptes déclarés et soldes. N’assimile jamais le CA à la trésorerie ou au bénéfice. Si les écritures ou dépenses sont absentes, dis qu’elles ne sont pas enregistrées ou accessibles ; n’invente aucun montant. Les coûts IA sont en USD, séparés des montants FCFA. Tu es en lecture seule sur ces données : aucune écriture comptable, modification de commande, paiement, facture ou dépense ne peut être créée ou modifiée par une simple réponse.
+FINANCE (module Finance et ses onglets) : la section FINANCE CRM couvre : Comptabilité (ventes HT, TVA collectée, encaissements par mode, créances clients et plus grosses créances, CA sur 12 mois : équivalents des onglets Journal, Balance, SIG et TVA ; le fichier FEC et le grand livre détaillé restent dans le CRM), Commissions (calculées selon les règles du CRM : 5 % salarié, 10 % apporteur ; les statuts de paiement ne sont PAS visibles), Financement (modèle local au navigateur : non visible, dis-le) et Levée de fonds (financeurs par statut et type, contacts, brouillons à valider, financeurs cités). Pour la levée de fonds seulement, tu peux agir : fin_levee_statut (rids = ids de financeurs EXACTS de la section FINANCE ; statut = a_etudier, correspond, contacte, en_discussion, decline, ecarte ou investi), fin_levee_note (rids ; texte = la note ajoutée) et fin_brouillon (rids = ids de brouillons à valider ; statut = valide ou abandonne : « valide » autorise l'envoi par un humain, tu n'envoies jamais). Ces actions exigent TOUJOURS la confirmation du président, même en mode autonome. Tu ne peux modifier ni écritures, ni commissions, ni paiements, ni factures : propose alors une consigne au directeur général.
 ÉCRITURE CRM (pleins pouvoirs sur les fiches clients et prospects, via les actions ci-dessous) :
 - crm_update : modifier des fiches (rids = ids EXACTS de la colonne « id » des sections CRM, 25 au plus) ; renseigne seulement les champs à changer parmi statut (prospect, client ou inactif), logiciel, secteur, adresse, commercial, notes, nom, phone, email, valeur (entier en FCFA, -1 si inchangé) et laisse les autres vides.
 - crm_log : ajouter à l'historique de fiches une interaction (rids ; interaction = note, contact, demo, proposition, negociation, relance, perdu ou converti ; texte = la note). « contact » = contact établi ; « converti » passe aussi la fiche en client. Cela fait avancer l'étape du pipeline.
@@ -78,14 +83,14 @@ export function buildContext(raw: unknown): string {
   const crm = (c.crm && typeof c.crm === "object" ? c.crm : {}) as Record<string, unknown>;
   const fl = (x: unknown) => { const o = (x ?? {}) as Record<string, unknown>; return `${clipS(o.rid, 30)} | ${clipS(o.nom, 50)} | ${clipS(o.logiciel, 24)} | ${clipS(o.statut, 12)} | ${clipS(o.etape, 20)} | ${clipS(o.score, 5)} | ${clipS(o.ville, 30)} | envoi ${clipS(o.dernier_envoi, 6)} | réponse ${clipS(o.derniere_reponse, 6)} | suite ${clipS(o.prochaine_action, 6)}`; };
   if (crm.resume) out.push("CRM — RÉSUMÉ : " + clipS(JSON.stringify(crm.resume), 2200));
-  if (c.finance && typeof c.finance === "object") out.push("FINANCE CRM (lecture seule, données structurées) : " + clipS(JSON.stringify(c.finance), 6500));
+  if (c.finance && typeof c.finance === "object") out.push("FINANCE CRM (lecture seule, données structurées) : " + clipS(JSON.stringify(c.finance), 14000));
   out.push("CRM — DERNIERS PROSPECTS (id | nom | logiciel | statut | étape | score | ville | dernier envoi | dernière réponse | prochaine action) :");
   for (const a of (Array.isArray(crm.recents) ? crm.recents : []).slice(0, 25)) out.push(fl(a));
   out.push("CRM — FICHES CORRESPONDANT À LA DEMANDE :");
   for (const a of (Array.isArray(crm.trouves) ? crm.trouves : []).slice(0, 30)) out.push(fl(a));
   out.push("ACTIVITÉ RÉCENTE :");
   for (const a of arr("recent", 12)) { const x = a as Record<string, unknown>; out.push(`${clipS(x.quand, 20)} | ${clipS(x.agent, 30)} | ${clipS(x.action, 80)}`); }
-  return out.join("\n").slice(0, 24000);
+  return out.join("\n").slice(0, 32000);
 }
 
 export function cleanHistory(raw: unknown): { role: "user" | "assistant"; content: string }[] {
@@ -112,7 +117,7 @@ export function cleanChamps(x: Record<string, unknown>): Record<string, string |
   return c;
 }
 
-export function parseReply(text: string, knownAgentIds: Set<string>, knownCrm: Set<string> = new Set()): JarvisReply {
+export function parseReply(text: string, knownAgentIds: Set<string>, knownCrm: Set<string> = new Set(), knownFin: Set<string> = new Set()): JarvisReply {
   let j: Record<string, unknown> = {};
   try { j = JSON.parse(text); } catch {
     const m = /"reply"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(text);   // sortie tronquée : on récupère au moins la réponse parlée
@@ -134,6 +139,13 @@ export function parseReply(text: string, knownAgentIds: Set<string>, knownCrm: S
       if (t === "crm_delete") actions.push({ type: "crm_delete", rids });
       else if (t === "crm_update") { const champs = cleanChamps(x); if (Object.keys(champs).length) actions.push({ type: "crm_update", rids, champs }); }
       else { const it = String(x.interaction ?? ""), texte = clipS(x.texte, 600); if ((INTERACTIONS as readonly string[]).includes(it) && (texte.length >= 3 || it === "converti")) actions.push({ type: "crm_log", rids, interaction: it as (typeof INTERACTIONS)[number], texte }); }
+    } else if (t === "fin_levee_statut" || t === "fin_levee_note" || t === "fin_brouillon") {
+      const rids = [...new Set((Array.isArray(x.rids) ? x.rids : []).map((r) => String(r)).filter((r) => knownFin.has(r)))].slice(0, 25);
+      if (!rids.length) continue;
+      const st = String(x.statut ?? "").trim().toLowerCase();
+      if (t === "fin_levee_statut") { if ((LEVEE_STATUTS as readonly string[]).includes(st)) actions.push({ type: "fin_levee_statut", rids, statut: st }); }
+      else if (t === "fin_brouillon") { if ((BROUILLON_STATUTS as readonly string[]).includes(st)) actions.push({ type: "fin_brouillon", rids, statut: st }); }
+      else { const texte = clipS(x.texte, 600); if (texte.length >= 3) actions.push({ type: "fin_levee_note", rids, texte }); }
     } else if (t === "crm_create") {
       const champs = cleanChamps(x); if (champs.nom && String(champs.nom).length >= 2) actions.push({ type: "crm_create", champs });
     }
