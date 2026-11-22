@@ -268,7 +268,8 @@ function buildContext(raw) {
     const x = a;
     out.push(`${clipS(x.quand, 20)} | ${clipS(x.agent, 30)} | ${clipS(x.action, 80)}`);
   }
-  return out.join("\n").slice(0, 24e3);
+  return out.join("
+  if (c.finance && typeof c.finance === "object") out.push("FINANCE CRM (lecture seule, données structurées) : " + clipS(JSON.stringify(c.finance), 6500));\nFINANCE : pour une question financière, tu reçois une section FINANCE CRM chargée en lecture seule depuis les commandes, paiements datés, soldes, Budget & actions, documents et écritures. Tu peux répondre sur le CA HT total, mensuel, 30/90 jours et annuel, les ventes par logiciel, les paiements réellement datés, les acomptes déclarés, les soldes à recouvrer, les dépenses saisies et l’objectif mensuel lorsqu’ils figurent dans cette section. Distingue toujours CA, encaissements, acomptes déclarés et soldes. N’assimile jamais le CA à la trésorerie ou au bénéfice. Si les écritures ou dépenses sont absentes, dis qu’elles ne sont pas enregistrées ou accessibles ; n’invente aucun montant. Les coûts IA sont en USD, séparés des montants FCFA. Tu es en lecture seule sur ces données : aucune écriture comptable, modification de commande, paiement, facture ou dépense ne peut être créée ou modifiée par une simple réponse.\n").slice(0, 24e3);
 }
 function cleanHistory(raw) {
   if (!Array.isArray(raw)) return [];
