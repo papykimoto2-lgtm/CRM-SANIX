@@ -1531,6 +1531,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--primary)}
                 <option value="">— Message libre —</option>
                 <option value="aluexpert">Menuiserie alu / inox — AluExpert</option>
                 <option value="immo">Immobilier — ImmoSuite</option>
+                <option value="autogarage">Garages automobiles — AutoGarage Pro</option>
                 <option value="generic">Autres secteurs — logiciel recommandé</option>
               </select></div>
             <div class="form-group" id="mkt-subject-wrap" style="display:none"><label class="form-label">Objet de l'e-mail</label>
@@ -5520,6 +5521,12 @@ const FIRST_CONTACT_DEFAULT = {
     emailSubject: "Commandes, livreurs et encaissements de {nom} : un seul outil",
     email: "{salut} {destinataire},\n\nJe vous écris car {nom} assure des livraisons à Abidjan, et notre logiciel peut vous aider à mieux suivre vos courses, vos livreurs et votre argent.\n\nAngel's Livraison couvre :\n• commandes suivies par statut, de la prise en charge à la livraison ;\n• affectation des livreurs et tournées multi-livraisons ;\n• application livreur mobile avec carte et GPS ;\n• preuve de livraison par code et signature ;\n• paiement à la livraison, reversements et commissions des livreurs ;\n• rentabilité par livreur, par zone et par moto, entretien des motos ;\n• notifications WhatsApp aux clients.\n\nPuis-je vous présenter l'outil lors d'une démonstration gratuite de 20 minutes, dans vos locaux ou à distance, {rdv} ?\n\n{demo_line}Cordialement,\n{signature}\n\nSi ce message ne vous concerne pas, répondez simplement « stop » et je ne vous écrirai plus."
   },
+  autogarage: {
+    label: 'Garages automobiles — AutoGarage Pro',
+    wa: "{salut} 👋 Je m'adresse bien à l'équipe de {nom} ?\n\nJe suis {gerant}, de {societe} à {ville}. Nous avons créé *AutoGarage Pro*, un logiciel pour les garages : ordres de réparation, stock de pièces, rendez-vous, caisse et facturation au même endroit.\n\nSeriez-vous partant pour une démo gratuite de 20 minutes {rdv} ?\n\n{demo_line}Si ce n'est pas le bon moment, dites-le-moi et je ne vous relancerai pas. 🙏",
+    emailSubject: "Ordres de réparation, pièces et facturation de {nom} : un outil pensé pour les garages",
+    email: "{salut} {destinataire},\n\nJe me permets de vous écrire car {nom} exerce dans l'automobile, et je pense que notre logiciel peut vous faire gagner du temps et éviter les pertes.\n\nAutoGarage Pro est conçu pour les garages :\n• fiches véhicules et historique complet de chaque client ;\n• ordres de réparation, du devis à la facture (pièces et main-d'œuvre) ;\n• maintenance préventive : rappels d'entretien pour que vos clients reviennent ;\n• stock de pièces avec alertes de rupture ;\n• rendez-vous, caisse, facturation avec acomptes et soldes suivis ;\n• tableau de bord du chiffre d'affaires et de la rentabilité de l'atelier.\n\nPuis-je vous proposer une démonstration gratuite de 20 minutes, dans votre garage ou à distance, {rdv} ?\n\n{demo_line}Cordialement,\n{signature}\n\nSi ce message ne vous concerne pas, répondez simplement « stop » et je ne vous écrirai plus."
+  },
   generic: {
     label: 'Autres secteurs — logiciel recommandé',
     wa: "{salut} 👋 Je m'adresse bien à l'équipe de {nom} ?\n\nJe suis {gerant}, de {societe} à {ville}. Nous éditons des logiciels de gestion pensés pour les entreprises ivoiriennes (SYSCOHADA, utilisables hors connexion).\n\n{pitch}\n\nSeriez-vous partant pour une démo de 15 min {rdv} ?\n\n{demo_line}Si ce n'est pas le bon moment, dites-le-moi et je ne vous relancerai pas. 🙏",
@@ -5548,6 +5555,7 @@ function fcCfg(){
 function fcSegment(c){
   const l = _nrm(c.logiciel||'');
   if(l.includes('aluexpert')) return 'aluexpert';
+  if(l.includes('autogarage') || /garage|automobile/.test(_nrm(c.secteur||''))) return 'autogarage';
   if(l.includes('immo') || _nrm(c.secteur||'')==='immobilier') return 'immo';
   if(l.includes('livraison') || _nrm(c.secteur||'')==='logistique') return 'livraison';
   return 'generic';
@@ -8616,6 +8624,16 @@ function msgCibleAffiche(r){ return _msg.canal==='wa' ? (waAnalyse(r.c.phone).af
 // ── Message personnalisé ──
 function msgRempli(c){ return {objet:fcFill(_msgG('msg-objet'),c).trim(), corps:landingAjoute(fcFill(_msgG('msg-text'),c).trim(), _msg.canal==='email'?'email':'wa', c)}; }   // la landing page est jointe ici aussi (Messagerie, envoi en lot)
 function msgModeleWa(){ const id=_msgG('msg-wa-modele'); return waModeles().find(m=>m.id===id)||null; }
+/** Modèle de premier contact écrit pour un logiciel précis : bloque l'envoi à des destinataires d'un autre logiciel (ex. message AluExpert à un garage), sauf texte retouché. */
+function msgModeleHorsSegment(sel){
+  const id=_msg.tplId; if(!id) return '';
+  const base=/^b(\d+)$/.exec(id); const t=base ? MSG_TEMPLATES[Number(base[1])] : null;
+  if(!t || !t.fc || t.fc==='generic') return '';
+  if(_msgG('msg-text').trim()!==String(_msg.tplTexte||'').trim()) return '';
+  const autres=sel.filter(r=>fcSegment(r.c)!==t.fc); if(!autres.length) return '';
+  const lib=(FIRST_CONTACT_DEFAULT[t.fc]||{}).label||t.fc, ex=autres[0].c;
+  return 'Ce modèle est écrit pour « '+lib.split(' — ')[1]+' » : '+autres.length+' destinataire(s) relèvent d\'un autre logiciel (ex. '+(ex.nom||'?')+' : '+(ex.logiciel||'logiciel non précisé')+'). Filtrez par logiciel ou choisissez le modèle correspondant.';
+}
 function msgPret(sel){
   const SM=SanixMessagerie, email=_msg.canal==='email';
   if(msgDirect()){
@@ -8627,6 +8645,7 @@ function msgPret(sel){
     return {ok:true};
   }
   if(!_msgG('msg-text').trim()) return {ok:false,raison:'Choisissez un modèle ou rédigez votre message.'};
+  { const hs=msgModeleHorsSegment(sel); if(hs) return {ok:false,raison:hs}; }
   if(email && !_msgG('msg-objet').trim()) return {ok:false,raison:'Ajoutez un objet à l\'e-mail.'};
   if(!sel.length) return {ok:false,raison:'Aucun destinataire sélectionné.'};
   const m=msgRempli(sel[0].c), manq=SM.manques(m.corps+(email?'\n'+m.objet:''));
