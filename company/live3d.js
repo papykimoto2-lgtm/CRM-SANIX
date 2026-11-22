@@ -28,7 +28,7 @@ export function create(host, api) {
   const scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x050B16, .012);
   const camera = new THREE.PerspectiveCamera(50, 1, .1, 400), world = new THREE.Group(); scene.add(world);
   const glow = glowTexture(), ringTex = ringTexture();
-  const cam = { theta: .6, phi: 1.1, r: 44, tx: 0, ty: 0, tz: 0 }, goal = { ...cam }, HOME = { theta: .6, phi: 1.1, r: 44, tx: 0, ty: 0, tz: 0 };
+  const cam = { theta: .6, phi: 1.1, r: 50, tx: 0, ty: 0, tz: 0 }, goal = { ...cam }, HOME = { theta: .6, phi: 1.1, r: 50, tx: 0, ty: 0, tz: 0 };
   let auto = true, lastTouch = performance.now(), speaking = false, hover = null, key = "", W = 1, H = 1, running = true, t0 = performance.now();
   let edgeNodes = [], actNodes = [], dyn = true, spin = 0, nodes = [], byId = new Map(), edgeBase = null, edgeOn = null, flows = [], pulses = [], shocks = [];
 
