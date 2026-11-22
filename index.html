@@ -17338,6 +17338,10 @@ function waCandidats(raw){
   return out;
 }
 function waAnalyse(raw){
+  // Numéro étranger écrit avec son indicatif (+221, +229, +228…, hors Côte d'Ivoire) : accepté tel quel, chiffres seuls pour wa.me
+  { const t=String(raw||'').trim(), mi=/^(?:\+|00)\s*(\d[\d\s.\-()]{7,})$/.exec(t);
+    if(mi && !/[\/;,|]| ou | et /i.test(t)){ const d=mi[1].replace(/\D/g,''); if(!d.startsWith('225') && d.length>=9 && d.length<=15)
+      return {ok:true,num:d,kind:'international',converti:false,reason:'',all:[{brut:d,n:d,kind:'international',conv:false}],affiche:'+'+mi[1].trim()}; } }
   const cands = waCandidats(raw);
   if(!cands.length) return {ok:false,num:'',reason:'Numéro manquant',kind:'vide',all:[]};
   const all=[];
