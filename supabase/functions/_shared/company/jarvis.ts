@@ -6,7 +6,9 @@ export const UI_ACTIONS = ["zoom_in", "zoom_out", "reset_view", "auto_rotate_on"
 export type JarvisAction =
   | { type: (typeof UI_ACTIONS)[number]; agent_id?: string }
   | { type: "propose_instruction"; texte: string }
-  | { type: "propose_mission"; agent_id: string; titre: string; description: string; priorite: number };
+  | { type: "propose_mission"; agent_id: string; titre: string; description: string; priorite: number }
+  | { type: "propose_report"; agent_id: string; jours: number }
+  | { type: "propose_report_now"; rapport: "quotidien" | "hebdomadaire" | "mensuel" };
 export type JarvisReply = { reply: string; actions: JarvisAction[] };
 
 export const JARVIS_FORMAT = {
@@ -16,10 +18,10 @@ export const JARVIS_FORMAT = {
     actions: {
       type: "array",
       items: {
-        type: "object", additionalProperties: false, required: ["type", "agent_id", "texte", "titre", "description", "priorite"],
+        type: "object", additionalProperties: false, required: ["type", "agent_id", "texte", "titre", "description", "priorite", "jours", "rapport"],
         properties: {
-          type: { type: "string", enum: [...UI_ACTIONS, "propose_instruction", "propose_mission"] },
-          agent_id: { type: "string" }, texte: { type: "string" }, titre: { type: "string" }, description: { type: "string" }, priorite: { type: "integer" },
+          type: { type: "string", enum: [...UI_ACTIONS, "propose_instruction", "propose_mission", "propose_report", "propose_report_now"] },
+          agent_id: { type: "string" }, texte: { type: "string" }, titre: { type: "string" }, description: { type: "string" }, priorite: { type: "integer" }, jours: { type: "integer" }, rapport: { type: "string" },
         },
       },
     },
@@ -33,7 +35,10 @@ POUVOIRS (champ actions, 0 à 4) :
 - Interface, exécutée aussitôt : zoom_in, zoom_out, reset_view, auto_rotate_on/off, dynamic_on/off (mouvement perpétuel des agents), panels_hide/panels_show, fullscreen, focus_agent (agent_id = identifiant EXACT pris dans le contexte).
 - propose_instruction (texte) : une consigne à transmettre au directeur général IA. propose_mission (agent_id exact, titre, description, priorite 1 à 5) : une mission à confier à un agent précis. Ces deux actions sont seulement PROPOSÉES : le président doit dire « oui ». Dans ce cas ta réponse reformule en une phrase ce que tu t'apprêtes à transmettre et demande confirmation. Tu ne peux ni envoyer de message à un prospect, ni modifier la base, ni dépenser : si on te le demande, explique que cela passe par une mission validée.
 PROPOSITIONS D'AMÉLIORATION : quand le président demande des améliorations, des conseils, « que dois-je faire », ou quand tu fais un point, analyse le contexte (section CONSTATS DÉTECTÉS comprise) et propose AU PLUS TROIS améliorations concrètes, classées par impact : chacune = un constat chiffré tiré du contexte + une action précise. Dis-les à voix haute numérotées (« Un : … Deux : … »), puis demande laquelle lancer. Pour chacune, joins l'action correspondante (propose_mission vers l'agent le plus adapté, ou propose_instruction pour le directeur général), dans le MÊME ORDRE que ta numérotation. N'invente aucun constat absent du contexte ; si tout va bien, dis-le et propose une seule optimisation réaliste.
-Pour une simple question, actions = []. Remplis les champs inutiles d'une action avec une chaîne vide (priorite 0).
+- propose_report (agent_id exact, jours 1 à 30) : demander à un agent un rapport d'activité. propose_report_now (rapport = quotidien, hebdomadaire ou mensuel) : générer et envoyer au président le rapport de direction.
+MODE : le contexte indique MODE PRUDENT ou MODE AUTONOME. En prudent, les propositions attendent le « oui » du président (tu demandes confirmation). En AUTONOME, elles sont exécutées aussitôt par l'interface : ta réponse annonce ce que tu lances (« Je transmets… », « Je confie… ») et ne demande PAS de confirmation. Dans les deux modes tu restes limité à ces actions internes.
+DIALOGUE DU DIRECTEUR : la section DERNIERS ÉCHANGES AVEC LE DIRECTEUR GÉNÉRAL te permet de résumer ce qu'il a répondu ou décidé.
+Pour une simple question, actions = []. Remplis les champs inutiles d'une action avec une chaîne vide (priorite 0, jours 0).
 Si la demande est ambiguë, pose UNE question courte.`;
 
 const clipS = (s: unknown, n: number) => { const t = String(s ?? "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
@@ -44,6 +49,7 @@ export function buildContext(raw: unknown): string {
   const arr = (k: string, n: number) => (Array.isArray(c[k]) ? (c[k] as unknown[]).slice(0, n) : []);
   const out: string[] = [];
   out.push("HEURE : " + clipS(c.heure, 40));
+  out.push(c.mode === "autonome" ? "MODE AUTONOME" : "MODE PRUDENT");
   if (c.kpi && typeof c.kpi === "object") out.push("INDICATEURS : " + clipS(JSON.stringify(c.kpi), 900));
   out.push("AGENTS (id | nom | fonction | état | mission en cours) :");
   for (const a of arr("agents", 40)) { const x = a as Record<string, unknown>; out.push(`${clipS(x.id, 40)} | ${clipS(x.nom, 40)} | ${clipS(x.fonction, 50)} | ${clipS(x.etat, 30)} | ${clipS(x.mission, 90)}`); }
@@ -51,6 +57,8 @@ export function buildContext(raw: unknown): string {
   for (const m of arr("missions", 30)) { const x = m as Record<string, unknown>; out.push(`${clipS(x.statut, 20)} | ${clipS(x.agent, 30)} | ${clipS(x.produit, 20)} | ${clipS(x.titre, 90)} | ${clipS(x.fiches, 12)}`); }
   out.push("CONSTATS DÉTECTÉS (gravité | constat | piste) :");
   for (const a of arr("insights", 8)) { const x = a as Record<string, unknown>; out.push(`${clipS(x.gravite, 10)} | ${clipS(x.constat, 160)} | ${clipS(x.piste, 160)}`); }
+  out.push("DERNIERS ÉCHANGES AVEC LE DIRECTEUR GÉNÉRAL (ancien → récent) :");
+  for (const a of arr("dg", 6)) { const x = a as Record<string, unknown>; out.push(`${clipS(x.auteur, 12)} : ${clipS(x.texte, 300)}`); }
   out.push("ACTIVITÉ RÉCENTE :");
   for (const a of arr("recent", 12)) { const x = a as Record<string, unknown>; out.push(`${clipS(x.quand, 20)} | ${clipS(x.agent, 30)} | ${clipS(x.action, 80)}`); }
   return out.join("\n").slice(0, 14000);
@@ -70,7 +78,10 @@ export function cleanHistory(raw: unknown): { role: "user" | "assistant"; conten
 /** Valide la sortie du modèle : actions connues uniquement, agent_id présent dans le contexte, champs bornés. */
 export function parseReply(text: string, knownAgentIds: Set<string>): JarvisReply {
   let j: Record<string, unknown> = {};
-  try { j = JSON.parse(text); } catch { return { reply: clipS(text.replace(/[{}"]/g, ""), 500) || "Je n'ai pas pu formuler de réponse.", actions: [] }; }
+  try { j = JSON.parse(text); } catch {
+    const m = /"reply"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(text);   // sortie tronquée : on récupère au moins la réponse parlée
+    if (m) { try { return { reply: clipS(JSON.parse('"' + m[1] + '"'), 700), actions: [] }; } catch { /* repli ci-dessous */ } }
+    return { reply: clipS(text.replace(/[{}"]/g, ""), 500) || "Je n'ai pas pu formuler de réponse.", actions: [] }; }
   const reply = clipS(j.reply, 700) || "Bien reçu.";
   const actions: JarvisAction[] = [];
   for (const a of Array.isArray(j.actions) ? j.actions.slice(0, 4) : []) {
@@ -79,6 +90,8 @@ export function parseReply(text: string, knownAgentIds: Set<string>): JarvisRepl
       if (t === "focus_agent") { const id = String(x.agent_id ?? ""); if (knownAgentIds.has(id)) actions.push({ type: "focus_agent", agent_id: id }); }
       else actions.push({ type: t as (typeof UI_ACTIONS)[number] });
     } else if (t === "propose_instruction") { const texte = clipS(x.texte, 1500); if (texte.length >= 3) actions.push({ type: "propose_instruction", texte }); }
+    else if (t === "propose_report") { const id = String(x.agent_id ?? ""); if (knownAgentIds.has(id)) actions.push({ type: "propose_report", agent_id: id, jours: Math.min(30, Math.max(1, Math.trunc(Number(x.jours)) || 7)) }); }
+    else if (t === "propose_report_now") { const r = String(x.rapport ?? ""); if (r === "quotidien" || r === "hebdomadaire" || r === "mensuel") actions.push({ type: "propose_report_now", rapport: r }); }
     else if (t === "propose_mission") {
       const id = String(x.agent_id ?? ""), titre = clipS(x.titre, 200), description = clipS(x.description, 3000);
       if (knownAgentIds.has(id) && titre.length >= 3 && description.length >= 10) actions.push({ type: "propose_mission", agent_id: id, titre, description, priorite: Math.min(5, Math.max(1, Math.trunc(Number(x.priorite)) || 2)) });

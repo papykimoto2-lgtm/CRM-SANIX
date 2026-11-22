@@ -174,14 +174,16 @@ var JARVIS_FORMAT = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["type", "agent_id", "texte", "titre", "description", "priorite"],
+        required: ["type", "agent_id", "texte", "titre", "description", "priorite", "jours", "rapport"],
         properties: {
-          type: { type: "string", enum: [...UI_ACTIONS, "propose_instruction", "propose_mission"] },
+          type: { type: "string", enum: [...UI_ACTIONS, "propose_instruction", "propose_mission", "propose_report", "propose_report_now"] },
           agent_id: { type: "string" },
           texte: { type: "string" },
           titre: { type: "string" },
           description: { type: "string" },
-          priorite: { type: "integer" }
+          priorite: { type: "integer" },
+          jours: { type: "integer" },
+          rapport: { type: "string" }
         }
       }
     }
@@ -194,7 +196,10 @@ POUVOIRS (champ actions, 0 \xE0 4) :
 - Interface, ex\xE9cut\xE9e aussit\xF4t : zoom_in, zoom_out, reset_view, auto_rotate_on/off, dynamic_on/off (mouvement perp\xE9tuel des agents), panels_hide/panels_show, fullscreen, focus_agent (agent_id = identifiant EXACT pris dans le contexte).
 - propose_instruction (texte) : une consigne \xE0 transmettre au directeur g\xE9n\xE9ral IA. propose_mission (agent_id exact, titre, description, priorite 1 \xE0 5) : une mission \xE0 confier \xE0 un agent pr\xE9cis. Ces deux actions sont seulement PROPOS\xC9ES : le pr\xE9sident doit dire \xAB oui \xBB. Dans ce cas ta r\xE9ponse reformule en une phrase ce que tu t'appr\xEAtes \xE0 transmettre et demande confirmation. Tu ne peux ni envoyer de message \xE0 un prospect, ni modifier la base, ni d\xE9penser : si on te le demande, explique que cela passe par une mission valid\xE9e.
 PROPOSITIONS D'AM\xC9LIORATION : quand le pr\xE9sident demande des am\xE9liorations, des conseils, \xAB que dois-je faire \xBB, ou quand tu fais un point, analyse le contexte (section CONSTATS D\xC9TECT\xC9S comprise) et propose AU PLUS TROIS am\xE9liorations concr\xE8tes, class\xE9es par impact : chacune = un constat chiffr\xE9 tir\xE9 du contexte + une action pr\xE9cise. Dis-les \xE0 voix haute num\xE9rot\xE9es (\xAB Un : \u2026 Deux : \u2026 \xBB), puis demande laquelle lancer. Pour chacune, joins l'action correspondante (propose_mission vers l'agent le plus adapt\xE9, ou propose_instruction pour le directeur g\xE9n\xE9ral), dans le M\xCAME ORDRE que ta num\xE9rotation. N'invente aucun constat absent du contexte ; si tout va bien, dis-le et propose une seule optimisation r\xE9aliste.
-Pour une simple question, actions = []. Remplis les champs inutiles d'une action avec une cha\xEEne vide (priorite 0).
+- propose_report (agent_id exact, jours 1 \xE0 30) : demander \xE0 un agent un rapport d'activit\xE9. propose_report_now (rapport = quotidien, hebdomadaire ou mensuel) : g\xE9n\xE9rer et envoyer au pr\xE9sident le rapport de direction.
+MODE : le contexte indique MODE PRUDENT ou MODE AUTONOME. En prudent, les propositions attendent le \xAB oui \xBB du pr\xE9sident (tu demandes confirmation). En AUTONOME, elles sont ex\xE9cut\xE9es aussit\xF4t par l'interface : ta r\xE9ponse annonce ce que tu lances (\xAB Je transmets\u2026 \xBB, \xAB Je confie\u2026 \xBB) et ne demande PAS de confirmation. Dans les deux modes tu restes limit\xE9 \xE0 ces actions internes.
+DIALOGUE DU DIRECTEUR : la section DERNIERS \xC9CHANGES AVEC LE DIRECTEUR G\xC9N\xC9RAL te permet de r\xE9sumer ce qu'il a r\xE9pondu ou d\xE9cid\xE9.
+Pour une simple question, actions = []. Remplis les champs inutiles d'une action avec une cha\xEEne vide (priorite 0, jours 0).
 Si la demande est ambigu\xEB, pose UNE question courte.`;
 var clipS = (s, n) => {
   const t = String(s ?? "").replace(/\s+/g, " ").trim();
@@ -205,6 +210,7 @@ function buildContext(raw) {
   const arr = (k, n) => Array.isArray(c[k]) ? c[k].slice(0, n) : [];
   const out = [];
   out.push("HEURE : " + clipS(c.heure, 40));
+  out.push(c.mode === "autonome" ? "MODE AUTONOME" : "MODE PRUDENT");
   if (c.kpi && typeof c.kpi === "object") out.push("INDICATEURS : " + clipS(JSON.stringify(c.kpi), 900));
   out.push("AGENTS (id | nom | fonction | \xE9tat | mission en cours) :");
   for (const a of arr("agents", 40)) {
@@ -220,6 +226,11 @@ function buildContext(raw) {
   for (const a of arr("insights", 8)) {
     const x = a;
     out.push(`${clipS(x.gravite, 10)} | ${clipS(x.constat, 160)} | ${clipS(x.piste, 160)}`);
+  }
+  out.push("DERNIERS \xC9CHANGES AVEC LE DIRECTEUR G\xC9N\xC9RAL (ancien \u2192 r\xE9cent) :");
+  for (const a of arr("dg", 6)) {
+    const x = a;
+    out.push(`${clipS(x.auteur, 12)} : ${clipS(x.texte, 300)}`);
   }
   out.push("ACTIVIT\xC9 R\xC9CENTE :");
   for (const a of arr("recent", 12)) {
@@ -245,6 +256,13 @@ function parseReply(text, knownAgentIds) {
   try {
     j = JSON.parse(text);
   } catch {
+    const m = /"reply"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(text);
+    if (m) {
+      try {
+        return { reply: clipS(JSON.parse('"' + m[1] + '"'), 700), actions: [] };
+      } catch {
+      }
+    }
     return { reply: clipS(text.replace(/[{}"]/g, ""), 500) || "Je n'ai pas pu formuler de r\xE9ponse.", actions: [] };
   }
   const reply = clipS(j.reply, 700) || "Bien re\xE7u.";
@@ -259,6 +277,12 @@ function parseReply(text, knownAgentIds) {
     } else if (t === "propose_instruction") {
       const texte = clipS(x.texte, 1500);
       if (texte.length >= 3) actions.push({ type: "propose_instruction", texte });
+    } else if (t === "propose_report") {
+      const id = String(x.agent_id ?? "");
+      if (knownAgentIds.has(id)) actions.push({ type: "propose_report", agent_id: id, jours: Math.min(30, Math.max(1, Math.trunc(Number(x.jours)) || 7)) });
+    } else if (t === "propose_report_now") {
+      const r = String(x.rapport ?? "");
+      if (r === "quotidien" || r === "hebdomadaire" || r === "mensuel") actions.push({ type: "propose_report_now", rapport: r });
     } else if (t === "propose_mission") {
       const id = String(x.agent_id ?? ""), titre = clipS(x.titre, 200), description = clipS(x.description, 3e3);
       if (knownAgentIds.has(id) && titre.length >= 3 && description.length >= 10) actions.push({ type: "propose_mission", agent_id: id, titre, description, priorite: Math.min(5, Math.max(1, Math.trunc(Number(x.priorite)) || 2)) });
@@ -292,9 +316,9 @@ DEMANDE DU PR\xC9SIDENT : ${message}`;
       label: "jarvis",
       system: SYSTEM,
       messages,
-      model: "claude-haiku-5-5",
+      model: "claude-sonnet-5-5",
       effort: "low",
-      maxTokens: 700,
+      maxTokens: 2500,
       format: JARVIS_FORMAT
     });
     const text = out.content.map((b) => b.type === "text" ? b.text : "").join("");

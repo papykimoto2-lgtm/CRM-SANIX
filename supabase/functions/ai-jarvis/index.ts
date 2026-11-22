@@ -1,5 +1,5 @@
 // JARVIS — assistant conversationnel de la Salle de contrôle (JWT opérateur « direction »).
-// Corps : { message, history?, context } → { reply, actions }. Modèle économique (Haiku), budget IA appliqué par callClaude.
+// Corps : { message, history?, context } → { reply, actions }. Modèle Sonnet, budget IA appliqué par callClaude.
 import { audit, cors, db, errMsg, HttpError, json, requireOperator } from "../_shared/core.ts";
 import { BudgetError, callClaude, LlmKeyMissingError, ProviderBillingError, ProviderConfigurationError, TransientLlmError } from "../_shared/llm.ts";
 import { buildContext, cleanHistory, JARVIS_FORMAT, knownIds, parseReply, SYSTEM } from "../_shared/company/jarvis.ts";
@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
     const user = `CONTEXTE EN DIRECT\n${buildContext(body.context)}\n\nDEMANDE DU PRÉSIDENT : ${message}`;
     const messages = [...history, { role: "user" as const, content: user }];
     const { message: out } = await callClaude({
-      label: "jarvis", system: SYSTEM, messages, model: "claude-haiku-5-5", effort: "low", maxTokens: 700,
+      label: "jarvis", system: SYSTEM, messages, model: "claude-sonnet-5-5", effort: "low", maxTokens: 2500,
       format: JARVIS_FORMAT as unknown as Record<string, unknown>,
     });
     const text = out.content.map((b) => (b.type === "text" ? b.text : "")).join("");
