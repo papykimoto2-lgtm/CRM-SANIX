@@ -242,7 +242,7 @@ async function init3d() {
 }
 function initControls() {
   $("#ctl").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-c]"); if (!b || !view3d) return; const c = b.dataset.c;
-    if (c === "in") view3d.zoom(.72); else if (c === "out") view3d.zoom(1.4); else if (c === "reset") view3d.reset(); else if (c === "auto") b.classList.toggle("on", view3d.toggleAuto());
+    if (c === "in") view3d.zoom(.72); else if (c === "out") view3d.zoom(1.4); else if (c === "reset") view3d.reset(); else if (c === "auto") b.classList.toggle("on", view3d.toggleAuto()); else if (c === "dyn") b.classList.toggle("on", view3d.toggleDynamic());
     else if (c === "focus") { document.body.classList.toggle("focus"); setTimeout(() => view3d.resize(), 60); } });
   setTimeout(() => $("#hint")?.classList.add("off"), 9000);
 }
