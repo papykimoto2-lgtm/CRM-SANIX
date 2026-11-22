@@ -15,7 +15,7 @@ export function initJarvis(A, stage) {
   dock.innerHTML = `<div id="jv-log" aria-live="polite"></div>
     <div class="jv-bar"><button type="button" id="jv-orb" class="orb" aria-label="Parler à Jarvis" title="Parler à Jarvis"><i></i></button>
     <div class="jv-mid"><input id="jv-in" type="text" autocomplete="off" placeholder="Parlez ou écrivez…" title="Ex. : « où en est AutoGarage ? »" aria-label="Message à Jarvis"><small id="jv-st">Jarvis prêt${SR ? "" : " (micro non pris en charge : utilisez le clavier)"}</small></div>
-    <button type="button" id="jv-ideas" class="jb" title="Propositions d'amélioration de Jarvis">💡<em id="jv-badge" hidden></em></button><button type="button" id="jv-send" class="jb" title="Envoyer">➤</button><button type="button" id="jv-voice" class="jb on" title="Voix de Jarvis">🔊</button><button type="button" id="jv-hands" class="jb" title="Mains libres : dites « Jarvis » pour m'appeler">🖐</button></div>`;
+    <button type="button" id="jv-auto" class="jb" title="Mode autonome : Jarvis lance consignes, missions et rapports sans confirmation">⚡</button><button type="button" id="jv-ideas" class="jb" title="Propositions d'amélioration de Jarvis">💡<em id="jv-badge" hidden></em></button><button type="button" id="jv-send" class="jb" title="Envoyer">➤</button><button type="button" id="jv-voice" class="jb on" title="Voix de Jarvis">🔊</button><button type="button" id="jv-hands" class="jb" title="Mains libres : dites « Jarvis » pour m'appeler">🖐</button></div>`;
   stage.appendChild(dock);
   const $ = (s) => dock.querySelector(s), logEl = $("#jv-log"), inEl = $("#jv-in"), st = $("#jv-st"), orb = $("#jv-orb");
   let guard = null, voiceOn = true, hands = false, listening = false, speaking = false, rec = null, pending = null, convo = false, gotResult = false, llmDown = 0, hist = [], awakeUntil = 0, lastSpeechEnd = 0, poll = null;
@@ -51,6 +51,7 @@ export function initJarvis(A, stage) {
   const view = () => A.view;
   const HELP = "Je peux : donner la situation, le nombre de fiches, qui travaille, les blocages, l'avancement d'un logiciel (par exemple AutoGarage), ce que fait un agent, piloter la caméra (zoom, vue d'ensemble, montre tel agent, rotation, plein cadre) et transmettre une demande au directeur général après votre confirmation.";
 
+  let autoMode = false;
   const RANK = { haute: 0, moyenne: 1, basse: 2 };
   function insights() {
     const out = [], h = A.health(), now = Date.now(), day = 864e5, I = (gravite, constat, piste, texte) => out.push({ gravite, constat, piste, action: texte ? { kind: "instruction", texte } : null });
@@ -79,7 +80,7 @@ export function initJarvis(A, stage) {
   function snapshot() {
     const nm = (id) => A.nameOf(id), cur = (a) => { const t = D.tasks.find((x) => x.agent_id === a.id && x.statut === "en_cours") ?? D.tasks.find((x) => x.agent_id === a.id && A.OPENS.includes(x.statut)); return t ? t.titre : ""; };
     const h = A.health();
-    return { heure: new Intl.DateTimeFormat("fr-FR", { timeZone: "Africa/Abidjan", dateStyle: "full", timeStyle: "short" }).format(new Date()),
+    return { mode: autoMode ? "autonome" : "prudent", heure: new Intl.DateTimeFormat("fr-FR", { timeZone: "Africa/Abidjan", dateStyle: "full", timeStyle: "short" }).format(new Date()),
       kpi: { agents_au_travail: run().length, agents_actifs: D.agents.filter((a) => !["suspendu", "archive"].includes(a.etat)).length, missions_en_cours: D.tasks.filter((t) => t.statut === "en_cours").length, missions_en_attente: openT((t) => t.statut === "a_faire").length, fiches_creees_aujourdhui: D.nToday, prospects_en_base: D.nTotal, decisions_a_valider: D.approvals, sante_0_100: h.score, missions_figees: h.stale, blocages_24h: h.blocked, cout_ia_jour_usd: D.budget?.jour_usd ?? null, budget_jour_usd: D.budget?.budget_jour_usd ?? null },
       insights: insights().map((x) => ({ gravite: x.gravite, constat: x.constat, piste: x.piste })),
       agents: D.agents.filter((a) => a.etat !== "archive").slice(0, 40).map((a) => ({ id: a.id, nom: a.nom, fonction: a.fonction, etat: A.STATES[A.agentState(a)][0], mission: cur(a) })),
@@ -90,9 +91,10 @@ export function initJarvis(A, stage) {
     if (Date.now() < llmDown || !A.sb?.functions?.invoke) return null;
     setOrb("think"); setSt("Jarvis réfléchit…");
     try {
-      const call = A.sb.functions.invoke("ai-jarvis", { body: { message: raw, history: hist.slice(-8), context: snapshot() } });
+      const ctx = snapshot(); try { const r = await A.sb.from("ai_executive_messages").select("auteur,contenu,created_at").order("created_at", { ascending: false }).limit(6); ctx.dg = (r.data ?? []).reverse().map((m) => ({ auteur: m.auteur, texte: m.contenu })); } catch { /* dialogue indisponible */ }
+      const call = A.sb.functions.invoke("ai-jarvis", { body: { message: raw, history: hist.slice(-8), context: ctx } });
       const { data, error } = await Promise.race([call, new Promise((_, rej) => setTimeout(() => rej(new Error("délai dépassé")), 25000))]);
-      if (error || !data?.reply) throw new Error(error?.message ?? "réponse vide");
+      if (error || !data?.reply) throw new Error(error ? await explain(error) : "réponse vide");
       hist.push({ role: "user", content: raw }, { role: "assistant", content: data.reply }); if (hist.length > 16) hist.splice(0, hist.length - 16);
       let reply = String(data.reply); const acts = Array.isArray(data.actions) ? data.actions : [];
       const props = [];
@@ -101,7 +103,10 @@ export function initJarvis(A, stage) {
         else if (a.type === "focus_agent") view()?.focus(a.agent_id);
         else if (a.type === "propose_instruction" && a.texte) props.push({ kind: "instruction", texte: a.texte });
         else if (a.type === "propose_mission" && a.agent_id && a.titre) props.push({ kind: "mission", agent_id: a.agent_id, titre: a.titre, description: a.description, priorite: a.priorite });
+        else if (a.type === "propose_report" && a.agent_id) props.push({ kind: "report", agent_id: a.agent_id, jours: a.jours || 7 });
+        else if (a.type === "propose_report_now" && a.rapport) props.push({ kind: "report_now", type: a.rapport });
       }
+      if (autoMode && props.length) { pending = null; setOrb(listening ? "listen" : ""); say(reply); for (const it of props) await sendPending(it); return reply; }   // mode autonome : exécution immédiate (actions internes uniquement)
       pending = props.length > 1 ? { kind: "multi", items: props } : props[0] ?? null;
       if (pending && !/\?/.test(reply)) reply += pending.kind === "multi" ? " Laquelle dois-je lancer ? Dites un, deux, trois ou toutes." : " Dois-je le transmettre ? Dites oui pour confirmer.";
       setOrb(listening ? "listen" : ""); say(reply); return reply;
@@ -109,23 +114,26 @@ export function initJarvis(A, stage) {
   }
   function afterReply() { if (convo && !hands && SR && !listening && !pending_busy) { convo = false; setTimeout(() => { gotResult = false; convoNext = true; startRec(); }, 250); } }
   let pending_busy = false, convoNext = false;
+  // Message d'erreur réel d'une Edge Function (supabase-js ne donne que « non-2xx » : la raison est dans le corps de la réponse)
+  async function explain(error) {
+    try { const c = error?.context; if (c) { const j = typeof c.json === "function" ? await c.json() : null; if (j?.error) return String(j.error); } } catch { /* corps illisible */ }
+    return String(error?.message ?? error ?? "erreur inconnue");
+  }
+  const friendly = (m) => (/déjà en cours/.test(m) ? "Une instruction identique est déjà en cours chez le directeur général. Reformulez-la, ou attendez sa réponse." : m);
+  async function call(fn, body) { const r = await A.sb.functions.invoke(fn, { body }); if (r.error) throw new Error(friendly(await explain(r.error))); return r.data; }
   async function sendPending(p) {
     if (typeof p === "string") p = { kind: "instruction", texte: p };
-    if (p.kind === "mission") {
-      pending_busy = true;
-      try { const { error } = await A.sb.functions.invoke("ai-company", { body: { action: "assign_mission", agent_id: p.agent_id, titre: p.titre, description: p.description, objectifs: [], priorite: p.priorite } });
-        if (error) throw new Error(error.message); say(`Mission confiée à ${A.nameOf(p.agent_id)}. Vous la verrez apparaître dans la salle.`); }
-      catch (e) { say("Je n'ai pas pu confier la mission : " + clip(e.message, 120)); }
-      pending_busy = false; return;
-    }
-    return sendInstruction(p.texte);
+    pending_busy = true;
+    try {
+      if (p.kind === "mission") { await call("ai-company", { action: "assign_mission", agent_id: p.agent_id, titre: p.titre, description: p.description, objectifs: [], priorite: p.priorite }); say(`Mission confiée à ${A.nameOf(p.agent_id)}. Vous la verrez apparaître dans la salle.`); }
+      else if (p.kind === "report") { await call("ai-company", { action: "request_report", agent_id: p.agent_id, jours: p.jours }); say(`Rapport demandé à ${A.nameOf(p.agent_id)} sur ${p.jours} jours.`); }
+      else if (p.kind === "report_now") { await call("ai-company", { action: "report_now", type: p.type }); say(`Le rapport ${p.type} est généré et envoyé.`); }
+      else { const sentAt = Date.now() - 2000; await call("ai-company", { action: "instruction", contenu: p.texte }); say("Instruction transmise au directeur général. Je vous lis sa réponse dès qu'elle arrive."); watchDg(sentAt); }
+      return "transmis";
+    } catch (e) { say("Je n'ai pas pu exécuter cette action : " + clip(e.message, 160)); return "erreur"; }
+    finally { pending_busy = false; }
   }
-  async function sendInstruction(text) {
-    const sentAt = Date.now() - 2000;
-    try { const { error } = await A.sb.functions.invoke("ai-company", { body: { action: "instruction", contenu: text } }); if (error) throw new Error(error.message);
-      say("Instruction transmise au directeur général. Je vous lis sa réponse dès qu'elle arrive."); watchDg(sentAt); return "transmis"; }
-    catch (e) { say("Je n'ai pas pu transmettre l'instruction : " + clip(e.message, 120)); return "erreur"; }
-  }
+  const sendInstruction = (texte) => sendPending({ kind: "instruction", texte });
   function watchDg(since) { clearInterval(poll); let n = 0, seen = new Set();
     poll = setInterval(async () => { n++; if (n > 60) { clearInterval(poll); return; }
       try { const r = await A.sb.from("ai_executive_messages").select("id,auteur,contenu,created_at").eq("auteur", "directeur").order("created_at", { ascending: false }).limit(4); const rows = (r.data ?? []).filter((m) => Date.parse(m.created_at) >= since && !seen.has(m.id)).reverse();
@@ -157,6 +165,8 @@ export function initJarvis(A, stage) {
     if (/(affiche|montre|reouvre|reviens).*(panneau|colonne|tableau)|quitte.*(immersion|plein cadre)/.test(t)) { A.setFocus(false); return reply("Panneaux affichés."); }
     let m;
     if ((m = /^(?:montre|focus|zoom sur|va sur|affiche|approche toi de|selectionne)(?: moi)?(?: l agent| le| la| les)? (.+)/.exec(t))) { const a = findAgent(m[1]); if (a && view()?.focus(a.id)) return reply(`Voici ${a.nom}. ${agentReply(a)}`); if (!a) return reply("Je ne trouve pas cet agent."); }
+    if (/mode (autonome|plein pouvoir|pleine capacite|plein regime)|(passe|mets|active).*(autonome)/.test(t)) { setAuto(true); return reply("Mode autonome activé. Je lance moi-même les consignes, missions et rapports, sans vous demander confirmation. Rien n'est envoyé à l'extérieur."); }
+    if (/mode (prudent|manuel|confirmation)|(desactive|quitte).*(autonome)/.test(t)) { setAuto(false); return reply("Mode prudent. Je vous demanderai confirmation avant chaque action."); }
     { const L = await askLLM(raw); if (L) return L; }   // conversation : Jarvis comprend la demande en langage naturel ; sans serveur, repli sur les réponses locales ci-dessous
     if (/quelle heure|il est quelle heure/.test(t)) return reply("Il est " + new Intl.DateTimeFormat("fr-FR", { timeZone: "Africa/Abidjan", hour: "2-digit", minute: "2-digit" }).format(new Date()).replace(":", " heures ") + " à Abidjan.");
     if (/^(aide|que sais tu|tu sais faire quoi|commandes|que peux tu)/.test(t)) return reply(HELP);
@@ -193,6 +203,8 @@ export function initJarvis(A, stage) {
   }
   orb.addEventListener("click", () => { if (listening && !hands) { rec?.stop(); return; } if (speaking) { window.speechSynthesis?.cancel(); return; } startRec(); });
   const sendTxt = () => { const v = inEl.value.trim(); if (!v) return; inEl.value = ""; handle(v); };
+  const setAuto = (on) => { autoMode = !!on; $("#jv-auto").classList.toggle("on", autoMode); $("#jv-auto").classList.toggle("warn", autoMode); };
+  $("#jv-auto").addEventListener("click", () => handle(autoMode ? "mode prudent" : "mode autonome"));
   $("#jv-ideas").addEventListener("click", () => handle("Jarvis, quelles améliorations me proposes-tu ?"));
   let announced = false;
   const refreshIdeas = () => { try { const n = insights().length, b = $("#jv-badge"); b.hidden = !n; b.textContent = n; if (n && !announced && D.agents.length) { announced = true; addLine("jarvis", `J'ai ${plural(n, "proposition d'amélioration", "propositions d'amélioration")}. Touchez 💡 ou dites « propositions ».`); } } catch { /* données pas encore chargées */ } };
@@ -201,5 +213,5 @@ export function initJarvis(A, stage) {
   $("#jv-voice").addEventListener("click", (e) => { voiceOn = !voiceOn; e.currentTarget.classList.toggle("on", voiceOn); e.currentTarget.textContent = voiceOn ? "🔊" : "🔇"; if (!voiceOn) window.speechSynthesis?.cancel(); setSt(voiceOn ? "Voix activée" : "Voix désactivée"); });
   $("#jv-hands").addEventListener("click", (e) => { hands = !hands; e.currentTarget.classList.toggle("on", hands); if (hands) { if (!SR) { hands = false; e.currentTarget.classList.remove("on"); setSt("Mains libres indisponible : micro non pris en charge."); return; } if (listening) rec.stop(); setTimeout(startRec, 150); setSt("Mains libres : dites « Jarvis »"); } else { rec?.stop(); setSt("Jarvis prêt"); } });
   addLine("jarvis", "Salle de contrôle en ligne. Dites « Jarvis, situation » ou écrivez votre demande.");
-  window.__jarvis = { insights, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say };
+  window.__jarvis = { insights, auto: () => autoMode, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say };
 }
