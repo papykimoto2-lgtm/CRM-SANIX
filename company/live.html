@@ -23,7 +23,7 @@
   <main class="grid">
     <aside class="col left">
       <div class="card" id="detail" hidden></div>
-      <div class="card grow"><h2>Missions en direct</h2><div id="missions" class="list"></div></div>
+      <div class="card grow mission-card"><div class="mission-head"><h2>Missions en direct</h2><span id="mission-summary" class="mission-summary" aria-live="polite">Chargement…</span></div><nav class="mission-filters" id="mission-filters" aria-label="Filtrer les missions"><button type="button" data-filter="all" class="on" aria-pressed="true">Toutes</button><button type="button" data-filter="en_cours" aria-pressed="false">En cours</button><button type="button" data-filter="waiting" aria-pressed="false">En attente</button><button type="button" data-filter="attente_validation" aria-pressed="false">À valider</button><button type="button" data-filter="blocked" aria-pressed="false">Bloquées</button></nav><div id="missions" class="list"></div></div>
     </aside>
     <section class="stage">
       <div id="stage3d"></div>
@@ -38,6 +38,7 @@
       <div class="tip" id="tip" hidden></div>
     </section>
     <aside class="col right">
+      <div class="card alerts" id="alerts" aria-live="polite"></div>
       <div class="card health" id="health"></div>
       <div class="card grow"><h2>Flux d'actions</h2><div id="feed" class="list feed"></div></div>
     </aside>

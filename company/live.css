@@ -93,3 +93,34 @@ body.focus #jarvis{bottom:18px}
 .orb.think{background:radial-gradient(circle at 35% 30%,#DDD6FE,#7C3AED 60%,#2E1065);box-shadow:0 0 26px rgba(168,85,247,.85)}.orb.think i{border-color:rgba(168,85,247,.8);animation:orb .9s infinite}
 #jv-ideas{position:relative}#jv-ideas em{position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;border-radius:8px;background:var(--gold);color:#04101c;font:700 10px/16px system-ui;text-align:center;font-style:normal;padding:0 3px}
 .jb.warn{border-color:var(--gold);color:var(--gold);box-shadow:0 0 12px rgba(250,204,21,.45)}
+
+/* V2 — supervision des missions : filtres lisibles, états accessibles et cibles tactiles. */
+.mission-card{gap:8px}
+.mission-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.mission-head h2{margin:0}
+.mission-summary{font-size:10px;color:var(--mute);text-align:right}
+.mission-filters{display:flex;gap:5px;flex-wrap:wrap}
+.mission-filters button{appearance:none;border:1px solid var(--line);background:rgba(5,11,22,.55);color:var(--mute);border-radius:999px;padding:5px 9px;font:600 10px/1.2 var(--font);cursor:pointer;transition:border-color .15s,background .15s,color .15s}
+.mission-filters button:hover,.mission-filters button:focus-visible{border-color:var(--cy);outline:none;color:var(--tx)}
+.mission-filters button.on{background:rgba(34,211,238,.12);border-color:var(--cy);color:var(--cy)}
+.mission-item{width:100%;text-align:left;font:inherit;color:var(--tx);cursor:pointer;display:block;transition:transform .15s,border-color .15s,background .15s}
+.mission-item:hover,.mission-item:focus-visible{border-color:var(--cy);background:rgba(34,211,238,.08);outline:none;transform:translateY(-1px)}
+.mission-item:focus-visible{box-shadow:0 0 0 2px rgba(34,211,238,.25)}
+.empty-missions{padding:12px 4px}
+@media(max-width:640px){.mission-summary{text-align:left;width:100%}.mission-filters{gap:4px}.mission-filters button{padding:6px 8px}}
+
+/* V2 — centre d'alertes calculé exclusivement à partir des données déjà chargées. */
+.alerts{gap:7px;max-height:220px;overflow:auto}
+.alerts-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.alerts-head h2{margin:0}
+.alerts-count{font-size:10px;color:var(--mute)}
+.alerts-count.has-alert{color:var(--warn);font-weight:700}
+.alert-item{display:flex;align-items:flex-start;gap:9px;width:100%;padding:7px 8px;text-align:left;color:var(--tx);background:rgba(15,28,52,.58);border:1px solid var(--line);border-radius:9px;font:inherit}
+button.alert-item{cursor:pointer}
+button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);outline:none}
+.alert-item i{width:8px;height:8px;margin-top:4px;flex:none;border-radius:50%;background:var(--warn);box-shadow:0 0 8px currentColor}
+.alert-item.bad i{background:var(--bad)}
+.alert-item span{min-width:0}
+.alert-item b{display:block;font-size:11px;line-height:1.3}
+.alert-item small{display:block;margin-top:2px;color:var(--mute);font-size:10px;overflow-wrap:anywhere}
+.alerts-clear{margin:0;color:var(--ok);font-size:11px}

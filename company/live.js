@@ -16,7 +16,7 @@ const ORIGIN = location.origin;
 const STATES = { run: ["Au travail", "#22D3EE"], wait: ["Coordonne ses équipes", "#A855F7"], valid: ["Attend une validation", "#F59E0B"], bad: ["Mission bloquée", "#EF4444"], queue: ["Mission en attente", "#64748B"], idle: ["Disponible", "#3B5A94"], off: ["Suspendu", "#475569"] };
 const TASK_C = { en_cours: "#22D3EE", attente_sous_taches: "#A855F7", attente_validation: "#F59E0B", a_faire: "#64748B", bloquee: "#EF4444", echouee: "#EF4444", terminee: "#22C55E" };
 const TASK_L = { en_cours: "En cours", attente_sous_taches: "Attend ses équipes", attente_validation: "À valider", a_faire: "À faire", bloquee: "Bloquée", echouee: "Échouée", terminee: "Terminée", annulee: "Annulée" };
-const D = { agents: [], depts: [], tasks: [], actions: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, gov: null, sel: null, lastId: 0, first: true, fails: 0 };
+const D = { agents: [], depts: [], tasks: [], actions: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, gov: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0 };
 let sb = null;
 
 // ───────── Configuration et session ─────────
@@ -96,21 +96,41 @@ function renderKpis() {
   const act = D.agents.filter((a) => !["suspendu", "archive"].includes(a.etat)), run = act.filter((a) => agentState(a) === "run").length;
   const enc = D.tasks.filter((t) => t.statut === "en_cours").length, att = D.tasks.filter((t) => ["a_faire", "attente_sous_taches"].includes(t.statut)).length;
   const b = D.budget, usd = (v) => `${Number(v ?? 0).toFixed(2)} $`;
-  const tiles = [["k-run", "Agents au travail", `/ ${act.length} actifs`, "#22D3EE", run], ["k-mis", "Missions en cours", `${att} en attente`, "#A855F7", enc], ["k-today", "Fiches créées aujourd'hui", "prospects trouvés", "#22C55E", D.nToday], ["k-tot", "Prospects en base", "tous logiciels", "#FACC15", D.nTotal], ["k-val", "À valider", "décisions du président", "#F59E0B", D.approvals]];
+  const valid = D.tasks.filter((t) => t.statut === "attente_validation").length, blocked = D.tasks.filter((t) => ["bloquee", "echouee"].includes(t.statut)).length;
+  const tiles = [["k-run", "Agents au travail", `/ ${act.length} actifs`, "#22D3EE", run], ["k-mis", "Missions en cours", `${att} en attente · ${valid} à valider · ${blocked} bloquées`, "#A855F7", enc], ["k-today", "Fiches créées aujourd'hui", "prospects trouvés", "#22C55E", D.nToday], ["k-tot", "Prospects en base", "tous logiciels", "#FACC15", D.nTotal], ["k-val", "À valider", "décisions du président", "#F59E0B", D.approvals]];
   if (!$("#kpis").children.length) $("#kpis").innerHTML = tiles.map(([id, l, e, c]) => `<div class="kpi" style="--c:${c}"><small>${esc(l)}</small><b id="${id}">0</b><em id="${id}-e">${esc(e)}</em></div>`).join("") + `<div class="kpi" style="--c:#22D3EE"><small>Coût IA du jour</small><b id="k-usd">–</b><em id="k-usd-e"></em></div>`;
   tiles.forEach(([id, , e, , v]) => { tween($("#" + id), v); $("#" + id + "-e").textContent = e; });
   $("#k-usd").textContent = b ? `${Number(b.jour_usd ?? 0).toFixed(2)} $` : "–";
   $("#k-usd-e").textContent = b ? `sur ${usd(b.budget_jour_usd)} · mois ${usd(b.mois_usd)}` : "";
 }
 function renderMissions() {
-  const order = { en_cours: 0, attente_sous_taches: 1, attente_validation: 2, a_faire: 3, bloquee: 4 };
-  const list = D.tasks.filter((t) => t.statut in order && (t.statut !== "bloquee" || Date.now() - Date.parse(t.updated_at) < 24 * 3600e3)).sort((a, b) => order[a.statut] - order[b.statut] || a.priorite - b.priorite || Date.parse(b.updated_at) - Date.parse(a.updated_at)).slice(0, 16);
+  const order = { en_cours: 0, attente_sous_taches: 1, attente_validation: 2, a_faire: 3, bloquee: 4, echouee: 5 };
+  const all = D.tasks.filter((t) => t.statut in order && (t.statut !== "bloquee" || Date.now() - Date.parse(t.updated_at) < 24 * 3600e3));
+  const counts = {
+    run: all.filter((t) => t.statut === "en_cours").length,
+    waiting: all.filter((t) => ["a_faire", "attente_sous_taches"].includes(t.statut)).length,
+    valid: all.filter((t) => t.statut === "attente_validation").length,
+    blocked: all.filter((t) => ["bloquee", "echouee"].includes(t.statut)).length,
+  };
+  const summary = $("#mission-summary");
+  if (summary) summary.textContent = `${all.length} ouvertes · ${counts.run} en cours · ${counts.waiting} en attente · ${counts.valid} à valider · ${counts.blocked} bloquées`;
+  document.querySelectorAll("#mission-filters [data-filter]").forEach((b) => {
+    const active = b.dataset.filter === D.taskFilter;
+    b.classList.toggle("on", active); b.setAttribute("aria-pressed", String(active));
+  });
+  const matches = (t) => D.taskFilter === "all" ||
+    (D.taskFilter === "waiting" && ["a_faire", "attente_sous_taches"].includes(t.statut)) ||
+    (D.taskFilter === "blocked" && ["bloquee", "echouee"].includes(t.statut)) ||
+    t.statut === D.taskFilter;
+  const list = all.filter(matches).sort((a, b) => order[a.statut] - order[b.statut] || a.priorite - b.priorite || Date.parse(b.updated_at) - Date.parse(a.updated_at)).slice(0, 40);
   $("#missions").innerHTML = list.map((t) => {
     const c = TASK_C[t.statut], tg = targetOf(t), n = D.created[t.id] ?? 0, pct = tg ? Math.min(100, Math.round(100 * n / tg)) : 0;
-    return `<div class="mis ${t.statut === "en_cours" ? "run" : ""}" style="--c:${c}" data-agent="${esc(t.agent_id)}"><b>${esc(clip(t.titre, 90))}</b><small>${esc(nameOf(t.agent_id))}</small>
+    return `<button type="button" class="mis mission-item ${t.statut === "en_cours" ? "run" : ""}" style="--c:${c}" data-agent="${esc(t.agent_id)}" aria-label="Afficher l'agent ${esc(nameOf(t.agent_id))} et sa mission ${esc(t.titre)}">
+      <b>${esc(clip(t.titre, 90))}</b><small>${esc(nameOf(t.agent_id))}</small>
       <div><span class="tag" style="--c:${c}">${esc(TASK_L[t.statut])}</span><span class="tag">P${esc(t.priorite)}</span>${t.produit ? `<span class="tag">${esc(t.produit)}</span>` : ""}${t.statut === "en_cours" && t.started_at ? `<small data-start="${esc(t.started_at)}">${dur(Date.now() - Date.parse(t.started_at))}</small>` : ""}</div>
-      ${tg ? `<div class="bar"><i style="width:${pct}%"></i></div><small>${n} / ${tg} fiches créées</small>` : ""}</div>`;
-  }).join("") || `<div class="muted">Aucune mission ouverte.</div>`;
+      ${tg ? `<div class="bar"><i style="width:${pct}%"></i></div><small>${n} / ${tg} fiches créées</small>` : ""}
+    </button>`;
+  }).join("") || `<div class="muted empty-missions">Aucune mission dans ce filtre.</div>`;
 }
 const ACT = {
   abonnement_reclamee: ["▶️", (p) => `prend la mission « ${clip(p.titre, 70)} »`], abonnement_cloturee: [(p) => (p.statut === "terminee" ? "✅" : "⚠️"), (p) => `clôture « ${clip(p.titre, 60)} » : ${(TASK_L[p.statut] ?? p.statut).toLowerCase()}`],
@@ -124,6 +144,29 @@ function renderFeed(markNew) {
   const fresh = D.actions.filter((a) => a.id > D.lastId);
   $("#feed").innerHTML = D.actions.slice(0, 40).map((a) => { const [ic, tx] = actView(a); return `<div class="it ${markNew && a.id > D.lastId ? "new" : ""}"><span class="ic">${ic}</span><div><b>${esc(nameOf(a.agent_id))}</b> ${tx.replace(/</g, "&lt;")}<small>${ago(a.at)}</small></div></div>`; }).join("") || `<div class="muted">Aucune action récente.</div>`;
   if (markNew) for (const a of fresh.slice(0, 6).reverse()) (view3d ? view3d.fx(a) : fx(a)); if (D.actions.length) D.lastId = Math.max(D.lastId, ...D.actions.map((a) => a.id));
+}
+function renderAlerts() {
+  const now = Date.now(), day = 24 * 3600e3;
+  const items = [];
+  for (const t of D.tasks) {
+    if (["bloquee", "echouee"].includes(t.statut) && now - Date.parse(t.updated_at) < day) {
+      items.push({ level: "bad", title: t.statut === "echouee" ? "Mission échouée" : "Mission bloquée", detail: t.titre, agent: t.agent_id, at: Date.parse(t.updated_at) || 0 });
+    } else if (t.statut === "en_cours" && t.started_at && now - Date.parse(t.started_at) > 90 * 60000) {
+      items.push({ level: "warn", title: "Mission sans évolution détectée", detail: t.titre, agent: t.agent_id, at: Date.parse(t.started_at) || 0 });
+    }
+  }
+  for (const a of D.actions) {
+    if (a.ok === false && now - Date.parse(a.at) < day) {
+      items.push({ level: "bad", title: "Action en erreur", detail: String(a.action || "Action inconnue").replace(/^abonnement_/, "").replace(/_/g, " "), agent: a.agent_id, at: Date.parse(a.at) || 0 });
+    }
+  }
+  const b = D.budget, budgetPct = b && Number(b.budget_jour_usd) > 0 ? 100 * Number(b.jour_usd ?? 0) / Number(b.budget_jour_usd) : null;
+  if (budgetPct !== null && budgetPct >= 90) items.push({ level: "warn", title: "Budget IA proche de sa limite", detail: `${Math.round(budgetPct)} % du budget journalier consommé`, at: now });
+  items.sort((a, b) => (a.level === b.level ? b.at - a.at : a.level === "bad" ? -1 : 1));
+  const shown = items.slice(0, 6), count = items.length;
+  const el = $("#alerts");
+  el.innerHTML = `<div class="alerts-head"><h2>Points à surveiller</h2><span class="alerts-count ${count ? "has-alert" : ""}">${count} ${count > 1 ? "alertes" : "alerte"}</span></div>` +
+    (shown.length ? shown.map((a) => `<button type="button" class="alert-item ${a.level}" ${a.agent ? `data-alert-agent="${esc(a.agent)}"` : ""}><i></i><span><b>${esc(a.title)}</b><small>${esc(a.detail)}${a.agent ? " · " + esc(nameOf(a.agent)) : ""}</small></span></button>`).join("") : `<p class="alerts-clear">Aucun incident détecté sur les données disponibles.</p>`);
 }
 function renderHealth() {
   const h = health(), col = h.score >= 85 ? "#22C55E" : h.score >= 65 ? "#22D3EE" : h.score >= 40 ? "#F59E0B" : "#EF4444", lab = h.score >= 85 ? "Excellent" : h.score >= 65 ? "Sous contrôle" : h.score >= 40 ? "À surveiller" : "Critique";
@@ -226,6 +269,8 @@ cv.addEventListener("pointermove", (ev) => {
 });
 cv.addEventListener("pointerleave", () => { hover = null; tip.hidden = true; });
 cv.addEventListener("click", (ev) => { const { n } = pick(ev); D.sel = n && n.id !== D.sel ? n.id : null; renderDetail(); });
+$("#alerts").addEventListener("click", (ev) => { const item = ev.target.closest("[data-alert-agent]"); if (!item) return; D.sel = item.dataset.alertAgent; view3d?.focus(D.sel); renderDetail(); });
+$("#mission-filters").addEventListener("click", (ev) => { const b = ev.target.closest("[data-filter]"); if (!b) return; D.taskFilter = b.dataset.filter; renderMissions(); });
 $("#missions").addEventListener("click", (ev) => { const m = ev.target.closest("[data-agent]"); if (m) { D.sel = m.dataset.agent; view3d?.focus(D.sel); renderDetail(); } });
 
 // ───────── Vue 3D (repli 2D si WebGL indisponible ou ?2d) ─────────
@@ -255,7 +300,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); renderKpis(); renderMissions(); renderFeed(!D.first); renderHealth(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); renderKpis(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
