@@ -17,6 +17,8 @@ Les agents chasseurs peuvent créer des prospects via `ai_abonnement_creer_prosp
 
 L'agent Data Analyst peut corriger l'e-mail d'une fiche via `ai_abonnement_corriger_email` (migration `20261207000000_abonnement_email.sql`) : seul le champ e-mail, adresse valide, doublons refusés, ajout seulement avec une source https, chaque changement journalisé (avant, après, motif).
 
+**Web des agents chasseurs** : WebSearch et WebFetch d'abord ; en repli, uniquement les outils Firecrawl `firecrawl_search` et `firecrawl_scrape`, que le président pré-approuve (réglage de la tâche planifiée, section Connecteurs → Firecrawl → « Toujours autoriser »). Tout autre outil de connecteur reste interdit (il demande une validation humaine et fige la session). 25 appels Firecrawl au plus par mission ; la règle « page lue + coordonnée publiée » est inchangée.
+
 Ce que l'abonnement ne permet pas : brancher l'abonnement sur l'API (non autorisé par Anthropic). L'exécuteur est une session Claude Code ordinaire.
 
 ## Revenir au mode API
