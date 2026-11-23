@@ -197,6 +197,9 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     ok((await page.locator("#main tbody tr").count()) === 3, "retour à la vue Prospects");
     ok((await page.locator('#main tbody tr select[data-sales-stage] option[value=marche_gagne]').count())===3, "catalogue d'étapes : le closing et les statuts gagnés sont présents pour les trois prospects");
     ok((await page.locator("#sales-owner").count())===1, "liste prospects : filtre par commercial disponible");
+    await page.selectOption("#sales-owner", "__none__"); await page.waitForTimeout(150);
+    ok((await page.locator("#main tbody tr").count())===2, "filtre commercial : les dossiers non attribués sont isolés");
+    await page.selectOption("#sales-owner", ""); await page.waitForTimeout(150);
     await page.locator("tr", { hasText: "Promoteur Alpha" }).locator("select[data-sales-owner]").selectOption("11111111-1111-1111-1111-111111111111"); await page.waitForTimeout(250);
     ok((await page.evaluate(() => window.__Q.some(q => q.table === "ai_prospects" && q.op === "update" && q.payload.includes("owner_id")))), "direction : réaffectation d'un prospect à un commercial enregistrée");
     console.log("▶ Commercial : suivi des relances");
