@@ -40,7 +40,7 @@ async function pull() {
   safe.err = null;
   const [ag, tk, ac, cr, nT, nA, rc, td, ap, bu, gv, sales, offers, costs, waStatus, waOut, waIn, waOpt, orders, tasks90, costs90, execRows, execConfig, products, productAliases] = await Promise.all([
     safe(sb.from("ai_agents").select("id,code,nom,fonction,niveau,manager_id,departement_id,etat,activite"), null),
-    safe(sb.from("ai_agent_tasks").select("id,agent_id,donneur_agent_id,parent_id,type,titre,objectifs,statut,priorite,produit,started_at,updated_at,created_at,executions").gte("updated_at", since(7)).order("updated_at", { ascending: false }).limit(600), null),
+    safe(sb.from("ai_agent_tasks").select("id,agent_id,donneur_agent_id,parent_id,type,titre,objectifs,statut,priorite,produit,started_at,updated_at,created_at,executions,echeance,progression,rapport").gte("updated_at", since(7)).order("updated_at", { ascending: false }).limit(600), null),
     safe(sb.from("ai_actions").select("id,action,agent_id,task_id,payload,ok,at").order("at", { ascending: false }).limit(60), null),
     safe(sb.from("ai_actions").select("task_id").eq("action", "abonnement_prospect_cree").gte("at", since(3)).limit(1500), null),
     safe(sb.from("ai_prospects").select("id", { count: "exact", head: true }).gte("created_at", day.toISOString()), null),
@@ -98,6 +98,13 @@ function agentState(a) {
   return mine.some((t) => t.statut === "a_faire") ? "queue" : "idle";
 }
 const targetOf = (t) => { const m = /(\d+)\s*(?:nouvelles?\s+)?fiches/i.exec(`${t.titre} ${Array.isArray(t.objectifs) ? t.objectifs.join(" ") : ""}`); return m ? Number(m[1]) : 0; };
+function scheduleLabel(t) {
+  if (t.statut !== "a_faire" || !t.echeance) return "";
+  const due = Date.parse(t.echeance);
+  if (!Number.isFinite(due)) return "";
+  const when = new Intl.DateTimeFormat("fr-FR", { timeZone: "Africa/Abidjan", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(due);
+  return due < Date.now() && Number(t.executions ?? 0) === 0 ? "Échéance dépassée · non démarrée (" + when + ")" : "Programmée · " + when;
+}
 function health() {
   const week = D.tasks.filter((t) => ["terminee", "bloquee", "echouee"].includes(t.statut));
   const ok = week.filter((t) => t.statut === "terminee").length, rate = week.length >= 3 ? Math.round(100 * ok / week.length) : null;
@@ -175,7 +182,7 @@ function renderMissions() {
     const c = TASK_C[t.statut], tg = targetOf(t), n = D.created[t.id] ?? 0, pct = tg ? Math.min(100, Math.round(100 * n / tg)) : 0;
     return `<button type="button" class="mis mission-item ${t.statut === "en_cours" ? "run" : ""}" style="--c:${c}" data-agent="${esc(t.agent_id)}" aria-label="Afficher l'agent ${esc(nameOf(t.agent_id))} et sa mission ${esc(t.titre)}">
       <b>${esc(clip(t.titre, 90))}</b><small>${esc(nameOf(t.agent_id))}</small>
-      <div><span class="tag" style="--c:${c}">${esc(TASK_L[t.statut])}</span><span class="tag">P${esc(t.priorite)}</span>${t.produit ? `<span class="tag">${esc(t.produit)}</span>` : ""}${t.statut === "en_cours" && t.started_at ? `<small data-start="${esc(t.started_at)}">${dur(Date.now() - Date.parse(t.started_at))}</small>` : ""}</div>
+      <div><span class="tag" style="--c:${c}">${esc(TASK_L[t.statut])}</span><span class="tag">P${esc(t.priorite)}</span>${t.produit ? `<span class="tag">${esc(t.produit)}</span>` : ""}${t.statut === "en_cours" && t.started_at ? `<small data-start="${esc(t.started_at)}">${dur(Date.now() - Date.parse(t.started_at))}</small>` : ""}${scheduleLabel(t) ? `<small class="schedule-note">${esc(scheduleLabel(t))}</small>` : ""}${t.statut === "a_faire" && t.echeance ? `<small>${Number(t.executions ?? 0)} exécution(s)</small>` : ""}</div>
       ${tg ? `<div class="bar"><i style="width:${pct}%"></i></div><small>${n} / ${tg} fiches créées</small>` : ""}
     </button>`;
   }).join("") || `<div class="muted empty-missions">Aucune mission dans ce filtre.</div>`;
@@ -541,6 +548,9 @@ function renderAlerts() {
   const now = Date.now(), day = 24 * 3600e3;
   const items = [];
   for (const t of D.tasks) {
+    if (t.statut === "a_faire" && t.echeance && Date.parse(t.echeance) < now && Number(t.executions ?? 0) === 0) {
+      items.push({ level: "warn", title: "Mission programmée non démarrée", detail: t.titre + " · échéance dépassée", agent: t.agent_id, at: Date.parse(t.echeance) || 0 });
+    }
     if (["bloquee", "echouee"].includes(t.statut) && now - Date.parse(t.updated_at) < day) {
       items.push({ level: "bad", title: t.statut === "echouee" ? "Mission échouée" : "Mission bloquée", detail: t.titre, agent: t.agent_id, at: Date.parse(t.updated_at) || 0 });
     } else if (t.statut === "en_cours" && t.started_at && now - Date.parse(t.started_at) > 90 * 60000) {
