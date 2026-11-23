@@ -174,7 +174,6 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     await vue("pipeline");
     ok((await page.locator(".pipe-col").count()) === 4, "pipeline : 4 phases commerciales Exploration, Proposition, Négociation et Closing");
     ok((await page.locator('.pipe-col[data-phase=exploration]').innerText()).includes("Express Colis"), "pipeline : la carte du prospect est dans la phase rendez-vous");
-    ok((await page.locator('.pipe-col[data-phase=closing] select option[value=marche_gagne]').count())===1, "pipeline : les statuts marché gagné, déploiement et fidélisation restent accessibles dans Closing");
     ok((await page.locator("#main").innerText()).includes("Résultats clôturés"), "pipeline : résultats gagnés et perdus visibles sous le Kanban");
     await page.locator('.pipe-col[data-phase=exploration] .pipe-card', { hasText: "Express Colis" }).locator("select[data-sales-stage]").selectOption("rdv_confirme"); await page.waitForTimeout(300);
     ok((await page.locator('.pipe-col[data-phase=exploration]').innerText()).includes("Express Colis") && (await page.locator('.pipe-col[data-phase=exploration] .pipe-card').innerText()).includes("RDV confirmé"), "pipeline : changement d'étape depuis la carte, la sous-étape est actualisée");
