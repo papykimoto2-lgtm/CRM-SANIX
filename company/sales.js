@@ -45,45 +45,71 @@ export async function loadMessages() {
 }
 const stageOptions = (v) => STAGES.map(([k,l])=>html`<option value="${k}" ${v===k?"selected":""}>${l}</option>`);
 const productName = id => products.find(p=>p.id===id)?.nom ?? id ?? "—";
+const operatorName = id => operators.find(o=>o.user_id===id)?.nom ?? (id?"Commercial inconnu":"Non attribué");
+const canAssign = () => ["direction","admin"].includes(S.op?.role);
+const ownerOptions = id => html`<option value="">Non attribué</option>${operators.map(o=>html`<option value="${o.user_id}" ${id===o.user_id?"selected":""}>${o.nom}</option>`)}`;
+const ownerFilter = () => html`<select id="sales-owner" aria-label="Filtrer par commercial"><option value="">Toute l'équipe</option>${operators.map(o=>html`<option value="${o.user_id}" ${filter.owner===o.user_id?"selected":""}>${o.nom}</option>`)}</select>`;
+const ownerControl = p => canAssign()
+  ? html`<select data-sales-owner data-id="${p.id}" aria-label="Responsable de ${p.entreprise}" style="width:100%;margin-top:5px">${ownerOptions(p.owner_id)}</select>`
+  : html`<div class="small muted">Resp. : ${operatorName(p.owner_id)}</div>`;
+const isOverdue = p => !!p.next_action_at && new Date(p.next_action_at).getTime()<Date.now() && !CLOSED.includes(p.stage);
 
 const matchQ=p=>{ const t=filter.q.toLowerCase(); return !t||[p.entreprise,p.secteur,p.ville,p.decideur,p.email,p.telephone].some(v=>String(v??"").toLowerCase().includes(t)); };
 const restoreQ=()=>{const el=$("#sales-q");if(el){el.focus();el.setSelectionRange(filter.q.length,filter.q.length);}};
 
 function vueProspects(){
-  const rows=prospects.filter(p=>(!filter.stage||p.stage===filter.stage)&&matchQ(p));
+  const rows=prospects.filter(p=>(!filter.stage||p.stage===filter.stage)&&(!filter.owner||p.owner_id===filter.owner)&&matchQ(p));
   return html`<div class="filters">
       <input id="sales-q" type="search" placeholder="Entreprise, secteur, ville, contact…" value="${filter.q}" aria-label="Rechercher un prospect">
       <select id="sales-stage" aria-label="Filtrer par étape"><option value="">Toutes les étapes</option>${stageOptions(filter.stage)}</select>
+      ${ownerFilter()}
     </div>
-    <div class="scroll"><table class="tbl"><thead><tr><th>Entreprise / Contact</th><th>Produit</th><th>Étape</th><th>Score</th><th>Potentiel</th><th>Prochaine action</th><th></th></tr></thead><tbody>
+    <div class="scroll"><table class="tbl"><thead><tr><th>Entreprise / Contact</th><th>Produit</th><th>Étape</th><th>Score</th><th>Potentiel</th><th>Responsable</th><th>Prochaine action</th><th></th></tr></thead><tbody>
     ${raw(rows.slice(0,shown).map(p=>html`<tr>
       <td><b>${p.entreprise}</b><div class="small muted">${[p.secteur,p.ville].filter(Boolean).join(" · ")||"—"} · ${p.decideur||"Contact non renseigné"}</div><div class="small muted">${p.email||p.whatsapp||p.telephone||""}${adresseBadge(p)}${p.crm_client_id?html` · CRM #${p.crm_client_id}`:""}</div></td>
       <td class="small">${(p.produits_recommandes??[]).map(productName).join(", ")||"À déterminer"}</td>
       <td><select data-sales-stage data-id="${p.id}" aria-label="Étape de ${p.entreprise}">${stageOptions(p.stage)}</select></td>
       <td><b>${p.score??0}/100</b><div class="small muted">${p.priorite??""}</div></td>
       <td class="num">${money(p.potentiel_fcfa)}</td>
-      <td class="small">${p.next_action_at?fmtDT(p.next_action_at):"À planifier"}</td>
+      <td>${ownerControl(p)}</td>
+      <td class="small">${p.next_action_at?fmtDT(p.next_action_at):"À planifier"}${isOverdue(p)?html` <span class="pill" style="--c:#EF4444"><i></i>retard</span>`:""}</td>
       <td><button class="btn sm" type="button" data-act="sales-open" data-id="${p.id}">Ouvrir</button></td>
-    </tr>`).join("")||html`<tr><td colspan="7" class="muted">Aucun prospect correspondant.</td></tr>`.s)}
+    </tr>`).join("")||html`<tr><td colspan="8" class="muted">Aucun prospect correspondant.</td></tr>`.s)}
     </tbody></table></div>
     ${rows.length>shown?html`<p style="text-align:center;margin:10px 0"><button class="btn" type="button" data-act="sales-more">Afficher plus (${rows.length-shown} restants)</button></p>`:""}`;
 }
 
-/** Pipeline : une colonne par étape ; l'étape d'un prospect se change depuis sa carte (mêmes règles que la liste). */
+/** Pipeline commercial par grandes phases, avec sous-étapes réelles et responsables visibles. */
 function vuePipeline(){
-  const rows=prospects.filter(matchQ), CAP=15;
-  return html`<div class="filters"><input id="sales-q" type="search" placeholder="Filtrer les cartes : entreprise, secteur, ville…" value="${filter.q}" aria-label="Filtrer le pipeline"></div>
+  const rows=prospects.filter(p=>(!filter.owner||p.owner_id===filter.owner)&&matchQ(p));
+  const total=rows.filter(p=>!CLOSED.includes(p.stage)).reduce((s,p)=>s+Number(p.potentiel_fcfa||0),0);
+  return html`<div class="filters">
+      <input id="sales-q" type="search" placeholder="Filtrer les opportunités : entreprise, secteur, ville…" value="${filter.q}" aria-label="Filtrer le pipeline">
+      ${ownerFilter()}
+    </div>
+    <div class="grid g3" style="margin:8px 0">
+      <div class="card kpi"><b>${rows.filter(p=>!CLOSED.includes(p.stage)).length}</b><span>Opportunités actives</span></div>
+      <div class="card kpi"><b>${money(total)}</b><span>Potentiel brut actif</span></div>
+      <div class="card kpi"><b>${rows.filter(isOverdue).length}</b><span>Actions en retard</span></div>
+    </div>
     <div class="scroll" style="overflow-x:auto"><div class="pipe" style="display:flex;gap:10px;align-items:flex-start;min-width:max-content;padding-bottom:8px">
-    ${raw(STAGES.map(([k,l])=>{
-      const col=rows.filter(p=>p.stage===k).sort((a,b)=>(b.score??0)-(a.score??0)), pot=col.reduce((t,p)=>t+Number(p.potentiel_fcfa||0),0);
-      return html`<div class="card pipe-col" data-stage="${k}" style="width:230px;flex:none;padding:8px">
-        <div style="display:flex;justify-content:space-between;gap:6px"><b>${l}</b><span class="pill" style="--c:${CLOSED.includes(k)?"#94a3b8":"#0ea5e9"}"><i></i>${col.length}</span></div>
+    ${raw(PHASES.map(([key,label,stages])=>{
+      const col=rows.filter(p=>stages.includes(p.stage)).sort((a,b)=>(b.score??0)-(a.score??0));
+      const pot=col.reduce((t,p)=>t+Number(p.potentiel_fcfa||0),0);
+      return html`<div class="card pipe-col" data-phase="${key}" style="width:255px;flex:none;padding:8px">
+        <div style="display:flex;justify-content:space-between;gap:6px"><b>${label}</b><span class="pill" style="--c:${key==="closed"?"#94a3b8":"#0ea5e9"}"><i></i>${col.length}</span></div>
         <div class="small muted" style="margin:2px 0 6px">${col.length?money(pot):"—"}</div>
-        ${raw(col.slice(0,CAP).map(p=>html`<div class="card pipe-card" style="margin:6px 0;padding:8px">
+        ${raw(col.slice(0,20).map(p=>html`<div class="card pipe-card" style="margin:6px 0;padding:8px">
           <b>${p.entreprise}</b><div class="small muted">${[p.secteur,p.ville].filter(Boolean).join(" · ")||"—"}</div>
-          <div class="small">Score <b>${p.score??0}</b> · ${money(p.potentiel_fcfa)}</div>
-          <div style="display:flex;gap:6px;margin-top:6px"><select data-sales-stage data-id="${p.id}" aria-label="Étape de ${p.entreprise}" style="flex:1;min-width:0">${stageOptions(p.stage)}</select><button class="btn sm" type="button" data-act="sales-open" data-id="${p.id}">Ouvrir</button></div></div>`).join("")||html`<div class="small muted">Aucun prospect</div>`.s)}
-        ${col.length>CAP?html`<div class="small muted">+ ${col.length-CAP} autre(s) : voir « Prospects »</div>`:""}</div>`.s;}).join(""))}
+          <div class="small">Étape : <b>${LABEL[p.stage]??p.stage}</b></div>
+          <div class="small">Score <b>${p.score??0}/100</b> · ${money(p.potentiel_fcfa)}</div>
+          ${ownerControl(p)}
+          <div class="small ${isOverdue(p)?"":"muted"}" style="margin-top:4px">${p.next_action_at?(isOverdue(p)?"⚠ En retard · ":"Prochaine action · ")+fmtDT(p.next_action_at):"Aucune prochaine action planifiée"}</div>
+          <div style="display:flex;gap:6px;margin-top:6px"><select data-sales-stage data-id="${p.id}" aria-label="Étape de ${p.entreprise}" style="flex:1;min-width:0">${stageOptions(p.stage)}</select><button class="btn sm" type="button" data-act="sales-open" data-id="${p.id}">Ouvrir</button></div>
+        </div>`.s).join("")||html`<div class="small muted">Aucune opportunité</div>`.s)}
+        ${col.length>20?html`<div class="small muted">+ ${col.length-20} autre(s) : affinez le filtre ou ouvrez « Prospects »</div>`:""}
+      </div>`.s;
+    }).join(""))}
     </div></div>`;
 }
 
@@ -203,6 +229,7 @@ export function renderSales(main) {
   const so=$("#sales-offre"); if(so) so.onchange=e=>{filter.offre=e.target.value;renderSales(main);};
   const sr=$("#sales-relance"); if(sr) sr.onchange=e=>{filter.relance=e.target.value;renderSales(main);};
   const sc=$("#sales-canal"); if(sc) sc.onchange=e=>{filter.canal=e.target.value;renderSales(main);};
+  const so=$("#sales-owner"); if(so) so.onchange=e=>{filter.owner=e.target.value;shown=PAGE;renderSales(main);};
 }
 
 function newProspectForm() {
