@@ -1,6 +1,13 @@
 name: Validate Firecrawl Lead Hunter
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "supabase/functions/**"
+      - "supabase/build_functions.sh"
+      - ".github/workflows/validate-firecrawl.yml"
   push:
     branches:
       - feature/firecrawl-scrape-lead-hunter
