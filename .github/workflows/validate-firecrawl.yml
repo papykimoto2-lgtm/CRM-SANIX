@@ -32,8 +32,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Type-check Lead Hunter Edge Function
-        run: deno check supabase/functions/ai-sales-director/index.ts
+      - name: Type-check modified agent and Firecrawl modules
+        run: deno check supabase/functions/_shared/agent.ts supabase/functions/_shared/company/tools.ts supabase/functions/_shared/crm_tools.ts supabase/functions/_shared/firecrawl.ts
 
       - name: Test Firecrawl URL validation
         run: deno test supabase/functions/_shared/firecrawl_test.ts
