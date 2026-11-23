@@ -24,7 +24,7 @@ Les dossiers `perdu` et `en_veille` sont affichés dans la section « Résultats
 - **Actions en retard** : prochaine action échue sur un dossier qui n'est pas dans un statut de clôture.
 - **Non attribuées** : opportunités actives sans responsable.
 
-Les pondérations sont des hypothèses de pilotage, pas des statistiques de conversion constatées. Elles devront être recalibrées à partir des résultats réels SANIX.
+Les pondérations sont des hypothèses de pilotage, pas des statistiques de conversion constatées. Elles devront être recalibrées à partir des résultats réels SANIX. Attention : la fonction SQL historique `ai_report_data` utilise encore un barème différent et ne retient qu'une partie des étapes. La prévision du Kanban n'est donc pas encore harmonisée avec les rapports serveur ; cette harmonisation doit précéder toute utilisation financière officielle.
 
 ## Exécution commerciale
 
