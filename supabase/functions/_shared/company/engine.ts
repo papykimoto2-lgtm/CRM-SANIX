@@ -9,6 +9,7 @@ import { commercialRules, charterToText, COMPANY_RULES, DG_RULES, MANAGER_METHOD
 import { CRM_TOOL_NAMES, type CrmCtx, uuidsIn } from "../crm_tools.ts";
 import { type AgentRow, loadGovernance, OPEN_STATES, Org, type TaskRow } from "./org.ts";
 import { type CoCtx, runCompanyTool, toolsFor } from "./tools.ts";
+import { diagnoseAgentDependencies } from "./dependency_preflight.ts";
 import { flushMoves, Presence, publishActivity } from "./presence.ts";
 
 export type RunOutcome = "terminee" | "bloquee" | "attente" | "reportee" | "echec" | "ignoree";
@@ -158,6 +159,23 @@ export async function runTask(taskId: string, opts: { deadline: number }): Promi
     const brief = await buildBrief(ctx);
     for (const id of uuidsIn(...brief.seeds)) crm.scope.add(id);
     const tools = toolsFor(agent, ctx.departments.map((d) => d.id));
+    // Précontrôle sans coût : outils requis et présence du secret Firecrawl.
+    // Une clé présente n'est pas réputée valide avant son premier usage réel.
+    const preflight = diagnoseAgentDependencies(agent);
+    await audit({
+      agent: `agent:${agent.code}`, action: "dependency_preflight", agent_id: agent.id, task_id: task.id,
+      ok: preflight.ready, payload: { status: preflight.ready ? "ready" : "blocked", checks: preflight.checks, blockers: preflight.blockers },
+    });
+    if (!preflight.ready) {
+      const note = `[Précontrôle dépendances] Mission bloquée sans pénalité pour l'agent : ${preflight.blockers.join(" ; ")}.`;
+      await db().from("ai_agent_tasks").update({
+        statut: "bloquee", progression: clip(`${task.progression ?? ""}\\n${note}`, 8000),
+      }).eq("id", task.id);
+      await db().from("ai_agents").update({ activite: "disponible" }).eq("id", agent.id).not("activite", "eq", "en_reunion");
+      await incidentOnce("dependance_manquante", "attention", note, 6 * 3600e3);
+      await publishActivity(agent.id, "disponible", task.id);
+      return "bloquee";
+    }
     await ctx.presence!.activity("consultation_documents");   // lecture de la mission
     const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: brief.text }];
     let activiteMission = false, relances = 0;
