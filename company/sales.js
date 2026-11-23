@@ -301,6 +301,13 @@ function vuePilotage(){
   const maxMonth=Math.max(1,...months.map(x=>x.amount));
   const group=key=>{const m=new Map();for(const p of payments){const k=p[key]||"Non attribué";m.set(k,(m.get(k)||0)+p.amount);}return [...m].map(([name,amount])=>({name,amount})).sort((a,b)=>b.amount-a.amount).slice(0,8);};
   const bySoftware=group("software"),byCommercial=group("commercial");
+  // Portefeuille IA par responsable : indicateurs distincts des encaissements.
+  const prospectByOwner=operators.map(op=>{
+    const rows=prospects.filter(p=>p.owner_id===op.user_id&&!CLOSED.includes(p.stage));
+    return {name:op.nom,count:rows.length,potential:rows.reduce((s,p)=>s+Math.max(0,Number(p.potentiel_fcfa)||0),0),overdue:rows.filter(isOverdue).length};
+  }).filter(x=>x.count||x.potential||x.overdue).sort((a,b)=>b.potential-a.potential);
+  const unassignedProspects=prospects.filter(p=>!p.owner_id&&!CLOSED.includes(p.stage));
+
   const latest=orders.slice().sort((a,b)=>(salesDate(b.date)?.getTime()||0)-(salesDate(a.date)?.getTime()||0)).slice(0,15);
   let out='<div class="grid g4" style="margin-bottom:12px">';
   const tiles=[["Encaissements enregistrés · cumul",paid],["Encaissé ce mois · dates connues",monthPaid],["Solde restant estimé",balance],["Commandes CRM · total TTC",orderTotal]];
@@ -316,7 +323,11 @@ function vuePilotage(){
   out+='<div class="card" style="padding:12px"><h3>Performance par logiciel</h3>';
   for(const x of bySoftware)out+='<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)"><span>'+esc(x.name)+'</span><b>'+esc(money(x.amount))+'</b></div>';
   if(!bySoftware.length)out+='<p class="muted">Aucun encaissement enregistré.</p>';
-  out+='</div><div class="card" style="padding:12px"><h3>Performance par commercial</h3>';
+  out+='</div><div class="card" style="padding:12px"><h3>Portefeuille actif par responsable</h3>';
+  for(const x of prospectByOwner)out+='<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:8px"><b>'+esc(x.name)+'</b><b>'+x.count+' prospect(s)</b></div><div class="small muted">Potentiel actif : '+esc(money(x.potential))+' · Actions en retard : '+x.overdue+'</div></div>';
+  if(!prospectByOwner.length)out+='<p class="small muted">Aucun prospect actif attribué à un commercial actif.</p>';
+  out+='<p class="small muted">'+unassignedProspects.length+' prospect(s) actif(s) non attribué(s). Le potentiel est distinct des encaissements.</p></div>';
+  out+='<div class="card" style="padding:12px"><h3>Performance par commercial</h3>';
   for(const x of byCommercial)out+='<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)"><span>'+esc(x.name)+'</span><b>'+esc(money(x.amount))+'</b></div>';
   if(!byCommercial.length)out+='<p class="muted">Aucun encaissement enregistré.</p>';
   out+='<p class="small muted">Attribution issue du champ « commercial » des commandes CRM ; les champs vides restent « Non attribué ».</p></div>';
