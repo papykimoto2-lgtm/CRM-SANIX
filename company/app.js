@@ -6,6 +6,7 @@ import * as P from "./office_panel.js";
 import { LOGIN_ALIASES, SUPABASE_DEFAULT } from "./config.js";
 import * as SALES from "./sales.js";
 import * as COST from "./couts.js";
+import * as SUPERVISION from "./supervision.js";
 import * as CFG from "./config_panel.js";
 import { initVoice, initLecture, arreterLecture } from "./voice.js";
 
@@ -153,8 +154,15 @@ async function loadStats() {
   const fin = new Date(), debut = new Date(fin.getTime() - S.statDays * 86400e3);
   S.stats = await q(S.sb.rpc("ai_agent_stats", { p_debut: debut.toISOString(), p_fin: fin.toISOString() }));
 }
+async function loadSupervision() {
+  const previous = S.statDays; S.statDays = 7;
+  try {
+    const [_, openTasks] = await Promise.all([loadStats(), q(S.sb.from("ai_agent_tasks").select(TASK_COLS).in("statut", OPEN).order("created_at", { ascending: false }).limit(2000))]);
+    S.supervisionTasks = openTasks;
+  } finally { S.statDays = previous; }
+}
 CFG.setHooks({ reloadCore: () => loadCore() });
-const LOADERS = { exec: async () => { await loadExec(); await loadCrm(); }, meet: loadMeetings, reports: loadReports, perf: loadStats, cost: COST.loadCost, sales: SALES.loadSales, cfg: CFG.loadConfig };
+const LOADERS = { exec: async () => { await loadExec(); await loadCrm(); }, meet: loadMeetings, reports: loadReports, perf: loadStats, supervision: loadSupervision, cost: COST.loadCost, sales: SALES.loadSales, cfg: CFG.loadConfig };
 
 /** Notifie le président quand une mission qu'il a demandée change d'issue (terminée, bloquée, échouée). */
 function noteTask(t, firstLoad = false) {
@@ -204,7 +212,7 @@ function subscribe() {
 // ───────────────────────── Navigation ─────────────────────────
 const TABS = [
   { id: "office", label: "🏢 Bureau 3D" }, { id: "exec", label: "👔 Bureau du Président", dir: true }, { id: "org", label: "🧩 Organisation" },
-  { id: "tasks", label: "📋 Missions" }, { id: "sales", label: "💼 Commercial" }, { id: "meet", label: "🤝 Réunions" }, { id: "perf", label: "📈 Performance" }, { id: "cost", label: "💰 Coûts IA", dir: true },
+  { id: "supervision", label: "🛰️ Supervision" }, { id: "tasks", label: "📋 Missions" }, { id: "sales", label: "💼 Commercial" }, { id: "meet", label: "🤝 Réunions" }, { id: "perf", label: "📈 Performance" }, { id: "cost", label: "💰 Coûts IA", dir: true },
   { id: "reports", label: "📨 Rapports", dir: true }, { id: "gov", label: "⚖️ Gouvernance", dir: true }, { id: "cfg", label: "🛠️ Paramétrage", dir: true }, { id: "valid", label: "✅ Validations" },
 ];
 const visibleTabs = () => TABS.filter((t) => !t.dir || isDir());
@@ -243,7 +251,7 @@ function render(soft = false) {
   if (S.tab !== "office") S.office?.setActive(false);
   if (S.tab === "office") { P.renderOffice(main); return; }
   if (soft && ["exec"].includes(S.tab)) { renderExec(main, true); return; }
-  const R = { exec: renderExec, org: renderOrg, tasks: renderTasks, sales: SALES.renderSales, meet: renderMeetings, perf: renderPerf, cost: COST.renderCost, reports: renderReports, gov: renderGov, cfg: CFG.renderConfig, valid: renderValid }[S.tab];
+  const R = { exec: renderExec, org: renderOrg, supervision: SUPERVISION.renderSupervision, tasks: renderTasks, sales: SALES.renderSales, meet: renderMeetings, perf: renderPerf, cost: COST.renderCost, reports: renderReports, gov: renderGov, cfg: CFG.renderConfig, valid: renderValid }[S.tab];
   const keepScroll = main.scrollTop;
   R(main); if (soft) main.scrollTop = keepScroll;
 }
@@ -623,6 +631,7 @@ const ACT = {
   "sales-vue": (el) => SALES.salesAction(el),
   "sales-conv": (el) => SALES.salesAction(el),
   "cost-refresh": (el) => COST.costAction(el),
+  "supervision-refresh": async () => { try { await loadCore(); await loadSupervision(); render(); toast("Supervision actualisée", "ok"); } catch (e) { toast(e.message, "bad"); } },
   "sales-qualify": (el) => SALES.salesAction(el),
   "sales-contact": (el) => SALES.salesAction(el),
   "tab": (el) => go(el.dataset.id),
