@@ -17,7 +17,7 @@ const PHASES = [
   ["exploration","Exploration",["identifie","enregistre","qualifie","premier_contact","conversation","besoin_identifie","interesse","rdv_propose","rdv_confirme"]],
   ["proposition","Proposition",["demo_realisee","offre_transmise"]],
   ["negociation","Négociation",["negociation","offre_acceptee"]],
-  ["closing","Closing",["contrat_transmis","contrat_signe","paiement_attendu","paiement_confirme"]],
+  ["closing","Closing",["contrat_transmis","contrat_signe","paiement_attendu","paiement_confirme","marche_gagne","deploiement","client_fidelise"]],
 ];
 const LABEL = Object.fromEntries(STAGES);
 const money = n => `${num(n)} FCFA`;
@@ -27,7 +27,8 @@ const VUES=[["pipeline","🧭 Pipeline"],["prospects","👥 Prospects"],["rdv","
 const RDV_STAGES=["rdv_propose","rdv_confirme","demo_realisee"];
 const CLOSED=["perdu","en_veille","marche_gagne","deploiement","client_fidelise"];
 // Pondérations identiques au tableau de bord financier serveur SANIX AI.
-const STAGE_PROBABILITY={contrat_transmis:0.85,offre_acceptee:0.8,negociation:0.6,offre_transmise:0.4,demo_realisee:0.3,rdv_confirme:0.2,interesse:0.15};
+// Pondérations reprises à l'identique du calcul de prévision de company/live.js.
+const STAGE_PROBABILITY={identifie:.03,enregistre:.05,qualifie:.1,premier_contact:.12,conversation:.18,besoin_identifie:.25,interesse:.3,rdv_propose:.35,rdv_confirme:.4,demo_realisee:.45,offre_transmise:.55,negociation:.65,offre_acceptee:.8,contrat_transmis:.9,paiement_attendu:.95};
 const OFFRE_ST={brouillon:["Brouillon","#64748b"],a_valider:["À valider","#F59E0B"],validee:["Validée","#0ea5e9"],envoyee:["Envoyée","#6366f1"],acceptee:["Acceptée","#22C55E"],refusee:["Refusée","#EF4444"],expiree:["Expirée","#94a3b8"]};
 const ADRESSE_ST={invalide:["⛔ adresse invalide","var(--bad)"],a_confirmer:["⚠ adresse à confirmer","var(--warn)"],verifiee:["✓ adresse confirmée","var(--ok)"]};
 const adresseBadge=p=>{ const a=p.email?ADRESSE_ST[p.email_statut]:null; return a?html` <span class="small" style="color:${a[1]};font-weight:600">${a[0]}</span>`:""; };
@@ -99,7 +100,7 @@ function vuePipeline(){
   const lost=rows.filter(p=>p.stage==="perdu");
   const closed=won.length+lost.length;
   const total=activeRows.reduce((s,p)=>s+Number(p.potentiel_fcfa||0),0);
-  const weighted=activeRows.reduce((s,p)=>s+Number(p.potentiel_fcfa||0)*(STAGE_PROBABILITY[p.stage]??0.05),0);
+  const weighted=activeRows.reduce((s,p)=>s+Math.max(0,Number(p.potentiel_fcfa)||0)*(STAGE_PROBABILITY[p.stage]||0),0);
   const conversion=closed?Math.round(won.length/closed*100):0;
   return html`<div class="filters">
       <input id="sales-q" type="search" placeholder="Rechercher une entreprise, un secteur, une ville…" value="${filter.q}" aria-label="Rechercher dans le pipeline">
@@ -138,6 +139,17 @@ function vuePipeline(){
       }).join(""))}
       </div></div>
     </div>
+    <section style="margin-top:14px">
+      <h3>Résultats clôturés</h3>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+        <div class="card" style="padding:10px"><b>Gagnées et en déploiement</b>
+          ${raw(won.map(p=>html`<div class="small" style="padding:5px 0;border-bottom:1px solid var(--line)"><b>${p.entreprise}</b> · ${LABEL[p.stage]??p.stage}<div class="muted">${operatorName(p.owner_id)} · ${money(p.potentiel_fcfa)}</div></div>`.s).join("")||html`<p class="small muted">Aucune vente gagnée</p>`.s)}
+        </div>
+        <div class="card" style="padding:10px"><b>Perdues / en veille</b>
+          ${raw(rows.filter(p=>["perdu","en_veille"].includes(p.stage)).map(p=>html`<div class="small" style="padding:5px 0;border-bottom:1px solid var(--line)"><b>${p.entreprise}</b> · ${LABEL[p.stage]??p.stage}<div class="muted">${operatorName(p.owner_id)} · ${money(p.potentiel_fcfa)}</div></div>`.s).join("")||html`<p class="small muted">Aucun dossier clôturé ou en veille</p>`.s)}
+        </div>
+      </div>
+    </section>
     <p class="small muted" style="margin-top:8px">Les montants gagnés/perdus sont calculés à partir du potentiel renseigné sur les prospects. Les encaissements réels restent à rapprocher des factures et paiements du CRM.</p>`;
 }
 
