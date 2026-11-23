@@ -328,13 +328,82 @@ function renderOperationsDirector() {
   if (repeatedFailures.length) recs.push({level:"bad",title: `${repeatedFailures.length} séquence(s) d'échecs répétitifs`,detail:"Même agent et même type d'action en échec au moins deux fois sur les événements disponibles."});
   const recommendationHtml = recs.length ? recs.slice(0,5).map(r => `<div class="ops-recommendation ${r.level}"><i></i><span><b>${esc(r.title)}</b><small>${esc(r.detail)}</small></span></div>`).join("") : '<p class="panel-muted">Aucun signal de dysfonctionnement détecté dans les données chargées.</p>';
   const transferHtml = suggestions.length ? suggestions.slice(0,4).map(s => `<div class="ops-transfer"><span><b>${esc(clip(s.task.titre,48))}</b><small>${esc(s.reason)} · ${fmtAgent(s.owner)}</small></span><span class="ops-arrow">→</span><button type="button" data-ops-agent="${esc(s.target.id)}" title="Examiner l'agent proposé">${fmtAgent(s.target)}</button></div>`).join("") : '<p class="panel-muted">Aucune réaffectation candidate fiable : il faut un agent disponible du même département.</p>';
+  const childTasks = new Map();
+  for (const child of D.tasks) {
+    if (!child.parent_id) continue;
+    const list = childTasks.get(child.parent_id) || [];
+    list.push(child);
+    childTasks.set(child.parent_id, list);
+  }
+  const taskEvents = new Map();
+  for (const event of D.actions) {
+    if (!event.task_id || !Number.isFinite(Date.parse(event.at))) continue;
+    const prev = taskEvents.get(event.task_id);
+    if (!prev || Date.parse(event.at) > Date.parse(prev.at)) taskEvents.set(event.task_id, event);
+  }
+  const extractSignal = value => {
+    if (value == null) return "";
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return "";
+      try { return extractSignal(JSON.parse(trimmed)); } catch { return trimmed.slice(0, 220); }
+    }
+    if (Array.isArray(value)) return value.map(extractSignal).filter(Boolean).slice(0,2).join(" · ");
+    if (typeof value === "object") {
+      for (const key of ["error","erreur","message","details","reason","raison","failure","cause"]) {
+        if (value[key] != null) { const found = extractSignal(value[key]); if (found) return found; }
+      }
+      return "";
+    }
+    return String(value).slice(0,220);
+  };
+  const triageTasks = D.tasks.filter(t => {
+    const age = now - Date.parse(t.updated_at);
+    return ["bloquee","echouee"].includes(t.statut) ||
+      (t.statut === "en_cours" && Number.isFinite(age) && age > 90 * 60000) ||
+      (OPENS.includes(t.statut) && Number(t.executions) >= 3);
+  }).sort((a,b) => {
+    const rank = t => ["bloquee","echouee"].includes(t.statut) ? 0 : t.statut === "en_cours" ? 1 : 2;
+    return rank(a)-rank(b) || Date.parse(a.updated_at)-Date.parse(b.updated_at);
+  }).slice(0,8);
+  const triageHtml = triageTasks.length ? triageTasks.map(t => {
+    const ageMs = now - Date.parse(t.updated_at);
+    const event = taskEvents.get(t.id);
+    const eventError = event?.ok === false ? extractSignal(event.payload) : "";
+    const reportError = extractSignal(t.rapport);
+    const reason = eventError || reportError ||
+      (t.statut === "attente_sous_taches" ? "En attente de sous-tâches ; vérifier les tâches enfants visibles." :
+       t.statut === "en_cours" ? "Aucune progression récente observée ; vérifier l'exécution et les dépendances." :
+       t.statut === "a_faire" ? "Plusieurs exécutions déclarées ; vérifier le résultat et le critère de sortie." :
+       "Cause technique non renseignée dans les données chargées.");
+    const children = childTasks.get(t.id) || [];
+    const childOpen = children.filter(c => OPENS.includes(c.statut)).length;
+    const childFailed = children.filter(c => ["bloquee","echouee"].includes(c.statut)).length;
+    const dep = children.length ? `${children.length} sous-tâche(s) · ${childOpen} ouverte(s) · ${childFailed} en échec/blocage` :
+      t.statut === "attente_sous_taches" ? "Sous-tâches non visibles dans la fenêtre chargée" : "Aucune dépendance enfant observée";
+    const action = eventError ? "Examiner le dernier événement en erreur avant toute relance." :
+      childFailed ? "Traiter d'abord la sous-tâche en échec ou bloquée." :
+      childOpen ? "Vérifier l'achèvement des sous-tâches avant de reprendre le parent." :
+      t.statut === "en_cours" ? "Contrôler le dernier résultat et la disponibilité de l'agent." :
+      "Compléter le diagnostic de cause avant de décider d'une reprise.";
+    const owner = agentById(t.agent_id);
+    const severity = ["bloquee","echouee"].includes(t.statut) ? "bad" : "warn";
+    return `<div class="ops-triage ${severity}">
+      <div class="ops-triage-top"><b>${esc(clip(t.titre,64))}</b><span>${esc(TASK_L[t.statut] || t.statut)}</span></div>
+      <small>Agent : ${esc(owner?.nom || "non attribué")} · dernière mise à jour : ${Number.isFinite(ageMs) ? esc(dur(ageMs)) : "inconnue"} · ${Number(t.executions)||0} exécution(s)</small>
+      <p><b>Signal :</b> ${esc(clip(reason,190))}</p>
+      <p><b>Dépendances :</b> ${esc(dep)}</p>
+      <p><b>Action proposée :</b> ${esc(action)}</p>
+    </div>`;
+  }).join("") : '<p class="panel-muted">Aucune mission à trier dans les données chargées.</p>';
   const deptHtml = deptRows.length ? deptRows.slice(0,5).map(x => `<div class="ops-dept"><span><b>${esc(x.d.nom)}</b><small>${x.members} agent(s)</small></span><span><b>${x.load}</b><small>missions ouvertes</small></span><span class="${x.ratio >= 4 ? "ops-hot" : x.ratio >= 2 ? "ops-warn" : ""}"><b>${x.ratio.toFixed(1)}</b><small>missions / agent</small></span></div>`).join("") : '<p class="panel-muted">Répartition par département indisponible.</p>';
   el.innerHTML = `<div class="panel-head"><h2>Directeur opérationnel</h2><span class="panel-source">Analyse · lecture seule</span></div>
     <div class="ops-summary"><div><b>${alertCount}</b><small>Signaux à examiner</small></div><div><b>${overloaded.length}</b><small>Agents surchargés</small></div><div><b>${suggestions.length}</b><small>Réaffectations candidates</small></div></div>
     <div class="ops-section"><h3>Recommandations de pilotage</h3>${recommendationHtml}</div>
     <div class="ops-section"><h3>Réaffectations à examiner</h3>${transferHtml}</div>
     <div class="ops-section"><h3>Charge par département</h3>${deptHtml}</div>
-    <p class="panel-note">Analyse des missions actualisées sur 7 jours (maximum 600), des 60 derniers événements et des agents actifs. Seuils d'alerte indicatifs, non assimilables à une évaluation RH. Les réaffectations sont des propositions : aucune mission n'est modifiée. La rentabilité par département n'est pas calculable sans données fiables de revenus et de coûts analytiques rapprochées.</p>`;
+    <div class="ops-section"><h3>Diagnostic des missions prioritaires</h3><span class="panel-source">Cause observée · dépendances · action proposée</span>${triageHtml}</div>
+    <p class="panel-note">Analyse des missions actualisées sur 7 jours (maximum 600), des 60 derniers événements et des agents actifs. Seuils d'alerte indicatifs, non assimilables à une évaluation RH. Les réaffectations et actions de triage sont des recommandations : aucune mission n'est modifiée. Les causes ne sont affichées que si elles existent dans les rapports ou événements chargés. La rentabilité par département n'est pas calculable sans données fiables de revenus et de coûts analytiques rapprochées.</p>`;
 }
 function renderBusinessIntelligence() {
   const el = $("#bi-panel");
