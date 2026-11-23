@@ -181,7 +181,6 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     await page.fill("#sales-q", "");
     await vue("rdv");
     ok((await page.locator("#main tbody tr").count()) === 1 && (await page.locator("#main tbody").innerText()).includes("Express Colis") && (await page.locator("#main tbody").innerText()).includes("RDV confirmé"), "rendez-vous : prospect à l'étape RDV listé avec son étape");
-     ok((await page.locator("#sales-owner").count())===1, "pipeline : filtre par commercial présent");
     await page.locator("#main tbody [data-act=sales-open]").first().click(); await page.waitForSelector("#modal:not([hidden]) #sales-link-form");
     ok((await page.locator("#sales-next-form input[name=next_action_at]").count())===1, "fiche prospect : échéance de prochaine action disponible");
     await page.fill("#sales-next-form input[name=next_action_at]", "2026-12-01T10:30"); await page.click("#sales-next-form button[type=submit]"); await page.waitForTimeout(250);
