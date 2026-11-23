@@ -322,8 +322,10 @@ async function sendInstruction(e) {
 }
 
 // ───────────────────────── Validations ─────────────────────────
-const APP_LABEL = { remise: "💸 Remise commerciale", contrat: "📝 Contrat", paiement: "💰 Paiement", engagement: "⚖️ Engagement", transfert_humain: "🙋 Transfert à un humain", message: "💬 Message externe", creation_agent: "🧑‍💼 Création d'agent", ressources: "📈 Demande de ressources", mission: "📋 Mission", outil_externe: "📡 Outil de communication externe" };
+const APP_LABEL = { incident: "🛠️ Correction d’incident", remise: "💸 Remise commerciale", contrat: "📝 Contrat", paiement: "💰 Paiement", engagement: "⚖️ Engagement", transfert_humain: "🙋 Transfert à un humain", message: "💬 Message externe", creation_agent: "🧑‍💼 Création d'agent", ressources: "📈 Demande de ressources", mission: "📋 Mission", outil_externe: "📡 Outil de communication externe" };
 function approvalDetail(a) {
+  if (a.type === "incident") { const p = a.payload ?? {}; return html`<div class="small muted"><b>Action :</b> ${p.action ?? "—"}<br><b>Motif :</b> ${p.reason ?? a.motif}<br><b>Correction proposée :</b> ${p.recommendation ?? "À préciser"}<br><b>Exécution :</b> désactivée — décision humaine uniquement</div>`; }
+
   const p = a.payload ?? {};
   if (a.type === "message") return html`<div class="small muted" style="white-space:pre-wrap">${clipT(p.apercu, 600)}</div>`;
   if (a.type === "ressources") return html`<div class="small muted">${p.justification}</div>`;

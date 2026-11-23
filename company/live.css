@@ -429,3 +429,9 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .ops-incident p{font-size:9px;line-height:1.45;margin:7px 0 0;overflow-wrap:anywhere}
 .ops-incident p b{color:#93C5FD}
 .ops-incident[open]{border-color:rgba(59,130,246,.45)}
+
+/* Jarvis V2.5 — soumission d'une correction à la direction. */
+.ops-approve-request{margin-top:9px;border:1px solid rgba(59,130,246,.45);border-radius:7px;background:rgba(37,99,235,.12);color:#BFDBFE;padding:7px 10px;font-size:9px;font-weight:700;cursor:pointer}
+.ops-approve-request:hover{background:rgba(37,99,246,.22)}
+.ops-approve-request:disabled{opacity:.65;cursor:default}
+.ops-approve-request.is-submitted{border-color:rgba(34,197,94,.45);color:#86EFAC;background:rgba(34,197,94,.1)}
