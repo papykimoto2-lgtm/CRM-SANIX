@@ -26,6 +26,17 @@ Les dossiers `perdu` et `en_veille` sont affichés dans la section « Résultats
 
 Les pondérations sont des hypothèses de pilotage, pas des statistiques de conversion constatées. Elles devront être recalibrées à partir des résultats réels SANIX. Attention : la fonction SQL historique `ai_report_data` utilise encore un barème différent et ne retient qu'une partie des étapes. La prévision du Kanban n'est donc pas encore harmonisée avec les rapports serveur ; cette harmonisation doit précéder toute utilisation financière officielle.
 
+## Centre de pilotage commercial
+
+La vue « Pilotage » lit les commandes `crm_records` (`entity = commandes`) et leurs tableaux `paiements`. Elle sépare explicitement :
+
+- **Encaissements enregistrés** : somme des lignes de paiement présentes ; les anciens acomptes sans détail sont inclus au cumul historique mais ne sont pas ventilés par mois.
+- **Encaissements mensuels** : uniquement les paiements avec une date exploitable.
+- **Solde restant** : TTC de la commande moins les paiements/acompte enregistrés, sans solde négatif.
+- **Performance par logiciel et commercial** : ventilation selon les champs réellement renseignés sur les commandes ; les commerciaux absents restent « Non attribué ».
+
+Un objectif mensuel de référence et un taux de commission indicatif sont lus depuis la configuration CRM (`objectifDefaut`, `commissionDefaut`). L’objectif est comparé uniquement aux paiements datés du mois ; il ne constitue pas un objectif individuel. La commission théorique est calculée uniquement sur les paiements dont le champ commercial est renseigné ; elle ne constitue ni une commission validée ni un montant à payer. Les données affichées restent des indicateurs de gestion à rapprocher des factures, écritures comptables et relevés bancaires. Le potentiel des prospects et les offres ne sont jamais comptés comme chiffre d’affaires encaissé.
+
 ## Exécution commerciale
 
 1. Créer ou importer un prospect. Une fiche IA reliée au CRM conserve son `crm_rid`.
