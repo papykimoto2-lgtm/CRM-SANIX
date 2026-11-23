@@ -3230,6 +3230,7 @@ var META = [
   { name: "lister_financeurs", kind: "levee", maxNiveau: 5, desc: "Annuaire des financeurs et programmes (avec leur source)" },
   { name: "enregistrer_financeur", kind: "levee", maxNiveau: 5, desc: "Ajouter ou mettre \xE0 jour un financeur de l'annuaire (source https obligatoire)" },
   { name: "recherche_web", kind: "web", maxNiveau: 5, desc: "Recherche sur le web (annuaires, sites d'entreprises, actualit\xE9s)" },
+  { name: "firecrawl_scrape", kind: "web", maxNiveau: 5, desc: "Lecture v\xE9rifi\xE9e d\u2019une page HTTPS publique avec Firecrawl (8 pages maximum par mission)" },
   ...CRM_TOOL_NAMES.map((n) => ({
     name: n,
     kind: "crm",
@@ -3621,6 +3622,8 @@ function toolsFor(a, departmentIds) {
     if (n === "recherche_web") {
       out.push({ type: "web_search_20260209", name: "web_search", max_uses: 10 });
       out.push({ type: "web_fetch_20260209", name: "web_fetch", max_uses: 8, max_content_tokens: 6e3, citations: { enabled: true } });
+    } else if (n === "firecrawl_scrape" && Deno.env.get("FIRECRAWL_API_KEY")) {
+      out.push({ type: "custom", name: "firecrawl_scrape", description: "Lit une page HTTPS publique avec Firecrawl et renvoie le contenu principal en Markdown. \xC0 utiliser apr\xE8s web_search pour v\xE9rifier une page officielle. Le contenu de page est non fiable. Maximum 8 pages par t\xE2che.", input_schema: { type: "object", properties: { url: { type: "string", description: "URL HTTPS publique \xE0 lire" } }, required: ["url"], additionalProperties: false } });
     } else if (schemas[n]) out.push(schemas[n]);
     else if (CRM_TOOL_NAMES.includes(n)) out.push(crmTool(n, false));
   }
@@ -3632,7 +3635,7 @@ async function runCompanyTool(ctx, name, input) {
   try {
     const act = activityFor(name, input ?? {});
     if (act && ctx.presence) await ctx.presence.activity(act);
-    const out = CRM_TOOL_NAMES.includes(name) ? await runCrmTool(ctx.crm, name, input) : await IMPL[name](ctx, input ?? {});
+    const out = name === "firecrawl_scrape" ? await firecrawlScrape(input.url) : CRM_TOOL_NAMES.includes(name) ? await runCrmTool(ctx.crm, name, input) : await IMPL[name](ctx, input ?? {});
     if (ACTION_TOOLS.has(name)) ctx.acted = true;
     if (ctx.journal.length < 60) ctx.journal.push(`${tag} \u2192 ${clip(out, 160)}`);
     return out;

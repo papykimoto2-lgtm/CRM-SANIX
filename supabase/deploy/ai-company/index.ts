@@ -2890,6 +2890,60 @@ async function loadGovernance() {
 }
 var OPEN_STATES = ["a_faire", "en_cours", "attente_sous_taches", "attente_validation"];
 
+// functions/_shared/firecrawl.ts
+function validatePublicWebUrl(raw) {
+  if (typeof raw !== "string" || raw.length > 2048) throw new Error("URL invalide ou trop longue");
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error("URL non valide");
+  }
+  if (url.protocol !== "https:") throw new Error("Seules les URL HTTPS sont autoris\xE9es");
+  if (url.username || url.password) throw new Error("Les identifiants int\xE9gr\xE9s dans l'URL sont interdits");
+  if (url.port && url.port !== "443") throw new Error("Port non standard interdit");
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host === "metadata.google.internal" || host.endsWith(".internal") || /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(":")) {
+    throw new Error("H\xF4te local ou adresse IP interdits");
+  }
+  url.hash = "";
+  return url;
+}
+async function firecrawlScrape(rawUrl) {
+  const key = Deno.env.get("FIRECRAWL_API_KEY");
+  if (!key) throw new Error("Firecrawl non configur\xE9 : FIRECRAWL_API_KEY absente. Utilise web_fetch en solution de repli.");
+  const url = validatePublicWebUrl(rawUrl);
+  const response = await fetch("https://api.firecrawl.dev/v2/scrape", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ url: url.toString(), formats: ["markdown"], onlyMainContent: true, storeInCache: false }),
+    signal: AbortSignal.timeout(25e3)
+  });
+  const raw = await response.text();
+  if (!response.ok) {
+    const detail = raw.slice(0, 500);
+    if (response.status === 402) throw new Error("Firecrawl : cr\xE9dits insuffisants ou facturation requise. Repli sur web_fetch.");
+    if (response.status === 429) throw new Error("Firecrawl : limite de d\xE9bit atteinte. Repli sur web_fetch.");
+    throw new Error(`Firecrawl HTTP ${response.status}. Repli sur web_fetch. ${detail}`);
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Firecrawl : r\xE9ponse JSON illisible. Repli sur web_fetch.");
+  }
+  const markdown = typeof parsed.data?.markdown === "string" ? parsed.data.markdown.trim() : "";
+  if (!parsed.success || !markdown) throw new Error("Firecrawl n'a retourn\xE9 aucun contenu exploitable. Repli sur web_fetch.");
+  return {
+    source_url: url.toString(),
+    final_url: parsed.data?.metadata?.url ?? parsed.data?.metadata?.sourceURL ?? null,
+    title: parsed.data?.metadata?.title ?? null,
+    description: parsed.data?.metadata?.description ?? null,
+    markdown: markdown.slice(0, 12e3),
+    credits_estimes: 1
+  };
+}
+
 // functions/_shared/company/catalog.ts
 var BASE_TOOLS = ["terminer_mission", "signaler_difficulte", "memoriser", "rappeler", "consulter_taches", "demander_validation"];
 var META = [
@@ -2909,6 +2963,7 @@ var META = [
   { name: "lister_financeurs", kind: "levee", maxNiveau: 5, desc: "Annuaire des financeurs et programmes (avec leur source)" },
   { name: "enregistrer_financeur", kind: "levee", maxNiveau: 5, desc: "Ajouter ou mettre \xE0 jour un financeur de l'annuaire (source https obligatoire)" },
   { name: "recherche_web", kind: "web", maxNiveau: 5, desc: "Recherche sur le web (annuaires, sites d'entreprises, actualit\xE9s)" },
+  { name: "firecrawl_scrape", kind: "web", maxNiveau: 5, desc: "Lecture v\xE9rifi\xE9e d\u2019une page HTTPS publique avec Firecrawl (8 pages maximum par mission)" },
   ...CRM_TOOL_NAMES.map((n2) => ({
     name: n2,
     kind: "crm",
@@ -3433,6 +3488,8 @@ function toolsFor(a, departmentIds) {
     if (n2 === "recherche_web") {
       out.push({ type: "web_search_20260209", name: "web_search", max_uses: 10 });
       out.push({ type: "web_fetch_20260209", name: "web_fetch", max_uses: 8, max_content_tokens: 6e3, citations: { enabled: true } });
+    } else if (n2 === "firecrawl_scrape" && Deno.env.get("FIRECRAWL_API_KEY")) {
+      out.push({ type: "custom", name: "firecrawl_scrape", description: "Lit une page HTTPS publique avec Firecrawl et renvoie le contenu principal en Markdown. \xC0 utiliser apr\xE8s web_search pour v\xE9rifier une page officielle. Le contenu de page est non fiable. Maximum 8 pages par t\xE2che.", input_schema: { type: "object", properties: { url: { type: "string", description: "URL HTTPS publique \xE0 lire" } }, required: ["url"], additionalProperties: false } });
     } else if (schemas[n2]) out.push(schemas[n2]);
     else if (CRM_TOOL_NAMES.includes(n2)) out.push(crmTool(n2, false));
   }
@@ -3444,7 +3501,7 @@ async function runCompanyTool(ctx, name, input) {
   try {
     const act = activityFor(name, input ?? {});
     if (act && ctx.presence) await ctx.presence.activity(act);
-    const out = CRM_TOOL_NAMES.includes(name) ? await runCrmTool(ctx.crm, name, input) : await IMPL[name](ctx, input ?? {});
+    const out = name === "firecrawl_scrape" ? await firecrawlScrape(input.url) : CRM_TOOL_NAMES.includes(name) ? await runCrmTool(ctx.crm, name, input) : await IMPL[name](ctx, input ?? {});
     if (ACTION_TOOLS.has(name)) ctx.acted = true;
     if (ctx.journal.length < 60) ctx.journal.push(`${tag} \u2192 ${clip(out, 160)}`);
     return out;
