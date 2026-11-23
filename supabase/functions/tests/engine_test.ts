@@ -436,8 +436,8 @@ T("T8 · secret du planificateur : lu dans le Vault (ai_cron_secret), repli sur 
 
 T("T9 · une mission mère ne se clôture pas avec des sous-missions ouvertes", async () => {
   await freshDb();
-  await mkAgent("parent_guard", "Parent Guard", 1, null, ["assigner_mission", "attendre_sous_taches"]);
-  await mkAgent("child_guard", "Child Guard", 2, "parent_guard", []);
+  await mkAgent("parent_guard", "Parent Guard", 2, "sanix_ai_general_director", ["assigner_mission", "attendre_sous_taches"]);
+  await mkAgent("child_guard", "Child Guard", 3, "parent_guard", []);
   const parent = await mkTask("parent_guard", "Mission mère avec étapes");
   const child = await mkTask("child_guard", "Étape enfant encore ouverte", { statut: "a_faire", parent, donneur: "parent_guard" });
 
