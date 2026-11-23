@@ -64,6 +64,7 @@ export async function runAgent(run: RunMode, brief: string): Promise<{ resume: s
     tools.push({ type: "web_fetch_20260209", name: "web_fetch", max_uses: 8, max_content_tokens: 6000, citations: { enabled: true } });
     if (Deno.env.get("FIRECRAWL_API_KEY")) {
       tools.push({
+        type: "custom",
         name: "firecrawl_scrape",
         description: "Lit une URL HTTPS publique d'entreprise avec Firecrawl et renvoie le contenu principal en Markdown. À utiliser après web_search pour vérifier une page officielle. Si l'outil échoue, utilise web_fetch. Maximum 8 pages par mission.",
         input_schema: { type: "object", properties: { url: { type: "string", description: "URL HTTPS publique de la page d'entreprise à lire" } }, required: ["url"], additionalProperties: false },
