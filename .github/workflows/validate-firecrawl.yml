@@ -14,6 +14,7 @@ on:
     branches:
       - feature/firecrawl-scrape-lead-hunter
       - fix/firecrawl-hunter-catalog
+      - fix/firecrawl-hunter-page-cap
 
 permissions:
   contents: write
