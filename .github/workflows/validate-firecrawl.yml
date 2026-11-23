@@ -3,6 +3,7 @@ name: Validate Firecrawl Lead Hunter
 on:
   pull_request:
     branches:
+      - main
       - improvement/prospect-intelligence-v1
     paths:
       - "supabase/functions/**"
