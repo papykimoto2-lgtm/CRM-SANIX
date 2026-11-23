@@ -28,6 +28,7 @@ Les étapes de signature, d'encaissement, de gain et de fidélisation restent so
 ## Pilotage
 - Opportunités actives : dossiers qui ne sont ni perdus, ni en veille, ni gagnés.
 - Potentiel brut actif : somme du potentiel déclaré sur les opportunités actives ; ce n'est pas du chiffre d'affaires.
+- Prévision pondérée : applique les mêmes probabilités par étape que le tableau de bord financier serveur (contrat transmis 85 %, offre acceptée 80 %, négociation 60 %, offre transmise 40 %, démo réalisée 30 %, RDV confirmé 20 %, intéressé 15 %, autres étapes actives 5 %).
 - Ventes gagnées : dossiers au stade marché gagné, déploiement ou client fidélisé.
 - Actions en retard : prochaine action échue sur un dossier non clos.
 - Répartition par commercial : filtre par responsable et affectation réservée à la direction.
