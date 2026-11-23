@@ -40,11 +40,16 @@ jobs:
       - name: Test Firecrawl URL validation
         run: deno test supabase/functions/_shared/firecrawl_test.ts
 
+      - name: Type-check company agent Firecrawl integration
+        run: deno check supabase/functions/_shared/company/tools.ts supabase/functions/ai-company/index.ts
+
       - name: Regenerate deployment bundles
         run: sh supabase/build_functions.sh
 
-      - name: Verify Firecrawl is present in generated Lead Hunter bundle
-        run: grep -q "firecrawl_scrape" supabase/deploy/ai-sales-director/index.ts
+      - name: Verify Firecrawl is present in generated agent bundles
+        run: |
+          grep -q "firecrawl_scrape" supabase/deploy/ai-sales-director/index.ts
+          grep -q "firecrawl_scrape" supabase/deploy/ai-company/index.ts
 
       - name: Commit generated deployment bundles on branch pushes
         if: github.event_name == 'push'
