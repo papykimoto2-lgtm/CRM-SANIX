@@ -396,6 +396,44 @@ function renderOperationsDirector() {
       <p><b>Action proposée :</b> ${esc(action)}</p>
     </div>`;
   }).join("") : '<p class="panel-muted">Aucune mission à trier dans les données chargées.</p>';
+  const incidentGroups = new Map();
+  const normalizeIncident = value => String(value || "action_inconnue")
+    .replace(/^abonnement_/, "").replace(/[_-]+/g, " ").trim().toLocaleLowerCase();
+  for (const event of D.actions) {
+    if (event.ok !== false || !Number.isFinite(Date.parse(event.at))) continue;
+    const age = now - Date.parse(event.at);
+    if (age < 0 || age > 7 * day) continue;
+    const key = normalizeIncident(event.action);
+    const group = incidentGroups.get(key) || { key, count:0, agents:new Set(), tasks:new Set(), latest:null, samples:[] };
+    group.count++;
+    if (event.agent_id) group.agents.add(event.agent_id);
+    if (event.task_id) group.tasks.add(event.task_id);
+    if (!group.latest || Date.parse(event.at) > Date.parse(group.latest.at)) group.latest = event;
+    if (group.samples.length < 3) group.samples.push(event);
+    incidentGroups.set(key, group);
+  }
+  const procedures = [
+    { match:/firecrawl|scrape|lecture page|url/, title:"Vérifier la lecture de la source", steps:"Contrôler l'URL canonique, l'accès HTTP, le résultat de lecture et les quotas du fournisseur. Ne créer aucune fiche si la page n'a pas été réellement lue." },
+    { match:/prospect|crm|create/, title:"Vérifier la création et les doublons", steps:"Contrôler les champs obligatoires, la source consultée, la recherche de doublons et les droits d'écriture. Vérifier si l'enregistrement existe déjà avant toute nouvelle tentative." },
+    { match:/supabase|database|query|sql/, title:"Vérifier l'accès aux données", steps:"Contrôler la session, les droits RLS, la disponibilité de Supabase et le message d'erreur exact. Ne pas élargir les permissions pour contourner l'erreur." },
+    { match:/anthropic|claude|llm|model|token/, title:"Vérifier le fournisseur IA", steps:"Contrôler la clé, le solde/crédit, les limites de débit, le modèle demandé et la taille de la requête. Ne pas répéter en boucle une requête refusée." },
+    { match:/whatsapp|message|webhook/, title:"Vérifier le canal de communication", steps:"Contrôler l'état du webhook, le numéro, le modèle de message, le consentement et le statut Meta. Aucun message externe ne doit être renvoyé sans validation." }
+  ];
+  const incidentRows = [...incidentGroups.values()].sort((a,b) => b.count-a.count || Date.parse(b.latest.at)-Date.parse(a.latest.at)).slice(0,6);
+  const incidentHtml = incidentRows.length ? incidentRows.map(g => {
+    const procedure = procedures.find(p => p.match.test(g.key)) || {
+      title:"Examiner le journal technique",
+      steps:"Ouvrir le payload de l'événement, identifier le code et le message d'erreur, vérifier les prérequis de l'action et reproduire en environnement sûr avant toute correction."
+    };
+    const when = dur(Math.max(0, now - Date.parse(g.latest.at)));
+    const agentNames = [...g.agents].map(id => agentById(id)?.nom || "Agent inconnu").slice(0,3);
+    return `<details class="ops-incident">
+      <summary><span><b>${esc(g.key)}</b><small>${g.count} échec(s) · ${g.agents.size} agent(s) · ${g.tasks.size} mission(s)</small></span><em>${esc(when)}</em></summary>
+      <p><b>Procédure :</b> ${esc(procedure.title)}</p>
+      <p>${esc(procedure.steps)}</p>
+      <small>Agents concernés : ${esc(agentNames.join(", ") || "non identifiés")} · Dernier événement : ${esc(g.latest.at)}</small>
+    </details>`;
+  }).join("") : '<p class="panel-muted">Aucun échec enregistré sur les événements disponibles des 7 derniers jours.</p>';
   const deptHtml = deptRows.length ? deptRows.slice(0,5).map(x => `<div class="ops-dept"><span><b>${esc(x.d.nom)}</b><small>${x.members} agent(s)</small></span><span><b>${x.load}</b><small>missions ouvertes</small></span><span class="${x.ratio >= 4 ? "ops-hot" : x.ratio >= 2 ? "ops-warn" : ""}"><b>${x.ratio.toFixed(1)}</b><small>missions / agent</small></span></div>`).join("") : '<p class="panel-muted">Répartition par département indisponible.</p>';
   el.innerHTML = `<div class="panel-head"><h2>Directeur opérationnel</h2><span class="panel-source">Analyse · lecture seule</span></div>
     <div class="ops-summary"><div><b>${alertCount}</b><small>Signaux à examiner</small></div><div><b>${overloaded.length}</b><small>Agents surchargés</small></div><div><b>${suggestions.length}</b><small>Réaffectations candidates</small></div></div>
@@ -403,7 +441,8 @@ function renderOperationsDirector() {
     <div class="ops-section"><h3>Réaffectations à examiner</h3>${transferHtml}</div>
     <div class="ops-section"><h3>Charge par département</h3>${deptHtml}</div>
     <div class="ops-section"><h3>Diagnostic des missions prioritaires</h3><span class="panel-source">Cause observée · dépendances · action proposée</span>${triageHtml}</div>
-    <p class="panel-note">Analyse des missions actualisées sur 7 jours (maximum 600), des 60 derniers événements et des agents actifs. Seuils d'alerte indicatifs, non assimilables à une évaluation RH. Les réaffectations et actions de triage sont des recommandations : aucune mission n'est modifiée. Les causes ne sont affichées que si elles existent dans les rapports ou événements chargés. La rentabilité par département n'est pas calculable sans données fiables de revenus et de coûts analytiques rapprochées.</p>`;
+    <div class="ops-section"><h3>Centre de résolution des incidents</h3><span class="panel-source">Regroupement des erreurs · procédures proposées · 7 jours</span>${incidentHtml}</div>
+    <p class="panel-note">Analyse des missions actualisées sur 7 jours (maximum 600), des 60 derniers événements et des agents actifs. Les incidents sont regroupés par type d'action sur les 7 derniers jours à partir des événements chargés ; ils ne représentent pas nécessairement tous les incidents du système. Seuils d'alerte indicatifs, non assimilables à une évaluation RH. Les réaffectations et actions de triage sont des recommandations : aucune mission n'est modifiée. Les causes ne sont affichées que si elles existent dans les rapports ou événements chargés. La rentabilité par département n'est pas calculable sans données fiables de revenus et de coûts analytiques rapprochées.</p>`;
 }
 function renderBusinessIntelligence() {
   const el = $("#bi-panel");
