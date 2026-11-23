@@ -248,40 +248,44 @@ function renderAgentPerformance() {
   if (!el) return;
   const active = D.agents.filter(a => !["suspendu", "archive"].includes(a.etat));
   const costs = new Map((D.costCenter?.agents || []).map(a => [String(a.nom || "").trim().toLocaleLowerCase(), Number(a.cout_usd) || 0]));
+  const stateRank = { bad: 0, run: 1, wait: 2, valid: 3, queue: 4, idle: 5, off: 6 };
   const rows = active.map(a => {
     const mine = D.tasks.filter(t => t.agent_id === a.id);
     const actions = D.actions.filter(x => x.agent_id === a.id);
     const evaluated = actions.filter(x => typeof x.ok === "boolean");
     const successes = evaluated.filter(x => x.ok === true).length;
+    const latest = actions.filter(x => Number.isFinite(Date.parse(x.at))).sort((x,y) => Date.parse(y.at)-Date.parse(x.at))[0] ?? null;
+    const state = agentState(a);
     return {
-      agent: a,
+      agent: a, state, stateLabel: STATES[state]?.[0] ?? state,
       done: mine.filter(t => t.statut === "terminee").length,
       open: mine.filter(t => OPENS.includes(t.statut)).length,
       blocked: mine.filter(t => ["bloquee", "echouee"].includes(t.statut)).length,
-      actions: actions.length,
-      evaluated: evaluated.length,
-      successes,
+      actions: actions.length, evaluated: evaluated.length, successes, latest,
       cost: costs.get(String(a.nom || "").trim().toLocaleLowerCase()) ?? null
     };
-  }).sort((a,b) => b.done-a.done || b.open-a.open || b.actions-a.actions);
+  }).sort((a,b) => (stateRank[a.state] ?? 9)-(stateRank[b.state] ?? 9) || b.blocked-a.blocked || b.open-a.open || b.done-a.done);
   const evaluated = D.actions.filter(x => typeof x.ok === "boolean");
   const success = evaluated.filter(x => x.ok === true).length;
   const rate = evaluated.length ? Math.round(success * 100 / evaluated.length) : null;
+  const counts = Object.fromEntries(["run","wait","valid","queue","idle","bad"].map(k => [k, rows.filter(r => r.state === k).length]));
   const fmtCost = v => "$" + Number(v || 0).toFixed(2);
-  el.innerHTML = `<div class="panel-head"><h2>Performance des agents</h2><span class="panel-source">Activité · 7 jours</span></div>
+  const signalText = a => !a ? "aucun signal parmi les 60 derniers événements" : (a.ok === false ? "dernier événement en échec" : a.ok === true ? "dernier événement réussi" : "dernier événement sans résultat");
+  el.innerHTML = `<div class="panel-head"><h2>Diagnostic des agents</h2><span class="panel-source">État · 7 jours</span></div>
     <div class="performance-summary">
       <div><b>${active.length}</b><small>Agents actifs</small></div>
-      <div><b>${D.tasks.filter(t => t.statut === "terminee").length}</b><small>Missions terminées</small></div>
-      <div><b>${rate === null ? "n/d" : rate + " %"}</b><small>Actions réussies*</small></div>
+      <div><b>${counts.run}</b><small>Au travail</small></div>
+      <div><b>${counts.bad + counts.wait + counts.valid + counts.queue}</b><small>À examiner / en attente</small></div>
     </div>
-    <div class="performance-head"><span>Agent</span><span>Terminées</span><span>Ouvertes</span><span>Actions*</span><span>Coût 30 j</span></div>
-    <div class="performance-list">${rows.slice(0,10).map(r => `<button type="button" class="performance-row" data-performance-agent="${esc(r.agent.id)}" aria-label="Afficher les missions de ${esc(r.agent.nom)}">
-      <span class="performance-name"><b>${esc(r.agent.nom)}</b><small>${esc(r.agent.fonction || "Agent")}</small></span>
+    <div class="performance-state-summary"><span>${counts.bad} bloqué(s)</span><span>${counts.wait + counts.valid + counts.queue} en attente</span><span>${counts.idle} disponible(s)</span></div>
+    <div class="performance-head"><span>Agent / état / signal</span><span>Terminées</span><span>Ouvertes</span><span>Actions*</span><span>Coût 30 j</span></div>
+    <div class="performance-list">${rows.map(r => `<button type="button" class="performance-row" data-performance-agent="${esc(r.agent.id)}" aria-label="Examiner ${esc(r.agent.nom)} — ${esc(r.stateLabel)}" title="${esc(signalText(r.latest))}">
+      <span class="performance-name"><b>${esc(r.agent.nom)}</b><small class="performance-state ${esc(r.state)}">${esc(r.stateLabel)} · ${esc(r.latest ? dur(Date.now() - Date.parse(r.latest.at)) : "aucun signal récent")}</small></span>
       <b class="performance-done">${r.done}</b><b>${r.open}</b>
       <span class="performance-actions">${r.evaluated ? `${r.successes}/${r.evaluated}` : `${r.actions} · n/d`}</span>
       <b class="performance-cost">${r.cost === null ? "n/d" : fmtCost(r.cost)}</b>
     </button>`).join("")}</div>
-    <p class="panel-note">Missions : tâches actualisées sur 7 jours. * Actions : 60 événements les plus récents, uniquement ceux dont le résultat est renseigné. Coûts : fenêtre de 30 jours. Ce classement décrit l'activité observée, pas une note individuelle ni une comparaison corrigée de la difficulté des missions.</p>`;
+    <p class="panel-note">État déduit des statuts de missions chargées (7 jours) et de l'activité déclarée. Dernier signal : parmi les 60 événements les plus récents, pas un heartbeat réseau. * Actions évaluées uniquement si leur résultat est renseigné. Coûts : 30 jours. Les signaux orientent le contrôle humain, ils ne prouvent pas à eux seuls qu'un agent est déconnecté.</p>`;
 }
 function renderOperationsDirector() {
   const el = $("#ops-panel");
