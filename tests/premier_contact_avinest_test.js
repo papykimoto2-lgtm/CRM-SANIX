@@ -23,13 +23,18 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
       return { seg: fcSegment(a), segG: fcSegment(g), segAn: fcSegment(an), wa, sujet: em.subject, corps: em.body, idx, opts: [...document.querySelectorAll("#mkt-modele option")].map((o) => o.value),
         surGarage: msgModeleHorsSegment([{ c: g }]), surAvi: msgModeleHorsSegment([{ c: a }]) };
     });
-    ok(r.seg === "avinest" && r.segG === "autogarage" && r.segAn !== "avinest", "AviNest Pro est reconnu par son logiciel ; un garage et Angel's Agro ne reçoivent pas ce message");
+    ok(r.seg === "avinest" && r.segG === "autogarage" && r.segAn === "avinest", "AviNest Pro est reconnu par son logiciel, Angel's Agro (AviNest Pro adapté) aussi ; un garage ne reçoit pas ce message");
     ok(/AviNest Pro/.test(r.wa) && /mortalité/.test(r.wa) && /rentabilité de chaque lot/.test(r.wa) && !/AluExpert|alumin|garage|portail/i.test(r.wa), "WhatsApp : message AviNest Pro, sans mention d'un autre logiciel");
     ok(/avicoles/.test(r.sujet) && /AviNest Pro/.test(r.corps) && /prophylaxie/i.test(r.corps) && /SYSCOHADA/.test(r.corps) && /Cordialement/.test(r.corps) && !/AluExpert|alumin|garage|portail/i.test(r.sujet + r.corps), "e-mail : objet et corps AviNest Pro (lots, suivi quotidien, prophylaxie, stock, créances, rentabilité, SYSCOHADA)");
     ok(!/\d\s?%|FCFA/.test(r.wa + r.corps), "aucun prix dans le message (la grille reste dans le devis)");
     ok(!/\{[a-z_]+\}/.test(r.wa + r.sujet + r.corps), "aucune variable laissée telle quelle");
     ok(r.idx >= 0 && r.opts.includes("avinest"), "le modèle apparaît dans la galerie de la Messagerie et dans le Moteur Marketing");
     ok(r.surGarage !== "" && r.surAvi === "", "garde-fou : le message AviNest est bloqué pour un garage, pas pour un éleveur");
+    ok(/versions adaptées à chaque exploitation/.test(r.corps) && /version la plus évoluée/.test(r.corps) && /versions adaptées/.test(r.wa) && !/Jolan|Angel/i.test(r.wa + r.corps), "le courrier présente AviNest Pro comme logiciel de référence décliné en versions adaptées, sans nommer de client ni Angel's Group");
+    { const src = require("fs").readFileSync(require("path").join(__dirname, "..", "index.html"), "utf8"), fiche = (id) => { const i = src.indexOf("id:'" + id + "'"); return src.slice(i, src.indexOf("\n  },", i)); };
+      const avi = fiche("log_avinest"), ang = fiche("log_angels_agro");
+      ok(/logiciel mère/i.test(avi) && /Angel\\'s Group/.test(avi) && /Jolan/.test(avi), "fiche AviNest Pro : logiciel mère, versions adaptées, version la plus évoluée à la Ferme Jolan");
+      ok(/Adaptation d\\'AviNest Pro/.test(ang) && !/Remplace AviNest Pro/.test(ang), "fiche Angel's Agro : adaptation d'AviNest Pro pour Angel's Group (ne « remplace » plus AviNest Pro)"); }
     ok(errors.length === 0, "aucune erreur JavaScript" + (errors.length ? " : " + errors[0] : ""));
     console.log("\nTOUT EST OK");
   } finally { await browser.close(); server.close(); }
