@@ -14,13 +14,10 @@ const STAGES = [
   ["perdu","Perdu"],["en_veille","En veille"],
 ];
 const PHASES = [
-  ["prospection","Prospection",["identifie","enregistre","qualifie"]],
-  ["decouverte","Contact & découverte",["premier_contact","conversation","besoin_identifie","interesse"]],
-  ["rdv","Rendez-vous & démonstration",["rdv_propose","rdv_confirme","demo_realisee"]],
-  ["offre","Offre & négociation",["offre_transmise","negociation","offre_acceptee","contrat_transmis"]],
-  ["closing","Closing & encaissement",["contrat_signe","paiement_attendu","paiement_confirme","marche_gagne"]],
-  ["delivery","Déploiement & fidélisation",["deploiement","client_fidelise"]],
-  ["closed","Perdu / veille",["perdu","en_veille"]],
+  ["exploration","Exploration",["identifie","enregistre","qualifie","premier_contact","conversation","besoin_identifie","interesse","rdv_propose","rdv_confirme"]],
+  ["proposition","Proposition",["demo_realisee","offre_transmise"]],
+  ["negociation","Négociation",["negociation","offre_acceptee"]],
+  ["closing","Closing",["contrat_transmis","contrat_signe","paiement_attendu","paiement_confirme"]],
 ];
 const LABEL = Object.fromEntries(STAGES);
 const money = n => `${num(n)} FCFA`;
@@ -98,39 +95,50 @@ function vueProspects(){
 function vuePipeline(){
   const rows=prospects.filter(p=>matchesOwner(p)&&matchQ(p));
   const activeRows=rows.filter(p=>!CLOSED.includes(p.stage));
+  const won=rows.filter(p=>["marche_gagne","deploiement","client_fidelise"].includes(p.stage));
+  const lost=rows.filter(p=>p.stage==="perdu");
+  const closed=won.length+lost.length;
   const total=activeRows.reduce((s,p)=>s+Number(p.potentiel_fcfa||0),0);
   const weighted=activeRows.reduce((s,p)=>s+Number(p.potentiel_fcfa||0)*(STAGE_PROBABILITY[p.stage]??0.05),0);
+  const conversion=closed?Math.round(won.length/closed*100):0;
   return html`<div class="filters">
-      <input id="sales-q" type="search" placeholder="Filtrer les opportunités : entreprise, secteur, ville…" value="${filter.q}" aria-label="Filtrer le pipeline">
+      <input id="sales-q" type="search" placeholder="Rechercher une entreprise, un secteur, une ville…" value="${filter.q}" aria-label="Rechercher dans le pipeline">
       ${ownerFilter()}
+      <button class="btn sm" type="button" data-act="sales-vue" data-vue="prospects">☷ Liste</button>
+      <button class="btn sm pri" type="button" data-act="sales-vue" data-vue="pipeline">▥ Kanban</button>
     </div>
-    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:8px 0">
-      <div class="card kpi"><b>${rows.filter(p=>!CLOSED.includes(p.stage)).length}</b><span>Opportunités actives</span></div>
-      <div class="card kpi"><b>${money(total)}</b><span>Potentiel brut actif</span></div>
-      <div class="card kpi"><b>${money(weighted)}</b><span>Prévision pondérée</span></div>
-      <div class="card kpi"><b>${rows.filter(p=>["marche_gagne","deploiement","client_fidelise"].includes(p.stage)).length}</b><span>Ventes gagnées</span></div>
-      <div class="card kpi"><b>${rows.filter(isOverdue).length}</b><span>Actions en retard</span></div>
-      <div class="card kpi"><b>${rows.filter(p=>!p.owner_id&&!CLOSED.includes(p.stage)).length}</b><span>Opportunités non attribuées</span></div>
+    <div style="display:grid;grid-template-columns:minmax(180px,220px) minmax(0,1fr);gap:12px;align-items:start">
+      <aside style="display:grid;gap:10px">
+        <div class="card kpi" style="border-left:4px solid #10b981"><span>Pipeline total actif</span><b style="font-size:23px">${money(total)}</b><span>${activeRows.length} opportunités actives</span></div>
+        <div class="card kpi"><span>Opportunités gagnées</span><b style="font-size:25px">${won.length}</b><span>${money(won.reduce((s,p)=>s+Number(p.potentiel_fcfa||0),0))}</span></div>
+        <div class="card kpi"><span>Opportunités perdues</span><b style="font-size:25px">${lost.length}</b><span>${money(lost.reduce((s,p)=>s+Number(p.potentiel_fcfa||0),0))}</span></div>
+        <div class="card kpi"><span>Taux de conversion</span><b style="font-size:25px">${conversion}%</b><span>${won.length} gagnées sur ${closed} clôturées</span></div>
+        <div class="card kpi"><span>Prévision pondérée</span><b style="font-size:18px">${money(weighted)}</b><span>Selon l'étape commerciale</span></div>
+        <div class="card kpi"><span>Actions en retard</span><b style="font-size:23px">${rows.filter(isOverdue).length}</b><span>${rows.filter(p=>!p.owner_id&&!CLOSED.includes(p.stage)).length} non attribuées</span></div>
+      </aside>
+      <div class="scroll" style="overflow-x:auto"><div class="pipe" style="display:flex;gap:10px;align-items:flex-start;min-width:max-content;padding-bottom:8px">
+      ${raw(PHASES.map(([key,label,stages])=>{
+        const col=rows.filter(p=>stages.includes(p.stage)).sort((a,b)=>(b.score??0)-(a.score??0));
+        const pot=col.reduce((t,p)=>t+Number(p.potentiel_fcfa||0),0);
+        return html`<div class="card pipe-col" data-phase="${key}" style="width:245px;flex:none;padding:8px">
+          <div style="display:flex;justify-content:space-between;gap:6px;align-items:center"><b>${label}</b><span class="pill"><i></i>${col.length}</span></div>
+          <div class="small muted" style="margin:2px 0 6px">${money(pot)}</div>
+          ${raw(col.slice(0,30).map(p=>html`<div class="card pipe-card" style="margin:6px 0;padding:9px">
+            <b>${p.entreprise}</b><div class="small muted">${[p.secteur,p.ville].filter(Boolean).join(" · ")||"—"}</div>
+            <div class="small">Contact : ${p.decideur||"Non renseigné"}</div>
+            <div class="small">Commercial : <b>${operatorName(p.owner_id)}</b></div>
+            <div class="small">Étape : <b>${LABEL[p.stage]??p.stage}</b></div>
+            <div style="display:flex;justify-content:space-between;gap:6px;margin-top:5px"><b>${money(p.potentiel_fcfa)}</b><span class="small">${p.next_action_at?fmtDT(p.next_action_at):"Sans échéance"}</span></div>
+            <div class="small ${isOverdue(p)?"":"muted"}">${isOverdue(p)?"⚠ Action en retard":p.score!=null?"Score "+p.score+"/100":""}</div>
+            ${ownerControl(p)}
+            <div style="display:flex;gap:5px;margin-top:7px"><select data-sales-stage data-id="${p.id}" aria-label="Étape de ${p.entreprise}" style="flex:1;min-width:0">${stageOptions(p.stage)}</select><button class="btn sm" type="button" data-act="sales-open" data-id="${p.id}">Ouvrir</button></div>
+          </div>`.s).join("")||html`<div class="small muted" style="padding:12px">Aucune opportunité</div>`.s)}
+          ${col.length>30?html`<div class="small muted">+ ${col.length-30} autres opportunités</div>`:""}
+        </div>`.s;
+      }).join(""))}
+      </div></div>
     </div>
-    <div class="scroll" style="overflow-x:auto"><div class="pipe" style="display:flex;gap:10px;align-items:flex-start;min-width:max-content;padding-bottom:8px">
-    ${raw(PHASES.map(([key,label,stages])=>{
-      const col=rows.filter(p=>stages.includes(p.stage)).sort((a,b)=>(b.score??0)-(a.score??0));
-      const pot=col.reduce((t,p)=>t+Number(p.potentiel_fcfa||0),0);
-      return html`<div class="card pipe-col" data-phase="${key}" style="width:255px;flex:none;padding:8px">
-        <div style="display:flex;justify-content:space-between;gap:6px"><b>${label}</b><span class="pill" style="--c:${key==="closed"?"#94a3b8":"#0ea5e9"}"><i></i>${col.length}</span></div>
-        <div class="small muted" style="margin:2px 0 6px">${col.length?money(pot):"—"}</div>
-        ${raw(col.slice(0,20).map(p=>html`<div class="card pipe-card" style="margin:6px 0;padding:8px">
-          <b>${p.entreprise}</b><div class="small muted">${[p.secteur,p.ville].filter(Boolean).join(" · ")||"—"}</div>
-          <div class="small">Étape : <b>${LABEL[p.stage]??p.stage}</b></div>
-          <div class="small">Score <b>${p.score??0}/100</b> · ${money(p.potentiel_fcfa)}</div>
-          ${ownerControl(p)}
-          <div class="small ${isOverdue(p)?"":"muted"}" style="margin-top:4px">${p.next_action_at?(isOverdue(p)?"⚠ En retard · ":"Prochaine action · ")+fmtDT(p.next_action_at):"Aucune prochaine action planifiée"}</div>
-          <div style="display:flex;gap:6px;margin-top:6px"><select data-sales-stage data-id="${p.id}" aria-label="Étape de ${p.entreprise}" style="flex:1;min-width:0">${stageOptions(p.stage)}</select><button class="btn sm" type="button" data-act="sales-open" data-id="${p.id}">Ouvrir</button></div>
-        </div>`.s).join("")||html`<div class="small muted">Aucune opportunité</div>`.s)}
-        ${col.length>20?html`<div class="small muted">+ ${col.length-20} autre(s) : affinez le filtre ou ouvrez « Prospects »</div>`:""}
-      </div>`.s;
-    }).join(""))}
-    </div></div>`;
+    <p class="small muted" style="margin-top:8px">Les montants gagnés/perdus sont calculés à partir du potentiel renseigné sur les prospects. Les encaissements réels restent à rapprocher des factures et paiements du CRM.</p>`;
 }
 
 /** Rendez-vous : prospects aux étapes RDV proposé / confirmé / démo réalisée, du plus proche au plus lointain. */
