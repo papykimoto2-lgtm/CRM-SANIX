@@ -170,7 +170,7 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     ok((await page.locator("#main tbody tr").count()) === 3, "nouveau prospect visible dans la liste");
     console.log("▶ Commercial : vues Pipeline, Rendez-vous, Offres, Conversations");
     const vue = async (v) => { await page.click(`[data-act=sales-vue][data-vue=${v}]`); await page.waitForTimeout(250); };
-    ok((await page.locator("[data-act=sales-vue]").count()) === 7 && (await page.locator("[data-act=sales-vue][data-vue=prospects]").getAttribute("aria-selected")) === "true", "6 vues proposées, « Prospects » active par défaut");
+    ok((await page.locator("[data-act=sales-vue]").count()) === 7 && (await page.locator("[data-act=sales-vue][data-vue=prospects]").getAttribute("aria-selected")) === "true", "7 vues proposées, « Prospects » active par défaut");
     await vue("pilotage");
     ok((await page.locator("#main").innerText()).includes("Encaissements enregistrés") && (await page.locator("#main").innerText()).includes("Dernières commandes"), "centre de pilotage : encaissements, soldes et commandes CRM affichés");
     await vue("pipeline");
