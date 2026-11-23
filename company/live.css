@@ -406,3 +406,11 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .executive-copy{align-self:flex-start;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--s2);color:var(--cy);font:600 11px var(--font);cursor:pointer}
 .executive-copy:hover{border-color:var(--cy)}
 @media(max-width:640px){.executive-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.executive-grid b{font-size:15px}}
+
+/* Jarvis V2 — diagnostic lisible des agents et état priorisé. */
+.performance-state-summary{display:flex;flex-wrap:wrap;gap:5px;margin:0 0 7px;color:var(--mute);font-size:9px}
+.performance-state-summary span{padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:rgba(7,19,39,.65)}
+.performance-state{font-size:8px!important;white-space:normal!important;line-height:1.25}
+.performance-state.run{color:#22D3EE!important}.performance-state.bad{color:#F87171!important}.performance-state.wait,.performance-state.valid{color:#C084FC!important}.performance-state.queue{color:#94A3B8!important}.performance-state.idle{color:#60A5FA!important}
+.performance-name{gap:2px}
+.performance-row{min-height:38px}
