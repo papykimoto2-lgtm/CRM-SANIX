@@ -127,7 +127,7 @@ function renderKpis() {
   const enc = D.tasks.filter((t) => t.statut === "en_cours").length, att = D.tasks.filter((t) => ["a_faire", "attente_sous_taches"].includes(t.statut)).length;
   const b = D.budget, usd = (v) => `${Number(v ?? 0).toFixed(2)} $`;
   const valid = D.tasks.filter((t) => t.statut === "attente_validation").length, blocked = D.tasks.filter((t) => ["bloquee", "echouee"].includes(t.statut)).length;
-  const tiles = [["k-run", "Agents au travail", `/ ${act.length} actifs`, "#22D3EE", run], ["k-mis", "Missions en cours", `${att} en attente · ${valid} à valider · ${blocked} bloquées`, "#A855F7", enc], ["k-today", "Fiches créées aujourd'hui", "prospects trouvés", "#22C55E", D.nToday], ["k-tot", "Prospects en base", "tous logiciels", "#FACC15", D.nTotal], ["k-val", "À valider", "décisions du président", "#F59E0B", D.approvals]];
+  const tiles = [["k-run", "Agents au travail", `/ ${act.length} actifs`, "#22D3EE", run], ["k-mis", "Missions en cours", `${att} en attente · ${valid} à valider · ${blocked} bloquées (7 j)`, "#A855F7", enc], ["k-today", "Fiches créées aujourd'hui", "prospects trouvés", "#22C55E", D.nToday], ["k-tot", "Prospects en base", "tous logiciels", "#FACC15", D.nTotal], ["k-val", "À valider", "décisions du président", "#F59E0B", D.approvals]];
   if (!$("#kpis").children.length) $("#kpis").innerHTML = tiles.map(([id, l, e, c]) => `<div class="kpi" style="--c:${c}"><small>${esc(l)}</small><b id="${id}">0</b><em id="${id}-e">${esc(e)}</em></div>`).join("") + `<div class="kpi" style="--c:#22D3EE"><small>Coût IA du jour</small><b id="k-usd">–</b><em id="k-usd-e"></em></div>`;
   tiles.forEach(([id, , e, , v]) => { tween($("#" + id), v); $("#" + id + "-e").textContent = e; });
   $("#k-usd").textContent = b ? `${Number(b.jour_usd ?? 0).toFixed(2)} $` : "–";
@@ -168,7 +168,7 @@ function renderMissions() {
     blocked: open.filter((t) => ["bloquee", "echouee"].includes(t.statut)).length,
   };
   const summary = $("#mission-summary");
-  if (summary) summary.textContent = `${open.length} ouvertes · ${counts.run} en cours · ${counts.waiting} en attente · ${counts.valid} à valider · ${counts.blocked} bloquées`;
+  if (summary) summary.textContent = `${open.length} ouvertes · ${counts.run} en cours · ${counts.waiting} en attente · ${counts.valid} à valider · ${counts.blocked} bloquées (24 h)`;
   document.querySelectorAll("#mission-filters [data-filter]").forEach((b) => {
     const active = b.dataset.filter === D.taskFilter;
     b.classList.toggle("on", active); b.setAttribute("aria-pressed", String(active));
@@ -581,7 +581,7 @@ function renderHealth() {
       ${row("Fiches avec contact + source", h.qual === null ? "n/d" : `${h.qual} %`, h.qual === null ? "" : h.qual >= 80 ? "ok" : "warn")}
       ${row("Envoi externe", D.gov?.communication_externe === "validation" ? "sur validation" : esc(D.gov?.communication_externe ?? "n/d"), D.gov?.communication_externe === "validation" ? "ok" : "warn")}
       ${row("Budget IA du jour", pb === null ? "n/d" : `${pb} %`, pb === null ? "" : pb > 90 ? "bad" : pb > 70 ? "warn" : "ok")}</div>`;
-  $("#health").title = "Indice 0-100 : réussite des missions (40 %), absence de missions figées (25 %), blocages (15 %), qualité des fiches du jour (20 %).";
+  $("#health").title = "Indice 0-100 : réussite des missions actualisées sur 7 jours (40 %), absence de missions figées > 90 min (25 %), blocages actualisés sur 24 h (15 %), qualité des fiches créées aujourd’hui (20 %). Les composantes sans données suffisantes sont exclues du calcul.";
 }
 function renderTicker() {
   if (!D.recent.length) return;
