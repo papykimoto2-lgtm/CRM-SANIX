@@ -347,7 +347,21 @@ export async function runCrmTool(ctx: CrmCtx, name: string, raw: Record<string, 
     }
     case "create_prospect": {
       if (ctx.created >= ctx.createCap) return { info: `Plafond de ${ctx.createCap} prospects atteint pour cette exécution : arrête et rapporte.` };
-      const email = input.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email) ? input.email : null;
+      const email = input.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email) ? String(input.email).trim().toLowerCase() : null;
+      const phoneDigits = String(input.telephone ?? "").replace(/\D/g, "");
+      const phoneNorm = phoneDigits ? (phoneDigits.startsWith("225") ? phoneDigits : phoneDigits.length === 10 ? "225" + phoneDigits : phoneDigits) : null;
+
+      // Pré-contrôle des identifiants uniques avant insertion : email insensible à la casse et téléphone normalisé CI.
+      // L'index unique PostgreSQL reste l'autorité finale en cas de créations concurrentes.
+      if (email) {
+        const { data: duplicate } = await db().from("ai_prospects").select("id,entreprise").ilike("email", email).limit(1).maybeSingle();
+        if (duplicate) return { doublon: true, prospect_id: duplicate.id, entreprise_existante: duplicate.entreprise, motif: "email_identique", info: "Prospect déjà présent : aucune nouvelle fiche créée." };
+      }
+      if (phoneNorm) {
+        const { data: duplicate } = await db().from("ai_prospects").select("id,entreprise").eq("phone_norm", phoneNorm).limit(1).maybeSingle();
+        if (duplicate) return { doublon: true, prospect_id: duplicate.id, entreprise_existante: duplicate.entreprise, motif: "telephone_identique_apres_normalisation", info: "Prospect déjà présent : aucune nouvelle fiche créée." };
+      }
+
       const produit = await resolveProductId(input.produit_recommande);
       const { data, error } = await db().from("ai_prospects").insert({
         entreprise: String(input.entreprise).slice(0, 200), secteur: input.secteur, ville: input.ville, commune: input.commune,
