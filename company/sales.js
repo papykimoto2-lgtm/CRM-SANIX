@@ -6,10 +6,21 @@ const STAGES = [
   ["identifie","Identifié"],["enregistre","Enregistré"],["qualifie","Qualifié"],
   ["premier_contact","Premier contact"],["conversation","Conversation"],
   ["besoin_identifie","Besoin identifié"],["interesse","Intéressé"],
-  ["rdv_propose","RDV proposé"],["rdv_confirme","RDV confirmé"],
-  ["demo_realisee","Démo réalisée"],["offre_transmise","Offre transmise"],
-  ["negociation","Négociation"],["offre_acceptee","Offre acceptée"],
-  ["contrat_transmis","Contrat transmis"],["perdu","Perdu"],["en_veille","En veille"],
+  ["rdv_propose","RDV proposé"],["rdv_confirme","RDV confirmé"],["demo_realisee","Démo réalisée"],
+  ["offre_transmise","Offre transmise"],["negociation","Négociation"],["offre_acceptee","Offre acceptée"],
+  ["contrat_transmis","Contrat transmis"],["contrat_signe","Contrat signé"],
+  ["paiement_attendu","Paiement attendu"],["paiement_confirme","Paiement confirmé"],
+  ["marche_gagne","Marché gagné"],["deploiement","Déploiement"],["client_fidelise","Client fidélisé"],
+  ["perdu","Perdu"],["en_veille","En veille"],
+];
+const PHASES = [
+  ["prospection","Prospection",["identifie","enregistre","qualifie"]],
+  ["decouverte","Contact & découverte",["premier_contact","conversation","besoin_identifie","interesse"]],
+  ["rdv","Rendez-vous & démonstration",["rdv_propose","rdv_confirme","demo_realisee"]],
+  ["offre","Offre & négociation",["offre_transmise","negociation","offre_acceptee","contrat_transmis"]],
+  ["closing","Closing & encaissement",["contrat_signe","paiement_attendu","paiement_confirme","marche_gagne"]],
+  ["delivery","Déploiement & fidélisation",["deploiement","client_fidelise"]],
+  ["closed","Perdu / veille",["perdu","en_veille"]],
 ];
 const LABEL = Object.fromEntries(STAGES);
 const money = n => `${num(n)} FCFA`;
@@ -25,12 +36,15 @@ const CANAUX=["whatsapp","email","telephone","sms","visio","note"];
 const nomDe=id=>prospects.find(p=>p.id===id)?.entreprise??"Prospect inconnu";
 
 export async function loadSales() {
-  const [p, pr, o] = await Promise.all([
+  const [p, pr, o, ops] = await Promise.all([
     q(S.sb.from("ai_prospects").select("id,crm_client_id,crm_rid,relances_sans_reponse,entreprise,secteur,ville,pays,decideur,telephone,whatsapp,email,stage,score,priorite,potentiel_fcfa,produits_recommandes,owner_id,opt_out,next_action_at,last_outbound_at,last_inbound_at,created_at,resume_ia,email_statut").order("updated_at",{ascending:false}).limit(MAX_ROWS)),
     q(S.sb.from("ai_products").select("id,nom,marche_cible,actif").eq("actif",true).order("nom")),
     q(S.sb.from("ai_offers").select("id,reference,prospect_id,product_id,total_ht,total_ttc,statut,created_at").order("created_at",{ascending:false}).limit(100)),
+    q(S.sb.from("ai_operators").select("user_id,nom,role").eq("actif",true).order("nom")),
   ]);
-  prospects=p??[]; products=pr??[]; offers=o??[];
+  prospects=p??[]; products=pr??[]; offers=o??[]; operators=ops??[];
+  try { stageHistory=(await q(S.sb.from("ai_stage_history").select("prospect_id,de,vers,par,at").order("at",{ascending:false}).limit(500)))??[]; }
+  catch { stageHistory=[]; }
 }
 /** E-mails envoyés depuis le CRM (Gmail) : base du suivi des relances. */
 export async function loadRelances() {
