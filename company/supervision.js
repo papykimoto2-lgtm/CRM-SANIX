@@ -14,9 +14,10 @@ export function renderSupervision(main) {
     return rank(a)-rank(b) || String(a.nom).localeCompare(String(b.nom), "fr");
   });
   const stats = new Map((S.stats || []).map(x => [x.agent_id,x]));
+  const allTasks = [...new Map([...S.tasks, ...(S.supervisionTasks || [])].map(t => [t.id,t])).values()];
   const tasksByAgent = new Map();
-  for (const t of S.tasks) if (t.agent_id) { const list = tasksByAgent.get(t.agent_id) || []; list.push(t); tasksByAgent.set(t.agent_id,list); }
-  const open = S.tasks.filter(t => OPEN.includes(t.statut));
+  for (const t of allTasks) if (t.agent_id) { const list = tasksByAgent.get(t.agent_id) || []; list.push(t); tasksByAgent.set(t.agent_id,list); }
+  const open = allTasks.filter(t => OPEN.includes(t.statut));
   const late = open.filter(t => t.echeance && new Date(t.echeance).getTime() < now);
   const difficulties = agents.filter(a => a.etat !== "suspendu" && a.activite === "en_difficulte");
   const rows = agents.map(a => {

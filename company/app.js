@@ -154,8 +154,15 @@ async function loadStats() {
   const fin = new Date(), debut = new Date(fin.getTime() - S.statDays * 86400e3);
   S.stats = await q(S.sb.rpc("ai_agent_stats", { p_debut: debut.toISOString(), p_fin: fin.toISOString() }));
 }
+async function loadSupervision() {
+  const previous = S.statDays; S.statDays = 7;
+  try {
+    const [_, openTasks] = await Promise.all([loadStats(), q(S.sb.from("ai_agent_tasks").select(TASK_COLS).in("statut", OPEN).order("created_at", { ascending: false }).limit(2000))]);
+    S.supervisionTasks = openTasks;
+  } finally { S.statDays = previous; }
+}
 CFG.setHooks({ reloadCore: () => loadCore() });
-const LOADERS = { exec: async () => { await loadExec(); await loadCrm(); }, meet: loadMeetings, reports: loadReports, perf: loadStats, supervision: async () => { const previous = S.statDays; S.statDays = 7; try { await loadStats(); } finally { S.statDays = previous; } }, cost: COST.loadCost, sales: SALES.loadSales, cfg: CFG.loadConfig };
+const LOADERS = { exec: async () => { await loadExec(); await loadCrm(); }, meet: loadMeetings, reports: loadReports, perf: loadStats, supervision: loadSupervision, cost: COST.loadCost, sales: SALES.loadSales, cfg: CFG.loadConfig };
 
 /** Notifie le président quand une mission qu'il a demandée change d'issue (terminée, bloquée, échouée). */
 function noteTask(t, firstLoad = false) {
@@ -624,7 +631,7 @@ const ACT = {
   "sales-vue": (el) => SALES.salesAction(el),
   "sales-conv": (el) => SALES.salesAction(el),
   "cost-refresh": (el) => COST.costAction(el),
-  "supervision-refresh": async () => { try { await loadCore(); const previous = S.statDays; S.statDays = 7; try { await loadStats(); } finally { S.statDays = previous; } render(); toast("Supervision actualisée", "ok"); } catch (e) { toast(e.message, "bad"); } },
+  "supervision-refresh": async () => { try { await loadCore(); await loadSupervision(); render(); toast("Supervision actualisée", "ok"); } catch (e) { toast(e.message, "bad"); } },
   "sales-qualify": (el) => SALES.salesAction(el),
   "sales-contact": (el) => SALES.salesAction(el),
   "tab": (el) => go(el.dataset.id),
