@@ -24,6 +24,7 @@ const META: ToolMeta[] = [
   { name: "lister_financeurs", kind: "levee", maxNiveau: 5, desc: "Annuaire des financeurs et programmes (avec leur source)" },
   { name: "enregistrer_financeur", kind: "levee", maxNiveau: 5, desc: "Ajouter ou mettre à jour un financeur de l'annuaire (source https obligatoire)" },
   { name: "recherche_web", kind: "web", maxNiveau: 5, desc: "Recherche sur le web (annuaires, sites d'entreprises, actualités)" },
+  { name: "firecrawl_scrape", kind: "web", maxNiveau: 5, desc: "Lecture vérifiée d’une page HTTPS publique avec Firecrawl (8 pages maximum par mission)" },
   ...CRM_TOOL_NAMES.map((n): ToolMeta => ({
     name: n, kind: "crm", maxNiveau: 5,
     desc: CRM_DESCRIPTIONS[n].split(/[.(]/)[0],
