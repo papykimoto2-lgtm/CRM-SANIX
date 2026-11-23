@@ -1757,6 +1757,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
         <div class="tab active" onclick="filterClients('all',this)">Tous (<span id="cnt-all">0</span>)</div>
         <div class="tab" onclick="filterClients('client',this)">Clients (<span id="cnt-client">0</span>)</div>
         <div class="tab" onclick="filterClients('prospect',this)">Prospects (<span id="cnt-prospect">0</span>)</div>
+        <div class="tab" onclick="filterClients('contacte',this)">Contactés (<span id="cnt-contacte">0</span>)</div>
         <div class="tab" onclick="filterClients('inactif',this)">Inactifs (<span id="cnt-inactif">0</span>)</div>
       </div>
 
@@ -9120,7 +9121,7 @@ function clientZone(c){
 }
 function _cfVal(id){ const e=document.getElementById(id); return e?e.value:''; }
 function getFilteredClients() {
-  let list = clientCurrentFilter === 'all' ? CLIENTS : CLIENTS.filter(c=>c.statut===clientCurrentFilter);
+  let list = clientCurrentFilter === 'all' ? CLIENTS : clientCurrentFilter === 'contacte' ? CLIENTS.filter(clientContacte) : CLIENTS.filter(c=>c.statut===clientCurrentFilter);
   const words = _nrm(clientSearchQuery).split(/\s+/).filter(Boolean);
   if(words.length) {
     list = list.filter(c=>{
@@ -9170,6 +9171,7 @@ function updateClientCounts() {
   document.getElementById('cnt-all').textContent = CLIENTS.length;
   document.getElementById('cnt-client').textContent = CLIENTS.filter(c=>c.statut==='client').length;
   document.getElementById('cnt-prospect').textContent = CLIENTS.filter(c=>c.statut==='prospect').length;
+  { const e=document.getElementById('cnt-contacte'); if(e) e.textContent = CLIENTS.filter(clientContacte).length; }
   document.getElementById('cnt-inactif').textContent = CLIENTS.filter(c=>c.statut==='inactif').length;
 }
 
@@ -9178,6 +9180,10 @@ function clientColor(id) { return CLIENT_COLORS[id % CLIENT_COLORS.length]; }
 function clientInitials(nom) { return nom.split(/[\s\-&]+/).map(w=>w[0]||'').join('').substring(0,2).toUpperCase(); }
 const STATUT_BADGE = {client:'badge-success',prospect:'badge-primary',inactif:'badge-muted'};
 const STATUT_LABEL = {client:'Client actif',prospect:'Prospect',inactif:'Inactif'};
+// « Contacté » : un prospect déjà contacté (WhatsApp, e-mail ou appel enregistré, étape du pipeline 1 ou plus). Affichage seulement : le statut enregistré reste « prospect », donc comptes, filtres et règles serveur ne changent pas.
+function clientContacte(c){ return !!c && c.statut==='prospect' && aiGetEtape(c)>=1; }
+function statutLabel(c){ return clientContacte(c) ? 'Contacté' : (STATUT_LABEL[c.statut]||c.statut); }
+function statutBadge(c){ return clientContacte(c) ? 'badge-warning' : (STATUT_BADGE[c.statut]||'badge-muted'); }
 
 const _sel = new Set();   // ids des contacts cochés (conservés quand on change de filtre)
 function renderClients(list) {
@@ -9202,7 +9208,7 @@ function renderClients(list) {
         </td>
         <td><span class="chip">${c.secteur||'—'}</span></td>
         <td style="font-size:12px">${c.logiciel||'—'}</td>
-        <td><span class="badge ${STATUT_BADGE[c.statut]||'badge-muted'}">${STATUT_LABEL[c.statut]||c.statut}</span></td>
+        <td><span class="badge ${statutBadge(c)}">${statutLabel(c)}</span></td>
         <td style="font-size:12px">${c.commercial||'—'}</td>
         <td><strong>${valeurFiche(c)?(valeurFiche(c)/1000).toFixed(0)+'k':'-'}</strong></td>
         <td onclick="event.stopPropagation()">
@@ -9224,7 +9230,7 @@ function renderClients(list) {
             <div class="client-card-name">${c.nom}</div>
             <div class="client-card-phone">${c.phone||''}</div>
           </div>
-          <span class="badge ${STATUT_BADGE[c.statut]||'badge-muted'}" style="align-self:flex-start">${STATUT_LABEL[c.statut]||c.statut}</span>
+          <span class="badge ${statutBadge(c)}" style="align-self:flex-start">${statutLabel(c)}</span>
         </div>
         <div class="client-card-meta">
           <span class="chip">${c.secteur||'—'}</span>
@@ -9250,7 +9256,7 @@ function renderClients(list) {
           <div class="cli-sub">${c.secteur||''} · ${(c.logiciel||'').split(' ')[0]}</div>
         </div>
         <div class="cli-right">
-          <span class="badge ${STATUT_BADGE[c.statut]||'badge-muted'}" style="font-size:10px">${STATUT_LABEL[c.statut]||c.statut}</span>
+          <span class="badge ${statutBadge(c)}" style="font-size:10px">${statutLabel(c)}</span>
           <div class="cli-val" style="margin-top:4px">${valeurFiche(c)?(valeurFiche(c)/1000).toFixed(0)+'k':''}</div>
           <div class="cli-actions" onclick="event.stopPropagation()">
             <button class="btn btn-outline btn-sm" onclick="showQR(${c.id})" style="padding:4px 8px" title="Carte QR">🪪</button>
@@ -9433,8 +9439,8 @@ function showClientDetail(id) {
   const c = CLIENTS.find(x=>x.id===id);
   if(!c) return;
   _aiCurrentClientId = id;
-  const badge = STATUT_BADGE[c.statut]||'badge-muted';
-  const label = STATUT_LABEL[c.statut]||c.statut;
+  const badge = statutBadge(c);
+  const label = statutLabel(c);
   const score = aiProspectScore(c);
   const scoreColor = score>=70?'var(--success)':score>=40?'var(--warning)':'var(--danger)';
   // Historique interactions
