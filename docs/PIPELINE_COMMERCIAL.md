@@ -35,7 +35,7 @@ La vue « Pilotage » lit les commandes `crm_records` (`entity = commandes`) et 
 - **Solde restant** : TTC de la commande moins les paiements/acompte enregistrés, sans solde négatif.
 - **Performance par logiciel et commercial** : ventilation selon les champs réellement renseignés sur les commandes ; les commerciaux absents restent « Non attribué ».
 
-Les objectifs mensuels et commissions ne sont pas calculés tant qu’ils ne disposent pas de paramètres et de liens fiables avec les commandes. Les données affichées restent des indicateurs de gestion à rapprocher des factures, écritures comptables et relevés bancaires. Le potentiel des prospects et les offres ne sont jamais comptés comme chiffre d’affaires encaissé.
+Un objectif mensuel de référence et un taux de commission indicatif sont lus depuis la configuration CRM (`objectifDefaut`, `commissionDefaut`). L’objectif est comparé uniquement aux paiements datés du mois ; il ne constitue pas un objectif individuel. La commission théorique est calculée uniquement sur les paiements dont le champ commercial est renseigné ; elle ne constitue ni une commission validée ni un montant à payer. Les données affichées restent des indicateurs de gestion à rapprocher des factures, écritures comptables et relevés bancaires. Le potentiel des prospects et les offres ne sont jamais comptés comme chiffre d’affaires encaissé.
 
 ## Exécution commerciale
 
