@@ -25,11 +25,19 @@ export type CrmCtx = {
   createCap: number;
   created: number;
   source: string;
+  /** URLs réellement lues par Firecrawl pendant cette exécution. */
+  verifiedSourceUrls?: Set<string>;
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UUID_G = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const clamp = (n: number, max: number) => Math.max(0, Math.min(max, Math.round(Number(n) || 0)));
+
+function canonicalHttpsUrl(raw: unknown): string | null {
+  if (typeof raw !== "string" || raw.length > 2048) return null;
+  try { const u = new URL(raw); if (u.protocol !== "https:" || u.username || u.password) return null; u.hash = ""; return u.toString(); }
+  catch { return null; }
+}
 
 /** Identifiants de prospects cités dans le texte d'une mission : ils entrent dans le périmètre. */
 export function uuidsIn(...texts: (string | null | undefined)[]): string[] {
@@ -346,13 +354,23 @@ export async function runCrmTool(ctx: CrmCtx, name: string, raw: Record<string, 
       return { ok: true, consigne: "Informer le prospect qu'un conseiller le recontacte rapidement." };
     }
     case "create_prospect": {
+      const sourceUrl = canonicalHttpsUrl(input.source_url);
+      if (!sourceUrl || !ctx.verifiedSourceUrls?.has(sourceUrl)) {
+        throw new Error("Création refusée : cette URL n'a pas été lue avec Firecrawl pendant cette mission. Appelle firecrawl_scrape sur la page réelle, puis utilise exactement son source_url ou final_url.");
+      }
       if (ctx.created >= ctx.createCap) return { info: `Plafond de ${ctx.createCap} prospects atteint pour cette exécution : arrête et rapporte.` };
+      const companyName = String(input.entreprise ?? "").trim().replace(/\s+/g, " ");
+      if (companyName.length < 2) throw new Error("Nom d'entreprise trop court.");
       const email = input.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email) ? String(input.email).trim().toLowerCase() : null;
       const phoneDigits = String(input.telephone ?? "").replace(/\D/g, "");
       const phoneNorm = phoneDigits ? (phoneDigits.startsWith("225") ? phoneDigits : phoneDigits.length === 10 ? "225" + phoneDigits : phoneDigits) : null;
 
-      // Pré-contrôle des identifiants uniques avant insertion : email insensible à la casse et téléphone normalisé CI.
+      // Pré-contrôle des doublons : raison sociale exacte dans la même ville, e-mail et téléphone normalisés.
       // L'index unique PostgreSQL reste l'autorité finale en cas de créations concurrentes.
+      const { data: sameCompany } = await db().from("ai_prospects").select("id,entreprise")
+        .ilike("entreprise", companyName).ilike("ville", String(input.ville ?? "").trim()).limit(1).maybeSingle();
+      if (sameCompany) return { doublon: true, prospect_id: sameCompany.id, entreprise_existante: sameCompany.entreprise,
+        motif: "raison_sociale_et_ville_identiques", info: "Entreprise déjà présente dans cette ville : aucune nouvelle fiche créée." };
       if (email) {
         const { data: duplicate } = await db().from("ai_prospects").select("id,entreprise").ilike("email", email).limit(1).maybeSingle();
         if (duplicate) return { doublon: true, prospect_id: duplicate.id, entreprise_existante: duplicate.entreprise, motif: "email_identique", info: "Prospect déjà présent : aucune nouvelle fiche créée." };
@@ -364,10 +382,10 @@ export async function runCrmTool(ctx: CrmCtx, name: string, raw: Record<string, 
 
       const produit = await resolveProductId(input.produit_recommande);
       const { data, error } = await db().from("ai_prospects").insert({
-        entreprise: String(input.entreprise).slice(0, 200), secteur: input.secteur, ville: input.ville, commune: input.commune,
+        entreprise: companyName.slice(0, 200), secteur: input.secteur, ville: input.ville, commune: input.commune,
         telephone: input.telephone, email, site_web: input.site_web, decideur: input.decideur, decideur_fonction: input.decideur_fonction,
         besoins: (input.besoins_detectes ?? []).slice(0, 10), produits_recommandes: [produit],
-        source: ctx.source, source_url: input.source_url, stage: "enregistre", mission_id: ctx.missionId ?? null,
+        source: ctx.source, source_url: sourceUrl, stage: "enregistre", mission_id: ctx.missionId ?? null,
       }).select("id").single();
       if (error) return { doublon: error.code === "23505", info: error.code === "23505" ? "Déjà en base" : error.message };
       ctx.created++;
