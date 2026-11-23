@@ -406,3 +406,14 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .executive-copy{align-self:flex-start;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--s2);color:var(--cy);font:600 11px var(--font);cursor:pointer}
 .executive-copy:hover{border-color:var(--cy)}
 @media(max-width:640px){.executive-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.executive-grid b{font-size:15px}}
+
+/* Jarvis V2.3 — triage explicable des missions. */
+.ops-triage{border:1px solid var(--line);border-left:3px solid #F59E0B;border-radius:8px;padding:8px 9px;margin:7px 0;background:rgba(8,19,39,.58);min-width:0}
+.ops-triage.bad{border-left-color:#EF4444}
+.ops-triage-top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.ops-triage-top b{font-size:10px;overflow-wrap:anywhere}
+.ops-triage-top span{font-size:9px;white-space:nowrap;color:#FBBF24}
+.ops-triage.bad .ops-triage-top span{color:#F87171}
+.ops-triage>small{display:block;color:var(--mute);font-size:9px;margin-top:3px}
+.ops-triage p{font-size:9px;line-height:1.4;margin:5px 0 0;color:var(--text);overflow-wrap:anywhere}
+.ops-triage p b{color:#93C5FD}
