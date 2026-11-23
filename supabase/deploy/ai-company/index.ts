@@ -2766,7 +2766,17 @@ Prochaine \xE9tape : ${String(input.prochaine_etape).trim()}` : "")).slice(0, 4e
     }
     case "create_prospect": {
       if (ctx.created >= ctx.createCap) return { info: `Plafond de ${ctx.createCap} prospects atteint pour cette ex\xE9cution : arr\xEAte et rapporte.` };
-      const email = input.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email) ? input.email : null;
+      const email = input.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email) ? String(input.email).trim().toLowerCase() : null;
+      const phoneDigits = String(input.telephone ?? "").replace(/\D/g, "");
+      const phoneNorm = phoneDigits ? phoneDigits.startsWith("225") ? phoneDigits : phoneDigits.length === 10 ? "225" + phoneDigits : phoneDigits : null;
+      if (email) {
+        const { data: duplicate } = await db().from("ai_prospects").select("id,entreprise").ilike("email", email).limit(1).maybeSingle();
+        if (duplicate) return { doublon: true, prospect_id: duplicate.id, entreprise_existante: duplicate.entreprise, motif: "email_identique", info: "Prospect d\xE9j\xE0 pr\xE9sent : aucune nouvelle fiche cr\xE9\xE9e." };
+      }
+      if (phoneNorm) {
+        const { data: duplicate } = await db().from("ai_prospects").select("id,entreprise").eq("phone_norm", phoneNorm).limit(1).maybeSingle();
+        if (duplicate) return { doublon: true, prospect_id: duplicate.id, entreprise_existante: duplicate.entreprise, motif: "telephone_identique_apres_normalisation", info: "Prospect d\xE9j\xE0 pr\xE9sent : aucune nouvelle fiche cr\xE9\xE9e." };
+      }
       const produit = await resolveProductId(input.produit_recommande);
       const { data, error } = await db().from("ai_prospects").insert({
         entreprise: String(input.entreprise).slice(0, 200),
@@ -3422,6 +3432,7 @@ function toolsFor(a, departmentIds) {
   for (const n2 of [...new Set(allowedTools(a))]) {
     if (n2 === "recherche_web") {
       out.push({ type: "web_search_20260209", name: "web_search", max_uses: 10 });
+      out.push({ type: "web_fetch_20260209", name: "web_fetch", max_uses: 8, max_content_tokens: 6e3, citations: { enabled: true } });
     } else if (schemas[n2]) out.push(schemas[n2]);
     else if (CRM_TOOL_NAMES.includes(n2)) out.push(crmTool(n2, false));
   }
