@@ -96,7 +96,7 @@ function vueProspects(){
 
 /** Pipeline commercial par grandes phases, avec sous-étapes réelles et responsables visibles. */
 function vuePipeline(){
-  const rows=prospects.filter(p=>(!filter.owner||p.owner_id===filter.owner)&&matchQ(p));
+  const rows=prospects.filter(p=>(!filter.owner||(filter.owner==="__none__"?!p.owner_id:p.owner_id===filter.owner))&&matchQ(p));
   const activeRows=rows.filter(p=>!CLOSED.includes(p.stage));
   const total=activeRows.reduce((s,p)=>s+Number(p.potentiel_fcfa||0),0);
   const weighted=activeRows.reduce((s,p)=>s+Number(p.potentiel_fcfa||0)*(STAGE_PROBABILITY[p.stage]??0.05),0);
