@@ -155,7 +155,7 @@ async function loadStats() {
   S.stats = await q(S.sb.rpc("ai_agent_stats", { p_debut: debut.toISOString(), p_fin: fin.toISOString() }));
 }
 CFG.setHooks({ reloadCore: () => loadCore() });
-const LOADERS = { exec: async () => { await loadExec(); await loadCrm(); }, meet: loadMeetings, reports: loadReports, perf: loadStats, supervision: loadStats, cost: COST.loadCost, sales: SALES.loadSales, cfg: CFG.loadConfig };
+const LOADERS = { exec: async () => { await loadExec(); await loadCrm(); }, meet: loadMeetings, reports: loadReports, perf: loadStats, supervision: async () => { const previous = S.statDays; S.statDays = 7; try { await loadStats(); } finally { S.statDays = previous; } }, cost: COST.loadCost, sales: SALES.loadSales, cfg: CFG.loadConfig };
 
 /** Notifie le président quand une mission qu'il a demandée change d'issue (terminée, bloquée, échouée). */
 function noteTask(t, firstLoad = false) {
@@ -624,6 +624,7 @@ const ACT = {
   "sales-vue": (el) => SALES.salesAction(el),
   "sales-conv": (el) => SALES.salesAction(el),
   "cost-refresh": (el) => COST.costAction(el),
+  "supervision-refresh": async () => { try { await loadCore(); const previous = S.statDays; S.statDays = 7; try { await loadStats(); } finally { S.statDays = previous; } render(); toast("Supervision actualisée", "ok"); } catch (e) { toast(e.message, "bad"); } },
   "sales-qualify": (el) => SALES.salesAction(el),
   "sales-contact": (el) => SALES.salesAction(el),
   "tab": (el) => go(el.dataset.id),
