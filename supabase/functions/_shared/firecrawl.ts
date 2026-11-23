@@ -20,7 +20,7 @@ export type ScrapeOutput = {
   credits_estimes: number;
 };
 
-function validatePublicWebUrl(raw: unknown): URL {
+export function validatePublicWebUrl(raw: unknown): URL {
   if (typeof raw !== "string" || raw.length > 2048) throw new Error("URL invalide ou trop longue");
   let url: URL;
   try { url = new URL(raw); } catch { throw new Error("URL non valide"); }
@@ -44,7 +44,7 @@ export async function firecrawlScrape(rawUrl: unknown): Promise<ScrapeOutput> {
   const response = await fetch("https://api.firecrawl.dev/v2/scrape", {
     method: "POST",
     headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ url: url.toString(), formats: ["markdown"], onlyMainContent: true }),
+    body: JSON.stringify({ url: url.toString(), formats: ["markdown"], onlyMainContent: true, storeInCache: false }),
     signal: AbortSignal.timeout(25_000),
   });
   const raw = await response.text();
@@ -63,7 +63,7 @@ export async function firecrawlScrape(rawUrl: unknown): Promise<ScrapeOutput> {
     final_url: parsed.data?.metadata?.url ?? parsed.data?.metadata?.sourceURL ?? null,
     title: parsed.data?.metadata?.title ?? null,
     description: parsed.data?.metadata?.description ?? null,
-    markdown: markdown.slice(0, 24_000),
+    markdown: markdown.slice(0, 12_000),
     credits_estimes: 1,
   };
 }
