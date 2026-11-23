@@ -432,6 +432,7 @@ function renderOperationsDirector() {
       <p><b>Procédure :</b> ${esc(procedure.title)}</p>
       <p>${esc(procedure.steps)}</p>
       <small>Agents concernés : ${esc(agentNames.join(", ") || "non identifiés")} · Dernier événement : ${esc(g.latest.at)}</small>
+      <button type="button" class="ops-approve-request" data-incident-approval="1" data-incident-key="${esc(g.key)}" data-incident-recommendation="${esc(procedure.steps)}" data-incident-task="${esc(g.latest.task_id || "")}" data-incident-agent="${esc(g.latest.agent_id || "")}">Soumettre cette correction à validation</button>
     </details>`;
   }).join("") : '<p class="panel-muted">Aucun échec enregistré sur les événements disponibles des 7 derniers jours.</p>';
   const deptHtml = deptRows.length ? deptRows.slice(0,5).map(x => `<div class="ops-dept"><span><b>${esc(x.d.nom)}</b><small>${x.members} agent(s)</small></span><span><b>${x.load}</b><small>missions ouvertes</small></span><span class="${x.ratio >= 4 ? "ops-hot" : x.ratio >= 2 ? "ops-warn" : ""}"><b>${x.ratio.toFixed(1)}</b><small>missions / agent</small></span></div>`).join("") : '<p class="panel-muted">Répartition par département indisponible.</p>';
@@ -779,6 +780,27 @@ cv.addEventListener("pointermove", (ev) => {
 });
 cv.addEventListener("pointerleave", () => { hover = null; tip.hidden = true; });
 cv.addEventListener("click", (ev) => { const { n } = pick(ev); D.sel = n && n.id !== D.sel ? n.id : null; renderDetail(); });
+document.addEventListener("click", async (ev) => {
+  const b = ev.target.closest("[data-incident-approval]");
+  if (!b || b.disabled) return;
+  b.disabled = true; b.textContent = "Envoi de la demande…";
+  try {
+    const { error } = await sb.rpc("ai_create_incident_approval", {
+      p_action: b.dataset.incidentKey || "incident",
+      p_recommendation: b.dataset.incidentRecommendation || "",
+      p_reason: "Demande de correction issue du centre Jarvis V2.5",
+      p_task_id: b.dataset.incidentTask || null,
+      p_agent_id: b.dataset.incidentAgent || null
+    });
+    if (error) throw error;
+    b.textContent = "Demande soumise · décision dans Validations";
+    b.classList.add("is-submitted");
+    conn("ok", "Correction soumise à validation de la direction");
+  } catch (e) {
+    b.disabled = false; b.textContent = "Soumettre cette correction à validation";
+    conn("bad", "Demande refusée : " + String(e.message || e).slice(0,100));
+  }
+});
 $("#alerts").addEventListener("click", (ev) => { const item = ev.target.closest("[data-alert-agent]"); if (!item) return; D.sel = item.dataset.alertAgent; view3d?.focus(D.sel); renderDetail(); });
 $("#mission-filters").addEventListener("click", (ev) => { const b = ev.target.closest("[data-filter]"); if (!b) return; D.taskFilter = b.dataset.filter; renderWorkflow(); renderMissions(); });
 $("#workflow-steps").addEventListener("click", (ev) => { const b = ev.target.closest("[data-workflow-filter]"); if (!b) return; D.taskFilter = b.dataset.workflowFilter; renderWorkflow(); renderMissions(); });
