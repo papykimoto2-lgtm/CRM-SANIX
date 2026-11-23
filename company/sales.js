@@ -101,9 +101,10 @@ function vuePipeline(){
       <input id="sales-q" type="search" placeholder="Filtrer les opportunités : entreprise, secteur, ville…" value="${filter.q}" aria-label="Filtrer le pipeline">
       ${ownerFilter()}
     </div>
-    <div class="grid g3" style="margin:8px 0">
+    <div class="grid g4" style="margin:8px 0">
       <div class="card kpi"><b>${rows.filter(p=>!CLOSED.includes(p.stage)).length}</b><span>Opportunités actives</span></div>
       <div class="card kpi"><b>${money(total)}</b><span>Potentiel brut actif</span></div>
+      <div class="card kpi"><b>${rows.filter(p=>["marche_gagne","deploiement","client_fidelise"].includes(p.stage)).length}</b><span>Ventes gagnées</span></div>
       <div class="card kpi"><b>${rows.filter(isOverdue).length}</b><span>Actions en retard</span></div>
     </div>
     <div class="scroll" style="overflow-x:auto"><div class="pipe" style="display:flex;gap:10px;align-items:flex-start;min-width:max-content;padding-bottom:8px">
