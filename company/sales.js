@@ -22,7 +22,7 @@ const PHASES = [
 const LABEL = Object.fromEntries(STAGES);
 const money = n => `${num(n)} FCFA`;
 const PAGE=50, MAX_ROWS=1000;   // affichage par pages de 50 ; la base est lue jusqu'à 1 000 prospects
-let prospects=[], products=[], offers=[], messages=[], mails=[], mailsErreur="", lectureReponses=null, operators=[], crmOrders=[], selected=null, filter={q:"",stage:"",owner:"",canal:"",offre:"",relance:""}, shown=PAGE, vue="prospects";
+let prospects=[], products=[], offers=[], messages=[], mails=[], mailsErreur="", lectureReponses=null, operators=[], crmOrders=[], crmConfig=null, crmOrdersError="", selected=null, filter={q:"",stage:"",owner:"",canal:"",offre:"",relance:""}, shown=PAGE, vue="prospects";
 const VUES=[["pilotage","📊 Pilotage"],["pipeline","🧭 Pipeline"],["prospects","👥 Prospects"],["rdv","📅 Rendez-vous"],["offres","📄 Offres"],["conversations","💬 Conversations"],["relances","🔔 Relances"]];
 const RDV_STAGES=["rdv_propose","rdv_confirme","demo_realisee"];
 const CLOSED=["perdu","en_veille","marche_gagne","deploiement","client_fidelise"];
@@ -43,9 +43,16 @@ export async function loadSales() {
     q(S.sb.from("ai_operators").select("user_id,nom,role").eq("actif",true).order("nom")),
   ]);
   prospects=p??[]; products=pr??[]; offers=o??[]; operators=ops??[];
-  // Les commandes sont la source CRM des encaissements réels ; prospects et offres ne sont jamais assimilés au CA.
-  try { crmOrders=(await q(S.sb.from("crm_records").select("rid,data,updated_at").eq("entity","commandes").is("deleted_at",null).order("updated_at",{ascending:false}).limit(3000)))??[]; }
-  catch(e) { crmOrders=[]; console.warn("Pilotage commercial : commandes CRM indisponibles",e.message); }
+  // Les commandes sont la source CRM des encaissements ; les paramètres de pilotage viennent de la configuration CRM.
+  crmOrdersError="";
+  try {
+    const rows=(await q(S.sb.from("crm_records").select("entity,rid,data,updated_at").in("entity",["commandes","config"]).is("deleted_at",null).order("updated_at",{ascending:false}).limit(3001)))??[];
+    crmOrders=rows.filter(r=>r.entity==="commandes");
+    crmConfig=rows.find(r=>r.entity==="config")?.data??null;
+  } catch(e) {
+    crmOrders=[]; crmConfig=null; crmOrdersError=e.message;
+    console.warn("Pilotage commercial : données CRM indisponibles",e.message);
+  }
 }
 /** E-mails envoyés depuis le CRM (Gmail) : base du suivi des relances. */
 export async function loadRelances() {
@@ -257,16 +264,35 @@ function salesDate(v){
 }
 function vuePilotage(){
   const orders=crmOrders.map(r=>Object.assign({rid:r.rid},r.data||{})),payments=[];
+  const commissionRate=Math.max(0,Math.min(100,Number(crmConfig?.commissionDefaut)||0));
+  const objective=Math.max(0,Number(crmConfig?.objectifDefaut)||0);
   for(const o of orders){
     const list=Array.isArray(o.paiements)?o.paiements:[];
-    if(list.length){for(const p of list){const amount=Math.max(0,Number(p.montant)||0);if(amount)payments.push({amount,date:salesDate(p.date),software:o.logiciel||"Non renseigné",commercial:o.commercial||"Non attribué"});}}
-    else if(Number(o.acompte)>0)payments.push({amount:Number(o.acompte),date:null,software:o.logiciel||"Non renseigné",commercial:o.commercial||"Non attribué"});
+    if(list.length){
+      for(const p of list){
+        const amount=Math.max(0,Number(p.montant)||0);
+        if(amount)payments.push({amount,date:salesDate(p.date),software:o.logiciel||"Non renseigné",commercial:o.commercial||"Non attribué"});
+      }
+    } else if(Number(o.acompte)>0) {
+      // Anciennes commandes sans détail de versements : l'acompte est compté une seule fois, sans date.
+      payments.push({amount:Math.max(0,Number(o.acompte)||0),date:null,software:o.logiciel||"Non renseigné",commercial:o.commercial||"Non attribué"});
+    }
   }
   const paid=payments.reduce((s,p)=>s+p.amount,0);
+  const attributed=payments.filter(p=>p.commercial!=="Non attribué");
+  const commissionBase=attributed.reduce((s,p)=>s+p.amount,0);
+  const commissionEstimate=commissionBase*commissionRate/100;
   const orderTotal=orders.reduce((s,o)=>s+Math.max(0,Number(o.ttc)||0),0);
-  const balance=orders.reduce((s,o)=>{const n=Array.isArray(o.paiements)&&o.paiements.length?o.paiements.reduce((a,p)=>a+Math.max(0,Number(p.montant)||0),0):Math.max(0,Number(o.acompte)||0);return s+Math.max(0,(Number(o.ttc)||0)-n);},0);
+  const balance=orders.reduce((s,o)=>{
+    const received=Array.isArray(o.paiements)&&o.paiements.length
+      ?o.paiements.reduce((a,p)=>a+Math.max(0,Number(p.montant)||0),0)
+      :Math.max(0,Number(o.acompte)||0);
+    return s+Math.max(0,(Number(o.ttc)||0)-received);
+  },0);
   const now=new Date(),monthStart=new Date(now.getFullYear(),now.getMonth(),1);
-  const monthPaid=payments.filter(p=>p.date&&p.date>=monthStart&&p.date<=now).reduce((s,p)=>s+p.amount,0);
+  const monthPayments=payments.filter(p=>p.date&&p.date>=monthStart&&p.date<=now);
+  const monthPaid=monthPayments.reduce((s,p)=>s+p.amount,0);
+  const targetPct=objective?Math.min(100,monthPaid/objective*100):0;
   const months=[];for(let i=5;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);months.push({key:d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"),label:d.toLocaleDateString("fr-FR",{month:"short",year:"2-digit"}),amount:0});}
   for(const p of payments){if(!p.date)continue;const k=p.date.getFullYear()+"-"+String(p.date.getMonth()+1).padStart(2,"0"),m=months.find(x=>x.key===k);if(m)m.amount+=p.amount;}
   const maxMonth=Math.max(1,...months.map(x=>x.amount));
@@ -276,10 +302,14 @@ function vuePilotage(){
   let out='<div class="grid g4" style="margin-bottom:12px">';
   const tiles=[["Encaissements enregistrés · cumul",paid],["Encaissé ce mois · dates connues",monthPaid],["Solde restant estimé",balance],["Commandes CRM · total TTC",orderTotal]];
   for(const t of tiles)out+='<div class="card kpi"><b>'+esc(money(t[1]))+'</b><span>'+esc(t[0])+'</span></div>';
-  out+='</div><div class="grid g2" style="align-items:start">';
+  out+='</div>';
+  if(crmOrdersError)out+='<div class="card" style="border-left:4px solid #ef4444;margin-bottom:12px"><b>Données CRM indisponibles</b><p class="small">'+esc(crmOrdersError)+'</p>Les montants affichés ci-dessous ne doivent pas être interprétés comme des zéros fiables.</div>';
+  out+='<div class="grid g2" style="align-items:start">';
+  out+='<div class="card" style="padding:12px"><h3>Objectif mensuel</h3><div style="display:flex;justify-content:space-between;gap:8px"><b>'+esc(money(monthPaid))+'</b><span class="small muted">sur '+esc(objective?money(objective):"non défini")+'</span></div><div style="height:12px;background:var(--line);border-radius:8px;overflow:hidden;margin:10px 0"><div style="height:100%;width:'+targetPct.toFixed(1)+'%;background:var(--accent,#0ea5e9)"></div></div><p class="small muted">'+(objective?targetPct.toFixed(1)+' % de l’objectif par défaut configuré':'Aucun objectif mensuel configuré')+' · calculé uniquement sur les paiements datés du mois.</p></div>';
+  out+='<div class="card" style="padding:12px"><h3>Commissions indicatives</h3><b style="font-size:22px">'+esc(money(commissionEstimate))+'</b><p class="small muted">Taux de référence : '+commissionRate+' % · base attribuée : '+esc(money(commissionBase))+'</p><p class="small muted">Estimation théorique sur les paiements associés à un commercial ; ce n’est ni une commission validée ni un montant à payer.</p></div>';
   out+='<div class="card" style="padding:12px"><h3>Encaissements · 6 derniers mois</h3>';
   for(const m of months)out+='<div style="display:grid;grid-template-columns:55px 1fr 120px;gap:8px;align-items:center;margin:10px 0"><span class="small muted">'+esc(m.label)+'</span><div style="height:10px;background:var(--line);border-radius:8px;overflow:hidden"><div style="height:100%;width:'+Math.round(m.amount/maxMonth*100)+'%;background:var(--accent,#0ea5e9);border-radius:8px"></div></div><b class="small" style="text-align:right">'+esc(money(m.amount))+'</b></div>';
-  out+='<p class="small muted">Les paiements sans date exploitable sont inclus dans le cumul, mais pas dans les séries mensuelles.</p></div>';
+  out+='<p class="small muted">Les paiements sans date exploitable sont inclus dans le cumul, mais exclus des séries mensuelles.</p></div>';
   out+='<div class="card" style="padding:12px"><h3>Performance par logiciel</h3>';
   for(const x of bySoftware)out+='<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)"><span>'+esc(x.name)+'</span><b>'+esc(money(x.amount))+'</b></div>';
   if(!bySoftware.length)out+='<p class="muted">Aucun encaissement enregistré.</p>';
@@ -287,11 +317,11 @@ function vuePilotage(){
   for(const x of byCommercial)out+='<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)"><span>'+esc(x.name)+'</span><b>'+esc(money(x.amount))+'</b></div>';
   if(!byCommercial.length)out+='<p class="muted">Aucun encaissement enregistré.</p>';
   out+='<p class="small muted">Attribution issue du champ « commercial » des commandes CRM ; les champs vides restent « Non attribué ».</p></div>';
-  out+='<div class="card" style="padding:12px"><h3>Indicateurs à compléter</h3><p><b>Objectifs mensuels</b><br><span class="small muted">Non paramétrés dans les données commerciales actuelles.</span></p><p><b>Commissions commerciales</b><br><span class="small muted">Non rapprochées aux commandes SANIX CRM ; aucun montant extrapolé.</span></p><p><b>Prévisions</b><br><span class="small muted">Consulter le pipeline : les potentiels ne sont pas des encaissements.</span></p></div></div>';
+  out+='<div class="card" style="padding:12px"><h3>Indicateurs de pilotage</h3><p><b>Objectif</b><br><span class="small muted">Valeur de référence lue dans la configuration CRM ; à décliner par commercial pour un suivi individuel.</span></p><p><b>Commissions</b><br><span class="small muted">Taux configuré appliqué aux encaissements attribués, à valider avant toute rémunération.</span></p><p><b>Prévisions</b><br><span class="small muted">Consulter le pipeline : les potentiels ne sont pas des encaissements.</span></p></div></div>';
   out+='<h3 style="margin:16px 0 8px">Dernières commandes</h3><div class="scroll"><table class="tbl"><thead><tr><th>Référence</th><th>Client</th><th>Logiciel</th><th>Commercial</th><th class="num">TTC</th><th class="num">Encaissé</th><th class="num">Solde</th><th>Statut</th></tr></thead><tbody>';
   for(const o of latest){const n=Array.isArray(o.paiements)&&o.paiements.length?o.paiements.reduce((s,p)=>s+Math.max(0,Number(p.montant)||0),0):Math.max(0,Number(o.acompte)||0);out+='<tr><td>'+esc(o.ref||o.rid)+'</td><td>'+esc(o.client||"—")+'</td><td>'+esc(o.logiciel||"—")+'</td><td>'+esc(o.commercial||"Non attribué")+'</td><td class="num">'+esc(money(o.ttc))+'</td><td class="num">'+esc(money(n))+'</td><td class="num">'+esc(money(Math.max(0,(Number(o.ttc)||0)-n)))+'</td><td>'+esc(o.statut||"—")+'</td></tr>';}
   if(!latest.length)out+='<tr><td colspan="8" class="muted">Aucune commande CRM disponible.</td></tr>';
-  out+='</tbody></table></div><p class="small muted">Source : commandes et paiements enregistrés dans SANIX CRM. Le cumul inclut les acomptes historiques sans détail de versement ; ceux-ci ne sont pas ventilés par mois. Indicateur de gestion à rapprocher de la comptabilité et des relevés bancaires.</p>';
+  out+='</tbody></table></div><p class="small muted">Source : commandes et paiements enregistrés dans SANIX CRM. Les acomptes historiques sans détail de versement sont comptés une seule fois, sans date. Le cumul est un indicateur de gestion à rapprocher de la comptabilité et des relevés bancaires.</p>';
   return raw(out);
 }
 
