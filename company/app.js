@@ -707,6 +707,7 @@ document.addEventListener("click", (e) => {
 document.addEventListener("change", (e) => {
   const cfgEl = e.target.closest("[data-act-change^=cfg-]"); if (cfgEl) { CFG.configAction(cfgEl, e); return; }
   const salesStage = e.target.closest("[data-sales-stage]"); if (salesStage) { SALES.changeSalesStage(salesStage); return; }
+  const salesOwner = e.target.closest("[data-sales-owner]"); if (salesOwner) { SALES.changeSalesOwner(salesOwner); return; }
   const el = e.target.closest("[data-act=rcp-type]"); if (el) { ACT["rcp-type"](el); return; }
   const c = e.target.closest("[data-change]"); if (c) P.changes[c.dataset.change]?.(c);
 });
