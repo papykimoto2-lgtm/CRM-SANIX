@@ -62,7 +62,8 @@ const productName = id => products.find(p=>p.id===id)?.nom ?? id ?? "—";
 const operatorName = id => operators.find(o=>o.user_id===id)?.nom ?? (id?"Commercial inconnu":"Non attribué");
 const canAssign = () => ["direction","admin"].includes(S.op?.role);
 const ownerOptions = id => html`<option value="">Non attribué</option>${operators.map(o=>html`<option value="${o.user_id}" ${id===o.user_id?"selected":""}>${o.nom}</option>`)}`;
-const ownerFilter = () => html`<select id="sales-owner" aria-label="Filtrer par commercial"><option value="">Toute l'équipe</option>${operators.map(o=>html`<option value="${o.user_id}" ${filter.owner===o.user_id?"selected":""}>${o.nom}</option>`)}</select>`;
+const ownerFilter = () => html`<select id="sales-owner" aria-label="Filtrer par commercial"><option value="">Toute l'équipe</option><option value="__none__" ${filter.owner==="__none__"?"selected":""}>Non attribués</option>${operators.map(o=>html`<option value="${o.user_id}" ${filter.owner===o.user_id?"selected":""}>${o.nom}</option>`)}</select>`;
+const matchesOwner = p => !filter.owner || (filter.owner==="__none__"?!p.owner_id:p.owner_id===filter.owner);
 const ownerControl = p => canAssign()
   ? html`<select data-sales-owner data-id="${p.id}" aria-label="Responsable de ${p.entreprise}" style="width:100%;margin-top:5px">${ownerOptions(p.owner_id)}</select>`
   : html`<div class="small muted">Resp. : ${operatorName(p.owner_id)}</div>`;
@@ -72,7 +73,7 @@ const matchQ=p=>{ const t=filter.q.toLowerCase(); return !t||[p.entreprise,p.sec
 const restoreQ=()=>{const el=$("#sales-q");if(el){el.focus();el.setSelectionRange(filter.q.length,filter.q.length);}};
 
 function vueProspects(){
-  const rows=prospects.filter(p=>(!filter.stage||p.stage===filter.stage)&&(!filter.owner||p.owner_id===filter.owner)&&matchQ(p));
+  const rows=prospects.filter(p=>(!filter.stage||p.stage===filter.stage)&&matchesOwner(p)&&matchQ(p));
   return html`<div class="filters">
       <input id="sales-q" type="search" placeholder="Entreprise, secteur, ville, contact…" value="${filter.q}" aria-label="Rechercher un prospect">
       <select id="sales-stage" aria-label="Filtrer par étape"><option value="">Toutes les étapes</option>${stageOptions(filter.stage)}</select>
@@ -109,6 +110,7 @@ function vuePipeline(){
       <div class="card kpi"><b>${money(weighted)}</b><span>Prévision pondérée</span></div>
       <div class="card kpi"><b>${rows.filter(p=>["marche_gagne","deploiement","client_fidelise"].includes(p.stage)).length}</b><span>Ventes gagnées</span></div>
       <div class="card kpi"><b>${rows.filter(isOverdue).length}</b><span>Actions en retard</span></div>
+      <div class="card kpi"><b>${rows.filter(p=>!p.owner_id&&!CLOSED.includes(p.stage)).length}</b><span>Opportunités non attribuées</span></div>
     </div>
     <div class="scroll" style="overflow-x:auto"><div class="pipe" style="display:flex;gap:10px;align-items:flex-start;min-width:max-content;padding-bottom:8px">
     ${raw(PHASES.map(([key,label,stages])=>{
