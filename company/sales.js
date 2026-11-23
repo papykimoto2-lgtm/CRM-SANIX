@@ -14,7 +14,7 @@ const STAGES = [
 const LABEL = Object.fromEntries(STAGES);
 const money = n => `${num(n)} FCFA`;
 const PAGE=50, MAX_ROWS=1000;   // affichage par pages de 50 ; la base est lue jusqu'à 1 000 prospects
-let prospects=[], products=[], offers=[], messages=[], mails=[], mailsErreur="", lectureReponses=null, selected=null, filter={q:"",stage:"",owner:"",canal:"",offre:"",relance:""}, shown=PAGE, vue="prospects";
+let prospects=[], products=[], offers=[], messages=[], mails=[], mailsErreur="", lectureReponses=null, operators=[], stageHistory=[], selected=null, filter={q:"",stage:"",owner:"",canal:"",offre:"",relance:""}, shown=PAGE, vue="prospects";
 const VUES=[["pipeline","🧭 Pipeline"],["prospects","👥 Prospects"],["rdv","📅 Rendez-vous"],["offres","📄 Offres"],["conversations","💬 Conversations"],["relances","🔔 Relances"]];
 const RDV_STAGES=["rdv_propose","rdv_confirme","demo_realisee"];
 const CLOSED=["perdu","en_veille","marche_gagne","client_fidelise"];
