@@ -242,7 +242,7 @@ export function renderSales(main) {
   const so=$("#sales-offre"); if(so) so.onchange=e=>{filter.offre=e.target.value;renderSales(main);};
   const sr=$("#sales-relance"); if(sr) sr.onchange=e=>{filter.relance=e.target.value;renderSales(main);};
   const sc=$("#sales-canal"); if(sc) sc.onchange=e=>{filter.canal=e.target.value;renderSales(main);};
-  const so=$("#sales-owner"); if(so) so.onchange=e=>{filter.owner=e.target.value;shown=PAGE;renderSales(main);};
+  const ownerSel=$("#sales-owner"); if(ownerSel) ownerSel.onchange=e=>{filter.owner=e.target.value;shown=PAGE;renderSales(main);};
 }
 
 function newProspectForm() {
