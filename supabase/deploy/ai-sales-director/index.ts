@@ -667,6 +667,17 @@ var AGENT_STAGES = [
 ];
 var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 var clamp = (n, max) => Math.max(0, Math.min(max, Math.round(Number(n) || 0)));
+function canonicalHttpsUrl(raw) {
+  if (typeof raw !== "string" || raw.length > 2048) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:" || u.username || u.password) return null;
+    u.hash = "";
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
 var S = (o = {}) => ({ type: "string", ...o });
 var nul = (t, extra = {}) => ({ type: [t, "null"], ...extra });
 var mk = (name, description, properties, strict) => ({
@@ -1065,10 +1076,24 @@ Prochaine \xE9tape : ${String(input.prochaine_etape).trim()}` : "")).slice(0, 4e
       return { ok: true, consigne: "Informer le prospect qu'un conseiller le recontacte rapidement." };
     }
     case "create_prospect": {
+      const sourceUrl = canonicalHttpsUrl(input.source_url);
+      if (!sourceUrl || !ctx.verifiedSourceUrls?.has(sourceUrl)) {
+        throw new Error("Cr\xE9ation refus\xE9e : cette URL n'a pas \xE9t\xE9 lue avec Firecrawl pendant cette mission. Appelle firecrawl_scrape sur la page r\xE9elle, puis utilise exactement son source_url ou final_url.");
+      }
       if (ctx.created >= ctx.createCap) return { info: `Plafond de ${ctx.createCap} prospects atteint pour cette ex\xE9cution : arr\xEAte et rapporte.` };
+      const companyName = String(input.entreprise ?? "").trim().replace(/\s+/g, " ");
+      if (companyName.length < 2) throw new Error("Nom d'entreprise trop court.");
       const email = input.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email) ? String(input.email).trim().toLowerCase() : null;
       const phoneDigits = String(input.telephone ?? "").replace(/\D/g, "");
       const phoneNorm = phoneDigits ? phoneDigits.startsWith("225") ? phoneDigits : phoneDigits.length === 10 ? "225" + phoneDigits : phoneDigits : null;
+      const { data: sameCompany } = await db().from("ai_prospects").select("id,entreprise").ilike("entreprise", companyName).ilike("ville", String(input.ville ?? "").trim()).limit(1).maybeSingle();
+      if (sameCompany) return {
+        doublon: true,
+        prospect_id: sameCompany.id,
+        entreprise_existante: sameCompany.entreprise,
+        motif: "raison_sociale_et_ville_identiques",
+        info: "Entreprise d\xE9j\xE0 pr\xE9sente dans cette ville : aucune nouvelle fiche cr\xE9\xE9e."
+      };
       if (email) {
         const { data: duplicate } = await db().from("ai_prospects").select("id,entreprise").ilike("email", email).limit(1).maybeSingle();
         if (duplicate) return { doublon: true, prospect_id: duplicate.id, entreprise_existante: duplicate.entreprise, motif: "email_identique", info: "Prospect d\xE9j\xE0 pr\xE9sent : aucune nouvelle fiche cr\xE9\xE9e." };
@@ -1079,7 +1104,7 @@ Prochaine \xE9tape : ${String(input.prochaine_etape).trim()}` : "")).slice(0, 4e
       }
       const produit = await resolveProductId(input.produit_recommande);
       const { data, error } = await db().from("ai_prospects").insert({
-        entreprise: String(input.entreprise).slice(0, 200),
+        entreprise: companyName.slice(0, 200),
         secteur: input.secteur,
         ville: input.ville,
         commune: input.commune,
@@ -1091,7 +1116,7 @@ Prochaine \xE9tape : ${String(input.prochaine_etape).trim()}` : "")).slice(0, 4e
         besoins: (input.besoins_detectes ?? []).slice(0, 10),
         produits_recommandes: [produit],
         source: ctx.source,
-        source_url: input.source_url,
+        source_url: sourceUrl,
         stage: "enregistre",
         mission_id: ctx.missionId ?? null
       }).select("id").single();
@@ -1447,6 +1472,17 @@ async function runAgent(run, brief) {
             if (firecrawlUses >= 8) throw new Error("Plafond Firecrawl de 8 pages par mission atteint. Utilise web_fetch si n\xE9cessaire.");
             firecrawlUses++;
             const out2 = await firecrawlScrape(u.input.url);
+            (ctx.verifiedSourceUrls ??= /* @__PURE__ */ new Set()).add(out2.source_url);
+            if (out2.final_url) {
+              try {
+                const finalUrl = new URL(out2.final_url);
+                if (finalUrl.protocol === "https:") {
+                  finalUrl.hash = "";
+                  ctx.verifiedSourceUrls.add(finalUrl.toString());
+                }
+              } catch {
+              }
+            }
             await audit({
               agent: label,
               action: "firecrawl_scrape",
