@@ -462,6 +462,8 @@ T("T9 · une mission mère ne se clôture pas avec des sous-missions ouvertes", 
   await sql("update ai_agent_tasks set statut = 'terminee', rapport = $2, resultats = $3::jsonb where id = $1",
     [child, "Étape enfant terminée avec résultat vérifiable et rapport détaillé.", JSON.stringify(["Étape enfant réalisée"])]);
   eq(await val("select statut from ai_agent_tasks where id = $1", [parent]), "a_faire", "le parent est relancé après la fin de l'enfant");
+  await sql("update ai_agent_tasks set statut = 'attente_sous_taches' where id = $1", [parent]);
+  eq(await val("select statut from ai_agent_tasks where id = $1", [parent]), "a_faire", "pas d'attente orpheline si les enfants sont déjà terminés");
   await sql("update ai_agent_tasks set statut = 'en_cours', started_at = now(), executions = executions + 1 where id = $1", [parent]);
   eq(await runTask(parent, { deadline: Date.now() + 60000 }), "terminee", "la mission mère peut se clôturer après ses sous-missions");
   eq(await val("select statut from ai_agent_tasks where id = $1", [parent]), "terminee", "clôture finale enregistrée");
