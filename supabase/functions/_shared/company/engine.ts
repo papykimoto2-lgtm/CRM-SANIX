@@ -169,7 +169,7 @@ export async function runTask(taskId: string, opts: { deadline: number }): Promi
     if (!preflight.ready) {
       const note = `[Précontrôle dépendances] Mission bloquée sans pénalité pour l'agent : ${preflight.blockers.join(" ; ")}.`;
       await db().from("ai_agent_tasks").update({
-        statut: "bloquee", progression: clip(`${task.progression ?? ""}\\n${note}`, 8000),
+        statut: "bloquee", progression: clip(`${task.progression ?? ""}\n${note}`, 8000),
       }).eq("id", task.id);
       await db().from("ai_agents").update({ activite: "disponible" }).eq("id", agent.id).not("activite", "eq", "en_reunion");
       await incidentOnce("dependance_manquante", "attention", note, 6 * 3600e3);
