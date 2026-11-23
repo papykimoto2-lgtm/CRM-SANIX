@@ -172,10 +172,12 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     const vue = async (v) => { await page.click(`[data-act=sales-vue][data-vue=${v}]`); await page.waitForTimeout(250); };
     ok((await page.locator("[data-act=sales-vue]").count()) === 6 && (await page.locator("[data-act=sales-vue][data-vue=prospects]").getAttribute("aria-selected")) === "true", "6 vues proposées, « Prospects » active par défaut");
     await vue("pipeline");
-    ok((await page.locator(".pipe-col").count()) === 7, "pipeline : 7 phases commerciales regroupant toutes les étapes");
-    ok((await page.locator('.pipe-col[data-phase=rdv]').innerText()).includes("Express Colis"), "pipeline : la carte du prospect est dans la phase rendez-vous");
-    await page.locator('.pipe-col[data-phase=rdv] .pipe-card', { hasText: "Express Colis" }).locator("select[data-sales-stage]").selectOption("rdv_confirme"); await page.waitForTimeout(300);
-    ok((await page.locator('.pipe-col[data-phase=rdv]').innerText()).includes("Express Colis") && (await page.locator('.pipe-col[data-phase=rdv] .pipe-card').innerText()).includes("RDV confirmé"), "pipeline : changement d'étape depuis la carte, la sous-étape est actualisée");
+    ok((await page.locator(".pipe-col").count()) === 4, "pipeline : 4 phases commerciales Exploration, Proposition, Négociation et Closing");
+    ok((await page.locator('.pipe-col[data-phase=exploration]').innerText()).includes("Express Colis"), "pipeline : la carte du prospect est dans la phase rendez-vous");
+    ok((await page.locator('.pipe-col[data-phase=closing] select option[value=marche_gagne]').count())===1, "pipeline : les statuts marché gagné, déploiement et fidélisation restent accessibles dans Closing");
+    ok((await page.locator("#main").innerText()).includes("Résultats clôturés"), "pipeline : résultats gagnés et perdus visibles sous le Kanban");
+    await page.locator('.pipe-col[data-phase=exploration] .pipe-card', { hasText: "Express Colis" }).locator("select[data-sales-stage]").selectOption("rdv_confirme"); await page.waitForTimeout(300);
+    ok((await page.locator('.pipe-col[data-phase=exploration]').innerText()).includes("Express Colis") && (await page.locator('.pipe-col[data-phase=exploration] .pipe-card').innerText()).includes("RDV confirmé"), "pipeline : changement d'étape depuis la carte, la sous-étape est actualisée");
     await page.fill("#sales-q", "alpha"); await page.waitForTimeout(150);
     ok((await page.locator(".pipe-card").count()) === 1, "pipeline : filtre de recherche sur les cartes");
     await page.fill("#sales-q", "");
