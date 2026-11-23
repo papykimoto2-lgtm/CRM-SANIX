@@ -28,7 +28,9 @@ const PAGE=50, MAX_ROWS=1000;   // affichage par pages de 50 ; la base est lue j
 let prospects=[], products=[], offers=[], messages=[], mails=[], mailsErreur="", lectureReponses=null, operators=[], selected=null, filter={q:"",stage:"",owner:"",canal:"",offre:"",relance:""}, shown=PAGE, vue="prospects";
 const VUES=[["pipeline","🧭 Pipeline"],["prospects","👥 Prospects"],["rdv","📅 Rendez-vous"],["offres","📄 Offres"],["conversations","💬 Conversations"],["relances","🔔 Relances"]];
 const RDV_STAGES=["rdv_propose","rdv_confirme","demo_realisee"];
-const CLOSED=["perdu","en_veille","marche_gagne","client_fidelise"];
+const CLOSED=["perdu","en_veille","marche_gagne","deploiement","client_fidelise"];
+// Pondérations identiques au tableau de bord financier serveur SANIX AI.
+const STAGE_PROBABILITY={contrat_transmis:0.85,offre_acceptee:0.8,negociation:0.6,offre_transmise:0.4,demo_realisee:0.3,rdv_confirme:0.2,interesse:0.15};
 const OFFRE_ST={brouillon:["Brouillon","#64748b"],a_valider:["À valider","#F59E0B"],validee:["Validée","#0ea5e9"],envoyee:["Envoyée","#6366f1"],acceptee:["Acceptée","#22C55E"],refusee:["Refusée","#EF4444"],expiree:["Expirée","#94a3b8"]};
 const ADRESSE_ST={invalide:["⛔ adresse invalide","var(--bad)"],a_confirmer:["⚠ adresse à confirmer","var(--warn)"],verifiee:["✓ adresse confirmée","var(--ok)"]};
 const adresseBadge=p=>{ const a=p.email?ADRESSE_ST[p.email_statut]:null; return a?html` <span class="small" style="color:${a[1]};font-weight:600">${a[0]}</span>`:""; };
@@ -94,14 +96,17 @@ function vueProspects(){
 /** Pipeline commercial par grandes phases, avec sous-étapes réelles et responsables visibles. */
 function vuePipeline(){
   const rows=prospects.filter(p=>(!filter.owner||p.owner_id===filter.owner)&&matchQ(p));
-  const total=rows.filter(p=>!CLOSED.includes(p.stage)).reduce((s,p)=>s+Number(p.potentiel_fcfa||0),0);
+  const activeRows=rows.filter(p=>!CLOSED.includes(p.stage));
+  const total=activeRows.reduce((s,p)=>s+Number(p.potentiel_fcfa||0),0);
+  const weighted=activeRows.reduce((s,p)=>s+Number(p.potentiel_fcfa||0)*(STAGE_PROBABILITY[p.stage]??0.05),0);
   return html`<div class="filters">
       <input id="sales-q" type="search" placeholder="Filtrer les opportunités : entreprise, secteur, ville…" value="${filter.q}" aria-label="Filtrer le pipeline">
       ${ownerFilter()}
     </div>
-    <div class="grid g4" style="margin:8px 0">
+    <div class="grid g5" style="margin:8px 0">
       <div class="card kpi"><b>${rows.filter(p=>!CLOSED.includes(p.stage)).length}</b><span>Opportunités actives</span></div>
       <div class="card kpi"><b>${money(total)}</b><span>Potentiel brut actif</span></div>
+      <div class="card kpi"><b>${money(weighted)}</b><span>Prévision pondérée</span></div>
       <div class="card kpi"><b>${rows.filter(p=>["marche_gagne","deploiement","client_fidelise"].includes(p.stage)).length}</b><span>Ventes gagnées</span></div>
       <div class="card kpi"><b>${rows.filter(isOverdue).length}</b><span>Actions en retard</span></div>
     </div>
