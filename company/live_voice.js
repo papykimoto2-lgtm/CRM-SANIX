@@ -56,25 +56,44 @@ export function initJarvis(A, stage) {
   let crmC = { at: 0, rows: [] };
   async function loadCrm() {
     if (Date.now() - crmC.at < 120000 && crmC.rows.length) return crmC.rows;
-    const [c, p] = await Promise.all([
+    const [c, p, ix] = await Promise.all([
       A.sb.from("crm_records").select("rid,version,nom:data->>nom,statut:data->>statut,logiciel:data->>logiciel,ville:data->>adresse,ia:data->ia,upd:updated_at").eq("entity", "clients").is("deleted_at", null).order("updated_at", { ascending: false }).limit(900),
-      A.sb.from("ai_prospects").select("crm_rid,stage,score,priorite,last_inbound_at,last_outbound_at,next_action_at,opt_out").not("crm_rid", "is", null).limit(1000)]);
+      A.sb.from("ai_prospects").select("crm_rid,stage,score,priorite,last_inbound_at,last_outbound_at,next_action_at,opt_out").not("crm_rid", "is", null).limit(1000),
+      // Historique des contacts enregistrés dans le CRM (WhatsApp, e-mail, appel) : ce que voit l'écran « Contacté », indépendamment des agents IA
+      A.sb.from("crm_records").select("rid,interactions:data->interactions").eq("entity", "clients").is("deleted_at", null).neq("data->>interactions", "[]").limit(1000)]);
     if (c.error) throw new Error(c.error.message);
-    const ai = new Map((p.data ?? []).map((x) => [x.crm_rid, x]));
+    const ai = new Map((p.data ?? []).map((x) => [x.crm_rid, x])), hist = new Map();
+    for (const r of ix?.data ?? []) {
+      const list = Array.isArray(r.interactions) ? r.interactions : [], h = { wa: 0, mail: 0, appel: 0, etape: 0, last: null };
+      for (const x of list) {
+        const t = String(x?.type ?? ""), et = Number(x?.etape) || 0; h.etape = Math.max(h.etape, et);
+        const canal = /whatsapp/i.test(t) ? "WhatsApp" : /mail/i.test(t) ? "E-mail" : /appel|t[ée]l[ée]ph/i.test(t) ? "Appel" : et >= 1 ? "Contact" : "";
+        if (!canal) continue; if (canal === "WhatsApp") h.wa++; else if (canal === "E-mail") h.mail++; else if (canal === "Appel") h.appel++;
+        const d = Date.parse(x?.date ?? ""); if (!h.last || (d || 0) >= h.last.t) h.last = { t: d || 0, canal, date: x?.date ?? null };
+      }
+      hist.set(r.rid, h);
+    }
     crmC = { at: Date.now(), rows: (c.data ?? []).map((r) => { const a = ai.get(r.rid), i = r.ia ?? {};
-      return { rid: r.rid, version: r.version ?? null, nom: r.nom ?? "", statut: r.statut ?? "", logiciel: r.logiciel ?? "", ville: clip(r.ville ?? "", 40), etape: a?.stage ?? i.stage ?? "non traité", score: a?.score ?? i.score ?? null, envoi: a?.last_outbound_at ?? null, reponse: a?.last_inbound_at ?? null, suite: a?.next_action_at ?? null, desinscrit: !!a?.opt_out, maj: r.upd }; }) };
+      const h = hist.get(r.rid);
+      return { contacte: r.statut === "prospect" && !!h && h.etape >= 1, wa: h?.wa ?? 0, mail: h?.mail ?? 0, appel: h?.appel ?? 0, dernier_contact: h?.last?.date ?? null, canal: h?.last?.canal ?? "", rid: r.rid, version: r.version ?? null, nom: r.nom ?? "", statut: r.statut ?? "", logiciel: r.logiciel ?? "", ville: clip(r.ville ?? "", 40), etape: a?.stage ?? i.stage ?? "non traité", score: a?.score ?? i.score ?? null, envoi: a?.last_outbound_at ?? null, reponse: a?.last_inbound_at ?? null, suite: a?.next_action_at ?? null, desinscrit: !!a?.opt_out, maj: r.upd }; }) };
     return crmC.rows;
   }
   const dShort = (x) => (x ? new Date(x).toLocaleDateString("fr-FR", { timeZone: "Africa/Abidjan", day: "2-digit", month: "2-digit" }) : "");
   async function crmContext(message) {
     const rows = await loadCrm(), q = norm(message), stop = new Set(["jarvis", "prospect", "prospects", "client", "clients", "situation", "quelle", "quel", "combien", "dans", "pour", "avec", "est", "sont", "les", "des", "que", "qui", "comment", "fiche", "fiches", "crm"]);
-    const toks = q.split(" ").filter((w) => w.length >= 4 && !stop.has(w)), line = (r) => ({ rid: r.rid, nom: r.nom, logiciel: r.logiciel, statut: r.statut, etape: r.desinscrit ? "désinscrit" : r.etape, score: r.score ?? "", ville: r.ville, dernier_envoi: dShort(r.envoi), derniere_reponse: dShort(r.reponse), prochaine_action: dShort(r.suite) });
+    const toks = q.split(" ").filter((w) => w.length >= 4 && !stop.has(w)), line = (r) => ({ rid: r.rid, nom: r.nom, logiciel: r.logiciel, statut: r.contacte ? "contacté" : r.statut, contact: r.canal ? r.canal + " " + dShort(r.dernier_contact) : "", etape: r.desinscrit ? "désinscrit" : r.etape, score: r.score ?? "", ville: r.ville, dernier_envoi: dShort(r.envoi), derniere_reponse: dShort(r.reponse), prochaine_action: dShort(r.suite) });
     const byLog = {}, byStatut = {}; let contactes = 0, repondus = 0;
+    const pros = rows.filter((r) => r.statut === "prospect"), parCanal = { prospects_contactes: rows.filter((r) => r.contacte).length, prospects_contactes_whatsapp: pros.filter((r) => r.wa > 0).length, prospects_contactes_mail: pros.filter((r) => r.mail > 0).length, prospects_contactes_appel: pros.filter((r) => r.appel > 0).length };
     for (const r of rows) { byStatut[r.statut || "?"] = (byStatut[r.statut || "?"] ?? 0) + 1; const l = (byLog[r.logiciel || "sans logiciel"] ??= { total: 0, etapes: {} }); l.total++; l.etapes[r.etape] = (l.etapes[r.etape] ?? 0) + 1; if (r.envoi) contactes++; if (r.reponse) repondus++; }
     const match = new Map();
+    // Question sur les contacts (« contactés par WhatsApp », « relancer »…) : les fiches réellement contactées, les plus récentes d'abord
+    if (/contact|whatsapp|\bwa\b|relanc|appel|mail|ecrit|envoy/.test(q)) {
+      const pick = /whatsapp|\bwa\b/.test(q) ? (r) => r.wa > 0 : /mail/.test(q) ? (r) => r.mail > 0 : (r) => r.contacte || r.wa > 0 || r.mail > 0 || r.appel > 0;
+      for (const r of rows.filter(pick).sort((a, b) => Date.parse(b.dernier_contact ?? 0) - Date.parse(a.dernier_contact ?? 0)).slice(0, 30)) match.set(r.nom + r.maj, r);
+    }
     for (const [, [rx]] of Object.entries(PRODUCTS)) if (rx.test(q)) for (const r of rows) if (rx.test(norm(r.logiciel))) match.set(r.nom + r.maj, r);
     for (const r of rows) if (toks.some((w) => norm(r.nom).includes(w))) match.set(r.nom + r.maj, r);
-    return { resume: { total: rows.length, par_statut: byStatut, contactes, ont_repondu: repondus, par_logiciel: Object.entries(byLog).sort((a, b) => b[1].total - a[1].total).slice(0, 8).map(([logiciel, v]) => ({ logiciel, total: v.total, etapes: v.etapes })) },
+    return { resume: { total: rows.length, par_statut: byStatut, ...parCanal, contactes, ont_repondu: repondus, par_logiciel: Object.entries(byLog).sort((a, b) => b[1].total - a[1].total).slice(0, 8).map(([logiciel, v]) => ({ logiciel, total: v.total, etapes: v.etapes })) },
       recents: rows.slice(0, 25).map(line), trouves: [...match.values()].slice(0, 30).map(line) };
   }
   // ───────── Écriture CRM : même chemin que l'écran CRM (crm_sync_push, réservé aux opérateurs, champs sensibles protégés par version) ─────────
@@ -117,7 +136,7 @@ export function initJarvis(A, stage) {
     for (const [, [rx, label]] of Object.entries(PRODUCTS)) if (rx.test(t)) { sel = rows.filter((r) => rx.test(norm(r.logiciel))); lab = " " + label; break; }
     if (!sel.length) return "Je ne trouve aucun prospect" + (lab ? " pour" + lab : "") + " dans le CRM.";
     const et = {}; for (const r of sel) et[r.etape] = (et[r.etape] ?? 0) + 1;
-    return `${plural(sel.length, "fiche", "fiches")} dans le CRM${lab ? " pour" + lab : ""} : ` + Object.entries(et).map(([k, n]) => `${n} ${k}`).join(", ") + `. ${sel.filter((r) => r.envoi).length} contactées, ${sel.filter((r) => r.reponse).length} ont répondu.`;
+    return `${plural(sel.length, "fiche", "fiches")} dans le CRM${lab ? " pour" + lab : ""} : ` + Object.entries(et).map(([k, n]) => `${n} ${k}`).join(", ") + `. ${sel.filter((r) => r.contacte || r.envoi).length} contactées (${sel.filter((r) => r.wa > 0).length} par WhatsApp), ${sel.filter((r) => r.reponse).length} ont répondu.`;
   }
   const RANK = { haute: 0, moyenne: 1, basse: 2 };
   function insights() {
