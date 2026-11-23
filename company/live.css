@@ -417,3 +417,15 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .ops-triage>small{display:block;color:var(--mute);font-size:9px;margin-top:3px}
 .ops-triage p{font-size:9px;line-height:1.4;margin:5px 0 0;color:var(--text);overflow-wrap:anywhere}
 .ops-triage p b{color:#93C5FD}
+
+/* Jarvis V2.4 — centre de résolution des incidents. */
+.ops-incident{border:1px solid var(--line);border-radius:8px;margin:6px 0;padding:7px 8px;background:rgba(8,19,39,.58)}
+.ops-incident summary{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;cursor:pointer;list-style:none}
+.ops-incident summary::-webkit-details-marker{display:none}
+.ops-incident summary>span{min-width:0}
+.ops-incident summary b{display:block;font-size:10px;text-transform:capitalize;overflow-wrap:anywhere}
+.ops-incident summary small,.ops-incident>small{display:block;color:var(--mute);font-size:9px;margin-top:3px}
+.ops-incident summary em{font-size:9px;color:#F87171;font-style:normal;white-space:nowrap}
+.ops-incident p{font-size:9px;line-height:1.45;margin:7px 0 0;overflow-wrap:anywhere}
+.ops-incident p b{color:#93C5FD}
+.ops-incident[open]{border-color:rgba(59,130,246,.45)}
