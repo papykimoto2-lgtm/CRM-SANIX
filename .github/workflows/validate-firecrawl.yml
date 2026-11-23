@@ -1,0 +1,46 @@
+name: Validate Firecrawl Lead Hunter
+
+on:
+  pull_request:
+    branches:
+      - main
+      - improvement/prospect-intelligence-v1
+    paths:
+      - "supabase/functions/**"
+      - "supabase/build_functions.sh"
+      - ".github/workflows/validate-firecrawl.yml"
+  push:
+    branches:
+      - feature/firecrawl-scrape-lead-hunter
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Type-check Firecrawl module
+        run: deno check supabase/functions/_shared/firecrawl.ts
+
+      - name: Test Firecrawl URL validation
+        run: deno test supabase/functions/_shared/firecrawl_test.ts
+
+      - name: Regenerate deployment bundles
+        run: sh supabase/build_functions.sh
+
+      - name: Verify Firecrawl is present in generated Lead Hunter bundle
+        run: grep -q "firecrawl_scrape" supabase/deploy/ai-sales-director/index.ts
