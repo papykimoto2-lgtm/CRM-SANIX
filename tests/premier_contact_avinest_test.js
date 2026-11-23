@@ -33,8 +33,8 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(/versions adaptées à chaque exploitation/.test(r.corps) && /version la plus évoluée/.test(r.corps) && /versions adaptées/.test(r.wa) && !/Jolan|Angel/i.test(r.wa + r.corps), "le courrier présente AviNest Pro comme logiciel de référence décliné en versions adaptées, sans nommer de client ni Angel's Group");
     { const src = require("fs").readFileSync(require("path").join(__dirname, "..", "index.html"), "utf8"), fiche = (id) => { const i = src.indexOf("id:'" + id + "'"); return src.slice(i, src.indexOf("\n  },", i)); };
       const avi = fiche("log_avinest"), ang = fiche("log_angels_agro");
-      ok(/logiciel mère/i.test(avi) && /Angel\\'s Group/.test(avi) && /Jolan/.test(avi), "fiche AviNest Pro : logiciel mère, versions adaptées, version la plus évoluée à la Ferme Jolan");
-      ok(/Adaptation d\\'AviNest Pro/.test(ang) && !/Remplace AviNest Pro/.test(ang), "fiche Angel's Agro : adaptation d'AviNest Pro pour Angel's Group (ne « remplace » plus AviNest Pro)"); }
+      ok(/logiciel mère/i.test(avi) && /versions adaptées/.test(avi) && !/Jolan|Angel/.test(avi), "fiche AviNest Pro : logiciel mère décliné en versions adaptées, sans nom de client (la fiche alimente les pages publiques)");
+      ok(/actif:false/.test(ang) && /Adaptation d\\'AviNest Pro/.test(ang) && !/Remplace AviNest Pro/.test(ang), "Angel's Agro : adaptation d'AviNest Pro pour un client, retiré de la liste des logiciels (inactif)"); }
     ok(errors.length === 0, "aucune erreur JavaScript" + (errors.length ? " : " + errors[0] : ""));
     console.log("\nTOUT EST OK");
   } finally { await browser.close(); server.close(); }
