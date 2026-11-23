@@ -259,10 +259,11 @@ function newProspectForm() {
 }
 
 async function openProspect(id) {
-  const [p,msgs,os]=await Promise.all([
+  const [p,msgs,os,hist]=await Promise.all([
     q(S.sb.from("ai_prospects").select("*").eq("id",id).single()),
     q(S.sb.from("ai_messages").select("canal,sens,auteur,contenu,statut,created_at").eq("prospect_id",id).order("created_at",{ascending:false}).limit(30)),
     q(S.sb.from("ai_offers").select("*").eq("prospect_id",id).order("created_at",{ascending:false}).limit(20)),
+    q(S.sb.from("ai_stage_history").select("de,vers,par,at").eq("prospect_id",id).order("at",{ascending:false}).limit(30)),
   ]);
   selected=p;
   openModal(html`<h3>${p.entreprise}</h3><p class="small muted">${p.secteur||"Secteur non renseigné"} · ${p.ville||"Ville non renseignée"} · créé ${fmtDT(p.created_at)}</p>
@@ -271,14 +272,31 @@ async function openProspect(id) {
       <div class="card"><b>Qualification</b><p><b>${p.score}/100</b> · ${p.priorite}<br>Potentiel : ${money(p.potentiel_fcfa)}<br>Opt-out : ${p.opt_out?"Oui":"Non"}</p></div>
     </div>
     <div class="card" style="margin:10px 0"><b>Rattachement SANIX CRM</b><form id="sales-link-form" class="form"><label class="f">Identifiant client CRM<input name="crm_client_id" type="number" min="1" step="1" value="${p.crm_client_id??""}" placeholder="ID numérique du client"></label><button class="btn sm" type="submit">Enregistrer le lien</button></form></div>
+    <h4>Responsable & prochaine action</h4>
+    <div class="card" style="margin:8px 0"><p class="small muted">Responsable commercial : <b>${operatorName(p.owner_id)}</b></p>
+      <form id="sales-next-form" class="form">
+        <label class="f">Prochaine action / échéance
+          <input name="next_action_at" type="datetime-local" value="${p.next_action_at?new Date(new Date(p.next_action_at).getTime()-new Date(p.next_action_at).getTimezoneOffset()*60000).toISOString().slice(0,16):""}">
+        </label>
+        <div class="actions"><button class="btn sm pri" type="submit">Enregistrer l'échéance</button></div>
+      </form>
+    </div>
     <h4>Actions commerciales</h4><div class="actions">
       <button class="btn" type="button" data-act="sales-qualify" data-id="${p.id}">Qualifier par IA</button>
       <button class="btn pri" type="button" data-act="sales-contact" data-id="${p.id}" ${p.opt_out?"disabled":""}>Préparer / lancer le premier contact</button>
     </div>
+    <h4>Historique du pipeline</h4>
+    ${hist.length?raw(hist.map(h=>html`<div class="small" style="padding:5px 0;border-bottom:1px solid var(--line)"><b>${LABEL[h.vers]??h.vers}</b> <span class="muted">· ${h.de?LABEL[h.de]??h.de:"Création"} · ${fmtDT(h.at)} · ${h.par==="agent"?"Agent IA":h.par}</span></div>`.s).join("")):html`<p class="small muted">Aucune transition historisée pour ce dossier.</p>`}
     <h4>Produits recommandés</h4><p>${(p.produits_recommandes??[]).map(productName).join(", ")||"Non déterminés"}</p>
     <h4>Résumé IA</h4><div class="pv">${p.resume_ia||"Aucun résumé disponible."}</div>
     <h4>Offres</h4>${os.length?html`<div class="scroll"><table class="tbl"><thead><tr><th>Référence</th><th>Montant TTC</th><th>Statut</th></tr></thead><tbody>${os.map(o=>html`<tr><td>${o.reference}</td><td>${money(o.total_ttc)}</td><td>${o.statut}</td></tr>`)}</tbody></table></div>`:html`<p class="muted">Aucune offre créée.</p>`}
     <h4>Historique des échanges</h4>${msgs.length?msgs.map(m=>html`<div class="card" style="margin:6px 0"><div class="small muted">${m.canal} · ${m.sens} · ${m.auteur} · ${fmtDT(m.created_at)}</div><div class="pv">${m.contenu}</div></div>`):html`<p class="muted">Aucun échange enregistré.</p>`}`);
+  $("#sales-next-form").onsubmit=async e=>{
+    e.preventDefault();const rawValue=new FormData(e.currentTarget).get("next_action_at");
+    const next_action_at=rawValue?new Date(rawValue).toISOString():null;
+    try{await q(S.sb.from("ai_prospects").update({next_action_at}).eq("id",p.id));toast("Prochaine action enregistrée","ok");await loadSales();await openProspect(p.id);}
+    catch(err){toast(err.message,"bad");}
+  };
   $("#sales-link-form").onsubmit=async e=>{
     e.preventDefault();const v=new FormData(e.currentTarget).get("crm_client_id");
     try{await q(S.sb.from("ai_prospects").update({crm_client_id:v?Number(v):null}).eq("id",p.id));toast("Lien CRM enregistré","ok");await openProspect(p.id);}
@@ -335,6 +353,17 @@ export async function salesAction(el) {
       await loadSales();await openProspect(id);
     }catch(err){toast(err.message,"bad");}finally{el.disabled=false;}
   }
+}
+
+export async function changeSalesOwner(el) {
+  const p=prospects.find(x=>x.id===el.dataset.id);if(!p)return;
+  if(!canAssign()){toast("Seule la direction peut réaffecter un prospect.","bad");el.value=p.owner_id??"";return;}
+  const owner_id=el.value||null;
+  try{
+    const {error}=await S.sb.from("ai_prospects").update({owner_id}).eq("id",p.id);
+    if(error)throw error;
+    toast("Responsable commercial mis à jour","ok");await loadSales();renderSales($("#main"));
+  }catch(err){toast(err.message,"bad");el.value=p.owner_id??"";}
 }
 
 export async function changeSalesStage(el) {
