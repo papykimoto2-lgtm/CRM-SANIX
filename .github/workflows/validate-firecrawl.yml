@@ -17,6 +17,7 @@ on:
       - fix/firecrawl-hunter-catalog
       - fix/firecrawl-hunter-page-cap
       - improvement/agent-dependency-preflight
+      - improvement/unify-lead-hunter-preflight
 
 permissions:
   contents: write
