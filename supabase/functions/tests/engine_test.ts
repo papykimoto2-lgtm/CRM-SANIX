@@ -1,5 +1,5 @@
 // Scénarios d'intégration : vrai PostgreSQL (triggers, contraintes, fonctions SQL) + faux Claude scripté.
-import { asPresident, assert, dropAll, eq, freshDb, mkAgent, mkTask, one, PRESIDENT, president, rows, val } from "./testkit.ts";
+import { asPresident, assert, dropAll, eq, freshDb, mkAgent, mkTask, one, PRESIDENT, president, rejects, rows, val } from "./testkit.ts";
 import { sql } from "./fake_supabase.ts";
 import { done, json, llm, reply, results, script, use, txt } from "./fake_anthropic.ts";
 import { flushOutbox } from "../_shared/outbox.ts";
