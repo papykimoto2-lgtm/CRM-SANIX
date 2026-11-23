@@ -181,10 +181,11 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     await page.fill("#sales-q", "");
     await vue("rdv");
     ok((await page.locator("#main tbody tr").count()) === 1 && (await page.locator("#main tbody").innerText()).includes("Express Colis") && (await page.locator("#main tbody").innerText()).includes("RDV confirmé"), "rendez-vous : prospect à l'étape RDV listé avec son étape");
-    ok((await page.locator('.pipe-col[data-phase=closing] select option[value=marche_gagne]').count())===1, "pipeline : les étapes de vente gagnée et d'encaissement sont accessibles dans le catalogue");
-    ok((await page.locator("#sales-owner").count())===1, "pipeline : filtre par commercial présent");
+     ok((await page.locator("#sales-owner").count())===1, "pipeline : filtre par commercial présent");
     await page.locator("#main tbody [data-act=sales-open]").first().click(); await page.waitForSelector("#modal:not([hidden]) #sales-link-form");
     ok((await page.locator("#sales-next-form input[name=next_action_at]").count())===1, "fiche prospect : échéance de prochaine action disponible");
+    await page.fill("#sales-next-form input[name=next_action_at]", "2026-12-01T10:30"); await page.click("#sales-next-form button[type=submit]"); await page.waitForTimeout(250);
+    ok((await page.evaluate(() => window.__Q.some(q => q.table === "ai_prospects" && q.op === "update" && q.payload.includes("next_action_at")))), "fiche prospect : prochaine action enregistrée en base");
     ok(true, "rendez-vous : « Ouvrir » affiche le dossier du prospect"); await page.keyboard.press("Escape");
     await vue("offres");
     ok((await page.locator("#main").innerText()).includes("Aucune offre") && (await page.locator("#sales-offre option").count()) === 8, "offres : vue vide propre + filtre par statut");
@@ -195,6 +196,8 @@ const tab = async (page, id) => { await page.click(`#tabs button[data-id=${id}]`
     await page.selectOption("#sales-canal", "");
     await vue("prospects");
     ok((await page.locator("#main tbody tr").count()) === 3, "retour à la vue Prospects");
+    ok((await page.locator('#main tbody tr select[data-sales-stage] option[value=marche_gagne]').count())===3, "catalogue d'étapes : le closing et les statuts gagnés sont présents pour les trois prospects");
+    ok((await page.locator("#sales-owner").count())===1, "liste prospects : filtre par commercial disponible");
     console.log("▶ Commercial : suivi des relances");
     await vue("relances");
     ok((await page.locator("#main").innerText()).includes("Suivi des e-mails indisponible"), "table des e-mails absente : message clair, pas d'erreur");
