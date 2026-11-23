@@ -25,7 +25,7 @@ const PHASES = [
 const LABEL = Object.fromEntries(STAGES);
 const money = n => `${num(n)} FCFA`;
 const PAGE=50, MAX_ROWS=1000;   // affichage par pages de 50 ; la base est lue jusqu'à 1 000 prospects
-let prospects=[], products=[], offers=[], messages=[], mails=[], mailsErreur="", lectureReponses=null, operators=[], stageHistory=[], selected=null, filter={q:"",stage:"",owner:"",canal:"",offre:"",relance:""}, shown=PAGE, vue="prospects";
+let prospects=[], products=[], offers=[], messages=[], mails=[], mailsErreur="", lectureReponses=null, operators=[], selected=null, filter={q:"",stage:"",owner:"",canal:"",offre:"",relance:""}, shown=PAGE, vue="prospects";
 const VUES=[["pipeline","🧭 Pipeline"],["prospects","👥 Prospects"],["rdv","📅 Rendez-vous"],["offres","📄 Offres"],["conversations","💬 Conversations"],["relances","🔔 Relances"]];
 const RDV_STAGES=["rdv_propose","rdv_confirme","demo_realisee"];
 const CLOSED=["perdu","en_veille","marche_gagne","client_fidelise"];
@@ -43,8 +43,6 @@ export async function loadSales() {
     q(S.sb.from("ai_operators").select("user_id,nom,role").eq("actif",true).order("nom")),
   ]);
   prospects=p??[]; products=pr??[]; offers=o??[]; operators=ops??[];
-  try { stageHistory=(await q(S.sb.from("ai_stage_history").select("prospect_id,de,vers,par,at").order("at",{ascending:false}).limit(500)))??[]; }
-  catch { stageHistory=[]; }
 }
 /** E-mails envoyés depuis le CRM (Gmail) : base du suivi des relances. */
 export async function loadRelances() {
