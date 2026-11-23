@@ -1,5 +1,5 @@
 // Scénarios d'intégration : vrai PostgreSQL (triggers, contraintes, fonctions SQL) + faux Claude scripté.
-import { asPresident, assert, dropAll, eq, freshDb, mkAgent, mkTask, one, PRESIDENT, president, rows, val } from "./testkit.ts";
+import { asPresident, assert, dropAll, eq, freshDb, mkAgent, mkTask, one, PRESIDENT, president, rejects, rows, val } from "./testkit.ts";
 import { sql } from "./fake_supabase.ts";
 import { done, json, llm, reply, results, script, use, txt } from "./fake_anthropic.ts";
 import { flushOutbox } from "../_shared/outbox.ts";
@@ -431,6 +431,42 @@ T("T8 · secret du planificateur : lu dans le Vault (ai_cron_secret), repli sur 
     try { await cronSecret(); } catch (e) { msg = (e as Error).message; }
     assert(msg.includes("CRON_SECRET"), "ni Vault ni secret Edge : erreur explicite");
   } finally { Deno.env.set("CRON_SECRET", "secret"); resetCronSecretCache(); }
+});
+
+
+T("T9 · une mission mère ne se clôture pas avec des sous-missions ouvertes", async () => {
+  await freshDb();
+  await mkAgent("parent_guard", "Parent Guard", 2, "sanix_ai_general_director", ["assigner_mission", "attendre_sous_taches"]);
+  await mkAgent("child_guard", "Child Guard", 3, "parent_guard", []);
+  const parent = await mkTask("parent_guard", "Mission mère avec étapes");
+  const child = await mkTask("child_guard", "Étape enfant encore ouverte", { statut: "a_faire", parent, donneur: "parent_guard" });
+
+  const payload = {
+    statut: "terminee",
+    rapport: "Le travail principal semble terminé et le rapport est prêt à être transmis.",
+    resultats: ["Livrable principal préparé et contrôlé"],
+  };
+  script({ "Parent Guard": [() => reply([use("terminer_mission", payload)]), () => reply([use("terminer_mission", payload)])] });
+
+  eq(await runTask(parent, { deadline: Date.now() + 60000 }), "attente", "la clôture est différée");
+  eq(await val("select statut from ai_agent_tasks where id = $1", [parent]), "attente_sous_taches", "la mission mère reste en attente");
+  eq(await val("select statut from ai_agent_tasks where id = $1", [child]), "a_faire", "la sous-mission reste intacte");
+
+  await rejects(
+    () => sql("update ai_agent_tasks set statut = 'terminee', rapport = $2, resultats = $3::jsonb where id = $1",
+      [parent, payload.rapport, JSON.stringify(payload.resultats)]),
+    "sous-mission",
+    "le trigger SQL bloque aussi une clôture directe",
+  );
+
+  await sql("update ai_agent_tasks set statut = 'terminee', rapport = $2, resultats = $3::jsonb where id = $1",
+    [child, "Étape enfant terminée avec résultat vérifiable et rapport détaillé.", JSON.stringify(["Étape enfant réalisée"])]);
+  eq(await val("select statut from ai_agent_tasks where id = $1", [parent]), "a_faire", "le parent est relancé après la fin de l'enfant");
+  await sql("update ai_agent_tasks set statut = 'attente_sous_taches' where id = $1", [parent]);
+  eq(await val("select statut from ai_agent_tasks where id = $1", [parent]), "a_faire", "pas d'attente orpheline si les enfants sont déjà terminés");
+  await sql("update ai_agent_tasks set statut = 'en_cours', started_at = now(), executions = executions + 1 where id = $1", [parent]);
+  eq(await runTask(parent, { deadline: Date.now() + 60000 }), "terminee", "la mission mère peut se clôturer après ses sous-missions");
+  eq(await val("select statut from ai_agent_tasks where id = $1", [parent]), "terminee", "clôture finale enregistrée");
 });
 
 T("cleanup", async () => { await dropAll(); });
