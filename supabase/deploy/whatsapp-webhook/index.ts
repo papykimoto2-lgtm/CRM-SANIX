@@ -2873,7 +2873,7 @@ function validatePublicWebUrl(raw) {
 }
 async function firecrawlScrape(rawUrl) {
   const key = Deno.env.get("FIRECRAWL_API_KEY");
-  if (!key) throw new Error("Firecrawl non configur\xE9 : FIRECRAWL_API_KEY absente. Utilise web_fetch en solution de repli.");
+  if (!key) throw new Error("Firecrawl non configur\xE9 : FIRECRAWL_API_KEY absente. Aucune source ne peut \xEAtre valid\xE9e ; interromps la mission.");
   const url = validatePublicWebUrl(rawUrl);
   const response = await fetch("https://api.firecrawl.dev/v2/scrape", {
     method: "POST",
@@ -2884,9 +2884,9 @@ async function firecrawlScrape(rawUrl) {
   const raw = await response.text();
   if (!response.ok) {
     const detail = raw.slice(0, 500);
-    if (response.status === 402) throw new Error("Firecrawl : cr\xE9dits insuffisants ou facturation requise. Repli sur web_fetch.");
-    if (response.status === 429) throw new Error("Firecrawl : limite de d\xE9bit atteinte. Repli sur web_fetch.");
-    throw new Error(`Firecrawl HTTP ${response.status}. Repli sur web_fetch. ${detail}`);
+    if (response.status === 402) throw new Error("Firecrawl : cr\xE9dits insuffisants ou facturation requise. Source non v\xE9rifi\xE9e ; interromps la mission.");
+    if (response.status === 429) throw new Error("Firecrawl : limite de d\xE9bit atteinte. Source non v\xE9rifi\xE9e ; interromps la mission.");
+    throw new Error(`Firecrawl HTTP ${response.status}. Source non v\xE9rifi\xE9e ; ne cr\xE9e pas de prospect depuis cette page. ${detail}`);
   }
   let parsed;
   try {
@@ -2904,6 +2904,38 @@ async function firecrawlScrape(rawUrl) {
     markdown: markdown.slice(0, 12e3),
     credits_estimes: 1
   };
+}
+
+// functions/_shared/company/dependency_preflight.ts
+function diagnoseAgentDependencies(agent, readSecret = (name) => Deno.env.get(name) ?? "") {
+  const tools = new Set(agent.outils ?? []);
+  const checks = [];
+  const blockers = [];
+  const needsProspecting = tools.has("create_prospect");
+  const needsFirecrawl = needsProspecting || tools.has("firecrawl_scrape");
+  if (needsProspecting) {
+    for (const name of ["recherche_web", "firecrawl_scrape", "create_prospect"]) {
+      const present = tools.has(name);
+      checks.push({
+        dependency: `outil:${name}`,
+        status: present ? "present" : "missing",
+        detail: present ? "Outil attribu\xE9 \xE0 l'agent" : `Outil requis absent de la fiche de l'agent : ${name}`
+      });
+      if (!present) blockers.push(`Attribuer l'outil ${name} \xE0 l'agent`);
+    }
+  } else if (tools.has("firecrawl_scrape")) {
+    checks.push({ dependency: "outil:firecrawl_scrape", status: "present", detail: "Outil attribu\xE9 \xE0 l'agent" });
+  }
+  if (needsFirecrawl) {
+    const configured = !!readSecret("FIRECRAWL_API_KEY").trim();
+    checks.push({
+      dependency: "FIRECRAWL_API_KEY",
+      status: configured ? "configured_unverified" : "missing",
+      detail: configured ? "Secret pr\xE9sent ; validit\xE9 et cr\xE9dits non test\xE9s (aucun appel payant au pr\xE9contr\xF4le)" : "Secret absent des Edge Functions Supabase"
+    });
+    if (!configured) blockers.push("Configurer FIRECRAWL_API_KEY dans Supabase \u2192 Edge Functions \u2192 Secrets");
+  }
+  return { ready: blockers.length === 0, checks, blockers };
 }
 
 // functions/_shared/agent.ts
@@ -2969,6 +3001,25 @@ async function runAgent(run, brief) {
     created: 0,
     source: "web"
   };
+  if (run.mode === "mission") {
+    const preflight = diagnoseAgentDependencies({
+      outils: ["recherche_web", "firecrawl_scrape", "create_prospect"]
+    });
+    await audit({
+      agent: label,
+      action: "dependency_preflight",
+      mission_id: mid,
+      ok: preflight.ready,
+      payload: { status: preflight.ready ? "ready" : "blocked", checks: preflight.checks, blockers: preflight.blockers }
+    });
+    if (!preflight.ready) {
+      return {
+        resume: `Mission bloqu\xE9e avant appel IA : ${preflight.blockers.join(" ; ")}.`,
+        created: 0,
+        tours: 0
+      };
+    }
+  }
   const tools = TOOLSETS[run.mode].map((n) => crmTool(n, true));
   let firecrawlUses = 0;
   if (run.mode === "mission") {
@@ -2978,7 +3029,7 @@ async function runAgent(run, brief) {
       tools.push({
         type: "custom",
         name: "firecrawl_scrape",
-        description: "Lit une URL HTTPS publique d'entreprise avec Firecrawl et renvoie le contenu principal en Markdown. \xC0 utiliser apr\xE8s web_search pour v\xE9rifier une page officielle. Si l'outil \xE9choue, utilise web_fetch. Maximum 8 pages par mission.",
+        description: "Lit une URL HTTPS publique d'entreprise avec Firecrawl et renvoie le contenu principal en Markdown. \xC0 utiliser apr\xE8s web_search pour v\xE9rifier une page officielle. Firecrawl est obligatoire pour valider une source avant create_prospect. Maximum 8 pages par mission.",
         input_schema: { type: "object", properties: { url: { type: "string", description: "URL HTTPS publique de la page d'entreprise \xE0 lire" } }, required: ["url"], additionalProperties: false }
       });
     }
@@ -3015,7 +3066,7 @@ async function runAgent(run, brief) {
         try {
           if (u.name === "firecrawl_scrape") {
             if (run.mode !== "mission") throw new Error("Firecrawl r\xE9serv\xE9 aux missions Lead Hunter");
-            if (firecrawlUses >= 8) throw new Error("Plafond Firecrawl de 8 pages par mission atteint. Utilise web_fetch si n\xE9cessaire.");
+            if (firecrawlUses >= 8) throw new Error("Plafond Firecrawl de 8 pages par mission atteint : aucune autre source ne peut \xEAtre valid\xE9e dans cette mission.");
             firecrawlUses++;
             const out2 = await firecrawlScrape(u.input.url);
             (ctx.verifiedSourceUrls ??= /* @__PURE__ */ new Set()).add(out2.source_url);
@@ -4167,38 +4218,6 @@ async function openChildren(taskId) {
     db().from("ai_agent_meetings").select("id", { count: "exact", head: true }).eq("task_id", taskId).in("statut", ["planifiee", "en_cours"])
   ]);
   return (t.count ?? 0) + (m.count ?? 0) > 0;
-}
-
-// functions/_shared/company/dependency_preflight.ts
-function diagnoseAgentDependencies(agent, readSecret = (name) => Deno.env.get(name) ?? "") {
-  const tools = new Set(agent.outils ?? []);
-  const checks = [];
-  const blockers = [];
-  const needsProspecting = tools.has("create_prospect");
-  const needsFirecrawl = needsProspecting || tools.has("firecrawl_scrape");
-  if (needsProspecting) {
-    for (const name of ["recherche_web", "firecrawl_scrape", "create_prospect"]) {
-      const present = tools.has(name);
-      checks.push({
-        dependency: `outil:${name}`,
-        status: present ? "present" : "missing",
-        detail: present ? "Outil attribu\xE9 \xE0 l'agent" : `Outil requis absent de la fiche de l'agent : ${name}`
-      });
-      if (!present) blockers.push(`Attribuer l'outil ${name} \xE0 l'agent`);
-    }
-  } else if (tools.has("firecrawl_scrape")) {
-    checks.push({ dependency: "outil:firecrawl_scrape", status: "present", detail: "Outil attribu\xE9 \xE0 l'agent" });
-  }
-  if (needsFirecrawl) {
-    const configured = !!readSecret("FIRECRAWL_API_KEY").trim();
-    checks.push({
-      dependency: "FIRECRAWL_API_KEY",
-      status: configured ? "configured_unverified" : "missing",
-      detail: configured ? "Secret pr\xE9sent ; validit\xE9 et cr\xE9dits non test\xE9s (aucun appel payant au pr\xE9contr\xF4le)" : "Secret absent des Edge Functions Supabase"
-    });
-    if (!configured) blockers.push("Configurer FIRECRAWL_API_KEY dans Supabase \u2192 Edge Functions \u2192 Secrets");
-  }
-  return { ready: blockers.length === 0, checks, blockers };
 }
 
 // functions/_shared/company/engine.ts

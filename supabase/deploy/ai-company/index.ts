@@ -2936,7 +2936,7 @@ function validatePublicWebUrl(raw) {
 }
 async function firecrawlScrape(rawUrl) {
   const key = Deno.env.get("FIRECRAWL_API_KEY");
-  if (!key) throw new Error("Firecrawl non configur\xE9 : FIRECRAWL_API_KEY absente. Utilise web_fetch en solution de repli.");
+  if (!key) throw new Error("Firecrawl non configur\xE9 : FIRECRAWL_API_KEY absente. Aucune source ne peut \xEAtre valid\xE9e ; interromps la mission.");
   const url = validatePublicWebUrl(rawUrl);
   const response = await fetch("https://api.firecrawl.dev/v2/scrape", {
     method: "POST",
@@ -2947,9 +2947,9 @@ async function firecrawlScrape(rawUrl) {
   const raw = await response.text();
   if (!response.ok) {
     const detail = raw.slice(0, 500);
-    if (response.status === 402) throw new Error("Firecrawl : cr\xE9dits insuffisants ou facturation requise. Repli sur web_fetch.");
-    if (response.status === 429) throw new Error("Firecrawl : limite de d\xE9bit atteinte. Repli sur web_fetch.");
-    throw new Error(`Firecrawl HTTP ${response.status}. Repli sur web_fetch. ${detail}`);
+    if (response.status === 402) throw new Error("Firecrawl : cr\xE9dits insuffisants ou facturation requise. Source non v\xE9rifi\xE9e ; interromps la mission.");
+    if (response.status === 429) throw new Error("Firecrawl : limite de d\xE9bit atteinte. Source non v\xE9rifi\xE9e ; interromps la mission.");
+    throw new Error(`Firecrawl HTTP ${response.status}. Source non v\xE9rifi\xE9e ; ne cr\xE9e pas de prospect depuis cette page. ${detail}`);
   }
   let parsed;
   try {

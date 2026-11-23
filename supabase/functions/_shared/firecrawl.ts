@@ -39,7 +39,7 @@ export function validatePublicWebUrl(raw: unknown): URL {
 
 export async function firecrawlScrape(rawUrl: unknown): Promise<ScrapeOutput> {
   const key = Deno.env.get("FIRECRAWL_API_KEY");
-  if (!key) throw new Error("Firecrawl non configuré : FIRECRAWL_API_KEY absente. Utilise web_fetch en solution de repli.");
+  if (!key) throw new Error("Firecrawl non configuré : FIRECRAWL_API_KEY absente. Aucune source ne peut être validée ; interromps la mission.");
   const url = validatePublicWebUrl(rawUrl);
   const response = await fetch("https://api.firecrawl.dev/v2/scrape", {
     method: "POST",
@@ -50,9 +50,9 @@ export async function firecrawlScrape(rawUrl: unknown): Promise<ScrapeOutput> {
   const raw = await response.text();
   if (!response.ok) {
     const detail = raw.slice(0, 500);
-    if (response.status === 402) throw new Error("Firecrawl : crédits insuffisants ou facturation requise. Repli sur web_fetch.");
-    if (response.status === 429) throw new Error("Firecrawl : limite de débit atteinte. Repli sur web_fetch.");
-    throw new Error(`Firecrawl HTTP ${response.status}. Repli sur web_fetch. ${detail}`);
+    if (response.status === 402) throw new Error("Firecrawl : crédits insuffisants ou facturation requise. Source non vérifiée ; interromps la mission.");
+    if (response.status === 429) throw new Error("Firecrawl : limite de débit atteinte. Source non vérifiée ; interromps la mission.");
+    throw new Error(`Firecrawl HTTP ${response.status}. Source non vérifiée ; ne crée pas de prospect depuis cette page. ${detail}`);
   }
   let parsed: FirecrawlResult;
   try { parsed = JSON.parse(raw) as FirecrawlResult; } catch { throw new Error("Firecrawl : réponse JSON illisible. Repli sur web_fetch."); }

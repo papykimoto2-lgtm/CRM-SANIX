@@ -12,10 +12,12 @@ on:
       - ".github/workflows/validate-firecrawl.yml"
   push:
     branches:
+      - main
       - feature/firecrawl-scrape-lead-hunter
       - fix/firecrawl-hunter-catalog
       - fix/firecrawl-hunter-page-cap
       - improvement/agent-dependency-preflight
+      - improvement/unify-lead-hunter-preflight
 
 permissions:
   contents: write
@@ -43,6 +45,9 @@ jobs:
       - name: Test Firecrawl URL validation
         run: deno test supabase/functions/_shared/firecrawl_test.ts
 
+      - name: Test preflight du Lead Hunter V1
+        run: deno test supabase/functions/_shared/company/dependency_preflight_test.ts
+
 
       - name: Regenerate deployment bundles
         run: sh supabase/build_functions.sh
@@ -53,7 +58,7 @@ jobs:
           grep -q "firecrawl_scrape" supabase/deploy/ai-company/index.ts
 
       - name: Commit generated deployment bundles to the working branch
-        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        if: github.event_name == 'push'
         env:
           PR_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |

@@ -9,6 +9,7 @@ import { v1System } from "./prompts.ts";
 import { loadPortfolio } from "./catalogue.ts";
 import { activityFor, Presence, publishActivity } from "./company/presence.ts";
 import { firecrawlScrape } from "./firecrawl.ts";
+import { diagnoseAgentDependencies } from "./company/dependency_preflight.ts";
 
 export type RunMode =
   | { mode: "conversation"; prospect_id: string }   // message entrant (WhatsApp / e-mail)
@@ -56,6 +57,25 @@ export async function runAgent(run: RunMode, brief: string): Promise<{ resume: s
     createCap, created: 0, source: "web",
   };
 
+  // Le Lead Hunter V1 applique le même précontrôle sans coût que les agents V2.
+  // La présence du secret est vérifiée ici ; sa validité/crédits ne sont testés qu'au premier scrape réel.
+  if (run.mode === "mission") {
+    const preflight = diagnoseAgentDependencies({
+      outils: ["recherche_web", "firecrawl_scrape", "create_prospect"],
+    });
+    await audit({
+      agent: label, action: "dependency_preflight", mission_id: mid, ok: preflight.ready,
+      payload: { status: preflight.ready ? "ready" : "blocked", checks: preflight.checks, blockers: preflight.blockers },
+    });
+    if (!preflight.ready) {
+      return {
+        resume: `Mission bloquée avant appel IA : ${preflight.blockers.join(" ; ")}.`,
+        created: 0,
+        tours: 0,
+      };
+    }
+  }
+
   // v1 : jeux d'outils réduits → garantie de schéma stricte possible (limites API respectées).
   const tools: Anthropic.Beta.BetaToolUnion[] = TOOLSETS[run.mode].map((n) => crmTool(n, true));
   let firecrawlUses = 0;
@@ -66,7 +86,7 @@ export async function runAgent(run: RunMode, brief: string): Promise<{ resume: s
       tools.push({
         type: "custom",
         name: "firecrawl_scrape",
-        description: "Lit une URL HTTPS publique d'entreprise avec Firecrawl et renvoie le contenu principal en Markdown. À utiliser après web_search pour vérifier une page officielle. Si l'outil échoue, utilise web_fetch. Maximum 8 pages par mission.",
+        description: "Lit une URL HTTPS publique d'entreprise avec Firecrawl et renvoie le contenu principal en Markdown. À utiliser après web_search pour vérifier une page officielle. Firecrawl est obligatoire pour valider une source avant create_prospect. Maximum 8 pages par mission.",
         input_schema: { type: "object", properties: { url: { type: "string", description: "URL HTTPS publique de la page d'entreprise à lire" } }, required: ["url"], additionalProperties: false },
       } as Anthropic.Beta.BetaTool);
     }
@@ -96,7 +116,7 @@ export async function runAgent(run: RunMode, brief: string): Promise<{ resume: s
       try {
         if (u.name === "firecrawl_scrape") {
           if (run.mode !== "mission") throw new Error("Firecrawl réservé aux missions Lead Hunter");
-          if (firecrawlUses >= 8) throw new Error("Plafond Firecrawl de 8 pages par mission atteint. Utilise web_fetch si nécessaire.");
+          if (firecrawlUses >= 8) throw new Error("Plafond Firecrawl de 8 pages par mission atteint : aucune autre source ne peut être validée dans cette mission.");
           firecrawlUses++;
           const out = await firecrawlScrape((u.input as Record<string, unknown>).url);
           (ctx.verifiedSourceUrls ??= new Set<string>()).add(out.source_url);
