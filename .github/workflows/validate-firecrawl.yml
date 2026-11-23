@@ -43,6 +43,9 @@ jobs:
       - name: Test Firecrawl URL validation
         run: deno test supabase/functions/_shared/firecrawl_test.ts
 
+      - name: Test preflight du Lead Hunter V1
+        run: deno test supabase/functions/_shared/company/dependency_preflight_test.ts
+
 
       - name: Regenerate deployment bundles
         run: sh supabase/build_functions.sh
