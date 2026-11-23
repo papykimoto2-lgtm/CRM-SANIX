@@ -384,7 +384,7 @@ export async function changeSalesOwner(el) {
 export async function changeSalesStage(el) {
   const p=prospects.find(x=>x.id===el.dataset.id);if(!p)return;
   const stage=el.value;
-  if(["contrat_signe","paiement_attendu","paiement_confirme","marche_gagne","deploiement","client_fidelise"].includes(stage)){toast("Cette étape doit être confirmée par la direction ou le processus contractuel.","bad");el.value=p.stage;return;}
+  if(["contrat_signe","paiement_attendu","paiement_confirme","marche_gagne","deploiement","client_fidelise"].includes(stage)&&!canAssign()){toast("Cette étape est réservée à la direction et au processus contractuel.","bad");el.value=p.stage;return;}
   try{
     const {error}=await S.sb.from("ai_prospects").update({stage}).eq("id",p.id);
     if(error)throw error;
