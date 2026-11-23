@@ -32,8 +32,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Type-check prospect and Firecrawl modules
-        run: deno check supabase/functions/_shared/crm_tools.ts supabase/functions/_shared/firecrawl.ts
+      - name: Type-check Firecrawl module
+        run: deno check supabase/functions/_shared/firecrawl.ts
 
       - name: Test Firecrawl URL validation
         run: deno test supabase/functions/_shared/firecrawl_test.ts
