@@ -9,6 +9,14 @@ on:
       - "supabase/functions/tests/**"
       - "supabase/migrations/**"
       - ".github/workflows/test-company-engine.yml"
+  push:
+    branches:
+      - fix/parent-task-completion-guard
+    paths:
+      - "supabase/functions/_shared/**"
+      - "supabase/functions/tests/**"
+      - "supabase/migrations/**"
+      - ".github/workflows/test-company-engine.yml"
   workflow_dispatch:
 
 permissions:
