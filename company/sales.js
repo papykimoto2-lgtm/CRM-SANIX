@@ -46,9 +46,12 @@ export async function loadSales() {
   // Les commandes sont la source CRM des encaissements ; les paramètres de pilotage viennent de la configuration CRM.
   crmOrdersError="";
   try {
-    const rows=(await q(S.sb.from("crm_records").select("entity,rid,data,updated_at").in("entity",["commandes","config"]).is("deleted_at",null).order("updated_at",{ascending:false}).limit(3001)))??[];
-    crmOrders=rows.filter(r=>r.entity==="commandes");
-    crmConfig=rows.find(r=>r.entity==="config")?.data??null;
+    const [orders,config]=await Promise.all([
+      q(S.sb.from("crm_records").select("rid,data,updated_at").eq("entity","commandes").is("deleted_at",null).order("updated_at",{ascending:false}).limit(3000)),
+      q(S.sb.from("crm_records").select("data").eq("entity","config").is("deleted_at",null).limit(1)),
+    ]);
+    crmOrders=orders??[];
+    crmConfig=config?.[0]?.data??null;
   } catch(e) {
     crmOrders=[]; crmConfig=null; crmOrdersError=e.message;
     console.warn("Pilotage commercial : données CRM indisponibles",e.message);
