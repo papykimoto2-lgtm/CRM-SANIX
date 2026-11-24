@@ -478,3 +478,22 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .relations-camera button{width:32px;min-width:32px;height:32px;padding:0;border:1px solid rgba(168,139,250,.45);border-radius:7px;background:rgba(168,139,250,.1);color:#E9D5FF;font:700 16px var(--font);cursor:pointer}
 .relations-camera button:hover{background:rgba(168,139,250,.22);border-color:#C4B5FD}
 @media(max-width:640px){.relations-camera{padding-left:0;border-left:0}.relations-camera button{width:29px;min-width:29px;height:30px}}
+
+/* V17 — poste de consultation du prospect depuis le réseau relationnel. */
+.prospect-workbench-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.prospect-workbench-head h2{margin:0 0 4px}
+#prospect-detail-close{flex:none;width:27px;height:27px;border:1px solid var(--line);border-radius:7px;background:#101d34;color:var(--tx);font-size:18px;cursor:pointer}
+.prospect-workbench-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:12px}
+.prospect-workbench-grid>div,.prospect-workbench-products{display:flex;flex-direction:column;gap:3px;padding:8px;border:1px solid var(--line);border-radius:8px;background:rgba(7,19,39,.48);min-width:0}
+.prospect-workbench-grid small,.prospect-workbench-products small{font-size:9px;color:var(--mute)}
+.prospect-workbench-grid b,.prospect-workbench-products b{font-size:11px;overflow-wrap:anywhere}
+.prospect-workbench-contact{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0}
+.prospect-workbench-contact a{font-size:10px;color:#93C5FD;text-decoration:none;border:1px solid rgba(59,130,246,.35);border-radius:7px;padding:6px 8px}
+.prospect-workbench-section{margin-top:12px}
+.prospect-workbench-section h3{margin:0 0 7px;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#B9C8E4}
+.prospect-history{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.prospect-history li{display:flex;flex-direction:column;gap:3px;padding:7px 8px;border-left:2px solid #8B5CF6;background:rgba(7,19,39,.5);border-radius:0 7px 7px 0;min-width:0}
+.prospect-history li b{font-size:10px;text-transform:capitalize}
+.prospect-history li small,.prospect-history li span{font-size:9px;color:var(--mute);overflow-wrap:anywhere}
+.prospect-workbench-note{font-size:9px;line-height:1.4;color:var(--mute);margin:10px 0 0}
+@media(max-width:640px){.prospect-workbench-grid{gap:5px}.prospect-workbench-grid>div{padding:6px}}
