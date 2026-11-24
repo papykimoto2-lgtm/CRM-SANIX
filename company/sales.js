@@ -455,7 +455,7 @@ async function openProspect(id) {
     <h4>Produits recommandés</h4><p>${(p.produits_recommandes??[]).map(productName).join(", ")||"Non déterminés"}</p>
     <h4>Résumé IA</h4><div class="pv">${p.resume_ia||"Aucun résumé disponible."}</div>
     <h4>Offres</h4>${os.length?html`<div class="scroll"><table class="tbl"><thead><tr><th>Référence</th><th>Montant TTC</th><th>Statut</th></tr></thead><tbody>${os.map(o=>html`<tr><td>${o.reference}</td><td>${money(o.total_ttc)}</td><td>${o.statut}</td></tr>`)}</tbody></table></div>`:html`<p class="muted">Aucune offre créée.</p>`}
-    <h4>Historique des échanges · Gmail, WhatsApp et agents IA</h4>${exchanges.length?exchanges.map(m=>html`<div class="card" style="margin:6px 0"><div class="small muted">${m.channel} · ${m.sens} · ${m.author||"—"} · ${fmtDT(m.at)} · ${m.status||"—"}</div>${m.subject?html`<b>${m.subject}</b>`:""}<div class="pv">${String(m.body??"Contenu non disponible").slice(0,4000)}</div></div>`):html`<p class="muted">Aucun échange enregistré.</p>`});
+    <h4>Historique des échanges · Gmail, WhatsApp et agents IA</h4>${exchanges.length?exchanges.map(m=>html`<div class="card" style="margin:6px 0"><div class="small muted">${m.channel} · ${m.sens} · ${m.author||"—"} · ${fmtDT(m.at)} · ${m.status||"—"}</div>${m.subject?html`<b>${m.subject}</b>`:""}<div class="pv">${String(m.body??"Contenu non disponible").slice(0,4000)}</div></div>`):html`<p class="muted">Aucun échange enregistré.</p>`}`);
   $("#sales-next-form").onsubmit=async e=>{
     e.preventDefault();const rawValue=new FormData(e.currentTarget).get("next_action_at");
     const next_action_at=rawValue?new Date(rawValue).toISOString():null;
