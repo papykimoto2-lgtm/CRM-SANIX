@@ -66,8 +66,10 @@ export function createProspectRelations(canvas, api) {
       const [agentId,prospectId]=key.split("|"),from=byOwner.get(agentId),to=nodeByProspect.get(prospectId);
       if(from&&to)edges.push({from,to,color:prospectColor(to.data),activity:a,kind:"activity"});
     }
-    const activityLinked=new Set(edges.map(e=>e.to.id));
-    for(const n of prospectNodes){if(n.owner&&!activityLinked.has(n.id))edges.push({from:n.owner,to:n,color:prospectColor(n.data),kind:"assignment"});}
+    const activityPairsSet=new Set([...activityPairs.keys()]);
+    for(const n of prospectNodes){
+      if(n.owner&&!activityPairsSet.has(n.owner.id+"|"+n.id)) edges.push({from:n.owner,to:n,color:prospectColor(n.data),kind:"assignment"});
+    }
     state.nodes=[...agentNodes,...prospectNodes];state.edges=edges;api.onFilterCount?.(filteredProspects.length,state.totalProspects);
   }
   function update(data){
