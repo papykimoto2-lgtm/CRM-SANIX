@@ -521,3 +521,7 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .relations-legend-dot.assignment{width:16px;height:0;border-top:2px dotted var(--legend-color);background:none;box-shadow:none}
 .relations-legend-dot.agent{width:9px;height:9px}
 @media(max-width:640px){.relations-legend{left:7px;right:52px;bottom:7px;max-width:none;max-height:84px;padding:6px;gap:5px}.relations-legend-item{font-size:8px}}
+
+
+/* Jarvis — poignée de déplacement tactile et souris. */
+#jarvis .jv-drag{flex:none;cursor:grab;touch-action:none;font-size:19px;letter-spacing:-3px;color:var(--cy);user-select:none}#jarvis .jv-drag.dragging{cursor:grabbing;background:rgba(34,211,238,.18);border-color:var(--cy)}#jarvis{touch-action:pan-y}#jarvis .jv-drag{touch-action:none}
