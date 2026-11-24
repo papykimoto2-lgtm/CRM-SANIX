@@ -29,7 +29,7 @@ export function createProspectRelations(canvas, api) {
       const productOk = !state.filters.product || productValues.some(v => norm(v) === norm(state.filters.product) || norm(v).includes(norm(state.filters.product)));
       const haystack = [p.entreprise,p.ville,p.telephone,p.email].map(norm).join(" ");
       const prospectOk = !state.filters.prospect || haystack.includes(norm(state.filters.prospect));
-      const agentOk = !state.filters.agent || String(p.owner_id || "") === state.filters.agent || state.activities.some(a => String(a.agent_id || "") === state.filters.agent && String(a.prospect_id || "") === String(p.id));
+      const agentOk = !state.filters.agent || [p.owner_id, p.agent_id].some(id => String(id || "") === state.filters.agent) || state.activities.some(a => String(a.agent_id || "") === state.filters.agent && String(a.prospect_id || "") === String(p.id));
       return productOk && prospectOk && agentOk;
     });
     const byAgent=new Map(left.map(a=>[String(a.id),a]));
