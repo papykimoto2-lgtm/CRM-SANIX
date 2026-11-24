@@ -457,3 +457,8 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .orb[data-mic-state="requesting"]{outline:2px solid rgba(251,191,36,.7);outline-offset:3px}
 @keyframes micPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(.82)}}
 @media(max-width:640px){.mic-state{font-size:8px;margin-top:2px}.jv-mid{gap:1px}}
+
+/* V14 — réseau relationnel vivant agents ↔ prospects, données CRM réelles. */
+#relations-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;background:#06101F;cursor:pointer}
+#ctl button[data-c="relations"]{font-size:20px;color:#A78BFA}
+#ctl button[data-c="relations"].on{border-color:#A78BFA;color:#E9D5FF;box-shadow:0 0 14px rgba(168,85,247,.38)}
