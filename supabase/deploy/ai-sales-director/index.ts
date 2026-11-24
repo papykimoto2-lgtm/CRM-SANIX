@@ -1690,6 +1690,21 @@ Deno.serve(async (req) => {
       )));
     }
     const op = await requireOperator(req);
+    if (body.action === "assistant_prospect") {
+      const prompt = str(body.prompt, 9e3);
+      if (!prompt) throw new HttpError(400, "Prompt de g\xE9n\xE9ration manquant");
+      const { message } = await callClaude({
+        label: "sales_assistant",
+        system: "Tu es l\u2019assistant commercial SANIX AFRICA. Tu aides les commerciaux \xE0 analyser un prospect et \xE0 pr\xE9parer des contenus de vente B2B adapt\xE9s au march\xE9 ivoirien. R\xE9ponds en fran\xE7ais, de fa\xE7on pr\xE9cise, concr\xE8te et directement exploitable. N\u2019invente jamais de faits sur l\u2019entreprise, ses besoins, ses outils ou ses \xE9changes. Distingue les hypoth\xE8ses des informations confirm\xE9es. Ne pr\xE9tends jamais qu\u2019un message a \xE9t\xE9 envoy\xE9, qu\u2019un appel a eu lieu ou qu\u2019une action a \xE9t\xE9 ex\xE9cut\xE9e. Tu peux r\xE9diger un brouillon, mais aucun contact externe ne doit \xEAtre d\xE9clench\xE9.",
+        messages: [{ role: "user", content: prompt }],
+        model: "claude-sonnet-5-5",
+        effort: "low",
+        maxTokens: 1200
+      });
+      const text = textOf(message);
+      if (!text) throw new Error("Le service IA n\u2019a retourn\xE9 aucun contenu");
+      return json(req, { text }, 200);
+    }
     if (body.action === "mission") {
       const titre = str(body.titre, 150), consigne = str(body.consigne, 2e3);
       const secteur = str(body.secteur, 80), ville = str(body.ville, 80) || "Abidjan";
