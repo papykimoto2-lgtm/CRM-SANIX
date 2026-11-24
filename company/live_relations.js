@@ -164,7 +164,24 @@ export function createProspectRelations(canvas, api) {
   }
   const screenPoint=ev=>{const r=canvas.getBoundingClientRect();return{x:ev.clientX-r.left,y:ev.clientY-r.top};};
   const worldPoint=p=>({x:(p.x-state.width/2-state.camera.x)/state.camera.scale+state.width/2,y:(p.y-state.height/2-state.camera.y)/state.camera.scale+state.height/2});
-  const hitAt=p=>{const q=worldPoint(p);return [...state.nodes].reverse().find(n=>Math.hypot(n.x-q.x,n.y-q.y)<Math.max(15,n.r+8));};
+  const hitAt=p=>{
+    const q=worldPoint(p);
+    return [...state.nodes].reverse().find(n=>{
+      const radius=Math.max(15,n.r+8);
+      if(Math.hypot(n.x-q.x,n.y-q.y)<=radius)return true;
+      // Le libellé visible fait partie de la cible : l'utilisateur ne doit pas
+      // devoir viser le petit cercle lumineux au pixel près.
+      const data=n.data||{};
+      const name=String(n.kind==="agent"?(data.nom||data.code||"Agent"):(data.entreprise||"Prospect"));
+      ctx.save();
+      ctx.font=n.kind==="agent"?"600 10px system-ui":"9px system-ui";
+      const width=ctx.measureText(name.length>23?name.slice(0,22)+"…":name).width;
+      ctx.restore();
+      const left=n.x+(n.kind==="agent"?12:9), top=n.y-7;
+      const right=left+Math.max(24,width), bottom=n.y+9;
+      return q.x>=left&&q.x<=right&&q.y>=top&&q.y<=bottom;
+    });
+  };
   const edgeAt=p=>{const q=worldPoint(p);let best=null,dist=Infinity;for(const e of state.edges){let prev={x:e.from.x,y:e.from.y};for(let i=1;i<=28;i++){const t=i/28,u=1-t,x=u*u*u*e.from.x+3*u*u*t*state.width*.34+3*u*t*t*state.width*.38+t*t*t*e.to.x,y=u*u*u*e.from.y+3*u*u*t*e.from.y+3*u*t*t*e.to.y+t*t*t*e.to.y,dx=x-prev.x,dy=y-prev.y,len=dx*dx+dy*dy||1,k=Math.max(0,Math.min(1,((q.x-prev.x)*dx+(q.y-prev.y)*dy)/len)),d=Math.hypot(q.x-(prev.x+k*dx),q.y-(prev.y+k*dy));if(d<dist){dist=d;best=e;}prev={x,y};}}return dist<10?best:null;};
   const zoomAt=(factor,p={x:state.width/2,y:state.height/2})=>{const before=worldPoint(p);state.camera.scale=Math.max(.55,Math.min(2.8,state.camera.scale*factor));const after=worldPoint(p);state.camera.x+=(after.x-before.x)*state.camera.scale;state.camera.y+=(after.y-before.y)*state.camera.scale;};
   const resetCamera=()=>{state.camera={x:0,y:0,scale:1};};
