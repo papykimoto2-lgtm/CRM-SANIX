@@ -543,3 +543,10 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .prospect-workbench-contact a{overflow-wrap:anywhere}
 #detail:has(.prospect-workbench-section){max-height:none;overflow:visible}
 @media(max-width:640px){.prospect-data-grid{grid-template-columns:1fr 1fr}.prospect-data-field{padding:6px}.prospect-data-field b{font-size:10px}}
+
+/* Fiche prospect — édition des données commerciales et de la relance. */
+.prospect-edit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:9px 0}
+.prospect-edit-grid label{display:flex;flex-direction:column;gap:4px;min-width:0;color:var(--mute);font-size:10px}
+.prospect-edit-grid input,.prospect-edit-grid select{width:100%;min-width:0;box-sizing:border-box;padding:8px;border:1px solid var(--line);border-radius:7px;background:rgba(7,19,39,.85);color:var(--tx);font:inherit;font-size:11px}
+.prospect-edit-grid .prospect-edit-full{grid-column:1/-1}
+@media(max-width:520px){.prospect-edit-grid{grid-template-columns:1fr}.prospect-edit-grid .prospect-edit-full{grid-column:auto}}
