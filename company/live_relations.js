@@ -15,7 +15,7 @@ export function createProspectRelations(canvas, api) {
     const s=norm(value);
     if(!s) return "#64748B";
     let hash=0;for(let i=0;i<s.length;i++)hash=(hash*31+s.charCodeAt(i))|0;
-    const hue=Math.abs(hash)%360,s=0.82,l=0.64,k=n=>(n+hue/30)%12,a=s*Math.min(l,1-l);
+    const hue=Math.abs(hash)%360,sat=0.82,l=0.64,k=n=>(n+hue/30)%12,a=sat*Math.min(l,1-l);
     const f=n=>Math.round(255*(l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1)))));
     return "#"+[f(0),f(8),f(4)].map(v=>v.toString(16).padStart(2,"0")).join("");
   };
