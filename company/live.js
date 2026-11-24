@@ -788,6 +788,25 @@ function renderDetail() {
     const historyLoading = !!historyState?.loading;
     const historyHasMore = historyState ? historyState.hasMore : false;
     const tasks = prospectTasks.slice(0, 8);
+    // Cartographie des intervenants à partir des traces réellement chargées.
+    const involvedAgents = new Map();
+    const addInvolved = (id, kind, at) => {
+      if (!id) return;
+      const key = String(id), row = involvedAgents.get(key) || { id:key, interactions:0, missions:0, delegations:0, latest:null };
+      if (kind === "interaction") row.interactions++;
+      if (kind === "mission") row.missions++;
+      if (kind === "delegation") row.delegations++;
+      if (at && (!row.latest || Date.parse(at) > Date.parse(row.latest))) row.latest = at;
+      involvedAgents.set(key,row);
+    };
+    addInvolved(p.agent_id,"responsable",p.updated_at);
+    history.forEach(r => addInvolved(r.agent_id,"interaction",r.at));
+    prospectTasks.forEach(t => { addInvolved(t.agent_id,"mission",t.updated_at || t.created_at); addInvolved(t.donneur_agent_id,"delegation",t.updated_at || t.created_at); });
+    const collaborationRows = [...involvedAgents.values()].map(row => {
+      const agent = agentById(row.id);
+      return `<div class="mis" style="margin-top:6px"><b>${esc(agent?.nom || "Agent non chargé")}</b><small>${row.interactions} interaction(s) · ${row.missions} mission(s) · ${row.delegations} délégation(s) · dernière trace : ${row.latest ? esc(ago(row.latest)) : "non datée"}</small></div>`;
+    }).join("");
+    const handoffRows = prospectTasks.filter(t => t.donneur_agent_id && t.agent_id && String(t.donneur_agent_id) !== String(t.agent_id)).slice(0,6).map(t => `<li><b>${esc(clip(t.titre || "Mission transmise",72))}</b><small>${esc(agentById(t.donneur_agent_id)?.nom || "Émetteur non chargé")} → ${esc(agentById(t.agent_id)?.nom || "Destinataire non chargé")} · ${esc(TASK_L[t.statut] || t.statut || "Statut inconnu")} · ${esc(ago(t.updated_at || t.created_at))}</small></li>`).join("");
     const products = Array.isArray(p.produits_recommandes) ? p.produits_recommandes : (p.produits_recommandes ? [p.produits_recommandes] : []);
     const contact = p.telephone ? `<a href="tel:${esc(p.telephone)}">Appeler ${esc(p.telephone)}</a>` : "";
     const email = p.email ? `<a href="mailto:${esc(p.email)}">Écrire par e-mail</a>` : "";
@@ -821,6 +840,7 @@ function renderDetail() {
         <label>Compte rendu<textarea name="note" maxlength="4000" minlength="3" rows="4" required placeholder="Résultat de l'échange, besoin exprimé, objections, prochaine étape…"></textarea></label>
         <button type="submit" class="prospect-assign-submit">Enregistrer dans l'historique</button><small class="prospect-assign-status" id="prospect-note-status" aria-live="polite"></small>
       </form><p class="prospect-workbench-note">L'interaction est horodatée et rattachée à l'utilisateur connecté. Aucun message n'est envoyé au prospect.</p></section>
+      <section class="prospect-workbench-section"><h3>Équipe impliquée et collaboration</h3>${collaborationRows || '<div class="muted">Aucun intervenant identifié dans les traces actuellement chargées.</div>'}<small class="muted">Synthèse calculée à partir des interactions chargées et des missions mises à jour sur les 7 derniers jours.</small>${handoffRows ? `<h4 style="margin:10px 0 5px">Transmissions de missions</h4><ul class="prospect-history">${handoffRows}</ul>` : ""}</section>
       <section class="prospect-workbench-section"><h3>Missions liées à ce prospect</h3>${tasks.length ? tasks.map((t) => `<div class="mis" style="--c:${TASK_C[t.statut]};margin-top:6px"><b>${esc(clip(t.titre, 80))}</b><small>${esc(agentById(t.agent_id)?.nom || "Agent inconnu")} · ${esc(TASK_L[t.statut] || t.statut)} · P${esc(t.priorite)}</small></div>`).join("") : '<div class="muted">Aucune mission liée à ce prospect.</div>'}</section>
       <section class="prospect-workbench-section"><button type="button" class="prospect-assign-toggle" id="prospect-edit-toggle">✎ Modifier la fiche et programmer une relance</button><form id="prospect-edit-form" class="prospect-assign-form" hidden>
         <div class="prospect-edit-grid">
