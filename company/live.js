@@ -844,6 +844,7 @@ function initControls() {
   $("#relations-product").addEventListener("change", updateRelationFilters);
   $("#relations-prospect").addEventListener("input", updateRelationFilters);
   $("#relations-reset").addEventListener("click", () => { $("#relations-product").value = ""; $("#relations-prospect").value = ""; updateRelationFilters(); });
+  $("#relations-filters").addEventListener("click", (ev) => { const b=ev.target.closest("[data-rel-camera]");if(!b||!relationsView)return;const action=b.dataset.relCamera;if(action==="in")relationsView.zoom(1.22);else if(action==="out")relationsView.zoom(.82);else if(action==="reset")relationsView.reset(); });
   $("#ctl").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-c]"); if (!b) return; const c = b.dataset.c;
     if (c === "relations") {
       relationsMode = !relationsMode; b.classList.toggle("on", relationsMode);

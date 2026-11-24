@@ -470,3 +470,11 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .relations-filters button{height:32px;padding:5px 10px;border:1px solid rgba(168,139,250,.45);border-radius:7px;background:rgba(168,139,250,.1);color:#E9D5FF;font:600 10px var(--font);cursor:pointer}
 .relations-filters small{align-self:center;margin-left:auto;color:var(--mute);font-size:10px}
 @media(max-width:640px){.relations-filters{left:8px;right:52px;top:8px;gap:5px;padding:7px}.relations-filters label{flex:1;min-width:0}.relations-filters select,.relations-filters input{min-width:0;width:100%;max-width:none}.relations-filters small{width:100%;margin:0}}
+
+/* V16 — navigation tactile du réseau relationnel. */
+#relations-canvas{touch-action:none;cursor:grab}
+#relations-canvas.dragging{cursor:grabbing}
+.relations-camera{display:flex;align-items:center;gap:4px;padding-left:5px;border-left:1px solid rgba(168,139,250,.3)}
+.relations-camera button{width:32px;min-width:32px;height:32px;padding:0;border:1px solid rgba(168,139,250,.45);border-radius:7px;background:rgba(168,139,250,.1);color:#E9D5FF;font:700 16px var(--font);cursor:pointer}
+.relations-camera button:hover{background:rgba(168,139,250,.22);border-color:#C4B5FD}
+@media(max-width:640px){.relations-camera{padding-left:0;border-left:0}.relations-camera button{width:29px;min-width:29px;height:30px}}
