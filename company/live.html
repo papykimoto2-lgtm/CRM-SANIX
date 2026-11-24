@@ -31,6 +31,12 @@
         <div class="workflow-steps" id="workflow-steps" aria-live="polite"></div>
       </section>
       <div id="stage3d"></div>
+      <div id="relations-filters" class="relations-filters" hidden aria-label="Filtres du réseau relationnel">
+        <label>Logiciel<select id="relations-product"><option value="">Tous les logiciels</option></select></label>
+        <label>Prospect<input id="relations-prospect" type="search" placeholder="Rechercher un prospect…"></label>
+        <button id="relations-reset" type="button">Réinitialiser</button>
+        <small id="relations-filter-count" aria-live="polite"></small>
+      </div>
       <canvas id="relations-canvas" aria-label="Relations vérifiées entre agents commerciaux et prospects" hidden></canvas>
       <canvas id="net" aria-label="Réseau des agents : un point lumineux par agent, animé quand il travaille"></canvas>
       <div class="ctl" id="ctl" role="toolbar" aria-label="Caméra">
