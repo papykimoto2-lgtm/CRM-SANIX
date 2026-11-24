@@ -17,7 +17,7 @@ const ORIGIN = location.origin;
 const STATES = { run: ["Au travail", "#22D3EE"], wait: ["Coordonne ses équipes", "#A855F7"], valid: ["Attend une validation", "#F59E0B"], bad: ["Mission bloquée", "#EF4444"], queue: ["Mission en attente", "#64748B"], idle: ["Disponible", "#3B5A94"], off: ["Suspendu", "#475569"] };
 const TASK_C = { en_cours: "#22D3EE", attente_sous_taches: "#A855F7", attente_validation: "#F59E0B", a_faire: "#64748B", bloquee: "#EF4444", echouee: "#EF4444", terminee: "#22C55E" };
 const TASK_L = { en_cours: "En cours", attente_sous_taches: "Attend ses équipes", attente_validation: "À valider", a_faire: "À faire", bloquee: "Bloquée", echouee: "Échouée", terminee: "Terminée", annulee: "Annulée" };
-const D = { agents: [], depts: [], tasks: [], tasks90: null, orderRows: null, execRows: null, execConfig: null, products: null, productAliases: null, actions: [], relationRows: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, costCenter90: null, salesRows: null, offerRows: null, whatsapp: null, gov: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0 };
+const D = { agents: [], depts: [], tasks: [], tasks90: null, orderRows: null, execRows: null, execConfig: null, products: null, productAliases: null, actions: [], relationRows: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, costCenter90: null, salesRows: null, offerRows: null, whatsapp: null, gov: null, prospectHistory: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0 };
 let sb = null;
 
 // ───────── Configuration et session ─────────
@@ -761,7 +761,10 @@ function renderDetail() {
   if (D.prospectSel) {
     const p = D.prospectSel, prospectTasks = D.tasks.filter((t) => String(t.prospect_id || "") === String(p.id)).sort((a,b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0));
     const assigned = agentById(p.agent_id) || agentById(prospectTasks[0]?.agent_id);
-    const history = D.relationRows.filter((r) => String(r.prospect_id) === String(p.id)).slice(0, 20);
+    const historyState = D.prospectHistory?.prospectId === String(p.id) ? D.prospectHistory : null;
+    const history = historyState?.rows ?? D.relationRows.filter((r) => String(r.prospect_id) === String(p.id)).slice(0, 20);
+    const historyLoading = !!historyState?.loading;
+    const historyHasMore = historyState ? historyState.hasMore : false;
     const tasks = prospectTasks.slice(0, 8);
     const products = Array.isArray(p.produits_recommandes) ? p.produits_recommandes : (p.produits_recommandes ? [p.produits_recommandes] : []);
     const contact = p.telephone ? `<a href="tel:${esc(p.telephone)}">Appeler ${esc(p.telephone)}</a>` : "";
@@ -790,7 +793,7 @@ function renderDetail() {
       <section class="prospect-workbench-section"><h3>Décideur et coordonnées</h3><div class="prospect-data-grid">${field("Décideur",p.decideur)}${field("Fonction",p.decideur_fonction)}${field("Téléphone",p.telephone)}${field("WhatsApp",p.whatsapp)}${field("E-mail",p.email)}${field("Statut e-mail",p.email_statut)}${field("Vérifié le",fmtDate(p.email_verifie_at))}</div><div class="prospect-workbench-contact">${p.telephone ? `<a href="tel:${esc(p.telephone)}">☎ Appeler ${esc(p.telephone)}</a>` : ""}${p.whatsapp ? `<a href="https://wa.me/${esc(String(p.whatsapp).replace(/[^\d]/g,""))}" target="_blank" rel="noopener">WhatsApp</a>` : ""}${p.email ? `<a href="mailto:${esc(p.email)}">✉ Écrire</a>` : ""}</div></section>
       <section class="prospect-workbench-section"><h3>Qualification et potentiel</h3><div class="prospect-data-grid">${field("Budget estimé",fmtMoney(p.budget_estime))}${field("Priorité",p.priorite)}${field("Besoins exprimés",needs)}${field("Segment",p.segment)}${field("Score / 100",p.score)}${field("Prochaine action",next)}${field("Relances sans réponse",p.relances_sans_reponse ?? 0)}</div>${p.score_justification ? `<div class="prospect-explanation"><small>Justification du score</small>${esc(p.score_justification)}</div>` : ""}${criteria.length ? `<div class="prospect-criteria">${criteria.map(([k,v])=>`<span>${esc(k)} : <b>${esc(v)}/5</b></span>`).join("")}</div>` : ""}</section>
       <section class="prospect-workbench-section"><h3>Origine et suivi</h3><div class="prospect-data-grid">${field("Source",p.source)}${field("Créé le",fmtDate(p.created_at))}${field("Mis à jour le",fmtDate(p.updated_at))}${field("Dernier entrant",fmtDate(p.last_inbound_at))}${field("Dernier sortant",fmtDate(p.last_outbound_at))}${field("Opposition",p.opt_out ? "Oui" : "Non")}${field("Date opposition",fmtDate(p.opt_out_at))}</div>${sourceUrl}</section>
-      <section class="prospect-workbench-section"><h3>Activité commerciale récente</h3><ul class="prospect-history">${activityRows}</ul></section>
+      <section class="prospect-workbench-section"><h3>Historique commercial (${historyState ? history.length + (historyHasMore ? "+" : "") : "20 dernières activités chargées"})</h3><ul class="prospect-history">${activityRows}</ul>${historyLoading ? '<small class="muted">Chargement de l’historique…</small>' : historyHasMore ? '<button type="button" class="prospect-assign-toggle" id="prospect-history-more">Charger les 100 interactions précédentes</button>' : historyState ? '<small class="muted">Fin de l’historique disponible.</small>' : '<small class="muted">Historique complet en cours de chargement.</small>'}</section>
       <section class="prospect-workbench-section"><h3>Ajouter une interaction</h3><form id="prospect-note-form" class="prospect-assign-form">
         <label>Type d'interaction<select name="type"><option value="note">Note commerciale</option><option value="appel">Appel téléphonique</option><option value="rendez_vous">Rendez-vous</option><option value="email">E-mail</option><option value="whatsapp">WhatsApp</option><option value="visite">Visite terrain</option><option value="demo">Démonstration</option></select></label>
         <label>Compte rendu<textarea name="note" maxlength="4000" minlength="3" rows="4" required placeholder="Résultat de l'échange, besoin exprimé, objections, prochaine étape…"></textarea></label>
@@ -826,7 +829,34 @@ function renderDetail() {
         <button type="submit" class="prospect-assign-submit">Confier la mission</button><small class="prospect-assign-status" id="prospect-assign-status" aria-live="polite"></small>
       </form></section>
       <p class="prospect-workbench-note">La création passe par le contrôle d'accès de la direction. La mission est enregistrée dans le moteur SANIX AI ; aucune relance ou communication externe n'est envoyée automatiquement.</p>`;
-    $("#prospect-detail-close")?.addEventListener("click", () => { D.prospectSel = null; el.hidden = true; });
+    $("#prospect-detail-close")?.addEventListener("click", () => { D.prospectSel = null; D.prospectHistory = null; el.hidden = true; });
+    if (!historyState) {
+      D.prospectHistory = { prospectId: String(p.id), rows: [], loading: true, hasMore: true };
+      sb.from("ai_actions").select("id,action,agent_id,task_id,prospect_id,payload,ok,at")
+        .eq("prospect_id", p.id).order("at", { ascending: false }).range(0, 99)
+        .then(({ data, error }) => {
+          if (String(D.prospectSel?.id || "") !== String(p.id)) return;
+          D.prospectHistory = error
+            ? { prospectId: String(p.id), rows: D.relationRows.filter(r => String(r.prospect_id) === String(p.id)).slice(0,20), loading: false, hasMore: false, error: true }
+            : { prospectId: String(p.id), rows: data || [], loading: false, hasMore: (data || []).length === 100 };
+          renderDetail();
+        });
+    }
+    $("#prospect-history-more")?.addEventListener("click", async (ev) => {
+      const btn = ev.currentTarget, state = D.prospectHistory;
+      if (!state || state.loading || !state.hasMore || state.prospectId !== String(p.id)) return;
+      state.loading = true; btn.disabled = true; btn.textContent = "Chargement…";
+      const start = state.rows.length;
+      const { data, error } = await sb.from("ai_actions").select("id,action,agent_id,task_id,prospect_id,payload,ok,at")
+        .eq("prospect_id", p.id).order("at", { ascending: false }).range(start, start + 99);
+      if (error) {
+        state.loading = false; btn.disabled = false; btn.textContent = "Réessayer le chargement";
+        conn("bad", "Chargement de l’historique impossible"); return;
+      }
+      state.rows = state.rows.concat(data || []);
+      state.loading = false; state.hasMore = (data || []).length === 100;
+      renderDetail();
+    });
     $("#prospect-edit-toggle")?.addEventListener("click", () => { const form = $("#prospect-edit-form"); form.hidden = !form.hidden; });
     $("#prospect-edit-form")?.addEventListener("submit", async (ev) => {
       ev.preventDefault();
@@ -871,6 +901,7 @@ function renderDetail() {
         if (error) throw error;
         if (!data?.ok) throw new Error("L'interaction n'a pas été enregistrée.");
         conn("ok", "Interaction ajoutée à l'historique");
+        D.prospectHistory = null;
         await cycle();
         D.prospectSel = (D.salesRows || []).find(x => String(x.id) === String(p.id)) || D.prospectSel;
         renderDetail();
