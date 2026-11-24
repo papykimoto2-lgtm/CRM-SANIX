@@ -567,3 +567,10 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .crm-followup-row small,.crm-followup-row em{font-size:10px;color:#94a3b8;font-style:normal}
 .crm-followup-row em{text-align:right;flex:0 0 auto;max-width:46%;overflow-wrap:anywhere}
 @media(max-width:520px){.crm-followup-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.crm-followup-row{align-items:flex-start;flex-direction:column;gap:4px}.crm-followup-row em{max-width:100%;text-align:left}}
+
+
+/* Retour vers le réseau depuis la fiche prospect ouverte dans la salle neuronale. */
+.prospect-workbench-head-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.prospect-network-back{border:1px solid rgba(56,189,248,.35);background:rgba(14,165,233,.10);color:inherit;border-radius:8px;padding:6px 9px;font:inherit;font-size:11px;cursor:pointer;white-space:nowrap}
+.prospect-network-back:hover{background:rgba(14,165,233,.2)}
+@media(max-width:600px){.prospect-workbench-head-actions{flex-wrap:wrap;justify-content:flex-end}.prospect-network-back{font-size:10px;padding:6px 7px}}
