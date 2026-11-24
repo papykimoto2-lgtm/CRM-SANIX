@@ -51,7 +51,7 @@ async function pull() {
     safe(sb.from("ai_approvals").select("id", { count: "exact", head: true }).eq("statut", "en_attente"), null),
     safe(sb.rpc("ai_budget_status"), null),
     safe(sb.from("ai_governance").select("actif,communication_externe").eq("id", 1).maybeSingle(), null),
-    safe(sb.from("ai_prospects").select("id,entreprise,ville,telephone,email,stage,potentiel_fcfa,score,next_action_at,opt_out,owner_id").limit(1500), null),
+    safe(sb.from("ai_prospects").select("id,entreprise,ville,telephone,email,stage,potentiel_fcfa,score,next_action_at,opt_out,owner_id,produits_recommandes").limit(1500), null),
     safe(sb.from("ai_offers").select("id,total_ttc,statut,created_at").order("created_at", { ascending: false }).limit(500), null),
     safe(sb.rpc("ai_cost_center", { p_days: 30 }), null),
     safe(sb.functions.invoke("crm-whatsapp", { body: { action: "status" } }), null),
@@ -815,6 +815,18 @@ $("#missions").addEventListener("click", (ev) => { const m = ev.target.closest("
 
 // ───────── Vue 3D (repli 2D si WebGL indisponible ou ?2d) ─────────
 let view3d = null, relationsView = null, relationsMode = false;
+const relationFilters = { product: "", prospect: "" };
+function renderRelationProductOptions() {
+  const select = $("#relations-product"), current = select.value;
+  const products = (D.products || []).filter(p => p.actif !== false).slice().sort((a,b) => String(a.nom).localeCompare(String(b.nom), "fr"));
+  select.innerHTML = '<option value="">Tous les logiciels</option>' + products.map(p => `<option value="${esc(p.nom)}">${esc(p.nom)}</option>`).join("");
+  select.value = products.some(p => p.nom === current) ? current : relationFilters.product;
+}
+function updateRelationFilters() {
+  relationFilters.product = $("#relations-product").value;
+  relationFilters.prospect = $("#relations-prospect").value.trim();
+  relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], filters: relationFilters });
+}
 const relationsCanvas = $("#relations-canvas");
 const api3d = {
   get D() { return D; }, STATES, clip, agentState, deptColor, onSelect: (id) => { D.sel = id; renderDetail(); },
@@ -829,11 +841,14 @@ async function init3d() {
   catch (e) { console.warn("Vue 3D indisponible, repli sur la vue 2D :", e.message); view3d = null; $("#ctl").hidden = true; $("#hint").hidden = true; }
 }
 function initControls() {
+  $("#relations-product").addEventListener("change", updateRelationFilters);
+  $("#relations-prospect").addEventListener("input", updateRelationFilters);
+  $("#relations-reset").addEventListener("click", () => { $("#relations-product").value = ""; $("#relations-prospect").value = ""; updateRelationFilters(); });
   $("#ctl").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-c]"); if (!b) return; const c = b.dataset.c;
     if (c === "relations") {
       relationsMode = !relationsMode; b.classList.toggle("on", relationsMode);
-      $("#stage3d").hidden = relationsMode; cv.hidden = relationsMode || !!view3d; relationsCanvas.hidden = !relationsMode;
-      if (relationsMode) { relationsView ??= createProspectRelations(relationsCanvas, api3d); relationsView.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [] }); relationsView.resize(); }
+      $("#stage3d").hidden = relationsMode; cv.hidden = relationsMode || !!view3d; relationsCanvas.hidden = !relationsMode; $("#relations-filters").hidden = !relationsMode;
+      if (relationsMode) { renderRelationProductOptions(); relationsView ??= createProspectRelations(relationsCanvas, { ...api3d, onFilterCount: (n, total) => { $("#relations-filter-count").textContent = n + " / " + total + " prospects"; } }); relationsView.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], filters: relationFilters }); relationsView.resize(); }
       else view3d?.resize();
       return;
     }
@@ -851,7 +866,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); if (relationsMode) relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [] }); renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); if (relationsMode) { renderRelationProductOptions(); relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], filters: relationFilters }); } renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
