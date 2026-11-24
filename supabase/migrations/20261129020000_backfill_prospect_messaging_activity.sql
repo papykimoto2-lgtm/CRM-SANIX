@@ -11,7 +11,7 @@ with mail_candidates as (
   where m.status <> 'echec'
 ),
 mail_unique as (
-  select message_id, min(prospect_id) as prospect_id,
+  select message_id, (array_agg(prospect_id))[1] as prospect_id,
          max(sent_at) as last_outbound_at, max(replied_at) as last_inbound_at
   from mail_candidates
   group by message_id
@@ -32,7 +32,7 @@ wa_out_candidates as (
   where w.status <> 'echec'
 ),
 wa_out_unique as (
-  select message_id, min(prospect_id) as prospect_id, max(sent_at) as last_outbound_at
+  select message_id, (array_agg(prospect_id))[1] as prospect_id, max(sent_at) as last_outbound_at
   from wa_out_candidates
   group by message_id
   having count(distinct prospect_id) = 1
@@ -51,7 +51,7 @@ wa_in_candidates as (
     or (i.from_phone is not null and p.phone_norm = i.from_phone)
 ),
 wa_in_unique as (
-  select message_id, min(prospect_id) as prospect_id, max(received_at) as last_inbound_at
+  select message_id, (array_agg(prospect_id))[1] as prospect_id, max(received_at) as last_inbound_at
   from wa_in_candidates
   group by message_id
   having count(distinct prospect_id) = 1
@@ -78,7 +78,7 @@ optout_candidates as (
   join public.ai_prospects p on p.phone_norm = o.phone
 ),
 optout_unique as (
-  select phone, min(prospect_id) as prospect_id, max(since) as opt_out_at
+  select phone, (array_agg(prospect_id))[1] as prospect_id, max(since) as opt_out_at
   from optout_candidates
   group by phone
   having count(distinct prospect_id) = 1
