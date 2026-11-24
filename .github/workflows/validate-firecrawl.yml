@@ -9,6 +9,8 @@ on:
       - "supabase/functions/**"
       - "supabase/deploy/**"
       - "supabase/build_functions.sh"
+      - "tests/gmail_test.js"
+      - "tests/wacrm_test.js"
       - ".github/workflows/validate-firecrawl.yml"
   push:
     branches:
@@ -48,6 +50,10 @@ jobs:
       - name: Test preflight du Lead Hunter V1
         run: deno test supabase/functions/_shared/company/dependency_preflight_test.ts
 
+      - name: Tests d'intégration Gmail et WhatsApp CRM
+        run: |
+          node --experimental-strip-types tests/gmail_test.js
+          node --experimental-strip-types tests/wacrm_test.js
 
       - name: Regenerate deployment bundles
         run: sh supabase/build_functions.sh
