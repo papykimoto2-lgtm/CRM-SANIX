@@ -703,6 +703,23 @@ function renderTicker() {
 function renderLegend() { $("#legend").innerHTML = Object.entries(STATES).map(([, [l, c]]) => `<span><i style="background:${c};box-shadow:0 0 8px ${c}"></i>${l}</span>`).join(""); }
 function renderDetail() {
   const el = $("#detail"), a = agentById(D.sel);
+  if (D.relationSel) {
+    const r = D.relationSel, p = r.prospect, ag = r.agent;
+    const acts = D.relationRows.filter(x => String(x.agent_id) === String(ag.id) && String(x.prospect_id) === String(p.id));
+    const tasks = D.tasks.filter(x => String(x.agent_id) === String(ag.id) && String(x.prospect_id) === String(p.id));
+    const latest = acts[0], status = r.kind === "activity" ? "Interaction réelle" : r.kind === "mission" ? "Mission affectée" : "Affectation commerciale";
+    el.hidden = false;
+    el.innerHTML = `<h2>Relation sélectionnée <span class="tag">${esc(status)}</span></h2>
+      <div class="mis"><b>${esc(ag.nom || "Agent")}</b><small>Agent commercial</small></div>
+      <div class="muted" style="text-align:center;padding:4px">↕ relation avec</div>
+      <div class="mis"><b>${esc(p.entreprise || "Prospect")}</b><small>${esc(p.ville || "Localisation non renseignée")} · ${esc(p.stage || "nouveau")}</small></div>
+      <div class="muted" style="font-size:11px;margin-top:7px">${acts.length} interaction(s) · ${tasks.length} mission(s) · Score ${Number.isFinite(Number(p.score)) ? esc(p.score) : "n/d"} · Potentiel ${Number(p.potentiel_fcfa)>0 ? new Intl.NumberFormat("fr-FR").format(Number(p.potentiel_fcfa))+" FCFA" : "non renseigné"}</div>
+      ${latest ? `<div class="muted" style="font-size:11px;margin-top:5px">Dernière interaction : ${esc(latest.action || "événement")} · ${esc(ago(latest.at))}</div>` : ""}
+      ${tasks.length ? `<div class="muted" style="font-size:11px;margin-top:5px">Missions : ${tasks.slice(0,3).map(t=>esc(t.titre)+" ("+esc(TASK_L[t.statut]||t.statut)+")").join(" · ")}</div>` : ""}
+      <button type="button" class="btn" id="relation-jarvis" style="margin-top:8px;width:100%">Faire analyser par Jarvis</button>`;
+    $("#relation-jarvis")?.addEventListener("click",()=>window.__jarvis?.explainRelation?.(r));
+    return;
+  }
   if (D.prospectSel) {
     const p = D.prospectSel, prospectTasks = D.tasks.filter((t) => String(t.prospect_id || "") === String(p.id)).sort((a,b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0));
     const assigned = agentById(p.agent_id) || agentById(prospectTasks[0]?.agent_id);
@@ -888,8 +905,9 @@ function updateRelationFilters() {
 const relationsCanvas = $("#relations-canvas");
 const api3d = {
   get D() { return D; }, STATES, clip, agentState, deptColor, onSelect: (id) => { D.sel = id; renderDetail(); },
-  onProspect: (p) => { D.sel = null; D.prospectSel = p; renderDetail(); },
-  onAgent: (a) => { D.prospectSel = null; D.sel = a.id; renderDetail(); },
+  onProspect: (p) => { D.relationSel = null; D.sel = null; D.prospectSel = p; renderDetail(); },
+  onAgent: (a) => { D.relationSel = null; D.prospectSel = null; D.sel = a.id; renderDetail(); },
+  onRelation: (r) => { D.relationSel = r; if (r) { D.sel = r.agent.id; D.prospectSel = r.prospect; renderDetail(); window.__jarvis?.explainRelation?.(r); } else { D.relationSel = null; } },
   onHover: (h) => { if (!h) { tip.hidden = true; return; } const n = h.n, cur = D.tasks.find((t) => t.agent_id === n.id && t.statut === "en_cours") ?? D.tasks.find((t) => t.agent_id === n.id && OPENS.includes(t.statut));
     tip.innerHTML = `<b>${esc(n.a.nom)}</b><span class="muted">${esc(n.a.fonction ?? "")}</span><br><span class="tag" style="--c:${STATES[n.st][1]}">${esc(STATES[n.st][0])}</span>${cur ? `<br>${esc(clip(cur.titre, 90))}` : ""}`; tip.hidden = false; tip.style.left = Math.min(W - 290, h.x + 14) + "px"; tip.style.top = Math.max(6, h.y - 10) + "px"; },
 };
