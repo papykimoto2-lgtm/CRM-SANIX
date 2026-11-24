@@ -107,7 +107,7 @@ export function createProspectRelations(canvas, api) {
       if(n.kind==="prospect"){ctx.font="8px system-ui";ctx.fillStyle=color;ctx.fillText(label(p.stage),n.x+9,n.y+13);}
     }
     ctx.restore();ctx.globalAlpha=1;
-    const total=state.nodes.filter(n=>n.kind==="prospect").length,linked=new Set(state.edges.map(e=>e.to.id)).size,activityEdges=state.edges.filter(e=>e.kind==="activity").length;
+    const prospectNodes=state.nodes.filter(n=>n.kind==="prospect"),total=prospectNodes.length,linked=new Set(state.edges.map(e=>e.to.id)).size,activityEdges=state.edges.filter(e=>e.kind==="activity").length,assigned=prospectNodes.filter(n=>n.owner).length;
     const noAgent=state.activities.filter(a=>a.prospect_id&&!a.agent_id).length;
     const productLegend=[...new Set(state.nodes.filter(n=>n.kind==="prospect").map(n=>productOf(n.data)).filter(Boolean))].slice(0,7);
     if(productLegend.length){
