@@ -56,7 +56,7 @@ export const store: Store = {
     const p = rows[0];
     await db().from("ai_prospects").update({ last_outbound_at: at, ...(["identifie", "enregistre", "qualifie"].includes(p.stage) ? { stage: "premier_contact" } : {}) }).eq("id", p.id);
   },
-  async syncProspectInbound(clientRid, phone, at) {
+  async syncProspectInbound(clientRid, phone, at, optOut = false) {
     let rows = [];
     if (clientRid) {
       const r = await db().from("ai_prospects").select("id,stage").eq("crm_rid", clientRid).limit(2);
@@ -68,7 +68,7 @@ export const store: Store = {
     }
     if (rows.length !== 1) return;
     const p = rows[0];
-    await db().from("ai_prospects").update({ last_inbound_at: at, relances_sans_reponse: 0, ...(p.stage === "premier_contact" ? { stage: "conversation" } : {}) }).eq("id", p.id);
+    await db().from("ai_prospects").update({ last_inbound_at: at, relances_sans_reponse: 0, ...(optOut ? { opt_out: true, opt_out_at: at } : p.stage === "premier_contact" ? { stage: "conversation" } : {}) }).eq("id", p.id);
   },
   async addInteraction(clientRid, interaction) {
     // Jamais de création de fiche : on n'écrit que sur une fiche cliente qui existe déjà.
