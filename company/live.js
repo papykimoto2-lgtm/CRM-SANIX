@@ -17,7 +17,7 @@ const ORIGIN = location.origin;
 const STATES = { run: ["Au travail", "#22D3EE"], wait: ["Coordonne ses équipes", "#A855F7"], valid: ["Attend une validation", "#F59E0B"], bad: ["Mission bloquée", "#EF4444"], queue: ["Mission en attente", "#64748B"], idle: ["Disponible", "#3B5A94"], off: ["Suspendu", "#475569"] };
 const TASK_C = { en_cours: "#22D3EE", attente_sous_taches: "#A855F7", attente_validation: "#F59E0B", a_faire: "#64748B", bloquee: "#EF4444", echouee: "#EF4444", terminee: "#22C55E" };
 const TASK_L = { en_cours: "En cours", attente_sous_taches: "Attend ses équipes", attente_validation: "À valider", a_faire: "À faire", bloquee: "Bloquée", echouee: "Échouée", terminee: "Terminée", annulee: "Annulée" };
-const D = { agents: [], depts: [], tasks: [], tasks90: null, orderRows: null, execRows: null, execConfig: null, products: null, productAliases: null, actions: [], relationRows: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, costCenter90: null, salesRows: null, offerRows: null, whatsapp: null, gov: null, prospectHistory: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0 };
+const D = { agents: [], depts: [], tasks: [], tasks90: null, orderRows: null, execRows: null, execConfig: null, products: null, productAliases: null, actions: [], relationRows: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, costCenter90: null, salesRows: null, offerRows: null, whatsapp: null, gov: null, prospectHistory: null, prospectNetworkOrigin: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0 };
 let sb = null;
 
 // ───────── Configuration et session ─────────
@@ -260,7 +260,7 @@ function renderBusiness() {
   el.querySelectorAll("[data-crm-prospect]").forEach(btn => btn.addEventListener("click", () => {
     const p = D.salesRows.find(x => String(x.id) === btn.dataset.crmProspect);
     if (!p) return;
-    D.prospectSel = p; D.sel = null; renderDetail();
+    D.prospectSel = p; D.prospectNetworkOrigin = null; D.sel = null; renderDetail();
     $("#detail")?.scrollIntoView?.({behavior:"smooth",block:"nearest"});
   }));
 }
@@ -757,7 +757,7 @@ function renderDetail() {
       <button type="button" class="btn" id="relation-open-prospect" style="margin-top:8px;width:100%">Ouvrir la fiche complète du prospect</button>
       <button type="button" class="btn" id="relation-jarvis" style="margin-top:6px;width:100%">Faire analyser par Jarvis</button>`;
     $("#relation-open-prospect")?.addEventListener("click", () => {
-      D.relationSel = null; D.sel = null; D.prospectSel = p; D.prospectHistory = null;
+      D.prospectNetworkOrigin = { relation: r }; D.relationSel = null; D.sel = null; D.prospectSel = p; D.prospectHistory = null;
       renderDetail();
       el.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
     });
@@ -791,7 +791,7 @@ function renderDetail() {
       return `<li><b>${esc(String(r.action || "activité").replace(/_/g, " "))}</b><small>${esc(who)} · ${esc(ago(r.at))} · ${r.ok === false ? "Échec" : "Enregistré"}</small><span>${esc(summary)}</span></li>`;
     }).join("") : "<li>Aucune activité reliée à ce prospect dans les 500 derniers événements chargés.</li>";
     el.hidden = false;
-    el.innerHTML = `<div class="prospect-workbench-head"><div><h2>${esc(p.entreprise || "Prospect")} <span class="tag">Prospect</span></h2><div class="muted">${esc(p.ville || "Localisation non renseignée")} · ${esc(p.stage || "nouveau")}</div></div><button type="button" id="prospect-detail-close" aria-label="Fermer la fiche">×</button></div>
+    el.innerHTML = `<div class="prospect-workbench-head"><div><h2>${esc(p.entreprise || "Prospect")} <span class="tag">Prospect</span></h2><div class="muted">${esc(p.ville || "Localisation non renseignée")} · ${esc(p.stage || "nouveau")}</div></div><div class="prospect-workbench-head-actions">${D.prospectNetworkOrigin ? '<button type="button" id="prospect-back-network" class="prospect-network-back">← Retour au réseau</button>' : ""}<button type="button" id="prospect-detail-close" aria-label="Fermer la fiche">×</button></div></div>
       <div class="prospect-workbench-grid"><div><small>Agent responsable</small><b>${esc(assigned?.nom || "Non affecté")}</b></div><div><small>Score CRM</small><b>${p.score != null && Number.isFinite(Number(p.score)) ? esc(p.score) : "Non renseigné"}</b></div><div><small>Potentiel</small><b>${p.potentiel_fcfa != null && Number.isFinite(Number(p.potentiel_fcfa)) ? esc(Number(p.potentiel_fcfa).toLocaleString("fr-FR") + " FCFA") : "Non renseigné"}</b></div><div><small>Prochaine action</small><b>${esc(next)}</b></div></div>
       <div class="prospect-workbench-contact">${contact}${email}</div>
       <div class="prospect-workbench-products"><small>Logiciel(s)</small><b>${esc(products.filter(Boolean).join(" · ") || "Non renseigné")}</b></div>
@@ -835,7 +835,14 @@ function renderDetail() {
         <button type="submit" class="prospect-assign-submit">Confier la mission</button><small class="prospect-assign-status" id="prospect-assign-status" aria-live="polite"></small>
       </form></section>
       <p class="prospect-workbench-note">La création passe par le contrôle d'accès de la direction. La mission est enregistrée dans le moteur SANIX AI ; aucune relance ou communication externe n'est envoyée automatiquement.</p>`;
-    $("#prospect-detail-close")?.addEventListener("click", () => { D.prospectSel = null; D.prospectHistory = null; el.hidden = true; });
+    $("#prospect-detail-close")?.addEventListener("click", () => { D.prospectSel = null; D.prospectHistory = null; D.prospectNetworkOrigin = null; el.hidden = true; });
+    $("#prospect-back-network")?.addEventListener("click", () => {
+      const origin = D.prospectNetworkOrigin;
+      D.prospectSel = null; D.prospectHistory = null; D.prospectNetworkOrigin = null;
+      if (origin?.relation) { D.relationSel = origin.relation; D.sel = origin.relation.agent?.id || null; renderDetail(); }
+      else { D.relationSel = null; D.sel = null; el.hidden = true; }
+      $("#relations-canvas")?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    });
     if (!historyState) {
       D.prospectHistory = { prospectId: String(p.id), rows: [], loading: true, hasMore: true };
       sb.from("ai_actions").select("id,action,agent_id,task_id,prospect_id,payload,ok,at")
@@ -1073,10 +1080,10 @@ function updateRelationFilters() {
 const relationsCanvas = $("#relations-canvas");
 const api3d = {
   get D() { return D; }, STATES, clip, agentState, deptColor, onSelect: (id) => { D.sel = id; renderDetail(); },
-  onProspect: (p) => { D.relationSel = null; D.sel = null; D.prospectSel = p; renderDetail(); },
+  onProspect: (p) => { D.relationSel = null; D.sel = null; D.prospectNetworkOrigin = { relation: null }; D.prospectSel = p; renderDetail(); },
   onAgent: (a) => { D.relationSel = null; D.prospectSel = null; D.sel = a.id; renderDetail(); },
-  onRelation: (r) => { D.relationSel = r; if (r) { D.sel = r.agent.id; D.prospectSel = r.prospect; renderDetail(); window.__jarvis?.explainRelation?.(r); } else { D.relationSel = null; } },
-  onClearSelection: () => { D.relationSel = null; D.prospectSel = null; D.sel = null; $("#detail").hidden = true; renderDetail(); },
+  onRelation: (r) => { D.relationSel = r; if (r) { D.sel = r.agent.id; D.prospectNetworkOrigin = { relation: r }; D.prospectSel = r.prospect; renderDetail(); window.__jarvis?.explainRelation?.(r); } else { D.relationSel = null; } },
+  onClearSelection: () => { D.relationSel = null; D.prospectSel = null; D.prospectNetworkOrigin = null; D.sel = null; $("#detail").hidden = true; renderDetail(); },
   onLegend: (items) => { const el=$("#relations-legend"); if(!el)return; el.innerHTML=items.map(item=>`<span class="relations-legend-item"><i class="relations-legend-dot ${esc(item.type)}" style="--legend-color:${esc(item.color)}"></i><b>${esc(item.label)}</b>${item.count!=null?`<small>${item.count}</small>`:""}</span>`).join(""); },
   onHover: (h) => { if (!h) { tip.hidden = true; return; } const n = h.n, cur = D.tasks.find((t) => t.agent_id === n.id && t.statut === "en_cours") ?? D.tasks.find((t) => t.agent_id === n.id && OPENS.includes(t.statut));
     tip.innerHTML = `<b>${esc(n.a.nom)}</b><span class="muted">${esc(n.a.fonction ?? "")}</span><br><span class="tag" style="--c:${STATES[n.st][1]}">${esc(STATES[n.st][0])}</span>${cur ? `<br>${esc(clip(cur.titre, 90))}` : ""}`; tip.hidden = false; tip.style.left = Math.min(W - 290, h.x + 14) + "px"; tip.style.top = Math.max(6, h.y - 10) + "px"; },
