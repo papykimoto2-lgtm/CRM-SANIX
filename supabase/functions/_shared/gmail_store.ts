@@ -56,7 +56,7 @@ export const store: Store = {
     const { data } = m.client_rid ? await q.eq("crm_rid", m.client_rid).limit(1) : await q.ilike("email", m.to_email.replace(/[\\%_]/g, "\\$&")).limit(1);
     const p = data?.[0]; if (!p) return;
     const quand = m.replied_at ?? new Date().toISOString();
-    await db().from("ai_prospects").update({ last_inbound_at: quand, relances_sans_reponse: 0, email_statut: "verifiee", email_verifie_at: quand, email_verif_detail: "Le prospect a répondu depuis cette adresse", ...(p.stage === "premier_contact" ? { stage: "conversation" } : {}) }).eq("id", p.id);   // une réponse arrête les relances ; aucune étape ultérieure n'est rétrogradée
+    await db().from("ai_prospects").update({ last_inbound_at: quand, relances_sans_reponse: 0, email_statut: "verifiee", email_verifie_at: quand, email_verif_detail: "Le prospect a répondu depuis cette adresse", ...(p.stage === "premier_contact" && !p.opt_out && !(textes && textes.some((t) => estDesinscription(t))) ? { stage: "conversation" } : {}) }).eq("id", p.id);   // une réponse arrête les relances ; aucune étape ultérieure n'est rétrogradée
     if (textes && !p.opt_out && textes.some((t) => estDesinscription(t))) {
       await db().from("ai_prospects").update({ opt_out: true, opt_out_at: new Date().toISOString() }).eq("id", p.id);
       await db().from("ai_actions").insert({ agent: "gmail", action: "desinscription_stop", prospect_id: p.id, ok: true, payload: { canal: "email" } });
