@@ -31,11 +31,12 @@
         <div class="workflow-steps" id="workflow-steps" aria-live="polite"></div>
       </section>
       <div id="stage3d"></div>
+      <canvas id="relations-canvas" aria-label="Relations vérifiées entre agents commerciaux et prospects" hidden></canvas>
       <canvas id="net" aria-label="Réseau des agents : un point lumineux par agent, animé quand il travaille"></canvas>
       <div class="ctl" id="ctl" role="toolbar" aria-label="Caméra">
         <button type="button" data-c="in" title="Zoom avant">＋</button><button type="button" data-c="out" title="Zoom arrière">－</button>
         <button type="button" data-c="reset" title="Vue d'ensemble">⌂</button><button type="button" data-c="auto" title="Rotation automatique" class="on">⟳</button><button type="button" data-c="dyn" title="Mode dynamique : mouvement perpétuel des agents" class="on">✺</button>
-        <button type="button" data-c="focus" title="Réduire les panneaux (plein cadre)">⤢</button>
+        <button type="button" data-c="focus" title="Réduire les panneaux (plein cadre)">⤢</button><button type="button" data-c="relations" title="Afficher les relations agents-prospects">◎</button>
       </div>
       <div class="hint" id="hint">Glisser : tourner · Molette / pincement : zoom · Double-clic : vue d'ensemble · Clic sur un agent : s'en approcher</div>
       <div class="legend" id="legend"></div>
