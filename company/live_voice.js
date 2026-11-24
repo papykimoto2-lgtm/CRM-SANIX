@@ -175,20 +175,23 @@ export function initJarvis(A, stage) {
     if (!rows.length) return "Je ne peux pas établir le classement : les données du pipeline commercial ne sont pas disponibles.";
     const now = Date.now(), day = 864e5;
     const closed = new Set(["perdu","en_veille","marche_gagne","client_fidelise"]);
-    const lastByProspect = new Map();
+    const lastByProspect = new Map(), blockedByProspect = new Map();
     for (const a of D.relationRows || []) {
       const id = String(a.prospect_id || ""), at = Date.parse(a.at || "");
       if (id && Number.isFinite(at) && at > (lastByProspect.get(id) || 0)) lastByProspect.set(id, at);
     }
+    for (const t of D.tasks || []) if (["bloquee","echouee"].includes(t.statut) && t.prospect_id) {
+      const id = String(t.prospect_id); blockedByProspect.set(id, (blockedByProspect.get(id) || 0) + 1);
+    }
     const scored = rows.filter(p => !closed.has(String(p.stage || ""))).map(p => {
       const id = String(p.id), due = Date.parse(p.next_action_at || "");
-      const last = Math.max(lastByProspect.get(id) || 0, Date.parse(p.updated_at || "") || 0, Date.parse(p.created_at || "") || 0);
+      const hasDue = Number.isFinite(due), last = Math.max(lastByProspect.get(id) || 0, Date.parse(p.updated_at || "") || 0, Date.parse(p.created_at || "") || 0);
       const inactiveDays = last ? Math.max(0, Math.floor((now-last)/day)) : null;
-      const lateDays = Number.isFinite(due) && due < now ? Math.floor((now-due)/day) : 0;
-      const blocked = (D.tasks || []).filter(t => String(t.prospect_id || "") === id && ["bloquee","echouee"].includes(t.statut)).length;
+      const lateDays = hasDue && due < now ? Math.floor((now-due)/day) : 0;
+      const blocked = blockedByProspect.get(id) || 0;
       const potential = Math.max(0, Number(p.potentiel_fcfa) || 0);
       const urgency = Math.min(45, lateDays ? 25 + Math.min(20, lateDays) : 0)
-        + (!p.next_action_at ? 18 : 0)
+        + (!hasDue ? 18 : 0)
         + (inactiveDays === null ? 10 : Math.min(25, Math.floor(inactiveDays/2)))
         + Math.min(15, blocked * 5)
         + Math.min(12, Math.round(Math.log10(1 + potential) * 1.5));
