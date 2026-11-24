@@ -3,7 +3,7 @@
 // Les événements sans agent_id restent visibles comme non attribués : aucune relation n'est inventée.
 export function createProspectRelations(canvas, api) {
   const ctx = canvas.getContext("2d");
-  const state = { agents: [], prospects: [], activities: [], width: 0, height: 0, dpr: 1, nodes: [], edges: [], raf: 0, stopped: false, filters: { product: "", prospect: "" }, totalProspects: 0 };
+  const state = { agents: [], prospects: [], activities: [], width: 0, height: 0, dpr: 1, nodes: [], edges: [], raf: 0, stopped: false, filters: { product: "", prospect: "" }, totalProspects: 0, camera: { x: 0, y: 0, scale: 1 }, selected: null, pointer: null };
   const palette = { nouveau:"#64748B",a_qualifier:"#94A3B8",qualifie:"#22D3EE",premier_contact:"#38BDF8",conversation:"#60A5FA",besoin_identifie:"#818CF8",interesse:"#A78BFA",rdv_propose:"#F59E0B",rdv_confirme:"#FBBF24",demo_realisee:"#F97316",offre_transmise:"#FB923C",negociation:"#E879F9",offre_acceptee:"#22C55E",contrat_transmis:"#4ADE80",marche_gagne:"#16A34A",client_fidelise:"#10B981",perdu:"#EF4444",en_veille:"#64748B" };
   const label = s => String(s || "nouveau").replace(/_/g," ");
   const norm = v => String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("fr").trim();
@@ -80,8 +80,9 @@ export function createProspectRelations(canvas, api) {
     const bg=ctx.createRadialGradient(w*.52,h*.5,10,w*.52,h*.5,Math.max(w,h)*.72);bg.addColorStop(0,"rgba(20,54,91,.34)");bg.addColorStop(1,"rgba(4,10,22,.98)");ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
     for(let i=0;i<55;i++){ctx.fillStyle="rgba(148,180,230,.18)";ctx.fillRect((i*137.5)%w,(i*83.7)%h,1,1);}
     ctx.font="600 10px system-ui";ctx.fillStyle="#9FB2D3";ctx.fillText("ÉQUIPE COMMERCIALE",16,20);ctx.fillText("RELATIONS / ACTIVITÉS",w*.43,20);ctx.fillText("SANS LIAISON",w*.78,20);
+    ctx.save();ctx.translate(w/2+state.camera.x,h/2+state.camera.y);ctx.scale(state.camera.scale,state.camera.scale);ctx.translate(-w/2,-h/2);
     for(const e of state.edges){
-      const {from,to,color}=e;ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.bezierCurveTo(w*.34,from.y,w*.38,to.y,to.x,to.y);
+      const {from,to,color}=e;const active=!state.selected||from.id===state.selected||to.id===state.selected;ctx.globalAlpha=active?1:.12;ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.bezierCurveTo(w*.34,from.y,w*.38,to.y,to.x,to.y);
       ctx.strokeStyle=e.kind==="activity"?color+"B0":color+"55";ctx.lineWidth=e.kind==="activity"?1.8:1;ctx.stroke();
       const seed=(Number(String(to.id).replace(/\D/g,"").slice(-4))||13)%97/97;
       const k=(t*.00012+seed)%1,q=1-k;
@@ -90,8 +91,8 @@ export function createProspectRelations(canvas, api) {
       ctx.beginPath();ctx.arc(x,y,e.kind==="activity"?2.8:2,0,Math.PI*2);ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=11;ctx.fill();ctx.shadowBlur=0;
     }
     for(const n of state.nodes){
-      const p=n.data,color=n.kind==="agent"?"#22D3EE":prospectColor(p);
-      const phase=t/500+n.y, pulse=3.5+Math.sin(phase)*2;
+      const p=n.data,color=n.kind==="agent"?"#22D3EE":prospectColor(p),active=!state.selected||n.id===state.selected||state.edges.some(e=>(e.from.id===state.selected&&e.to.id===n.id)||(e.to.id===state.selected&&e.from.id===n.id));ctx.globalAlpha=active?1:.18;
+      const phase=t/500+n.y, pulse=3.5+Math.sin(phase)*2;if(state.selected===n.id){ctx.beginPath();ctx.arc(n.x,n.y,n.r+10,0,Math.PI*2);ctx.strokeStyle="#FFFFFF";ctx.lineWidth=1.5;ctx.stroke();}
       ctx.beginPath();ctx.arc(n.x,n.y,n.r+ pulse,0,Math.PI*2);ctx.fillStyle=color+"18";ctx.fill();
       ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,Math.PI*2);ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=12;ctx.fill();ctx.shadowBlur=0;
       ctx.font=n.kind==="agent"?"600 10px system-ui":"9px system-ui";ctx.fillStyle=n.kind==="agent"?"#E5F5FF":"#C8D6ED";
@@ -99,6 +100,7 @@ export function createProspectRelations(canvas, api) {
       ctx.fillText(name.length>23?name.slice(0,22)+"…":name,n.x+(n.kind==="agent"?12:9),n.y+3);
       if(n.kind==="prospect"){ctx.font="8px system-ui";ctx.fillStyle=color;ctx.fillText(label(p.stage),n.x+9,n.y+13);}
     }
+    ctx.restore();ctx.globalAlpha=1;
     const total=state.nodes.filter(n=>n.kind==="prospect").length,linked=new Set(state.edges.map(e=>e.to.id)).size,activityEdges=state.edges.filter(e=>e.kind==="activity").length;
     const noAgent=state.activities.filter(a=>a.prospect_id&&!a.agent_id).length;
     const productLegend=[...new Set(state.nodes.filter(n=>n.kind==="prospect").map(n=>productOf(n.data)).filter(Boolean))].slice(0,7);
@@ -116,7 +118,17 @@ export function createProspectRelations(canvas, api) {
     ctx.fillText(total+" prospects affichés · "+linked+" reliés · "+activityEdges+" relations issues d'activités · "+noAgent+" activités sans agent identifié",16,h-16);
     state.raf=requestAnimationFrame(draw);
   }
-  const onClick=ev=>{const r=canvas.getBoundingClientRect(),x=ev.clientX-r.left,y=ev.clientY-r.top;const hit=[...state.nodes].reverse().find(n=>Math.hypot(n.x-x,n.y-y)<Math.max(15,n.r+8));if(hit?.kind==="prospect")api.onProspect?.(hit.data);if(hit?.kind==="agent")api.onAgent?.(hit.data);};
-  canvas.addEventListener("click",onClick);resize();const observer=new ResizeObserver(resize);observer.observe(canvas);state.raf=requestAnimationFrame(draw);
-  return {update,resize,destroy(){state.stopped=true;cancelAnimationFrame(state.raf);observer.disconnect();canvas.removeEventListener("click",onClick);}};
+  const screenPoint=ev=>{const r=canvas.getBoundingClientRect();return{x:ev.clientX-r.left,y:ev.clientY-r.top};};
+  const worldPoint=p=>({x:(p.x-state.width/2-state.camera.x)/state.camera.scale+state.width/2,y:(p.y-state.height/2-state.camera.y)/state.camera.scale+state.height/2});
+  const hitAt=p=>{const q=worldPoint(p);return [...state.nodes].reverse().find(n=>Math.hypot(n.x-q.x,n.y-q.y)<Math.max(15,n.r+8));};
+  const zoomAt=(factor,p={x:state.width/2,y:state.height/2})=>{const before=worldPoint(p);state.camera.scale=Math.max(.55,Math.min(2.8,state.camera.scale*factor));const after=worldPoint(p);state.camera.x+=(after.x-before.x)*state.camera.scale;state.camera.y+=(after.y-before.y)*state.camera.scale;};
+  const resetCamera=()=>{state.camera={x:0,y:0,scale:1};};
+  const onPointerDown=ev=>{if(ev.button!==undefined&&ev.button!==0)return;const p=screenPoint(ev),hit=hitAt(p);state.pointer={id:ev.pointerId,start:p,last:p,hit,moved:false,mode:hit?"node":"pan"};canvas.setPointerCapture?.(ev.pointerId);canvas.classList.toggle("dragging",!hit);};
+  const onPointerMove=ev=>{const p=screenPoint(ev),pt=state.pointer;if(!pt){canvas.style.cursor=hitAt(p)?"pointer":"grab";return;}const dx=p.x-pt.last.x,dy=p.y-pt.last.y;if(Math.hypot(p.x-pt.start.x,p.y-pt.start.y)>4)pt.moved=true;if(pt.moved){if(pt.mode==="pan"){state.camera.x+=dx;state.camera.y+=dy;}else if(pt.hit){const q=worldPoint(p);pt.hit.x=q.x;pt.hit.y=q.y;}}pt.last=p;};
+  const onPointerUp=()=>{const pt=state.pointer;if(!pt)return;state.pointer=null;canvas.classList.remove("dragging");if(!pt.moved&&pt.hit){state.selected=pt.hit.id;if(pt.hit.kind==="prospect")api.onProspect?.(pt.hit.data);else api.onAgent?.(pt.hit.data);}};
+  const onWheel=ev=>{ev.preventDefault();zoomAt(ev.deltaY<0?1.12:.89,screenPoint(ev));};
+  const onDoubleClick=ev=>{ev.preventDefault();resetCamera();};
+  canvas.addEventListener("pointerdown",onPointerDown);canvas.addEventListener("pointermove",onPointerMove);canvas.addEventListener("pointerup",onPointerUp);canvas.addEventListener("pointercancel",onPointerUp);canvas.addEventListener("wheel",onWheel,{passive:false});canvas.addEventListener("dblclick",onDoubleClick);
+  resize();const observer=new ResizeObserver(resize);observer.observe(canvas);state.raf=requestAnimationFrame(draw);
+  return {update,resize,zoom(factor){zoomAt(factor);},reset:resetCamera,destroy(){state.stopped=true;cancelAnimationFrame(state.raf);observer.disconnect();canvas.removeEventListener("pointerdown",onPointerDown);canvas.removeEventListener("pointermove",onPointerMove);canvas.removeEventListener("pointerup",onPointerUp);canvas.removeEventListener("pointercancel",onPointerUp);canvas.removeEventListener("wheel",onWheel);canvas.removeEventListener("dblclick",onDoubleClick);}};
 }
