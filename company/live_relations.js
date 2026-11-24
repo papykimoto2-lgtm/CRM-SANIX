@@ -27,6 +27,7 @@ export function createProspectRelations(canvas, api) {
     return alias ? state.products.find(p => String(p.id) === String(alias.product_id)) || null : null;
   };
   const productOf = p => {
+    if (state.filters.product && matchesProduct(p, state.filters.product)) return state.products.find(x => String(x.id) === String(state.filters.product))?.nom || String(state.filters.product);
     const token = productValues(p)[0] || "";
     return catalogProduct(token)?.nom || token;
   };
@@ -72,7 +73,7 @@ export function createProspectRelations(canvas, api) {
     }
     const owners=new Map();
     for(const p of filteredProspects){
-      const assigned=[p.owner_id,p.agent_id].find(id=>id&&byAgent.has(String(id)));
+      const assigned=[p.agent_id].find(id=>id&&byAgent.has(String(id)));
       if(assigned) owners.set(String(p.id),String(assigned));
     }
     for(const t of missionPairs.values()) if(!owners.has(String(t.prospect_id))) owners.set(String(t.prospect_id),String(t.agent_id));
