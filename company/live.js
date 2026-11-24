@@ -51,7 +51,7 @@ async function pull() {
     safe(sb.from("ai_approvals").select("id", { count: "exact", head: true }).eq("statut", "en_attente"), null),
     safe(sb.rpc("ai_budget_status"), null),
     safe(sb.from("ai_governance").select("actif,communication_externe").eq("id", 1).maybeSingle(), null),
-    safe(sb.from("ai_prospects").select("id,entreprise,ville,telephone,email,stage,potentiel_fcfa,score,next_action_at,opt_out,owner_id,produits_recommandes").limit(1500), null),
+    safe(sb.from("ai_prospects").select("id,entreprise,ville,telephone,email,stage,potentiel_fcfa,score,next_action_at,opt_out,owner_id,agent_id,produits_recommandes").limit(1500), null),
     safe(sb.from("ai_offers").select("id,total_ttc,statut,created_at").order("created_at", { ascending: false }).limit(500), null),
     safe(sb.rpc("ai_cost_center", { p_days: 30 }), null),
     safe(sb.functions.invoke("crm-whatsapp", { body: { action: "status" } }), null),
@@ -703,7 +703,7 @@ function renderTicker() {
 function renderLegend() { $("#legend").innerHTML = Object.entries(STATES).map(([, [l, c]]) => `<span><i style="background:${c};box-shadow:0 0 8px ${c}"></i>${l}</span>`).join(""); }
 function renderDetail() {
   const el = $("#detail"), a = agentById(D.sel);
-  if (D.prospectSel) { const p = D.prospectSel; el.hidden = false; el.innerHTML = `<h2>${esc(p.entreprise || "Prospect")} <span class="tag">Prospect</span></h2><div class="muted" style="font-size:12px">${esc(p.ville || "Localisation non renseignée")} · ${esc(p.stage || "nouveau")}</div><div class="mis" style="margin-top:7px"><b>Responsable commercial</b><small>${esc(nameOf(p.owner_id))}</small></div><div class="muted" style="font-size:11px;margin-top:6px">${esc(p.telephone || p.email || "Aucun contact renseigné")}</div>`; return; }
+  if (D.prospectSel) { const p = D.prospectSel; el.hidden = false; el.innerHTML = `<h2>${esc(p.entreprise || "Prospect")} <span class="tag">Prospect</span></h2><div class="muted" style="font-size:12px">${esc(p.ville || "Localisation non renseignée")} · ${esc(p.stage || "nouveau")}</div><div class="mis" style="margin-top:7px"><b>Agent IA associé</b><small>${esc((agentById(p.agent_id) || agentById(p.owner_id))?.nom || "Non renseigné")}</small></div><div class="muted" style="font-size:11px;margin-top:6px">${esc(p.telephone || p.email || "Aucun contact renseigné")}</div>`; return; }
   if (!a) { el.hidden = true; return; }
   const st = STATES[agentState(a)], mine = D.tasks.filter((t) => t.agent_id === a.id && OPENS.includes(t.statut)).slice(0, 4);
   el.hidden = false; el.innerHTML = `<h2>${esc(a.nom)} <span class="tag" style="--c:${st[1]}">${esc(st[0])}</span></h2><div class="muted" style="font-size:12px">${esc(a.fonction ?? "")}</div>${mine.map((t) => `<div class="mis" style="--c:${TASK_C[t.statut]};margin-top:6px"><b>${esc(clip(t.titre, 80))}</b><small>${esc(TASK_L[t.statut])} · P${esc(t.priorite)}</small></div>`).join("") || `<div class="muted" style="margin-top:6px">Aucune mission ouverte.</div>`}`;
