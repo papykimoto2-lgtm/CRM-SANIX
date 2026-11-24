@@ -14,12 +14,12 @@ export function initJarvis(A, stage) {
   const dock = document.createElement("div"); dock.id = "jarvis";
   dock.innerHTML = `<div id="jv-log" aria-live="polite"></div>
     <div class="jv-bar"><button type="button" id="jv-orb" class="orb" aria-label="Parler à Jarvis" title="Parler à Jarvis"><i></i></button>
-    <div class="jv-mid"><input id="jv-in" type="text" autocomplete="off" placeholder="Parlez ou écrivez…" title="Ex. : « où en est AutoGarage ? »" aria-label="Message à Jarvis"><small id="jv-st">Jarvis prêt${SR ? "" : " (micro non pris en charge : utilisez le clavier)"}</small></div>
+    <div class="jv-mid"><input id="jv-in" type="text" autocomplete="off" placeholder="Parlez ou écrivez…" title="Ex. : « où en est AutoGarage ? »" aria-label="Message à Jarvis"><small id="jv-st">Jarvis prêt${SR ? "" : " (micro non pris en charge : utilisez le clavier)"}</small><span id="jv-mic-state" class="mic-state" data-state="${SR ? "idle" : "unsupported"}" role="status" aria-live="polite"><i></i><b>${SR ? "Micro prêt" : "Micro indisponible"}</b></span></div>
     <button type="button" id="jv-auto" class="jb" title="Mode autonome : Jarvis lance consignes, missions et rapports sans confirmation">⚡</button><button type="button" id="jv-ideas" class="jb" title="Propositions d'amélioration de Jarvis">💡<em id="jv-badge" hidden></em></button><button type="button" id="jv-send" class="jb" title="Envoyer">➤</button><button type="button" id="jv-voice" class="jb on" title="Activer ou couper la voix">🔊</button><button type="button" id="jv-voice-style" class="jb" title="Changer la voix française de Jarvis">🎙</button><button type="button" id="jv-hands" class="jb" title="Mains libres : dites « Jarvis » pour m'appeler">🖐</button></div>`;
   stage.appendChild(dock);
-  const $ = (s) => dock.querySelector(s), logEl = $("#jv-log"), inEl = $("#jv-in"), st = $("#jv-st"), orb = $("#jv-orb");
+  const $ = (s) => dock.querySelector(s), logEl = $("#jv-log"), inEl = $("#jv-in"), st = $("#jv-st"), orb = $("#jv-orb"), micState = $("#jv-mic-state");
   let guard = null, voiceOn = true, hands = false, listening = false, speaking = false, rec = null, pending = null, convo = false, gotResult = false, llmDown = 0, hist = [], awakeUntil = 0, lastSpeechEnd = 0, poll = null;
-  const lines = []; const setSt = (t) => { st.textContent = t; }; const setOrb = (c) => { orb.className = "orb " + c; };
+  const lines = []; const setSt = (t) => { st.textContent = t; }; const setOrb = (c) => { orb.className = "orb " + c; }; const setMicState = (state, label) => { micState.dataset.state = state; micState.querySelector("b").textContent = label; orb.dataset.micState = state; orb.setAttribute("aria-label", label); orb.title = label; };
 
   function addLine(who, text) { lines.push({ who, text }); if (lines.length > 40) lines.shift();
     const d = document.createElement("div"); d.className = "ln " + who; d.innerHTML = `<b>${who === "me" ? "Vous" : who === "dg" ? "Directeur général" : "Jarvis"}</b> ${esc(text)}`; logEl.appendChild(d); setTimeout(() => d.remove(), 16000); while (logEl.children.length > 3) logEl.firstChild.remove(); logEl.scrollTop = 1e6; }
@@ -318,18 +318,18 @@ export function initJarvis(A, stage) {
   // ───────── Micro : demande explicite d'autorisation depuis Jarvis ─────────
   let micGranted = false, micRequesting = false;
   async function activateMicAndStart() {
-    if (!SR) { setSt("La reconnaissance vocale n'est pas prise en charge par ce navigateur. Utilisez le clavier ou ouvrez Jarvis dans Chrome."); return; }
+    if (!SR) { setMicState("unsupported", "Micro indisponible"); setSt("La reconnaissance vocale n'est pas prise en charge par ce navigateur. Utilisez le clavier ou ouvrez Jarvis dans Chrome."); return; }
     if (micRequesting) return;
-    if (!window.isSecureContext) { setSt("Le microphone exige une connexion sécurisée HTTPS. Ouvrez l'application avec son adresse HTTPS."); return; }
+    if (!window.isSecureContext) { setMicState("error", "HTTPS requis"); setSt("Le microphone exige une connexion sécurisée HTTPS. Ouvrez l'application avec son adresse HTTPS."); return; }
     if (!micGranted && navigator.mediaDevices?.getUserMedia) {
-      micRequesting = true; setSt("Demande d'autorisation du microphone…");
+      micRequesting = true; setMicState("requesting", "Autorisation…"); setSt("Demande d'autorisation du microphone…");
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         stream.getTracks().forEach((track) => track.stop());
-        micGranted = true;
+        micGranted = true; setMicState("idle", "Micro autorisé");
       } catch (e) {
         const messages = { NotAllowedError: "Accès micro refusé. Autorisez le microphone dans les permissions du site puis réessayez.", PermissionDeniedError: "Accès micro refusé. Autorisez le microphone dans les permissions du site puis réessayez.", NotFoundError: "Aucun microphone détecté sur cet appareil.", NotReadableError: "Le microphone est déjà utilisé ou indisponible." };
-        setSt(messages[e.name] || "Impossible d'activer le microphone : " + (e.message || e.name));
+        setMicState("error", "Accès refusé"); setSt(messages[e.name] || "Impossible d'activer le microphone : " + (e.message || e.name));
         micRequesting = false; return;
       } finally { micRequesting = false; }
     }
@@ -338,18 +338,18 @@ export function initJarvis(A, stage) {
   function startRec() {
     if (!SR) { setSt("Micro non pris en charge : utilisez le clavier."); return; }
     if (!rec) { rec = new SR(); rec.lang = "fr-FR"; rec.interimResults = true; rec.maxAlternatives = 1;
-      rec.onstart = () => { listening = true; setOrb(speaking ? "speak" : "listen"); setSt(hands ? "Mains libres : dites « Jarvis »" : "Je vous écoute…"); };
+      rec.onstart = () => { listening = true; setMicState("listening", "Écoute active"); setOrb(speaking ? "speak" : "listen"); setSt(hands ? "Mains libres : dites « Jarvis »" : "Je vous écoute…"); };
       rec.onresult = (ev) => { if ((speaking && window.speechSynthesis?.speaking) || Date.now() - lastSpeechEnd < 700) return; let fin = "", itm = ""; for (let i = ev.resultIndex; i < ev.results.length; i++) { const r = ev.results[i]; (r.isFinal ? (fin += r[0].transcript) : (itm += r[0].transcript)); }
         if (itm) setSt("… " + itm); if (!fin.trim()) return; const txt = fin.trim();
         const nt = norm(txt); setSt("Entendu : « " + clip(txt, 60) + " »");
         if (hands && !WAKE.test(nt) && Date.now() > awakeUntil) { setSt("Entendu : « " + clip(txt, 40) + " » — dites d'abord « Jarvis »"); return; }   // mains libres : seul « Jarvis » réveille
         if (hands && WAKE.test(nt) && nt.replace(WAKE, "").replace(/\b(ok|hey|dis|salut)\b/g, "").trim() === "") { awakeUntil = Date.now() + 9000; say("À vos ordres."); return; }
         gotResult = true; convo = !hands; stopSpeech(); awakeUntil = Date.now() + 9000; handle(txt); };
-      rec.onerror = (e) => { const msg = { "not-allowed": "Autorisez le microphone dans le navigateur.", "no-speech": "Aucune parole détectée.", "audio-capture": "Microphone introuvable." }[e.error]; setSt(msg ?? "Micro : " + e.error); if (e.error === "not-allowed") hands = false; };
-      rec.onend = () => { listening = false; setOrb(""); if (convoNext && !gotResult) { convoNext = false; convo = false; } if (hands) { try { rec.start(); } catch { /* déjà actif */ } } else setSt("Jarvis prêt"); }; }
+      rec.onerror = (e) => { const msg = { "not-allowed": "Autorisez le microphone dans le navigateur.", "no-speech": "Aucune parole détectée.", "audio-capture": "Microphone introuvable." }[e.error]; setMicState(e.error === "no-speech" ? "idle" : "error", e.error === "no-speech" ? "En attente" : "Erreur micro"); setSt(msg ?? "Micro : " + e.error); if (e.error === "not-allowed") { hands = false; $("#jv-hands").classList.remove("on"); } };
+      rec.onend = () => { listening = false; setOrb(""); if (convoNext && !gotResult) { convoNext = false; convo = false; } if (hands) { setMicState("listening", "Reconnexion…"); try { rec.start(); } catch { /* déjà actif */ } } else { setMicState("idle", micGranted ? "Micro autorisé" : "Micro prêt"); setSt("Jarvis prêt"); } }; }
     rec.continuous = hands; try { rec.start(); } catch { /* déjà actif */ }
   }
-  orb.addEventListener("click", () => { if (listening && !hands) { rec?.stop(); return; } if (speaking) { stopSpeech(); return; } activateMicAndStart(); });
+  orb.addEventListener("click", () => { if (listening && !hands) { setMicState("idle", "Micro en pause"); rec?.stop(); return; } if (speaking) { stopSpeech(); return; } activateMicAndStart(); });
   const sendTxt = () => { const v = inEl.value.trim(); if (!v) return; inEl.value = ""; handle(v); };
   const setAuto = (on) => { autoMode = !!on; $("#jv-auto").classList.toggle("on", autoMode); $("#jv-auto").classList.toggle("warn", autoMode); };
   $("#jv-auto").addEventListener("click", () => handle(autoMode ? "mode prudent" : "mode autonome"));
@@ -360,7 +360,7 @@ export function initJarvis(A, stage) {
   $("#jv-send").addEventListener("click", sendTxt); inEl.addEventListener("keydown", (e) => { if (e.key === "Enter") sendTxt(); e.stopPropagation(); });
   $("#jv-voice").addEventListener("click", (e) => { voiceOn = !voiceOn; e.currentTarget.classList.toggle("on", voiceOn); e.currentTarget.textContent = voiceOn ? "🔊" : "🔇"; if (!voiceOn) stopSpeech(); setSt(voiceOn ? "Voix activée" : "Voix désactivée"); });
   $("#jv-voice-style").addEventListener("click", cycleVoice);
-  $("#jv-hands").addEventListener("click", (e) => { hands = !hands; e.currentTarget.classList.toggle("on", hands); if (hands) { if (!SR) { hands = false; e.currentTarget.classList.remove("on"); setSt("Mains libres indisponible : micro non pris en charge."); return; } if (listening) rec.stop(); setTimeout(activateMicAndStart, 150); setSt("Activation du microphone…"); } else { rec?.stop(); setSt("Jarvis prêt"); } });
+  $("#jv-hands").addEventListener("click", (e) => { hands = !hands; e.currentTarget.classList.toggle("on", hands); if (hands) { if (!SR) { setMicState("unsupported", "Micro indisponible"); hands = false; e.currentTarget.classList.remove("on"); setSt("Mains libres indisponible : micro non pris en charge."); return; } if (listening) rec.stop(); setTimeout(activateMicAndStart, 150); setSt("Activation du microphone…"); } else { setMicState("idle", "Micro en pause"); rec?.stop(); setSt("Jarvis prêt"); } });
   addLine("jarvis", "Salle de contrôle en ligne. Dites « Jarvis, situation » ou écrivez votre demande.");
   window.__jarvis = { crm: () => crmContext(""), crmRows: () => crmC.rows.slice(), insights, auto: () => autoMode, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say };
 }
