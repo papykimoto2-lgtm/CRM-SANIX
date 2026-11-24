@@ -62,7 +62,7 @@ export const store: Store = {
       const r = await db().from("ai_prospects").select("id,stage").eq("crm_rid", clientRid).limit(2);
       rows = r.data ?? [];
     }
-    if (rows.length !== 1 && phone) {
+    if (rows.length === 0 && phone) {
       const r = await db().from("ai_prospects").select("id,stage").eq("phone_norm", phone).limit(2);
       rows = r.data ?? [];
     }
