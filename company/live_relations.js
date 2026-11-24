@@ -29,7 +29,7 @@ export function createProspectRelations(canvas, api) {
       const productOk = !state.filters.product || productValues.some(v => norm(v) === norm(state.filters.product) || norm(v).includes(norm(state.filters.product)));
       const haystack = [p.entreprise,p.ville,p.telephone,p.email].map(norm).join(" ");
       const prospectOk = !state.filters.prospect || haystack.includes(norm(state.filters.prospect));
-      const agentOk = !state.filters.agent || String(p.owner_id || "") === state.filters.agent || state.activities.some(a => String(a.agent_id || "") === state.filters.agent && String(a.prospect_id || "") === String(p.id));
+      const agentOk = !state.filters.agent || [p.owner_id, p.agent_id].some(id => String(id || "") === state.filters.agent) || state.activities.some(a => String(a.agent_id || "") === state.filters.agent && String(a.prospect_id || "") === String(p.id));
       return productOk && prospectOk && agentOk;
     });
     const byAgent=new Map(left.map(a=>[String(a.id),a]));
@@ -41,7 +41,10 @@ export function createProspectRelations(canvas, api) {
       if(!activityPairs.has(key)) activityPairs.set(key,a);
     }
     const owners=new Map();
-    for(const p of filteredProspects){if(p.owner_id&&byAgent.has(String(p.owner_id)))owners.set(String(p.id),String(p.owner_id));}
+    for(const p of filteredProspects){
+      const assigned=[p.owner_id,p.agent_id].find(id=>id&&byAgent.has(String(id)));
+      if(assigned) owners.set(String(p.id),String(assigned));
+    }
     for(const a of activityPairs.values()) if(!owners.has(String(a.prospect_id))) owners.set(String(a.prospect_id),String(a.agent_id));
     const linkedIds=new Set([...owners.keys()]);
     const ranked=filteredProspects.slice().sort((a,b)=>Number(linkedIds.has(String(b.id)))-Number(linkedIds.has(String(a.id)))||String(b.next_action_at||"").localeCompare(String(a.next_action_at||"")));
@@ -63,8 +66,10 @@ export function createProspectRelations(canvas, api) {
       const [agentId,prospectId]=key.split("|"),from=byOwner.get(agentId),to=nodeByProspect.get(prospectId);
       if(from&&to)edges.push({from,to,color:prospectColor(to.data),activity:a,kind:"activity"});
     }
-    const activityLinked=new Set(edges.map(e=>e.to.id));
-    for(const n of prospectNodes){if(n.owner&&!activityLinked.has(n.id))edges.push({from:n.owner,to:n,color:prospectColor(n.data),kind:"assignment"});}
+    const activityPairsSet=new Set([...activityPairs.keys()]);
+    for(const n of prospectNodes){
+      if(n.owner&&!activityPairsSet.has(n.owner.id+"|"+n.id)) edges.push({from:n.owner,to:n,color:prospectColor(n.data),kind:"assignment"});
+    }
     state.nodes=[...agentNodes,...prospectNodes];state.edges=edges;api.onFilterCount?.(filteredProspects.length,state.totalProspects);
   }
   function update(data){
@@ -102,7 +107,7 @@ export function createProspectRelations(canvas, api) {
       if(n.kind==="prospect"){ctx.font="8px system-ui";ctx.fillStyle=color;ctx.fillText(label(p.stage),n.x+9,n.y+13);}
     }
     ctx.restore();ctx.globalAlpha=1;
-    const total=state.nodes.filter(n=>n.kind==="prospect").length,linked=new Set(state.edges.map(e=>e.to.id)).size,activityEdges=state.edges.filter(e=>e.kind==="activity").length;
+    const prospectNodes=state.nodes.filter(n=>n.kind==="prospect"),total=prospectNodes.length,linked=new Set(state.edges.map(e=>e.to.id)).size,activityEdges=state.edges.filter(e=>e.kind==="activity").length,assigned=prospectNodes.filter(n=>n.owner).length;
     const noAgent=state.activities.filter(a=>a.prospect_id&&!a.agent_id).length;
     const productLegend=[...new Set(state.nodes.filter(n=>n.kind==="prospect").map(n=>productOf(n.data)).filter(Boolean))].slice(0,7);
     if(productLegend.length){
@@ -116,7 +121,7 @@ export function createProspectRelations(canvas, api) {
       }
     }
     ctx.fillStyle="#DCE8FA";ctx.font="600 11px system-ui";
-    ctx.fillText(total+" prospects affichés · "+linked+" reliés · "+activityEdges+" relations issues d'activités · "+noAgent+" activités sans agent identifié",16,h-16);
+    ctx.fillText(total+" prospects affichés · "+linked+" reliés · "+assigned+" affectations CRM · "+activityEdges+" activités liées · "+noAgent+" activités sans agent identifié",16,h-16);
     state.raf=requestAnimationFrame(draw);
   }
   const screenPoint=ev=>{const r=canvas.getBoundingClientRect();return{x:ev.clientX-r.left,y:ev.clientY-r.top};};
