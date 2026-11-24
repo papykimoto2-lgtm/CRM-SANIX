@@ -396,12 +396,40 @@ function newProspectForm() {
 }
 
 async function openProspect(id) {
-  const [p,msgs,os,hist]=await Promise.all([
-    q(S.sb.from("ai_prospects").select("*").eq("id",id).single()),
+  const p = await q(S.sb.from("ai_prospects").select("*").eq("id",id).single());
+  const mailQuery = p.crm_rid
+    ? S.sb.from("crm_mails").select("id,subject,body,status,sent_at,sent_by").eq("client_rid",p.crm_rid).order("sent_at",{ascending:false}).limit(30)
+    : p.email
+      ? S.sb.from("crm_mails").select("id,subject,body,status,sent_at,sent_by").ilike("to_email",String(p.email).trim().replace(/[\\%_]/g,(c)=>"\\"+c)).order("sent_at",{ascending:false}).limit(30)
+      : null;
+  const waOutQuery = p.crm_rid
+    ? S.sb.from("crm_wa_messages").select("id,body,status,sent_at,sent_by,kind,template").eq("client_rid",p.crm_rid).order("sent_at",{ascending:false}).limit(30)
+    : p.phone_norm
+      ? S.sb.from("crm_wa_messages").select("id,body,status,sent_at,sent_by,kind,template").eq("to_phone",p.phone_norm).order("sent_at",{ascending:false}).limit(30)
+      : null;
+  const waInQuery = p.crm_rid
+    ? S.sb.from("crm_wa_inbound").select("id,body,received_at,kind").eq("client_rid",p.crm_rid).order("received_at",{ascending:false}).limit(30)
+    : p.phone_norm
+      ? S.sb.from("crm_wa_inbound").select("id,body,received_at,kind").eq("from_phone",p.phone_norm).order("received_at",{ascending:false}).limit(30)
+      : null;
+  const [msgs,os,hist,mails,waOut,waIn]=await Promise.all([
     q(S.sb.from("ai_messages").select("canal,sens,auteur,contenu,statut,created_at").eq("prospect_id",id).order("created_at",{ascending:false}).limit(30)),
     q(S.sb.from("ai_offers").select("*").eq("prospect_id",id).order("created_at",{ascending:false}).limit(20)),
     q(S.sb.from("ai_stage_history").select("de,vers,par,at").eq("prospect_id",id).order("at",{ascending:false}).limit(30)),
+    mailQuery ? q(mailQuery).catch(()=>[]) : Promise.resolve([]),
+    waOutQuery ? q(waOutQuery).catch(()=>[]) : Promise.resolve([]),
+    waInQuery ? q(waInQuery).catch(()=>[]) : Promise.resolve([]),
   ]);
+  const replies = mails.length
+    ? await q(S.sb.from("crm_mail_replies").select("mail_id,from_email,received_at,body").in("mail_id",mails.map(m=>m.id)).order("received_at",{ascending:false}).limit(60)).catch(()=>[])
+    : [];
+  const exchanges = [
+    ...msgs.map(m=>({channel:m.canal,sens:m.sens==="entrant"?"Reçu":"Envoyé",author:m.auteur,at:m.created_at,body:m.contenu,status:m.statut})),
+    ...mails.map(m=>({channel:"E-mail",sens:"Envoyé",author:m.sent_by||"CRM",at:m.sent_at,body:m.body,status:m.status,subject:m.subject})),
+    ...replies.map(m=>({channel:"E-mail",sens:"Reçu",author:m.from_email||"Prospect",at:m.received_at,body:m.body,status:"réponse"})),
+    ...waOut.map(m=>({channel:"WhatsApp",sens:"Envoyé",author:m.sent_by||"CRM",at:m.sent_at,body:m.body,status:m.status,subject:m.template||null})),
+    ...waIn.map(m=>({channel:"WhatsApp",sens:"Reçu",author:"Prospect",at:m.received_at,body:m.body,status:"reçu"})),
+  ].filter(m=>m.at).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at)).slice(0,60);
   selected=p;
   openModal(html`<h3>${p.entreprise}</h3><p class="small muted">${p.secteur||"Secteur non renseigné"} · ${p.ville||"Ville non renseignée"} · créé ${fmtDT(p.created_at)}</p>
     <div class="grid g2">
@@ -427,7 +455,7 @@ async function openProspect(id) {
     <h4>Produits recommandés</h4><p>${(p.produits_recommandes??[]).map(productName).join(", ")||"Non déterminés"}</p>
     <h4>Résumé IA</h4><div class="pv">${p.resume_ia||"Aucun résumé disponible."}</div>
     <h4>Offres</h4>${os.length?html`<div class="scroll"><table class="tbl"><thead><tr><th>Référence</th><th>Montant TTC</th><th>Statut</th></tr></thead><tbody>${os.map(o=>html`<tr><td>${o.reference}</td><td>${money(o.total_ttc)}</td><td>${o.statut}</td></tr>`)}</tbody></table></div>`:html`<p class="muted">Aucune offre créée.</p>`}
-    <h4>Historique des échanges</h4>${msgs.length?msgs.map(m=>html`<div class="card" style="margin:6px 0"><div class="small muted">${m.canal} · ${m.sens} · ${m.auteur} · ${fmtDT(m.created_at)}</div><div class="pv">${m.contenu}</div></div>`):html`<p class="muted">Aucun échange enregistré.</p>`}`);
+    <h4>Historique des échanges · Gmail, WhatsApp et agents IA</h4>${exchanges.length?exchanges.map(m=>html`<div class="card" style="margin:6px 0"><div class="small muted">${m.channel} · ${m.sens} · ${m.author||"—"} · ${fmtDT(m.at)} · ${m.status||"—"}</div>${m.subject?html`<b>${m.subject}</b>`:""}<div class="pv">${String(m.body??"Contenu non disponible").slice(0,4000)}</div></div>`):html`<p class="muted">Aucun échange enregistré.</p>`});
   $("#sales-next-form").onsubmit=async e=>{
     e.preventDefault();const rawValue=new FormData(e.currentTarget).get("next_action_at");
     const next_action_at=rawValue?new Date(rawValue).toISOString():null;
