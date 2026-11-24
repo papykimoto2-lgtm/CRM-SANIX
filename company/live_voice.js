@@ -18,6 +18,42 @@ export function initJarvis(A, stage) {
     <button type="button" id="jv-auto" class="jb" title="Mode autonome : Jarvis lance consignes, missions et rapports sans confirmation">⚡</button><button type="button" id="jv-ideas" class="jb" title="Propositions d'amélioration de Jarvis">💡<em id="jv-badge" hidden></em></button><button type="button" id="jv-send" class="jb" title="Envoyer">➤</button><button type="button" id="jv-voice" class="jb on" title="Activer ou couper la voix">🔊</button><button type="button" id="jv-voice-style" class="jb" title="Changer la voix française de Jarvis">🎙</button><button type="button" id="jv-hands" class="jb" title="Mains libres : dites « Jarvis » pour m'appeler">🖐</button></div>`;
   stage.appendChild(dock);
   const $ = (s) => dock.querySelector(s), logEl = $("#jv-log"), inEl = $("#jv-in"), st = $("#jv-st"), orb = $("#jv-orb"), micState = $("#jv-mic-state");
+  // Poignée dédiée : déplacer le dock sans gêner la saisie, les boutons ou le micro.
+  const drag = document.createElement("button");
+  drag.type = "button"; drag.id = "jv-drag"; drag.className = "jb jv-drag";
+  drag.textContent = "⠿"; drag.title = "Déplacer Jarvis"; drag.setAttribute("aria-label", "Déplacer la bulle Jarvis");
+  $(".jv-bar").prepend(drag);
+  const JARVIS_POS = "sanix_jarvis_dock_position_v1";
+  let dragState = null;
+  const clampDock = (left, top) => {
+    const bounds = stage.getBoundingClientRect(), box = dock.getBoundingClientRect();
+    return { left: Math.max(4, Math.min(left, bounds.width - box.width - 4)), top: Math.max(4, Math.min(top, bounds.height - box.height - 4)) };
+  };
+  const placeDock = (left, top, save = true) => {
+    const p = clampDock(left, top);
+    dock.style.left = p.left + "px"; dock.style.top = p.top + "px";
+    dock.style.right = "auto"; dock.style.bottom = "auto"; dock.style.transform = "none";
+    if (save) try { localStorage.setItem(JARVIS_POS, JSON.stringify({ left: p.left / Math.max(1, stage.clientWidth), top: p.top / Math.max(1, stage.clientHeight) })); } catch { /* stockage indisponible */ }
+  };
+  try {
+    const saved = JSON.parse(localStorage.getItem(JARVIS_POS) || "null");
+    if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) requestAnimationFrame(() => placeDock(saved.left * stage.clientWidth, saved.top * stage.clientHeight, false));
+  } catch { /* position par défaut */ }
+  drag.addEventListener("pointerdown", (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    const r = dock.getBoundingClientRect(), s = stage.getBoundingClientRect();
+    dragState = { id: e.pointerId, x: e.clientX, y: e.clientY, left: r.left - s.left, top: r.top - s.top };
+    drag.setPointerCapture?.(e.pointerId); drag.classList.add("dragging"); e.preventDefault();
+  });
+  drag.addEventListener("pointermove", (e) => {
+    if (!dragState || dragState.id !== e.pointerId) return;
+    placeDock(dragState.left + e.clientX - dragState.x, dragState.top + e.clientY - dragState.y);
+  });
+  const endDrag = (e) => { if (dragState && (e.pointerId === undefined || dragState.id === e.pointerId)) { dragState = null; drag.classList.remove("dragging"); } };
+  drag.addEventListener("pointerup", endDrag); drag.addEventListener("pointercancel", endDrag);
+  window.addEventListener("resize", () => {
+    if (dock.style.left && dock.style.top) { const r = dock.getBoundingClientRect(), s = stage.getBoundingClientRect(); placeDock(r.left - s.left, r.top - s.top, false); }
+  });
   let guard = null, voiceOn = true, hands = false, listening = false, speaking = false, rec = null, pending = null, convo = false, gotResult = false, llmDown = 0, hist = [], awakeUntil = 0, lastSpeechEnd = 0, poll = null;
   let micError = false; const lines = []; const setSt = (t) => { st.textContent = t; }; const setOrb = (c) => { orb.className = "orb " + c; }; const setMicState = (state, label) => { micError = state === "error"; micState.dataset.state = state; micState.querySelector("b").textContent = label; orb.dataset.micState = state; orb.setAttribute("aria-label", label); orb.title = label; };
 
