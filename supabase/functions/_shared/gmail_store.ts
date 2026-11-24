@@ -84,14 +84,14 @@ export const store: Store = {
     if (annulees?.length) await db().from("ai_actions").insert({ agent: "gmail", action: "relances_annulees_adresse_invalide", prospect_id: p.id, ok: true, payload: { relances: annulees.length } });
   },
   async syncProspectOutbound(clientRid, email, at) {
-    // Le lien crm_rid est prioritaire ; l'adresse n'est utilisée qu'en secours si elle identifie une seule fiche.
-    let rows = [];
-    if (clientRid) {
-      const r = await db().from("ai_prospects").select("id,stage").eq("crm_rid", clientRid).limit(2);
-      rows = r.data ?? [];
-    }
-    if (rows.length === 0 && email) {
-      const safe = String(email).replace(/[\\%_]/g, "\\  async addInteraction(clientRid, interaction) {");
+    // Le rattachement stable est obligatoire : aucune recherche approximative par e-mail.
+    if (!clientRid) return;
+    const { data, error } = await db().from("ai_prospects").select("id,stage").eq("crm_rid", clientRid).limit(2);
+    if (error || !data || data.length !== 1) return;
+    const p = data[0];
+    await db().from("ai_prospects").update({ last_outbound_at: at, ...(["identifie", "enregistre", "qualifie"].includes(p.stage) ? { stage: "premier_contact" } : {}) }).eq("id", p.id);
+  },
+  async addInteraction(clientRid, interaction) {");
       const r = await db().from("ai_prospects").select("id,stage").ilike("email", safe).limit(2);
       rows = r.data ?? [];
     }
