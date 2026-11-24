@@ -1091,7 +1091,7 @@ function updateRelationFilters() {
 const relationsCanvas = $("#relations-canvas");
 const api3d = {
   get D() { return D; }, STATES, clip, agentState, deptColor, onSelect: (id) => { D.sel = id; renderDetail(); },
-  onProspect: (p) => { D.relationSel = null; D.sel = null; D.prospectNetworkOrigin = { relation: null }; D.prospectSel = p; renderDetail(); },
+  onProspect: (p) => { D.relationSel = null; D.sel = null; D.prospectNetworkOrigin = { relation: null }; D.prospectSel = p; D.prospectHistory = null; renderDetail(); $("#detail")?.scrollIntoView?.({ behavior: "smooth", block: "nearest" }); },
   onAgent: (a) => { D.relationSel = null; D.prospectSel = null; D.sel = a.id; renderDetail(); },
   onRelation: (r) => { D.relationSel = r; if (r) { D.sel = r.agent.id; D.prospectNetworkOrigin = { relation: r }; D.prospectSel = r.prospect; renderDetail(); window.__jarvis?.explainRelation?.(r); } else { D.relationSel = null; } },
   onClearSelection: () => { D.relationSel = null; D.prospectSel = null; D.prospectNetworkOrigin = null; D.sel = null; $("#detail").hidden = true; renderDetail(); },
