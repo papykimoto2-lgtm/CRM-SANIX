@@ -6,6 +6,20 @@ export function createProspectRelations(canvas, api) {
   const state = { agents: [], prospects: [], activities: [], width: 0, height: 0, dpr: 1, nodes: [], edges: [], raf: 0, stopped: false, filters: { product: "", prospect: "" }, totalProspects: 0 };
   const palette = { nouveau:"#64748B",a_qualifier:"#94A3B8",qualifie:"#22D3EE",premier_contact:"#38BDF8",conversation:"#60A5FA",besoin_identifie:"#818CF8",interesse:"#A78BFA",rdv_propose:"#F59E0B",rdv_confirme:"#FBBF24",demo_realisee:"#F97316",offre_transmise:"#FB923C",negociation:"#E879F9",offre_acceptee:"#22C55E",contrat_transmis:"#4ADE80",marche_gagne:"#16A34A",client_fidelise:"#10B981",perdu:"#EF4444",en_veille:"#64748B" };
   const label = s => String(s || "nouveau").replace(/_/g," ");
+  const norm = v => String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("fr").trim();
+  const productOf = p => {
+    const values = Array.isArray(p.produits_recommandes) ? p.produits_recommandes : (p.produits_recommandes ? [p.produits_recommandes] : []);
+    return String(values.find(Boolean) || "").trim();
+  };
+  const productColor = value => {
+    const s=norm(value);
+    if(!s) return "#64748B";
+    let hash=0;for(let i=0;i<s.length;i++)hash=(hash*31+s.charCodeAt(i))|0;
+    const hue=Math.abs(hash)%360,sat=0.82,l=0.64,k=n=>(n+hue/30)%12,a=sat*Math.min(l,1-l);
+    const f=n=>Math.round(255*(l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1)))));
+    return "#"+[f(0),f(8),f(4)].map(v=>v.toString(16).padStart(2,"0")).join("");
+  };
+  const prospectColor = p => productOf(p) ? productColor(productOf(p)) : (palette[p.stage] || "#64748B");
   const resize = () => { const r=canvas.getBoundingClientRect();state.dpr=Math.min(2,devicePixelRatio||1);state.width=Math.max(320,r.width);state.height=Math.max(360,r.height);canvas.width=Math.round(state.width*state.dpr);canvas.height=Math.round(state.height*state.dpr);ctx.setTransform(state.dpr,0,0,state.dpr,0,0);layout(); };
   function layout() {
     const w=state.width,h=state.height,left=state.agents.filter(a=>a.etat!=="archive").slice(0,24);
@@ -46,10 +60,10 @@ export function createProspectRelations(canvas, api) {
     const edges=[];
     for(const [key,a] of activityPairs){
       const [agentId,prospectId]=key.split("|"),from=byOwner.get(agentId),to=nodeByProspect.get(prospectId);
-      if(from&&to)edges.push({from,to,color:palette[to.data.stage]||"#22D3EE",activity:a,kind:"activity"});
+      if(from&&to)edges.push({from,to,color:prospectColor(to.data),activity:a,kind:"activity"});
     }
     const activityLinked=new Set(edges.map(e=>e.to.id));
-    for(const n of prospectNodes){if(n.owner&&!activityLinked.has(n.id))edges.push({from:n.owner,to:n,color:palette[n.data.stage]||"#22D3EE",kind:"assignment"});}
+    for(const n of prospectNodes){if(n.owner&&!activityLinked.has(n.id))edges.push({from:n.owner,to:n,color:prospectColor(n.data),kind:"assignment"});}
     state.nodes=[...agentNodes,...prospectNodes];state.edges=edges;api.onFilterCount?.(filteredProspects.length,state.totalProspects);
   }
   function update(data){
@@ -76,7 +90,7 @@ export function createProspectRelations(canvas, api) {
       ctx.beginPath();ctx.arc(x,y,e.kind==="activity"?2.8:2,0,Math.PI*2);ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=11;ctx.fill();ctx.shadowBlur=0;
     }
     for(const n of state.nodes){
-      const p=n.data,color=n.kind==="agent"?"#22D3EE":(palette[p.stage]||"#22D3EE");
+      const p=n.data,color=n.kind==="agent"?"#22D3EE":prospectColor(p);
       const phase=t/500+n.y, pulse=3.5+Math.sin(phase)*2;
       ctx.beginPath();ctx.arc(n.x,n.y,n.r+ pulse,0,Math.PI*2);ctx.fillStyle=color+"18";ctx.fill();
       ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,Math.PI*2);ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=12;ctx.fill();ctx.shadowBlur=0;
@@ -87,6 +101,17 @@ export function createProspectRelations(canvas, api) {
     }
     const total=state.nodes.filter(n=>n.kind==="prospect").length,linked=new Set(state.edges.map(e=>e.to.id)).size,activityEdges=state.edges.filter(e=>e.kind==="activity").length;
     const noAgent=state.activities.filter(a=>a.prospect_id&&!a.agent_id).length;
+    const productLegend=[...new Set(state.nodes.filter(n=>n.kind==="prospect").map(n=>productOf(n.data)).filter(Boolean))].slice(0,7);
+    if(productLegend.length){
+      ctx.font="9px system-ui";
+      let lx=Math.max(12,w-190),ly=42;
+      for(const product of productLegend){
+        const color=productColor(product);ctx.fillStyle=color;ctx.beginPath();ctx.arc(lx,ly-3,3.5,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle="#C8D6ED";const name=product.length>21?product.slice(0,20)+"…":product;
+        ctx.fillText(name,lx+9,ly);ly+=14;
+        if(ly>h-95)break;
+      }
+    }
     ctx.fillStyle="#DCE8FA";ctx.font="600 11px system-ui";
     ctx.fillText(total+" prospects affichés · "+linked+" reliés · "+activityEdges+" relations issues d'activités · "+noAgent+" activités sans agent identifié",16,h-16);
     state.raf=requestAnimationFrame(draw);
