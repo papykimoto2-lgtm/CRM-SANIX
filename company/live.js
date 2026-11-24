@@ -738,9 +738,9 @@ function renderDetail() {
     const website = /^https?:\/\//i.test(String(p.site_web || "")) ? `<a href="${esc(p.site_web)}" target="_blank" rel="noopener">Site web ↗</a>` : esc(p.site_web || "");
     const sourceUrl = /^https?:\/\//i.test(String(p.source_url || "")) ? `<a href="${esc(p.source_url)}" target="_blank" rel="noopener">Voir la source ↗</a>` : "";
     const activityRows = history.length ? history.map((r) => {
-      const payload = r.payload && typeof r.payload === "object" ? (r.payload.message || r.payload.resultat || r.payload.reason || r.payload.status || "") : "";
+      const payload = r.payload && typeof r.payload === "object" ? (r.payload.note || r.payload.message || r.payload.resultat || r.payload.reason || r.payload.status || "") : "";
       const summary = payload ? String(payload).slice(0, 150) : (r.ok === false ? "Action signalée en échec" : "Événement enregistré");
-      const who = agentById(r.agent_id)?.nom || (r.agent_id ? "Agent non chargé" : "Agent non identifié");
+      const who = agentById(r.agent_id)?.nom || (r.payload?.author_id ? "Équipe SANIX · " + String(r.payload.author_id).slice(0,8) : (r.agent_id ? "Agent non chargé" : "Agent non identifié"));
       return `<li><b>${esc(String(r.action || "activité").replace(/_/g, " "))}</b><small>${esc(who)} · ${esc(ago(r.at))} · ${r.ok === false ? "Échec" : "Enregistré"}</small><span>${esc(summary)}</span></li>`;
     }).join("") : "<li>Aucune activité reliée à ce prospect dans les 500 derniers événements chargés.</li>";
     el.hidden = false;
@@ -753,6 +753,11 @@ function renderDetail() {
       <section class="prospect-workbench-section"><h3>Qualification et potentiel</h3><div class="prospect-data-grid">${field("Budget estimé",fmtMoney(p.budget_estime))}${field("Priorité",p.priorite)}${field("Besoins exprimés",needs)}${field("Segment",p.segment)}${field("Score / 100",p.score)}${field("Prochaine action",next)}${field("Relances sans réponse",p.relances_sans_reponse ?? 0)}</div>${p.score_justification ? `<div class="prospect-explanation"><small>Justification du score</small>${esc(p.score_justification)}</div>` : ""}${criteria.length ? `<div class="prospect-criteria">${criteria.map(([k,v])=>`<span>${esc(k)} : <b>${esc(v)}/5</b></span>`).join("")}</div>` : ""}</section>
       <section class="prospect-workbench-section"><h3>Origine et suivi</h3><div class="prospect-data-grid">${field("Source",p.source)}${field("Créé le",fmtDate(p.created_at))}${field("Mis à jour le",fmtDate(p.updated_at))}${field("Dernier entrant",fmtDate(p.last_inbound_at))}${field("Dernier sortant",fmtDate(p.last_outbound_at))}${field("Opposition",p.opt_out ? "Oui" : "Non")}${field("Date opposition",fmtDate(p.opt_out_at))}</div>${sourceUrl}</section>
       <section class="prospect-workbench-section"><h3>Activité commerciale récente</h3><ul class="prospect-history">${activityRows}</ul></section>
+      <section class="prospect-workbench-section"><h3>Ajouter une interaction</h3><form id="prospect-note-form" class="prospect-assign-form">
+        <label>Type d'interaction<select name="type"><option value="note">Note commerciale</option><option value="appel">Appel téléphonique</option><option value="rendez_vous">Rendez-vous</option><option value="email">E-mail</option><option value="whatsapp">WhatsApp</option><option value="visite">Visite terrain</option><option value="demo">Démonstration</option></select></label>
+        <label>Compte rendu<textarea name="note" maxlength="4000" minlength="3" rows="4" required placeholder="Résultat de l'échange, besoin exprimé, objections, prochaine étape…"></textarea></label>
+        <button type="submit" class="prospect-assign-submit">Enregistrer dans l'historique</button><small class="prospect-assign-status" id="prospect-note-status" aria-live="polite"></small>
+      </form><p class="prospect-workbench-note">L'interaction est horodatée et rattachée à l'utilisateur connecté. Aucun message n'est envoyé au prospect.</p></section>
       <section class="prospect-workbench-section"><h3>Missions liées à ce prospect</h3>${tasks.length ? tasks.map((t) => `<div class="mis" style="--c:${TASK_C[t.statut]};margin-top:6px"><b>${esc(clip(t.titre, 80))}</b><small>${esc(agentById(t.agent_id)?.nom || "Agent inconnu")} · ${esc(TASK_L[t.statut] || t.statut)} · P${esc(t.priorite)}</small></div>`).join("") : '<div class="muted">Aucune mission liée à ce prospect.</div>'}</section>
       <section class="prospect-workbench-section"><button type="button" class="prospect-assign-toggle" id="prospect-edit-toggle">✎ Modifier la fiche et programmer une relance</button><form id="prospect-edit-form" class="prospect-assign-form" hidden>
         <div class="prospect-edit-grid">
@@ -816,6 +821,28 @@ function renderDetail() {
         conn("bad","Modification du prospect refusée");
       }
     });
+
+    $("#prospect-note-form")?.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const form = ev.currentTarget, submit = form.querySelector('[type="submit"]'), status = $("#prospect-note-status"), fd = new FormData(form);
+      const note = String(fd.get("note") || "").trim(), type = String(fd.get("type") || "note");
+      if (note.length < 3) { status.textContent = "Le compte rendu doit contenir au moins 3 caractères."; return; }
+      submit.disabled = true; submit.textContent = "Enregistrement…"; status.textContent = "";
+      try {
+        const { data, error } = await sb.rpc("crm_add_prospect_note", { p_prospect: p.id, p_type: type, p_note: note });
+        if (error) throw error;
+        if (!data?.ok) throw new Error("L'interaction n'a pas été enregistrée.");
+        conn("ok", "Interaction ajoutée à l'historique");
+        await cycle();
+        D.prospectSel = (D.salesRows || []).find(x => String(x.id) === String(p.id)) || D.prospectSel;
+        renderDetail();
+      } catch (err) {
+        submit.disabled = false; submit.textContent = "Enregistrer dans l'historique";
+        status.textContent = String(err?.message || err).slice(0,220);
+        conn("bad", "Enregistrement de l'interaction refusé");
+      }
+    });
+
     $("#prospect-assign-toggle")?.addEventListener("click", () => { const form = $("#prospect-assign-form"); form.hidden = !form.hidden; });
     $("#prospect-assign-form")?.addEventListener("submit", async (ev) => {
       ev.preventDefault();
