@@ -754,7 +754,13 @@ function renderDetail() {
       <div class="muted" style="font-size:11px;margin-top:7px">${acts.length} interaction(s) · ${tasks.length} mission(s) · Score ${Number.isFinite(Number(p.score)) ? esc(p.score) : "n/d"} · Potentiel ${Number(p.potentiel_fcfa)>0 ? new Intl.NumberFormat("fr-FR").format(Number(p.potentiel_fcfa))+" FCFA" : "non renseigné"}</div>
       ${latest ? `<div class="muted" style="font-size:11px;margin-top:5px">Dernière interaction : ${esc(latest.action || "événement")} · ${esc(ago(latest.at))}</div>` : ""}
       ${tasks.length ? `<div class="muted" style="font-size:11px;margin-top:5px">Missions : ${tasks.slice(0,3).map(t=>esc(t.titre)+" ("+esc(TASK_L[t.statut]||t.statut)+")").join(" · ")}</div>` : ""}
-      <button type="button" class="btn" id="relation-jarvis" style="margin-top:8px;width:100%">Faire analyser par Jarvis</button>`;
+      <button type="button" class="btn" id="relation-open-prospect" style="margin-top:8px;width:100%">Ouvrir la fiche complète du prospect</button>
+      <button type="button" class="btn" id="relation-jarvis" style="margin-top:6px;width:100%">Faire analyser par Jarvis</button>`;
+    $("#relation-open-prospect")?.addEventListener("click", () => {
+      D.relationSel = null; D.sel = null; D.prospectSel = p; D.prospectHistory = null;
+      renderDetail();
+      el.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    });
     $("#relation-jarvis")?.addEventListener("click",()=>window.__jarvis?.explainRelation?.(r));
     return;
   }
