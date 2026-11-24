@@ -51,7 +51,7 @@ async function pull() {
     safe(sb.from("ai_approvals").select("id", { count: "exact", head: true }).eq("statut", "en_attente"), null),
     safe(sb.rpc("ai_budget_status"), null),
     safe(sb.from("ai_governance").select("actif,communication_externe").eq("id", 1).maybeSingle(), null),
-    safe(sb.from("ai_prospects").select("id,entreprise,ville,telephone,email,stage,potentiel_fcfa,score,next_action_at,opt_out,owner_id,agent_id,produits_recommandes").limit(1500), null),
+    safe(sb.from("ai_prospects").select("*").limit(1500), null),
     safe(sb.from("ai_offers").select("id,total_ttc,statut,created_at").order("created_at", { ascending: false }).limit(500), null),
     safe(sb.rpc("ai_cost_center", { p_days: 30 }), null),
     safe(sb.functions.invoke("crm-whatsapp", { body: { action: "status" } }), null),
@@ -723,12 +723,20 @@ function renderDetail() {
   if (D.prospectSel) {
     const p = D.prospectSel, prospectTasks = D.tasks.filter((t) => String(t.prospect_id || "") === String(p.id)).sort((a,b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0));
     const assigned = agentById(p.agent_id) || agentById(prospectTasks[0]?.agent_id);
-    const history = D.relationRows.filter((r) => String(r.prospect_id) === String(p.id)).slice(0, 8);
-    const tasks = prospectTasks.slice(0, 5);
+    const history = D.relationRows.filter((r) => String(r.prospect_id) === String(p.id)).slice(0, 20);
+    const tasks = prospectTasks.slice(0, 8);
     const products = Array.isArray(p.produits_recommandes) ? p.produits_recommandes : (p.produits_recommandes ? [p.produits_recommandes] : []);
     const contact = p.telephone ? `<a href="tel:${esc(p.telephone)}">Appeler ${esc(p.telephone)}</a>` : "";
     const email = p.email ? `<a href="mailto:${esc(p.email)}">Écrire par e-mail</a>` : "";
     const next = p.next_action_at ? new Date(p.next_action_at).toLocaleString("fr-FR", { timeZone: "Africa/Abidjan" }) : "Aucune relance programmée";
+    const fmtDate = (v) => v ? new Date(v).toLocaleString("fr-FR", { timeZone: "Africa/Abidjan" }) : "Non renseigné";
+    const fmtMoney = (v) => v != null && v !== "" && Number.isFinite(Number(v)) ? new Intl.NumberFormat("fr-FR").format(Number(v)) + " FCFA" : "Non renseigné";
+    const show = (v) => v == null || v === "" ? "Non renseigné" : Array.isArray(v) ? (v.length ? v.join(" · ") : "Non renseigné") : typeof v === "object" ? Object.entries(v).map(([k,x]) => k + " : " + x).join(" · ") : String(v);
+    const field = (name, v) => `<div class="prospect-data-field"><small>${esc(name)}</small><b>${esc(show(v))}</b></div>`;
+    const needs = Array.isArray(p.besoins) ? p.besoins : (p.besoins ? [p.besoins] : []);
+    const criteria = [["Produit",p.crit_produit],["Besoin",p.crit_besoin],["Financement",p.crit_finance],["Décideur",p.crit_decideur],["Court terme",p.crit_court_terme],["Disponibilité",p.crit_disponibilite]].filter(([,v]) => v != null);
+    const website = /^https?:\/\//i.test(String(p.site_web || "")) ? `<a href="${esc(p.site_web)}" target="_blank" rel="noopener">Site web ↗</a>` : esc(p.site_web || "");
+    const sourceUrl = /^https?:\/\//i.test(String(p.source_url || "")) ? `<a href="${esc(p.source_url)}" target="_blank" rel="noopener">Voir la source ↗</a>` : "";
     const activityRows = history.length ? history.map((r) => {
       const payload = r.payload && typeof r.payload === "object" ? (r.payload.message || r.payload.resultat || r.payload.reason || r.payload.status || "") : "";
       const summary = payload ? String(payload).slice(0, 150) : (r.ok === false ? "Action signalée en échec" : "Événement enregistré");
@@ -740,6 +748,10 @@ function renderDetail() {
       <div class="prospect-workbench-grid"><div><small>Agent responsable</small><b>${esc(assigned?.nom || "Non affecté")}</b></div><div><small>Score CRM</small><b>${p.score != null && Number.isFinite(Number(p.score)) ? esc(p.score) : "Non renseigné"}</b></div><div><small>Potentiel</small><b>${p.potentiel_fcfa != null && Number.isFinite(Number(p.potentiel_fcfa)) ? esc(Number(p.potentiel_fcfa).toLocaleString("fr-FR") + " FCFA") : "Non renseigné"}</b></div><div><small>Prochaine action</small><b>${esc(next)}</b></div></div>
       <div class="prospect-workbench-contact">${contact}${email}</div>
       <div class="prospect-workbench-products"><small>Logiciel(s)</small><b>${esc(products.filter(Boolean).join(" · ") || "Non renseigné")}</b></div>
+      <section class="prospect-workbench-section"><h3>Entreprise et localisation</h3><div class="prospect-data-grid">${field("Secteur d'activité",p.secteur)}${field("Adresse",p.adresse)}${field("Commune",p.commune)}${field("Ville",p.ville)}${field("Pays",p.pays)}${field("Site internet",p.site_web)}${field("Logiciel actuel",p.logiciel_actuel)}</div><div class="prospect-workbench-contact">${website}</div></section>
+      <section class="prospect-workbench-section"><h3>Décideur et coordonnées</h3><div class="prospect-data-grid">${field("Décideur",p.decideur)}${field("Fonction",p.decideur_fonction)}${field("Téléphone",p.telephone)}${field("WhatsApp",p.whatsapp)}${field("E-mail",p.email)}${field("Statut e-mail",p.email_statut)}${field("Vérifié le",fmtDate(p.email_verifie_at))}</div><div class="prospect-workbench-contact">${p.telephone ? `<a href="tel:${esc(p.telephone)}">☎ Appeler ${esc(p.telephone)}</a>` : ""}${p.whatsapp ? `<a href="https://wa.me/${esc(String(p.whatsapp).replace(/[^\d]/g,""))}" target="_blank" rel="noopener">WhatsApp</a>` : ""}${p.email ? `<a href="mailto:${esc(p.email)}">✉ Écrire</a>` : ""}</div></section>
+      <section class="prospect-workbench-section"><h3>Qualification et potentiel</h3><div class="prospect-data-grid">${field("Budget estimé",fmtMoney(p.budget_estime))}${field("Priorité",p.priorite)}${field("Besoins exprimés",needs)}${field("Segment",p.segment)}${field("Score / 100",p.score)}${field("Prochaine action",next)}${field("Relances sans réponse",p.relances_sans_reponse ?? 0)}</div>${p.score_justification ? `<div class="prospect-explanation"><small>Justification du score</small>${esc(p.score_justification)}</div>` : ""}${criteria.length ? `<div class="prospect-criteria">${criteria.map(([k,v])=>`<span>${esc(k)} : <b>${esc(v)}/5</b></span>`).join("")}</div>` : ""}</section>
+      <section class="prospect-workbench-section"><h3>Origine et suivi</h3><div class="prospect-data-grid">${field("Source",p.source)}${field("Créé le",fmtDate(p.created_at))}${field("Mis à jour le",fmtDate(p.updated_at))}${field("Dernier entrant",fmtDate(p.last_inbound_at))}${field("Dernier sortant",fmtDate(p.last_outbound_at))}${field("Opposition",p.opt_out ? "Oui" : "Non")}${field("Date opposition",fmtDate(p.opt_out_at))}</div>${sourceUrl}</section>
       <section class="prospect-workbench-section"><h3>Activité commerciale récente</h3><ul class="prospect-history">${activityRows}</ul></section>
       <section class="prospect-workbench-section"><h3>Missions liées à ce prospect</h3>${tasks.length ? tasks.map((t) => `<div class="mis" style="--c:${TASK_C[t.statut]};margin-top:6px"><b>${esc(clip(t.titre, 80))}</b><small>${esc(agentById(t.agent_id)?.nom || "Agent inconnu")} · ${esc(TASK_L[t.statut] || t.statut)} · P${esc(t.priorite)}</small></div>`).join("") : '<div class="muted">Aucune mission liée à ce prospect.</div>'}</section>
       <section class="prospect-workbench-section"><button type="button" class="prospect-assign-toggle" id="prospect-assign-toggle">＋ Créer une mission pour un agent</button><form id="prospect-assign-form" class="prospect-assign-form" hidden>

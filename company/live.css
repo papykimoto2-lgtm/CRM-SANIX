@@ -525,3 +525,21 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 
 /* Jarvis — poignée de déplacement tactile et souris. */
 #jarvis .jv-drag{flex:none;cursor:grab;touch-action:none;font-size:19px;letter-spacing:-3px;color:var(--cy);user-select:none}#jarvis .jv-drag.dragging{cursor:grabbing;background:rgba(34,211,238,.18);border-color:var(--cy)}#jarvis{touch-action:pan-y}#jarvis .jv-drag{touch-action:none}
+
+
+/* V18 — fiche prospect exhaustive, lisible sur poste et mobile. */
+.prospect-workbench-section{margin-top:11px;padding-top:9px;border-top:1px solid var(--line)}
+.prospect-workbench-section h3{margin:0 0 7px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#AFC4E4}
+.prospect-data-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.prospect-data-field{display:flex;flex-direction:column;gap:3px;min-width:0;padding:7px;border:1px solid var(--line);border-radius:8px;background:rgba(7,19,39,.48)}
+.prospect-data-field small,.prospect-explanation small{font-size:9px;color:var(--mute)}
+.prospect-data-field b{font-size:11px;font-weight:600;line-height:1.35;color:var(--tx);overflow-wrap:anywhere;white-space:normal}
+.prospect-profile-status{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+.prospect-profile-status span,.prospect-criteria span{padding:4px 7px;border:1px solid var(--line);border-radius:999px;background:rgba(15,28,52,.7);font-size:9px;color:#C5D6F0}
+.prospect-explanation{margin-top:7px;padding:8px;border-left:2px solid var(--cy);background:rgba(34,211,238,.06);font-size:10px;line-height:1.4;overflow-wrap:anywhere}
+.prospect-explanation small{display:block;margin-bottom:3px}
+.prospect-criteria{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+.prospect-workbench-contact{display:flex;gap:7px;flex-wrap:wrap;margin-top:7px}
+.prospect-workbench-contact a{overflow-wrap:anywhere}
+#detail:has(.prospect-workbench-section){max-height:none;overflow:visible}
+@media(max-width:640px){.prospect-data-grid{grid-template-columns:1fr 1fr}.prospect-data-field{padding:6px}.prospect-data-field b{font-size:10px}}
