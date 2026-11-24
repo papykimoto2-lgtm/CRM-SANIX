@@ -791,7 +791,7 @@ function renderDetail() {
       return `<li><b>${esc(String(r.action || "activité").replace(/_/g, " "))}</b><small>${esc(who)} · ${esc(ago(r.at))} · ${r.ok === false ? "Échec" : "Enregistré"}</small><span>${esc(summary)}</span></li>`;
     }).join("") : "<li>Aucune activité reliée à ce prospect dans les 500 derniers événements chargés.</li>";
     el.hidden = false;
-    el.innerHTML = `<div class="prospect-workbench-head"><div><h2>${esc(p.entreprise || "Prospect")} <span class="tag">Prospect</span></h2><div class="muted">${esc(p.ville || "Localisation non renseignée")} · ${esc(p.stage || "nouveau")}</div></div><div class="prospect-workbench-head-actions">${D.prospectNetworkOrigin ? '<button type="button" id="prospect-back-network" class="prospect-network-back">← Retour au réseau</button>' : ""}<button type="button" id="prospect-detail-close" aria-label="Fermer la fiche">×</button></div></div>
+    el.innerHTML = `<div class="prospect-workbench-head"><div><h2>${esc(p.entreprise || "Prospect")} <span class="tag">Prospect</span></h2><div class="muted">${esc(p.ville || "Localisation non renseignée")} · ${esc(p.stage || "nouveau")}</div></div><div class="prospect-workbench-head-actions">${D.prospectNetworkOrigin ? '<button type="button" id="prospect-back-network" class="prospect-network-back">← Retour au réseau</button>' : ""}<button type="button" id="prospect-jarvis-analysis" class="prospect-assign-toggle">✦ Analyse commerciale Jarvis</button><button type="button" id="prospect-detail-close" aria-label="Fermer la fiche">×</button></div></div>
       <div class="prospect-workbench-grid"><div><small>Agent responsable</small><b>${esc(assigned?.nom || "Non affecté")}</b></div><div><small>Score CRM</small><b>${p.score != null && Number.isFinite(Number(p.score)) ? esc(p.score) : "Non renseigné"}</b></div><div><small>Potentiel</small><b>${p.potentiel_fcfa != null && Number.isFinite(Number(p.potentiel_fcfa)) ? esc(Number(p.potentiel_fcfa).toLocaleString("fr-FR") + " FCFA") : "Non renseigné"}</b></div><div><small>Prochaine action</small><b>${esc(next)}</b></div></div>
       <div class="prospect-workbench-contact">${contact}${email}</div>
       <div class="prospect-workbench-products"><small>Logiciel(s)</small><b>${esc(products.filter(Boolean).join(" · ") || "Non renseigné")}</b></div>
@@ -836,6 +836,7 @@ function renderDetail() {
       </form></section>
       <p class="prospect-workbench-note">La création passe par le contrôle d'accès de la direction. La mission est enregistrée dans le moteur SANIX AI ; aucune relance ou communication externe n'est envoyée automatiquement.</p>`;
     $("#prospect-detail-close")?.addEventListener("click", () => { D.prospectSel = null; D.prospectHistory = null; D.prospectNetworkOrigin = null; el.hidden = true; });
+    $("#prospect-jarvis-analysis")?.addEventListener("click", () => window.__jarvis?.explainProspect?.(p, history, prospectTasks, { historyHasMore, historyLoading }));
     $("#prospect-back-network")?.addEventListener("click", () => {
       const origin = D.prospectNetworkOrigin;
       D.prospectSel = null; D.prospectHistory = null; D.prospectNetworkOrigin = null;
