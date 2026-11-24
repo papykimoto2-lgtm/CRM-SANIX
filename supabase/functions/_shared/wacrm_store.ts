@@ -48,13 +48,13 @@ export const store: Store = {
       const r = await db().from("ai_prospects").select("id,stage").eq("crm_rid", clientRid).limit(2);
       rows = r.data ?? [];
     }
-    if (rows.length !== 1 && phone) {
+    if (rows.length === 0 && phone) {
       const r = await db().from("ai_prospects").select("id,stage").eq("phone_norm", phone).limit(2);
       rows = r.data ?? [];
     }
     if (rows.length !== 1) return;
     const p = rows[0];
-    await db().from("ai_prospects").update({ last_outbound_at: at, ...(p.stage === "qualifie" ? { stage: "premier_contact" } : {}) }).eq("id", p.id);
+    await db().from("ai_prospects").update({ last_outbound_at: at, ...(["identifie", "enregistre", "qualifie"].includes(p.stage) ? { stage: "premier_contact" } : {}) }).eq("id", p.id);
   },
   async syncProspectInbound(clientRid, phone, at) {
     let rows = [];
