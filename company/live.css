@@ -550,3 +550,20 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .prospect-edit-grid input,.prospect-edit-grid select{width:100%;min-width:0;box-sizing:border-box;padding:8px;border:1px solid var(--line);border-radius:7px;background:rgba(7,19,39,.85);color:var(--tx);font:inherit;font-size:11px}
 .prospect-edit-grid .prospect-edit-full{grid-column:1/-1}
 @media(max-width:520px){.prospect-edit-grid{grid-template-columns:1fr}.prospect-edit-grid .prospect-edit-full{grid-column:auto}}
+
+
+/* CRM follow-up cockpit */
+.crm-followup-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin:12px 0}
+.crm-followup-summary>div{min-width:0;padding:9px 7px;border:1px solid rgba(148,163,184,.16);border-radius:10px;background:rgba(15,23,42,.42)}
+.crm-followup-summary b{display:block;font-size:20px;color:#e2e8f0;font-variant-numeric:tabular-nums}
+.crm-followup-summary b.late{color:#fb7185}
+.crm-followup-summary small{display:block;margin-top:3px;color:#94a3b8;font-size:10px;line-height:1.25}
+.crm-followup-group{margin-top:12px}
+.crm-followup-group h3{margin:0 0 6px;font-size:12px;color:#cbd5e1}
+.crm-followup-row{display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px;padding:8px 9px;margin:4px 0;border:1px solid rgba(148,163,184,.13);border-radius:8px;background:rgba(15,23,42,.32);color:inherit;text-align:left;cursor:pointer}
+.crm-followup-row:hover,.crm-followup-row:focus-visible{border-color:#22d3ee;background:rgba(34,211,238,.08);outline:none}
+.crm-followup-row span{min-width:0;display:flex;flex-direction:column;gap:3px}
+.crm-followup-row b{font-size:11px;overflow-wrap:anywhere}
+.crm-followup-row small,.crm-followup-row em{font-size:10px;color:#94a3b8;font-style:normal}
+.crm-followup-row em{text-align:right;flex:0 0 auto;max-width:46%;overflow-wrap:anywhere}
+@media(max-width:520px){.crm-followup-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.crm-followup-row{align-items:flex-start;flex-direction:column;gap:4px}.crm-followup-row em{max-width:100%;text-align:left}}
