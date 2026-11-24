@@ -459,6 +459,6 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 @media(max-width:640px){.mic-state{font-size:8px;margin-top:2px}.jv-mid{gap:1px}}
 
 /* V14 — réseau relationnel vivant agents ↔ prospects, données CRM réelles. */
-#relations-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;background:#06101F;cursor:pointer}
+#relations-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;background:#06101F;cursor:pointer}\n/* Les règles d'affichage du canvas ne doivent jamais neutraliser l'attribut hidden. */\n#relations-canvas[hidden],#stage3d[hidden],#net[hidden]{display:none!important}
 #ctl button[data-c="relations"]{font-size:20px;color:#A78BFA}
 #ctl button[data-c="relations"].on{border-color:#A78BFA;color:#E9D5FF;box-shadow:0 0 14px rgba(168,85,247,.38)}
