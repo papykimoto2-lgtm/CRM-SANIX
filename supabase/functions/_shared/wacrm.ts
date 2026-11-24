@@ -40,7 +40,7 @@ export type Store = {
   setOptOut(phone: string, source: string): Promise<void>;
   addInteraction(clientRid: string, interaction: Record<string, unknown>): Promise<void>;
   syncProspectOutbound?(clientRid: string | null, phone: string, at: string): Promise<void>;
-  syncProspectInbound?(clientRid: string | null, phone: string, at: string): Promise<void>;
+  syncProspectInbound?(clientRid: string | null, phone: string, at: string, optOut?: boolean): Promise<void>;
 };
 export type Deps = {
   fetch: (url: string, init?: any) => Promise<{ ok: boolean; status: number; json(): Promise<any>; text(): Promise<string> }>;
@@ -170,7 +170,7 @@ export async function routeInbound(d: Deps, m: any, profileName?: string): Promi
   if (!neuf) return true;                                   // déjà reçu : Meta réessaie
   const stop = estStop(texte);
   if (stop) await d.store.setOptOut(phone, "STOP par WhatsApp");
-  await d.store.syncProspectInbound?.(conv.client_rid, phone, iso(m.timestamp, d)).catch(() => {});
+  await d.store.syncProspectInbound?.(conv.client_rid, phone, iso(m.timestamp, d), stop).catch(() => {});
   if (conv.client_rid) {
     const nom = profileName ? profileName + " : " : "";
     await d.store.addInteraction(conv.client_rid, stop
