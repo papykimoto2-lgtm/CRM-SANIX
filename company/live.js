@@ -815,7 +815,14 @@ $("#missions").addEventListener("click", (ev) => { const m = ev.target.closest("
 
 // ───────── Vue 3D (repli 2D si WebGL indisponible ou ?2d) ─────────
 let view3d = null, relationsView = null, relationsMode = false;
-const relationFilters = { product: "", prospect: "" };
+const relationFilters = { agent: "", product: "", prospect: "" };
+function renderRelationAgentOptions() {
+  const select = $("#relations-agent"), current = relationFilters.agent;
+  const agents = D.agents.filter(a => a.etat !== "archive").slice().sort((a,b) => String(a.nom || a.code).localeCompare(String(b.nom || b.code), "fr"));
+  select.innerHTML = '<option value="">Tous les agents</option>' + agents.map(a => '<option value="' + esc(a.id) + '">' + esc(a.nom || a.code || "Agent") + '</option>').join("");
+  select.value = agents.some(a => String(a.id) === current) ? current : "";
+  if (select.value !== current) relationFilters.agent = select.value;
+}
 function renderRelationProductOptions() {
   const select = $("#relations-product"), current = select.value;
   const products = (D.products || []).filter(p => p.actif !== false).slice().sort((a,b) => String(a.nom).localeCompare(String(b.nom), "fr"));
@@ -823,6 +830,7 @@ function renderRelationProductOptions() {
   select.value = products.some(p => p.nom === current) ? current : relationFilters.product;
 }
 function updateRelationFilters() {
+  relationFilters.agent = $("#relations-agent").value;
   relationFilters.product = $("#relations-product").value;
   relationFilters.prospect = $("#relations-prospect").value.trim();
   relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], filters: relationFilters });
@@ -841,15 +849,16 @@ async function init3d() {
   catch (e) { console.warn("Vue 3D indisponible, repli sur la vue 2D :", e.message); view3d = null; $("#ctl").hidden = true; $("#hint").hidden = true; }
 }
 function initControls() {
+  $("#relations-agent").addEventListener("change", updateRelationFilters);
   $("#relations-product").addEventListener("change", updateRelationFilters);
   $("#relations-prospect").addEventListener("input", updateRelationFilters);
-  $("#relations-reset").addEventListener("click", () => { $("#relations-product").value = ""; $("#relations-prospect").value = ""; updateRelationFilters(); });
+  $("#relations-reset").addEventListener("click", () => { $("#relations-agent").value = ""; $("#relations-product").value = ""; $("#relations-prospect").value = ""; updateRelationFilters(); });
   $("#relations-filters").addEventListener("click", (ev) => { const b=ev.target.closest("[data-rel-camera]");if(!b||!relationsView)return;const action=b.dataset.relCamera;if(action==="in")relationsView.zoom(1.22);else if(action==="out")relationsView.zoom(.82);else if(action==="reset")relationsView.reset(); });
   $("#ctl").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-c]"); if (!b) return; const c = b.dataset.c;
     if (c === "relations") {
       relationsMode = !relationsMode; b.classList.toggle("on", relationsMode);
       $("#stage3d").hidden = relationsMode; cv.hidden = relationsMode || !!view3d; relationsCanvas.hidden = !relationsMode; $("#relations-filters").hidden = !relationsMode;
-      if (relationsMode) { renderRelationProductOptions(); relationsView ??= createProspectRelations(relationsCanvas, { ...api3d, onFilterCount: (n, total) => { $("#relations-filter-count").textContent = n + " / " + total + " prospects"; } }); relationsView.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], filters: relationFilters }); relationsView.resize(); }
+      if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView ??= createProspectRelations(relationsCanvas, { ...api3d, onFilterCount: (n, total) => { $("#relations-filter-count").textContent = n + " / " + total + " prospects"; } }); relationsView.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], filters: relationFilters }); relationsView.resize(); }
       else view3d?.resize();
       return;
     }
@@ -867,7 +876,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); if (relationsMode) { renderRelationProductOptions(); relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], filters: relationFilters }); } renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], filters: relationFilters }); } renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {

@@ -3,7 +3,7 @@
 // Les événements sans agent_id restent visibles comme non attribués : aucune relation n'est inventée.
 export function createProspectRelations(canvas, api) {
   const ctx = canvas.getContext("2d");
-  const state = { agents: [], prospects: [], activities: [], width: 0, height: 0, dpr: 1, nodes: [], edges: [], raf: 0, stopped: false, filters: { product: "", prospect: "" }, totalProspects: 0, camera: { x: 0, y: 0, scale: 1 }, selected: null, pointer: null, manualPositions: new Map() };
+  const state = { agents: [], prospects: [], activities: [], width: 0, height: 0, dpr: 1, nodes: [], edges: [], raf: 0, stopped: false, filters: { agent: "", product: "", prospect: "" }, totalProspects: 0, camera: { x: 0, y: 0, scale: 1 }, selected: null, pointer: null, manualPositions: new Map() };
   const palette = { nouveau:"#64748B",a_qualifier:"#94A3B8",qualifie:"#22D3EE",premier_contact:"#38BDF8",conversation:"#60A5FA",besoin_identifie:"#818CF8",interesse:"#A78BFA",rdv_propose:"#F59E0B",rdv_confirme:"#FBBF24",demo_realisee:"#F97316",offre_transmise:"#FB923C",negociation:"#E879F9",offre_acceptee:"#22C55E",contrat_transmis:"#4ADE80",marche_gagne:"#16A34A",client_fidelise:"#10B981",perdu:"#EF4444",en_veille:"#64748B" };
   const label = s => String(s || "nouveau").replace(/_/g," ");
   const norm = v => String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("fr").trim();
@@ -22,14 +22,15 @@ export function createProspectRelations(canvas, api) {
   const prospectColor = p => productOf(p) ? productColor(productOf(p)) : (palette[p.stage] || "#64748B");
   const resize = () => { const r=canvas.getBoundingClientRect();state.dpr=Math.min(2,devicePixelRatio||1);state.width=Math.max(320,r.width);state.height=Math.max(360,r.height);canvas.width=Math.round(state.width*state.dpr);canvas.height=Math.round(state.height*state.dpr);ctx.setTransform(state.dpr,0,0,state.dpr,0,0);layout(); };
   function layout() {
-    const w=state.width,h=state.height,left=state.agents.filter(a=>a.etat!=="archive").slice(0,24);
+    const w=state.width,h=state.height,left=state.agents.filter(a=>a.etat!=="archive"&&(!state.filters.agent||String(a.id)===state.filters.agent)).slice(0,24);
     const norm = v => String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("fr").trim();
     const filteredProspects = state.prospects.filter(p => {
       const productValues = Array.isArray(p.produits_recommandes) ? p.produits_recommandes : (p.produits_recommandes ? [p.produits_recommandes] : []);
       const productOk = !state.filters.product || productValues.some(v => norm(v) === norm(state.filters.product) || norm(v).includes(norm(state.filters.product)));
       const haystack = [p.entreprise,p.ville,p.telephone,p.email].map(norm).join(" ");
       const prospectOk = !state.filters.prospect || haystack.includes(norm(state.filters.prospect));
-      return productOk && prospectOk;
+      const agentOk = !state.filters.agent || String(p.owner_id || "") === state.filters.agent || state.activities.some(a => String(a.agent_id || "") === state.filters.agent && String(a.prospect_id || "") === String(p.id));
+      return productOk && prospectOk && agentOk;
     });
     const byAgent=new Map(left.map(a=>[String(a.id),a]));
     const byProspect=new Map(filteredProspects.map(p=>[String(p.id),p]));
@@ -71,7 +72,7 @@ export function createProspectRelations(canvas, api) {
     state.prospects=Array.isArray(data.prospects)?data.prospects:[];
     state.activities=Array.isArray(data.activities)?data.activities:[];
     state.totalProspects=state.prospects.length;
-    state.filters={ product: String(data.filters?.product || ""), prospect: String(data.filters?.prospect || "") };
+    state.filters={ agent: String(data.filters?.agent || ""), product: String(data.filters?.product || ""), prospect: String(data.filters?.prospect || "") };
     layout();
   }
   function draw(t){
