@@ -508,3 +508,16 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .prospect-assign-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .prospect-assign-submit:disabled{opacity:.55;cursor:wait}
 .prospect-assign-status{font-size:10px;color:#FCA5A5;overflow-wrap:anywhere}
+
+/* V18 — filtres fiables et légende explicite du réseau neuronal. */
+.relations-legend{position:absolute;z-index:5;left:12px;bottom:30px;display:flex;flex-wrap:wrap;gap:6px;max-width:min(72%,760px);max-height:112px;overflow:auto;padding:8px 10px;border:1px solid rgba(148,163,184,.28);border-radius:10px;background:rgba(5,11,22,.88);backdrop-filter:blur(8px);color:#D5E2F7}
+.relations-legend[hidden]{display:none!important}
+.relations-legend-item{display:inline-flex;align-items:center;gap:5px;min-width:0;font-size:9px;white-space:nowrap}
+.relations-legend-item b{font-weight:550}
+.relations-legend-item small{color:#94A3B8;font-size:8px}
+.relations-legend-dot{display:inline-block;width:8px;height:8px;flex:none;border-radius:50%;background:var(--legend-color);box-shadow:0 0 8px var(--legend-color)}
+.relations-legend-dot.activity{width:16px;height:2px;border-radius:0}
+.relations-legend-dot.mission{width:16px;height:0;border-top:2px dashed var(--legend-color);background:none;box-shadow:none}
+.relations-legend-dot.assignment{width:16px;height:0;border-top:2px dotted var(--legend-color);background:none;box-shadow:none}
+.relations-legend-dot.agent{width:9px;height:9px}
+@media(max-width:640px){.relations-legend{left:7px;right:52px;bottom:7px;max-width:none;max-height:84px;padding:6px;gap:5px}.relations-legend-item{font-size:8px}}
