@@ -15,7 +15,7 @@ export function initJarvis(A, stage) {
   dock.innerHTML = `<div id="jv-log" aria-live="polite"></div>
     <div class="jv-bar"><button type="button" id="jv-orb" class="orb" aria-label="Parler à Jarvis" title="Parler à Jarvis"><i></i></button>
     <div class="jv-mid"><input id="jv-in" type="text" autocomplete="off" placeholder="Parlez ou écrivez…" title="Ex. : « où en est AutoGarage ? »" aria-label="Message à Jarvis"><small id="jv-st">Jarvis prêt${SR ? "" : " (micro non pris en charge : utilisez le clavier)"}</small></div>
-    <button type="button" id="jv-auto" class="jb" title="Mode autonome : Jarvis lance consignes, missions et rapports sans confirmation">⚡</button><button type="button" id="jv-ideas" class="jb" title="Propositions d'amélioration de Jarvis">💡<em id="jv-badge" hidden></em></button><button type="button" id="jv-send" class="jb" title="Envoyer">➤</button><button type="button" id="jv-voice" class="jb on" title="Voix de Jarvis">🔊</button><button type="button" id="jv-hands" class="jb" title="Mains libres : dites « Jarvis » pour m'appeler">🖐</button></div>`;
+    <button type="button" id="jv-auto" class="jb" title="Mode autonome : Jarvis lance consignes, missions et rapports sans confirmation">⚡</button><button type="button" id="jv-ideas" class="jb" title="Propositions d'amélioration de Jarvis">💡<em id="jv-badge" hidden></em></button><button type="button" id="jv-send" class="jb" title="Envoyer">➤</button><button type="button" id="jv-voice" class="jb on" title="Activer ou couper la voix">🔊</button><button type="button" id="jv-voice-style" class="jb" title="Changer la voix française de Jarvis">🎙</button><button type="button" id="jv-hands" class="jb" title="Mains libres : dites « Jarvis » pour m'appeler">🖐</button></div>`;
   stage.appendChild(dock);
   const $ = (s) => dock.querySelector(s), logEl = $("#jv-log"), inEl = $("#jv-in"), st = $("#jv-st"), orb = $("#jv-orb");
   let guard = null, voiceOn = true, hands = false, listening = false, speaking = false, rec = null, pending = null, convo = false, gotResult = false, llmDown = 0, hist = [], awakeUntil = 0, lastSpeechEnd = 0, poll = null;
@@ -23,16 +23,50 @@ export function initJarvis(A, stage) {
 
   function addLine(who, text) { lines.push({ who, text }); if (lines.length > 40) lines.shift();
     const d = document.createElement("div"); d.className = "ln " + who; d.innerHTML = `<b>${who === "me" ? "Vous" : who === "dg" ? "Directeur général" : "Jarvis"}</b> ${esc(text)}`; logEl.appendChild(d); setTimeout(() => d.remove(), 16000); while (logEl.children.length > 3) logEl.firstChild.remove(); logEl.scrollTop = 1e6; }
-  function voiceFr() { const v = window.speechSynthesis.getVoices(); return v.find((x) => /^fr(-|_)/i.test(x.lang) && /thomas|paul|henri|male|homme|google fran/i.test(x.name)) || v.find((x) => /^fr(-|_)/i.test(x.lang)) || null; }
+  const VOICE_KEY = "sanix_jarvis_voice_fr";
+  let speechRun = 0;
+  function frenchVoices() { return (window.speechSynthesis?.getVoices() ?? []).filter((v) => /^fr([_-]|$)/i.test(v.lang)).sort((a, b) => a.name.localeCompare(b.name)); }
+  function voiceFr() {
+    const voices = frenchVoices(); let preferred = "";
+    try { preferred = localStorage.getItem(VOICE_KEY) || ""; } catch { /* stockage indisponible */ }
+    return voices.find((v) => v.name === preferred) || voices.find((v) => /fr-FR/i.test(v.lang) && /google|natural|enhanced/i.test(v.name)) || voices.find((v) => /fr-FR/i.test(v.lang)) || voices[0] || null;
+  }
+  function cycleVoice() {
+    const voices = frenchVoices(); if (!voices.length) { setSt("Aucune voix française installée sur cet appareil."); return; }
+    const current = voiceFr(), next = voices[(Math.max(0, voices.findIndex((v) => v.name === current?.name)) + 1) % voices.length];
+    try { localStorage.setItem(VOICE_KEY, next.name); } catch { /* préférence non persistée */ }
+    $("#jv-voice-style").title = "Voix : " + next.name + " — toucher pour changer";
+    setSt("Voix sélectionnée : " + next.name);
+    say("Bonjour. Je suis Jarvis. Comment puis-je vous aider ?", "jarvis");
+  }
+  window.speechSynthesis?.addEventListener?.("voiceschanged", () => {
+    const v = voiceFr(); if (v) $("#jv-voice-style").title = "Voix : " + v.name + " — toucher pour changer";
+  });
   const clean = (t) => String(t).replace(/[*_`#>]/g, "").replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "").replace(/\s+/g, " ").trim();
   function say(text, who = "jarvis") {
     addLine(who, text); if (!voiceOn || !TTS || !text) { setTimeout(afterReply, 200); return; }
-    clearTimeout(guard); guard = setTimeout(() => { if (speaking) { speaking = false; lastSpeechEnd = Date.now(); A.view?.speaking(false); setOrb(listening ? "listen" : ""); afterReply(); } }, clean(text).length * 90 + 2500);
-    try { window.speechSynthesis.cancel(); const parts = clean(text).match(/[^.!?]+[.!?]?/g) ?? [clean(text)];
-      parts.slice(0, 8).forEach((p, i, arr) => { const u = new SpeechSynthesisUtterance(p.trim()); u.lang = "fr-FR"; u.rate = 1; u.pitch = .9; const v = voiceFr(); if (v) u.voice = v;
-        if (i === 0) u.onstart = () => { speaking = true; A.view?.speaking(true); setOrb("speak"); setSt("Jarvis parle…"); };
-        if (i === arr.length - 1) { u.onend = u.onerror = () => { speaking = false; lastSpeechEnd = Date.now(); A.view?.speaking(false); setOrb(listening ? "listen" : ""); setSt(hands ? "Mains libres : dites « Jarvis »" : "Jarvis prêt"); afterReply(); }; }
-        window.speechSynthesis.speak(u); }); } catch { /* voix indisponible : la réponse reste affichée */ }
+    const runId = ++speechRun, synth = window.speechSynthesis;
+    clearTimeout(guard); synth.cancel();
+    const plain = clean(text), parts = (plain.match(/[^.!?;:]+[.!?;:]?/g) ?? [plain]).map((p) => p.trim()).filter(Boolean).slice(0, 10);
+    let index = 0;
+    const finish = () => {
+      if (runId !== speechRun) return;
+      clearTimeout(guard); speaking = false; lastSpeechEnd = Date.now(); A.view?.speaking(false);
+      setOrb(listening ? "listen" : ""); setSt(hands ? "Mains libres : dites « Jarvis »" : "Jarvis prêt"); afterReply();
+    };
+    const next = () => {
+      if (runId !== speechRun) return;
+      if (index >= parts.length) { finish(); return; }
+      const p = parts[index++], u = new SpeechSynthesisUtterance(p);
+      u.lang = "fr-FR"; u.rate = 0.96; u.pitch = 1.02; u.volume = 1;
+      const v = voiceFr(); if (v) u.voice = v;
+      u.onstart = () => { if (runId !== speechRun) return; speaking = true; A.view?.speaking(true); setOrb("speak"); setSt("Jarvis parle…"); };
+      u.onend = () => { if (runId === speechRun) setTimeout(next, /[.!?]$/.test(p) ? 150 : 90); };
+      u.onerror = () => { if (runId === speechRun) setTimeout(next, 100); };
+      synth.speak(u);
+    };
+    guard = setTimeout(finish, Math.max(9000, plain.length * 115 + parts.length * 700));
+    try { next(); } catch { finish(); }
   }
 
   // ───────── Réponses locales (données réelles) ─────────
@@ -304,6 +338,7 @@ export function initJarvis(A, stage) {
   setInterval(refreshIdeas, 15000); setTimeout(refreshIdeas, 3500);
   $("#jv-send").addEventListener("click", sendTxt); inEl.addEventListener("keydown", (e) => { if (e.key === "Enter") sendTxt(); e.stopPropagation(); });
   $("#jv-voice").addEventListener("click", (e) => { voiceOn = !voiceOn; e.currentTarget.classList.toggle("on", voiceOn); e.currentTarget.textContent = voiceOn ? "🔊" : "🔇"; if (!voiceOn) window.speechSynthesis?.cancel(); setSt(voiceOn ? "Voix activée" : "Voix désactivée"); });
+  $("#jv-voice-style").addEventListener("click", cycleVoice);
   $("#jv-hands").addEventListener("click", (e) => { hands = !hands; e.currentTarget.classList.toggle("on", hands); if (hands) { if (!SR) { hands = false; e.currentTarget.classList.remove("on"); setSt("Mains libres indisponible : micro non pris en charge."); return; } if (listening) rec.stop(); setTimeout(startRec, 150); setSt("Mains libres : dites « Jarvis »"); } else { rec?.stop(); setSt("Jarvis prêt"); } });
   addLine("jarvis", "Salle de contrôle en ligne. Dites « Jarvis, situation » ou écrivez votre demande.");
   window.__jarvis = { crm: () => crmContext(""), crmRows: () => crmC.rows.slice(), insights, auto: () => autoMode, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say };
