@@ -17,7 +17,7 @@ const ORIGIN = location.origin;
 const STATES = { run: ["Au travail", "#22D3EE"], wait: ["Coordonne ses équipes", "#A855F7"], valid: ["Attend une validation", "#F59E0B"], bad: ["Mission bloquée", "#EF4444"], queue: ["Mission en attente", "#64748B"], idle: ["Disponible", "#3B5A94"], off: ["Suspendu", "#475569"] };
 const TASK_C = { en_cours: "#22D3EE", attente_sous_taches: "#A855F7", attente_validation: "#F59E0B", a_faire: "#64748B", bloquee: "#EF4444", echouee: "#EF4444", terminee: "#22C55E" };
 const TASK_L = { en_cours: "En cours", attente_sous_taches: "Attend ses équipes", attente_validation: "À valider", a_faire: "À faire", bloquee: "Bloquée", echouee: "Échouée", terminee: "Terminée", annulee: "Annulée" };
-const D = { agents: [], depts: [], tasks: [], tasks90: null, orderRows: null, execRows: null, execConfig: null, products: null, productAliases: null, actions: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, costCenter90: null, salesRows: null, offerRows: null, whatsapp: null, gov: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0 };
+const D = { agents: [], depts: [], tasks: [], tasks90: null, orderRows: null, execRows: null, execConfig: null, products: null, productAliases: null, actions: [], relationRows: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, costCenter90: null, salesRows: null, offerRows: null, whatsapp: null, gov: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0 };
 let sb = null;
 
 // ───────── Configuration et session ─────────
@@ -66,9 +66,10 @@ async function pull() {
     safe(sb.from("ai_products").select("id,nom,actif").eq("actif", true).order("nom"), null),
     safe(sb.from("ai_product_aliases").select("alias,product_id"), null),
   ]);
+  const relationRows = await safe(sb.from("ai_actions").select("id,action,agent_id,prospect_id,ok,at").not("prospect_id", "is", null).order("at", { ascending: false }).limit(500), null);
   if (!ag?.data || !tk?.data) throw safe.err ?? new Error("Données indisponibles");
   if (!D.depts.length) { const dp = await safe(sb.from("ai_departments").select("id,nom,couleur"), null); D.depts = dp?.data ?? []; }
-  D.agents = ag.data; D.tasks = tk.data; D.actions = ac?.data ?? D.actions;
+  D.agents = ag.data; D.tasks = tk.data; D.actions = ac?.data ?? D.actions; D.relationRows = relationRows?.data ?? D.relationRows;
   if (cr?.data) { D.created = {}; for (const r of cr.data) if (r.task_id) D.created[r.task_id] = (D.created[r.task_id] ?? 0) + 1; }
   D.nToday = nT?.count ?? D.nToday; D.nTotal = nA?.count ?? D.nTotal; D.recent = rc?.data ?? D.recent; D.todayRows = td?.data ?? D.todayRows;
   D.approvals = ap?.count ?? D.approvals; D.budget = bu?.data ?? D.budget; D.gov = gv?.data ?? D.gov;
@@ -832,7 +833,7 @@ function initControls() {
     if (c === "relations") {
       relationsMode = !relationsMode; b.classList.toggle("on", relationsMode);
       $("#stage3d").hidden = relationsMode; cv.hidden = relationsMode || !!view3d; relationsCanvas.hidden = !relationsMode;
-      if (relationsMode) { relationsView ??= createProspectRelations(relationsCanvas, api3d); relationsView.update({ agents: D.agents, prospects: D.salesRows || [] }); relationsView.resize(); }
+      if (relationsMode) { relationsView ??= createProspectRelations(relationsCanvas, api3d); relationsView.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [] }); relationsView.resize(); }
       else view3d?.resize();
       return;
     }
@@ -850,7 +851,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); if (relationsMode) relationsView?.update({ agents: D.agents, prospects: D.salesRows || [] }); renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); if (relationsMode) relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [] }); renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
