@@ -3166,6 +3166,8 @@ async function routeInbound(d, m, profileName) {
   if (!neuf) return true;
   const stop = estStop(texte);
   if (stop) await d.store.setOptOut(phone, "STOP par WhatsApp");
+  await d.store.syncProspectInbound?.(conv.client_rid, phone, iso(m.timestamp, d)).catch(() => {
+  });
   if (conv.client_rid) {
     const nom = profileName ? profileName + " : " : "";
     await d.store.addInteraction(conv.client_rid, stop ? { date: iso(m.timestamp, d), type: "D\xE9sinscription WhatsApp", note: "A demand\xE9 \xE0 ne plus \xEAtre contact\xE9 : ne plus lui \xE9crire", ico: "\u26D4", source: "whatsapp" } : { date: iso(m.timestamp, d), type: "R\xE9ponse re\xE7ue par WhatsApp", note: nom + "\xAB " + texte.replace(/\s+/g, " ").slice(0, 80) + (texte.length > 80 ? "\u2026" : "") + " \xBB", etape: 1, ico: "\u{1F4AC}", source: "whatsapp" }).catch(() => {
@@ -3218,6 +3220,34 @@ var store2 = {
   },
   async setOptOut(phone, source) {
     await db().from("crm_wa_optout").upsert({ phone, source, since: (/* @__PURE__ */ new Date()).toISOString() });
+  },
+  async syncProspectOutbound(clientRid, phone, at) {
+    let rows = [];
+    if (clientRid) {
+      const r = await db().from("ai_prospects").select("id,stage").eq("crm_rid", clientRid).limit(2);
+      rows = r.data ?? [];
+    }
+    if (rows.length === 0 && phone) {
+      const r = await db().from("ai_prospects").select("id,stage").eq("phone_norm", phone).limit(2);
+      rows = r.data ?? [];
+    }
+    if (rows.length !== 1) return;
+    const p = rows[0];
+    await db().from("ai_prospects").update({ last_outbound_at: at, ...(["identifie", "enregistre", "qualifie"].includes(p.stage) ? { stage: "premier_contact" } : {}) }).eq("id", p.id);
+  },
+  async syncProspectInbound(clientRid, phone, at) {
+    let rows = [];
+    if (clientRid) {
+      const r = await db().from("ai_prospects").select("id,stage").eq("crm_rid", clientRid).limit(2);
+      rows = r.data ?? [];
+    }
+    if (rows.length === 0 && phone) {
+      const r = await db().from("ai_prospects").select("id,stage").eq("phone_norm", phone).limit(2);
+      rows = r.data ?? [];
+    }
+    if (rows.length !== 1) return;
+    const p = rows[0];
+    await db().from("ai_prospects").update({ last_inbound_at: at, relances_sans_reponse: 0, ...(p.stage === "premier_contact" ? { stage: "conversation" } : {}) }).eq("id", p.id);
   },
   async addInteraction(clientRid, interaction) {
     const { data } = await db().from("crm_records").select("rid").eq("entity", "clients").eq("rid", clientRid).is("deleted_at", null).maybeSingle();
