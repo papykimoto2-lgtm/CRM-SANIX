@@ -170,6 +170,44 @@ export function initJarvis(A, stage) {
     out += "Cette analyse s'appuie uniquement sur les données actuellement chargées ; elle ne prouve pas un échange non enregistré et n'envoie aucune communication.";
     return out;
   }
+  function followupPriorities(limit = 7) {
+    const rows = Array.isArray(D.salesRows) ? D.salesRows : [];
+    if (!rows.length) return "Je ne peux pas établir le classement : les données du pipeline commercial ne sont pas disponibles.";
+    const now = Date.now(), day = 864e5;
+    const closed = new Set(["perdu","en_veille","marche_gagne","client_fidelise"]);
+    const lastByProspect = new Map(), blockedByProspect = new Map();
+    for (const a of D.relationRows || []) {
+      const id = String(a.prospect_id || ""), at = Date.parse(a.at || "");
+      if (id && Number.isFinite(at) && at > (lastByProspect.get(id) || 0)) lastByProspect.set(id, at);
+    }
+    for (const t of D.tasks || []) if (["bloquee","echouee"].includes(t.statut) && t.prospect_id) {
+      const id = String(t.prospect_id); blockedByProspect.set(id, (blockedByProspect.get(id) || 0) + 1);
+    }
+    const scored = rows.filter(p => !closed.has(String(p.stage || ""))).map(p => {
+      const id = String(p.id), due = Date.parse(p.next_action_at || "");
+      const hasDue = Number.isFinite(due), last = Math.max(lastByProspect.get(id) || 0, Date.parse(p.updated_at || "") || 0, Date.parse(p.created_at || "") || 0);
+      const inactiveDays = last ? Math.max(0, Math.floor((now-last)/day)) : null;
+      const lateDays = hasDue && due < now ? Math.floor((now-due)/day) : 0;
+      const blocked = blockedByProspect.get(id) || 0;
+      const potential = Math.max(0, Number(p.potentiel_fcfa) || 0);
+      const urgency = Math.min(45, lateDays ? 25 + Math.min(20, lateDays) : 0)
+        + (!hasDue ? 18 : 0)
+        + (inactiveDays === null ? 10 : Math.min(25, Math.floor(inactiveDays/2)))
+        + Math.min(15, blocked * 5)
+        + Math.min(12, Math.round(Math.log10(1 + potential) * 1.5));
+      const reasons = [];
+      if (lateDays) reasons.push("relance en retard de "+lateDays+" j");
+      else if (!p.next_action_at) reasons.push("aucune relance programmée");
+      if (inactiveDays !== null && inactiveDays >= 14) reasons.push(inactiveDays+" j sans activité récente connue");
+      if (blocked) reasons.push(blocked+" mission(s) bloquée(s)");
+      if (potential > 0) reasons.push("potentiel "+potential.toLocaleString("fr-FR")+" FCFA");
+      return { p, score: Math.round(urgency), reasons, lateDays, inactiveDays, potential };
+    }).sort((a,b) => b.score-a.score || b.potential-a.potential || String(a.p.entreprise||"").localeCompare(String(b.p.entreprise||""),"fr"));
+    if (!scored.length) return "Aucun prospect actif à relancer dans le pipeline chargé.";
+    const top = scored.slice(0, limit);
+    const lines = top.map((x,i) => (i+1)+". "+(x.p.entreprise || "Prospect sans nom")+" — "+String(x.p.stage || "étape inconnue").replace(/_/g," ")+" — priorité "+x.score+"/100. "+(x.reasons.join(", ") || "à examiner selon son étape commerciale")+".");
+    return "Classement de "+scored.length+" prospects actifs, sur les données actuellement chargées. Les priorités sont classées selon le retard, l'absence de relance, l'inactivité connue, les missions bloquées et le potentiel déclaré. "+lines.join(" ")+" Ce score est un indicateur opérationnel, pas une probabilité de signature. L'historique d'activité est limité aux événements chargés ; vérifiez chaque fiche avant toute action. Je n'envoie aucune relance.";
+  }
   const HELP = "Je peux : donner la situation, le nombre de fiches, qui travaille, les blocages, l'avancement d'un logiciel (par exemple AutoGarage), ce que fait un agent, piloter la caméra (zoom, vue d'ensemble, montre tel agent, rotation, plein cadre) et transmettre une demande au directeur général après votre confirmation.";
 
   let autoMode = false;
@@ -355,6 +393,7 @@ export function initJarvis(A, stage) {
   async function handle(raw) {
     let t = norm(raw).replace(/^(ok |hey |dis |salut |bonjour )?(jarvis|jarvi|jarvice|jarviss|jarvys|gervais|gervaise|charvis|djarvis|sanix|assistant)( |$)/, "").trim(); if (!t) { say("À vos ordres."); return "À vos ordres."; }
     addLine("me", raw); const reply = (s) => { say(s); return s; };
+    if (/(prioris|priorite|priorites|classe|classement|compare|comparaison).*(relance|prospect|pipeline)|quels? prospects? relancer|prospects? a relancer|relances? en retard|qui relancer/.test(t)) return reply(followupPriorities());
     if (/(explique|analyse|etat|situation|bilan|resume).*(relation|lien|selection)|relation.*(selection|actuelle)/.test(t)) return reply(relationExplanation());
     if (pending) {
       const yes = /^(oui|ok|confirme|vas y|transmets|envoie|d accord|affirmatif|lance)\b/.test(t), no = /^(non|annule|laisse tomber|stop|negatif)\b/.test(t);
