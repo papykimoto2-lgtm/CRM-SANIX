@@ -701,7 +701,9 @@ function renderTicker() {
 }
 function renderLegend() { $("#legend").innerHTML = Object.entries(STATES).map(([, [l, c]]) => `<span><i style="background:${c};box-shadow:0 0 8px ${c}"></i>${l}</span>`).join(""); }
 function renderDetail() {
-  const el = $("#detail"), a = agentById(D.sel); if (!a) { el.hidden = true; return; }
+  const el = $("#detail"), a = agentById(D.sel);
+  if (D.prospectSel) { const p = D.prospectSel; el.hidden = false; el.innerHTML = `<h2>${esc(p.entreprise || "Prospect")} <span class="tag">Prospect</span></h2><div class="muted" style="font-size:12px">${esc(p.ville || "Localisation non renseignée")} · ${esc(p.stage || "nouveau")}</div><div class="mis" style="margin-top:7px"><b>Responsable commercial</b><small>${esc(nameOf(p.owner_id))}</small></div><div class="muted" style="font-size:11px;margin-top:6px">${esc(p.telephone || p.email || "Aucun contact renseigné")}</div>`; return; }
+  if (!a) { el.hidden = true; return; }
   const st = STATES[agentState(a)], mine = D.tasks.filter((t) => t.agent_id === a.id && OPENS.includes(t.statut)).slice(0, 4);
   el.hidden = false; el.innerHTML = `<h2>${esc(a.nom)} <span class="tag" style="--c:${st[1]}">${esc(st[0])}</span></h2><div class="muted" style="font-size:12px">${esc(a.fonction ?? "")}</div>${mine.map((t) => `<div class="mis" style="--c:${TASK_C[t.statut]};margin-top:6px"><b>${esc(clip(t.titre, 80))}</b><small>${esc(TASK_L[t.statut])} · P${esc(t.priorite)}</small></div>`).join("") || `<div class="muted" style="margin-top:6px">Aucune mission ouverte.</div>`}`;
 }
@@ -826,7 +828,15 @@ async function init3d() {
   catch (e) { console.warn("Vue 3D indisponible, repli sur la vue 2D :", e.message); view3d = null; $("#ctl").hidden = true; $("#hint").hidden = true; }
 }
 function initControls() {
-  $("#ctl").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-c]"); if (!b || !view3d) return; const c = b.dataset.c;
+  $("#ctl").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-c]"); if (!b) return; const c = b.dataset.c;
+    if (c === "relations") {
+      relationsMode = !relationsMode; b.classList.toggle("on", relationsMode);
+      $("#stage3d").hidden = relationsMode; cv.hidden = relationsMode || !!view3d; relationsCanvas.hidden = !relationsMode;
+      if (relationsMode) { relationsView ??= createProspectRelations(relationsCanvas, api3d); relationsView.update({ agents: D.agents, prospects: D.salesRows || [] }); relationsView.resize(); }
+      else view3d?.resize();
+      return;
+    }
+    if (!view3d) return;
     if (c === "in") view3d.zoom(.72); else if (c === "out") view3d.zoom(1.4); else if (c === "reset") view3d.reset(); else if (c === "auto") b.classList.toggle("on", view3d.toggleAuto()); else if (c === "dyn") b.classList.toggle("on", view3d.toggleDynamic());
     else if (c === "focus") { document.body.classList.toggle("focus"); setTimeout(() => view3d.resize(), 60); } });
   setTimeout(() => $("#hint")?.classList.add("off"), 9000);
