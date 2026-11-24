@@ -51,7 +51,7 @@ async function pull() {
     safe(sb.from("ai_approvals").select("id", { count: "exact", head: true }).eq("statut", "en_attente"), null),
     safe(sb.rpc("ai_budget_status"), null),
     safe(sb.from("ai_governance").select("actif,communication_externe").eq("id", 1).maybeSingle(), null),
-    safe(sb.from("ai_prospects").select("id,entreprise,stage,potentiel_fcfa,score,next_action_at,opt_out,owner_id").limit(1500), null),
+    safe(sb.from("ai_prospects").select("id,entreprise,ville,telephone,email,stage,potentiel_fcfa,score,next_action_at,opt_out,owner_id").limit(1500), null),
     safe(sb.from("ai_offers").select("id,total_ttc,statut,created_at").order("created_at", { ascending: false }).limit(500), null),
     safe(sb.rpc("ai_cost_center", { p_days: 30 }), null),
     safe(sb.functions.invoke("crm-whatsapp", { body: { action: "status" } }), null),
