@@ -234,7 +234,7 @@ function renderBusiness() {
   const prospectRows = (rows, empty, kind) => rows.slice(0,5).map(p => {
     const when = p.next_action_at ? dateLabel(p.next_action_at) : "À planifier";
     const meta = kind === "stale" ? "Inactif depuis au moins 14 jours" : when;
-    return `<button type="button" class="crm-followup-row" data-crm-prospect="${esc(p.id)}"><span><b>${esc(p.entreprise || "Prospect sans nom")}</b><small>${esc(p.ville || "Localisation inconnue")} · ${esc(p.stage || "nouveau")}</small></span><em>${esc(meta)}</em></button>`;
+    return `<div class="crm-followup-item"><button type="button" class="crm-followup-row" data-crm-prospect="${esc(p.id)}"><span><b>${esc(p.entreprise || "Prospect sans nom")}</b><small>${esc(p.ville || "Localisation inconnue")} · ${esc(p.stage || "nouveau")}</small></span><em>${esc(meta)}</em></button><button type="button" class="crm-followup-treat" data-crm-treat="${esc(p.id)}">Saisir le résultat</button></div>`;
   }).join("") || `<p class="panel-muted">${empty}</p>`;
   el.innerHTML = `<div class="panel-head"><h2>Pilotage commercial</h2><span class="panel-source">CRM · données réelles</span></div>
     <div class="business-grid">
@@ -257,12 +257,22 @@ function renderBusiness() {
     <section class="crm-followup-group"><h3>Dossiers inactifs (14 jours ou plus)</h3>${prospectRows(stale,"Aucun dossier inactif selon les données disponibles.","stale")}</section>
     <p class="panel-note">L'inactivité est estimée à partir de la dernière activité CRM ou de la dernière mise à jour disponible. Les indicateurs sont calculés sur les prospects chargés (maximum 1 500) et les 500 dernières activités reliées.</p>
     <p class="panel-note">Le potentiel du pipeline n'est pas du chiffre d'affaires réalisé. Les offres acceptées ne valent pas preuve d'encaissement.</p>`;
-  el.querySelectorAll("[data-crm-prospect]").forEach(btn => btn.addEventListener("click", () => {
-    const p = D.salesRows.find(x => String(x.id) === btn.dataset.crmProspect);
+  const openProspect = (id, captureResult = false) => {
+    const p = D.salesRows.find(x => String(x.id) === String(id));
     if (!p) return;
     D.prospectSel = p; D.prospectNetworkOrigin = null; D.sel = null; renderDetail();
     $("#detail")?.scrollIntoView?.({behavior:"smooth",block:"nearest"});
-  }));
+    if (captureResult) {
+      const form = $("#prospect-note-form");
+      if (form) {
+        const type = form.querySelector('[name="type"]');
+        if (type) type.value = "appel";
+        form.querySelector('[name="note"]')?.focus({preventScroll:true});
+      }
+    }
+  };
+  el.querySelectorAll("[data-crm-prospect]").forEach(btn => btn.addEventListener("click", () => openProspect(btn.dataset.crmProspect)));
+  el.querySelectorAll("[data-crm-treat]").forEach(btn => btn.addEventListener("click", () => openProspect(btn.dataset.crmTreat, true)));
 }
 function renderFinance() {
   const el = $("#finance-panel"); if (!el) return;

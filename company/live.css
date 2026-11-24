@@ -574,3 +574,11 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .prospect-network-back{border:1px solid rgba(56,189,248,.35);background:rgba(14,165,233,.10);color:inherit;border-radius:8px;padding:6px 9px;font:inherit;font-size:11px;cursor:pointer;white-space:nowrap}
 .prospect-network-back:hover{background:rgba(14,165,233,.2)}
 @media(max-width:600px){.prospect-workbench-head-actions{flex-wrap:wrap;justify-content:flex-end}.prospect-network-back{font-size:10px;padding:6px 7px}}
+
+
+/* Actions rapides du cockpit commercial */
+.crm-followup-item{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px;margin:4px 0}
+.crm-followup-item .crm-followup-row{margin:0;min-width:0}
+.crm-followup-treat{border:1px solid rgba(34,211,238,.35);border-radius:8px;padding:8px 10px;background:rgba(34,211,238,.08);color:#a5f3fc;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap}
+.crm-followup-treat:hover,.crm-followup-treat:focus-visible{background:rgba(34,211,238,.17);border-color:#22d3ee;outline:none}
+@media(max-width:520px){.crm-followup-item{grid-template-columns:1fr}.crm-followup-treat{justify-self:start}}
