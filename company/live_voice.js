@@ -85,6 +85,24 @@ export function initJarvis(A, stage) {
   function agentReply(a) { const cur = D.tasks.find((t) => t.agent_id === a.id && t.statut === "en_cours") ?? D.tasks.find((t) => t.agent_id === a.id && A.OPENS.includes(t.statut)); const [lab] = A.STATES[A.agentState(a)];
     return cur ? `${a.nom} : ${lab.toLowerCase()}. Mission : ${clip(cur.titre, 110)}.` : `${a.nom} : ${lab.toLowerCase()}, aucune mission ouverte.`; }
   const view = () => A.view;
+  function relationExplanation(r = D.relationSel) {
+    if (!r?.agent || !r?.prospect) return "Aucune relation agent prospect n'est sélectionnée. Cliquez sur un lien du réseau, puis demandez-moi son analyse.";
+    const ag=r.agent,p=r.prospect,aid=String(ag.id),pid=String(p.id);
+    const acts=(D.relationRows||[]).filter(x=>String(x.agent_id||"")===aid&&String(x.prospect_id||"")===pid).sort((a,b)=>Date.parse(b.at||0)-Date.parse(a.at||0));
+    const tasks=(D.tasks||[]).filter(x=>String(x.agent_id||"")===aid&&String(x.prospect_id||"")===pid);
+    const open=tasks.filter(x=>A.OPENS.includes(x.statut)),blocked=tasks.filter(x=>["bloquee","echouee"].includes(x.statut)),done=tasks.filter(x=>x.statut==="terminee");
+    const latest=acts[0],stage=String(p.stage||"non renseigné").replace(/_/g," ");
+    const kind=r.kind==="activity"?"une interaction réelle":r.kind==="mission"?"une mission affectée":"une affectation";
+    let out=`La relation entre ${ag.nom||"cet agent"} et ${p.entreprise||"ce prospect"} repose sur ${kind}. Le prospect est à l'étape ${stage}. ${acts.length} interaction(s) identifiée(s) et ${tasks.length} mission(s) associée(s), dont ${open.length} ouverte(s), ${done.length} terminée(s) et ${blocked.length} bloquée(s).`;
+    if(latest) out+=` La dernière interaction connue est « ${latest.action||"événement"} », ${latest.at?new Date(latest.at).toLocaleString("fr-FR",{timeZone:"Africa/Abidjan"}):"à une date inconnue"}.`;
+    if(open.length) out+=` La mission ouverte prioritaire est « ${clip(open.sort((a,b)=>(Number(a.priorite)||99)-(Number(b.priorite)||99))[0].titre,90)} ».`;
+    if(blocked.length) out+=` Attention, ${blocked.length} mission(s) est/sont bloquée(s) ou en échec : une intervention est nécessaire.`;
+    if(p.next_action_at) out+=` Prochaine action prévue : ${new Date(p.next_action_at).toLocaleString("fr-FR",{timeZone:"Africa/Abidjan"})}.`;
+    else out+=" Aucune prochaine action n'est planifiée dans la fiche.";
+    if(!acts.length&&r.kind!=="activity") out+=" Je ne vois pas d'interaction historisée attribuée à cet agent pour ce prospect ; le lien visible correspond à une mission ou une affectation, pas à une preuve de contact.";
+    out+=" Mon conseil : vérifier la prochaine étape commerciale et consigner chaque échange avec son agent responsable.";
+    return out;
+  }
   const HELP = "Je peux : donner la situation, le nombre de fiches, qui travaille, les blocages, l'avancement d'un logiciel (par exemple AutoGarage), ce que fait un agent, piloter la caméra (zoom, vue d'ensemble, montre tel agent, rotation, plein cadre) et transmettre une demande au directeur général après votre confirmation.";
 
   let autoMode = false;
@@ -270,6 +288,7 @@ export function initJarvis(A, stage) {
   async function handle(raw) {
     let t = norm(raw).replace(/^(ok |hey |dis |salut |bonjour )?(jarvis|jarvi|jarvice|jarviss|jarvys|gervais|gervaise|charvis|djarvis|sanix|assistant)( |$)/, "").trim(); if (!t) { say("À vos ordres."); return "À vos ordres."; }
     addLine("me", raw); const reply = (s) => { say(s); return s; };
+    if (/(explique|analyse|etat|situation|bilan|resume).*(relation|lien|selection)|relation.*(selection|actuelle)/.test(t)) return reply(relationExplanation());
     if (pending) {
       const yes = /^(oui|ok|confirme|vas y|transmets|envoie|d accord|affirmatif|lance)\b/.test(t), no = /^(non|annule|laisse tomber|stop|negatif)\b/.test(t);
       if (pending.kind === "multi") {
@@ -362,5 +381,5 @@ export function initJarvis(A, stage) {
   $("#jv-voice-style").addEventListener("click", cycleVoice);
   $("#jv-hands").addEventListener("click", (e) => { hands = !hands; e.currentTarget.classList.toggle("on", hands); if (hands) { if (!SR) { setMicState("unsupported", "Micro indisponible"); hands = false; e.currentTarget.classList.remove("on"); setSt("Mains libres indisponible : micro non pris en charge."); return; } if (listening) rec.stop(); setTimeout(activateMicAndStart, 150); setSt("Activation du microphone…"); } else { setMicState("idle", "Micro en pause"); rec?.stop(); setSt("Jarvis prêt"); } });
   addLine("jarvis", "Salle de contrôle en ligne. Dites « Jarvis, situation » ou écrivez votre demande.");
-  window.__jarvis = { crm: () => crmContext(""), crmRows: () => crmC.rows.slice(), insights, auto: () => autoMode, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say };
+  window.__jarvis = { crm: () => crmContext(""), crmRows: () => crmC.rows.slice(), insights, auto: () => autoMode, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say, explainRelation: (r) => say(relationExplanation(r)) };
 }
