@@ -139,6 +139,37 @@ export function initJarvis(A, stage) {
     out+=" Mon conseil : vérifier la prochaine étape commerciale et consigner chaque échange avec son agent responsable.";
     return out;
   }
+  function prospectExplanation(p, history = [], tasks = [], meta = {}) {
+    if (!p?.id) return "Aucun prospect sélectionné.";
+    const rows = Array.isArray(history) ? history : [], ts = Array.isArray(tasks) ? tasks : [];
+    const now = Date.now(), dateOf = x => Date.parse(x?.at || x?.created_at || "") || 0;
+    const recent = rows.filter(x => dateOf(x) > 0).sort((a,b) => dateOf(b)-dateOf(a));
+    const open = ts.filter(x => A.OPENS.includes(x.statut)), done = ts.filter(x => x.statut === "terminee");
+    const blocked = ts.filter(x => ["bloquee","echouee"].includes(x.statut));
+    const stage = String(p.stage || "non renseigné").replace(/_/g," ");
+    const fmt = x => x ? new Date(x).toLocaleDateString("fr-FR",{timeZone:"Africa/Abidjan"}) : "non renseignée";
+    const money = x => x != null && x !== "" && Number.isFinite(Number(x)) ? Number(x).toLocaleString("fr-FR")+" FCFA" : "non renseigné";
+    const days = recent[0] ? Math.max(0,Math.floor((now-dateOf(recent[0]))/864e5)) : null;
+    const missing = [["décideur",p.decideur],["téléphone",p.telephone],["e-mail",p.email],["besoin",p.crit_besoin || p.besoins],["budget",p.budget_estime]].filter(([,v]) => v == null || v === "" || (Array.isArray(v) && !v.length)).map(([k])=>k);
+    const signals = [];
+    if (blocked.length) signals.push(blocked.length+" mission(s) bloquée(s) ou en échec");
+    if (days !== null && days >= 14) signals.push("aucune interaction récente depuis "+days+" jours");
+    if (!recent.length) signals.push("aucune interaction historisée dans les événements chargés");
+    if (!p.next_action_at) signals.push("aucune prochaine action programmée");
+    if (missing.length) signals.push("qualification incomplète : "+missing.join(", "));
+    let out = "Analyse commerciale de "+(p.entreprise || "ce prospect")+". Étape : "+stage+". Score : "+(p.score ?? "non renseigné")+"/100. Potentiel : "+money(p.potentiel_fcfa)+". Budget estimé : "+money(p.budget_estime)+". ";
+    out += rows.length+" interaction(s) visible(s)"+(meta.historyHasMore ? " parmi un historique encore à charger" : "")+". ";
+    if (recent[0]) out += "Dernière interaction : "+String(recent[0].action || "événement").replace(/_/g," ")+" le "+fmt(recent[0].at)+". ";
+    out += ts.length+" mission(s) liée(s) : "+open.length+" ouverte(s), "+done.length+" terminée(s), "+blocked.length+" bloquée(s). ";
+    if (p.next_action_at) out += "Prochaine action prévue le "+fmt(p.next_action_at)+". ";
+    out += signals.length ? "Points de vigilance : "+signals.join("; ")+". " : "Aucun signal d'alerte détecté dans les données chargées. ";
+    if (blocked.length) out += "Priorité : traiter les missions bloquées avec leur agent responsable. ";
+    else if (!p.next_action_at || (days !== null && days >= 7)) out += "Priorité : programmer une relance datée et consigner son résultat. ";
+    else if (missing.length) out += "Priorité : compléter la qualification avant de faire progresser le prospect. ";
+    else out += "Priorité : faire avancer le prospect vers la prochaine étape commerciale et vérifier le résultat attendu. ";
+    out += "Cette analyse s'appuie uniquement sur les données actuellement chargées ; elle ne prouve pas un échange non enregistré et n'envoie aucune communication.";
+    return out;
+  }
   const HELP = "Je peux : donner la situation, le nombre de fiches, qui travaille, les blocages, l'avancement d'un logiciel (par exemple AutoGarage), ce que fait un agent, piloter la caméra (zoom, vue d'ensemble, montre tel agent, rotation, plein cadre) et transmettre une demande au directeur général après votre confirmation.";
 
   let autoMode = false;
@@ -417,5 +448,5 @@ export function initJarvis(A, stage) {
   $("#jv-voice-style").addEventListener("click", cycleVoice);
   $("#jv-hands").addEventListener("click", (e) => { hands = !hands; e.currentTarget.classList.toggle("on", hands); if (hands) { if (!SR) { setMicState("unsupported", "Micro indisponible"); hands = false; e.currentTarget.classList.remove("on"); setSt("Mains libres indisponible : micro non pris en charge."); return; } if (listening) rec.stop(); setTimeout(activateMicAndStart, 150); setSt("Activation du microphone…"); } else { setMicState("idle", "Micro en pause"); rec?.stop(); setSt("Jarvis prêt"); } });
   addLine("jarvis", "Salle de contrôle en ligne. Dites « Jarvis, situation » ou écrivez votre demande.");
-  window.__jarvis = { crm: () => crmContext(""), crmRows: () => crmC.rows.slice(), insights, auto: () => autoMode, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say, explainRelation: (r) => say(relationExplanation(r)) };
+  window.__jarvis = { crm: () => crmContext(""), crmRows: () => crmC.rows.slice(), insights, auto: () => autoMode, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say, explainRelation: (r) => say(relationExplanation(r)), explainProspect: (p, history, tasks, meta) => say(prospectExplanation(p, history, tasks, meta)) };
 }
