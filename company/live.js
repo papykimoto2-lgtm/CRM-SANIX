@@ -215,6 +215,27 @@ function renderBusiness() {
   const accepted = (D.offerRows || []).filter(o => o.statut === "acceptee");
   const acceptedAmount = accepted.reduce((s,o) => s + Math.max(0, Number(o.total_ttc) || 0), 0);
   const fmt = n => new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(n) + " FCFA";
+  const now = Date.now(), day = 86400000, today = new Date(); today.setHours(0,0,0,0);
+  const activityByProspect = new Map();
+  for (const a of D.relationRows || []) {
+    const key = String(a.prospect_id || "");
+    if (!key) continue;
+    const t = Date.parse(a.at || "");
+    if (Number.isFinite(t) && t > (activityByProspect.get(key) || 0)) activityByProspect.set(key,t);
+  }
+  const overdue = active.filter(p => p.next_action_at && Date.parse(p.next_action_at) < today.getTime()).sort((a,b)=>Date.parse(a.next_action_at)-Date.parse(b.next_action_at));
+  const upcoming = active.filter(p => p.next_action_at && Date.parse(p.next_action_at) >= today.getTime()).sort((a,b)=>Date.parse(a.next_action_at)-Date.parse(b.next_action_at));
+  const unscheduled = active.filter(p => !p.next_action_at);
+  const stale = active.filter(p => {
+    const last = Math.max(activityByProspect.get(String(p.id)) || 0, Date.parse(p.updated_at || p.created_at || "") || 0);
+    return last > 0 && now-last >= 14*day;
+  }).sort((a,b)=>(Date.parse(a.updated_at||a.created_at||"")||0)-(Date.parse(b.updated_at||b.created_at||"")||0));
+  const dateLabel = v => Number.isFinite(Date.parse(v||"")) ? new Date(v).toLocaleString("fr-FR",{timeZone:"Africa/Abidjan",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "Date non renseignée";
+  const prospectRows = (rows, empty, kind) => rows.slice(0,5).map(p => {
+    const when = p.next_action_at ? dateLabel(p.next_action_at) : "À planifier";
+    const meta = kind === "stale" ? "Inactif depuis au moins 14 jours" : when;
+    return `<button type="button" class="crm-followup-row" data-crm-prospect="${esc(p.id)}"><span><b>${esc(p.entreprise || "Prospect sans nom")}</b><small>${esc(p.ville || "Localisation inconnue")} · ${esc(p.stage || "nouveau")}</small></span><em>${esc(meta)}</em></button>`;
+  }).join("") || `<p class="panel-muted">${empty}</p>`;
   el.innerHTML = `<div class="panel-head"><h2>Pilotage commercial</h2><span class="panel-source">CRM · données réelles</span></div>
     <div class="business-grid">
       <div><b>${active.length.toLocaleString("fr-FR")}</b><small>Prospects actifs</small></div>
@@ -224,7 +245,24 @@ function renderBusiness() {
     </div>
     <div class="business-foot"><span>Potentiel déclaré du pipeline</span><b>${fmt(potential)}</b></div>
     <div class="business-foot"><span>Montant TTC des offres acceptées (500 dernières max.)</span><b>${fmt(acceptedAmount)}</b></div>
+    <div class="crm-followup-summary">
+      <div><b class="late">${overdue.length}</b><small>Relances en retard</small></div>
+      <div><b>${upcoming.length}</b><small>À venir</small></div>
+      <div><b>${unscheduled.length}</b><small>Sans relance</small></div>
+      <div><b>${stale.length}</b><small>Inactifs ≥ 14 j</small></div>
+    </div>
+    <section class="crm-followup-group"><h3>Relances en retard</h3>${prospectRows(overdue,"Aucune relance en retard.","overdue")}</section>
+    <section class="crm-followup-group"><h3>Prochaines relances</h3>${prospectRows(upcoming,"Aucune relance programmée.","upcoming")}</section>
+    <section class="crm-followup-group"><h3>Prospects sans relance</h3>${prospectRows(unscheduled,"Tous les prospects actifs ont une relance renseignée.","unscheduled")}</section>
+    <section class="crm-followup-group"><h3>Dossiers inactifs (14 jours ou plus)</h3>${prospectRows(stale,"Aucun dossier inactif selon les données disponibles.","stale")}</section>
+    <p class="panel-note">L'inactivité est estimée à partir de la dernière activité CRM ou de la dernière mise à jour disponible. Les indicateurs sont calculés sur les prospects chargés (maximum 1 500) et les 500 dernières activités reliées.</p>
     <p class="panel-note">Le potentiel du pipeline n'est pas du chiffre d'affaires réalisé. Les offres acceptées ne valent pas preuve d'encaissement.</p>`;
+  el.querySelectorAll("[data-crm-prospect]").forEach(btn => btn.addEventListener("click", () => {
+    const p = D.salesRows.find(x => String(x.id) === btn.dataset.crmProspect);
+    if (!p) return;
+    D.prospectSel = p; D.sel = null; renderDetail();
+    $("#detail")?.scrollIntoView?.({behavior:"smooth",block:"nearest"});
+  }));
 }
 function renderFinance() {
   const el = $("#finance-panel"); if (!el) return;
