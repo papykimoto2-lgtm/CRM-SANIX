@@ -19,7 +19,7 @@ const refuse = async (p, status, re, m) => { try { await p; } catch (e) { if (e.
     setOptOut: async (ph) => { S.optout.add(ph); },
     addInteraction: async (rid, i) => { S.inter.push({ rid, ...i }); },
     syncProspectOutbound: async (rid, phone, at) => { S.prospectOutbound.push({ rid, phone, at }); },
-    syncProspectInbound: async (rid, phone, at) => { S.prospectInbound.push({ rid, phone, at }); },
+    syncProspectInbound: async (rid, phone, at, optOut) => { S.prospectInbound.push({ rid, phone, at, optOut: !!optOut }); },
   };
   const calls = []; const META = { ok: true, status: 200, error: null };
   const res = (status, body) => ({ ok: status < 300, status, json: async () => body, text: async () => JSON.stringify(body) });
@@ -112,6 +112,7 @@ const refuse = async (p, status, re, m) => { try { await p; } catch (e) { if (e.
   S.msgs.filter((m) => m.to_phone === "2250700000107").forEach((m) => { m.sent_at = old; });
   ok((await W.routeInbound(d, { id: "wamid.IN2", from: "2250700000107", timestamp: String(Math.floor(T / 1000)), type: "text", text: { body: "STOP" } })) === true && S.optout.has("2250700000107"), "« STOP » : le numéro est désinscrit");
   ok(S.inter.some((i) => i.type === "Désinscription WhatsApp"), "la fiche indique la désinscription : ne plus lui écrire");
+  ok(S.prospectInbound.some((x) => x.optOut === true), "STOP met aussi à jour le statut opt-out de la fiche de qualification");
   await refuse(W.sendTemplate(d, op, { ...base, template: "autre_modele" }), 409, /STOP/, "après STOP : plus aucun envoi à ce numéro");
   const bouton = await W.routeInbound(d, { id: "wamid.IN3", from: "2250700000107", timestamp: "1", type: "button", button: { text: "Oui, rappelez-moi" } });
   ok(bouton === true && S.inb[S.inb.length - 1].body === "Oui, rappelez-moi", "un clic sur un bouton de réponse est lu comme du texte");
