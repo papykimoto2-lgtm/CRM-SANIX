@@ -14,26 +14,62 @@ export function initJarvis(A, stage) {
   const dock = document.createElement("div"); dock.id = "jarvis";
   dock.innerHTML = `<div id="jv-log" aria-live="polite"></div>
     <div class="jv-bar"><button type="button" id="jv-orb" class="orb" aria-label="Parler à Jarvis" title="Parler à Jarvis"><i></i></button>
-    <div class="jv-mid"><input id="jv-in" type="text" autocomplete="off" placeholder="Parlez ou écrivez…" title="Ex. : « où en est AutoGarage ? »" aria-label="Message à Jarvis"><small id="jv-st">Jarvis prêt${SR ? "" : " (micro non pris en charge : utilisez le clavier)"}</small></div>
-    <button type="button" id="jv-auto" class="jb" title="Mode autonome : Jarvis lance consignes, missions et rapports sans confirmation">⚡</button><button type="button" id="jv-ideas" class="jb" title="Propositions d'amélioration de Jarvis">💡<em id="jv-badge" hidden></em></button><button type="button" id="jv-send" class="jb" title="Envoyer">➤</button><button type="button" id="jv-voice" class="jb on" title="Voix de Jarvis">🔊</button><button type="button" id="jv-hands" class="jb" title="Mains libres : dites « Jarvis » pour m'appeler">🖐</button></div>`;
+    <div class="jv-mid"><input id="jv-in" type="text" autocomplete="off" placeholder="Parlez ou écrivez…" title="Ex. : « où en est AutoGarage ? »" aria-label="Message à Jarvis"><small id="jv-st">Jarvis prêt${SR ? "" : " (micro non pris en charge : utilisez le clavier)"}</small><span id="jv-mic-state" class="mic-state" data-state="${SR ? "idle" : "unsupported"}" role="status" aria-live="polite"><i></i><b>${SR ? "Micro prêt" : "Micro indisponible"}</b></span></div>
+    <button type="button" id="jv-auto" class="jb" title="Mode autonome : Jarvis lance consignes, missions et rapports sans confirmation">⚡</button><button type="button" id="jv-ideas" class="jb" title="Propositions d'amélioration de Jarvis">💡<em id="jv-badge" hidden></em></button><button type="button" id="jv-send" class="jb" title="Envoyer">➤</button><button type="button" id="jv-voice" class="jb on" title="Activer ou couper la voix">🔊</button><button type="button" id="jv-voice-style" class="jb" title="Changer la voix française de Jarvis">🎙</button><button type="button" id="jv-hands" class="jb" title="Mains libres : dites « Jarvis » pour m'appeler">🖐</button></div>`;
   stage.appendChild(dock);
-  const $ = (s) => dock.querySelector(s), logEl = $("#jv-log"), inEl = $("#jv-in"), st = $("#jv-st"), orb = $("#jv-orb");
+  const $ = (s) => dock.querySelector(s), logEl = $("#jv-log"), inEl = $("#jv-in"), st = $("#jv-st"), orb = $("#jv-orb"), micState = $("#jv-mic-state");
   let guard = null, voiceOn = true, hands = false, listening = false, speaking = false, rec = null, pending = null, convo = false, gotResult = false, llmDown = 0, hist = [], awakeUntil = 0, lastSpeechEnd = 0, poll = null;
-  const lines = []; const setSt = (t) => { st.textContent = t; }; const setOrb = (c) => { orb.className = "orb " + c; };
+  let micError = false; const lines = []; const setSt = (t) => { st.textContent = t; }; const setOrb = (c) => { orb.className = "orb " + c; }; const setMicState = (state, label) => { micError = state === "error"; micState.dataset.state = state; micState.querySelector("b").textContent = label; orb.dataset.micState = state; orb.setAttribute("aria-label", label); orb.title = label; };
 
   function addLine(who, text) { lines.push({ who, text }); if (lines.length > 40) lines.shift();
     const d = document.createElement("div"); d.className = "ln " + who; d.innerHTML = `<b>${who === "me" ? "Vous" : who === "dg" ? "Directeur général" : "Jarvis"}</b> ${esc(text)}`; logEl.appendChild(d); setTimeout(() => d.remove(), 16000); while (logEl.children.length > 3) logEl.firstChild.remove(); logEl.scrollTop = 1e6; }
-  function voiceFr() { const v = window.speechSynthesis.getVoices(); return v.find((x) => /^fr(-|_)/i.test(x.lang) && /thomas|paul|henri|male|homme|google fran/i.test(x.name)) || v.find((x) => /^fr(-|_)/i.test(x.lang)) || null; }
+  const VOICE_KEY = "sanix_jarvis_voice_fr";
+  let speechRun = 0;
+  function frenchVoices() { return (window.speechSynthesis?.getVoices() ?? []).filter((v) => /^fr([_-]|$)/i.test(v.lang)).sort((a, b) => a.name.localeCompare(b.name)); }
+  function voiceFr() {
+    const voices = frenchVoices(); let preferred = "";
+    try { preferred = localStorage.getItem(VOICE_KEY) || ""; } catch { /* stockage indisponible */ }
+    return voices.find((v) => v.name === preferred) || voices.find((v) => /fr-FR/i.test(v.lang) && /google|natural|enhanced/i.test(v.name)) || voices.find((v) => /fr-FR/i.test(v.lang)) || voices[0] || null;
+  }
+  function cycleVoice() {
+    const voices = frenchVoices(); if (!voices.length) { setSt("Aucune voix française installée sur cet appareil."); return; }
+    const current = voiceFr(), next = voices[(Math.max(0, voices.findIndex((v) => v.name === current?.name)) + 1) % voices.length];
+    try { localStorage.setItem(VOICE_KEY, next.name); } catch { /* préférence non persistée */ }
+    $("#jv-voice-style").title = "Voix : " + next.name + " — toucher pour changer";
+    setSt("Voix sélectionnée : " + next.name);
+    say("Bonjour. Je suis Jarvis. Comment puis-je vous aider ?", "jarvis");
+  }
+  window.speechSynthesis?.addEventListener?.("voiceschanged", () => {
+    const v = voiceFr(); if (v) $("#jv-voice-style").title = "Voix : " + v.name + " — toucher pour changer";
+  });
   const clean = (t) => String(t).replace(/[*_`#>]/g, "").replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "").replace(/\s+/g, " ").trim();
   function say(text, who = "jarvis") {
     addLine(who, text); if (!voiceOn || !TTS || !text) { setTimeout(afterReply, 200); return; }
-    clearTimeout(guard); guard = setTimeout(() => { if (speaking) { speaking = false; lastSpeechEnd = Date.now(); A.view?.speaking(false); setOrb(listening ? "listen" : ""); afterReply(); } }, clean(text).length * 90 + 2500);
-    try { window.speechSynthesis.cancel(); const parts = clean(text).match(/[^.!?]+[.!?]?/g) ?? [clean(text)];
-      parts.slice(0, 8).forEach((p, i, arr) => { const u = new SpeechSynthesisUtterance(p.trim()); u.lang = "fr-FR"; u.rate = 1; u.pitch = .9; const v = voiceFr(); if (v) u.voice = v;
-        if (i === 0) u.onstart = () => { speaking = true; A.view?.speaking(true); setOrb("speak"); setSt("Jarvis parle…"); };
-        if (i === arr.length - 1) { u.onend = u.onerror = () => { speaking = false; lastSpeechEnd = Date.now(); A.view?.speaking(false); setOrb(listening ? "listen" : ""); setSt(hands ? "Mains libres : dites « Jarvis »" : "Jarvis prêt"); afterReply(); }; }
-        window.speechSynthesis.speak(u); }); } catch { /* voix indisponible : la réponse reste affichée */ }
+    const runId = ++speechRun, synth = window.speechSynthesis;
+    clearTimeout(guard); synth.cancel();
+    const plain = clean(text), parts = (plain.match(/[^.!?;:]+[.!?;:]?/g) ?? [plain]).map((p) => p.trim()).filter(Boolean).slice(0, 10);
+    let index = 0;
+    const finish = () => {
+      if (runId !== speechRun) return;
+      clearTimeout(guard); speaking = false; lastSpeechEnd = Date.now(); A.view?.speaking(false);
+      setOrb(listening ? "listen" : ""); setSt(hands ? "Mains libres : dites « Jarvis »" : "Jarvis prêt"); afterReply();
+    };
+    const next = () => {
+      if (runId !== speechRun) return;
+      if (index >= parts.length) { finish(); return; }
+      const p = parts[index++], u = new SpeechSynthesisUtterance(p);
+      u.lang = "fr-FR"; u.rate = 0.96; u.pitch = 1.02; u.volume = 1;
+      const v = voiceFr(); if (v) u.voice = v;
+      u.onstart = () => { if (runId !== speechRun) return; speaking = true; A.view?.speaking(true); setOrb("speak"); setSt("Jarvis parle…"); };
+      u.onend = () => { if (runId === speechRun) setTimeout(next, /[.!?]$/.test(p) ? 150 : 90); };
+      u.onerror = () => { if (runId === speechRun) setTimeout(next, 100); };
+      synth.speak(u);
+    };
+    guard = setTimeout(finish, Math.max(9000, plain.length * 115 + parts.length * 700));
+    try { next(); } catch { finish(); }
   }
+
+  function stopSpeech() { speechRun++; clearTimeout(guard); window.speechSynthesis?.cancel(); speaking = false; lastSpeechEnd = Date.now(); A.view?.speaking(false); setOrb(listening ? "listen" : ""); }
 
   // ───────── Réponses locales (données réelles) ─────────
   const run = () => D.agents.filter((a) => A.agentState(a) === "run");
@@ -279,22 +315,41 @@ export function initJarvis(A, stage) {
     pending = { kind: "instruction", texte: raw.trim() }; return reply(`Je n'ai pas de réponse directe à cela. Voulez-vous que je le transmette au directeur général : « ${clip(raw.trim(), 140)} » ? Dites oui pour confirmer, non pour annuler.`);
   }
 
-  // ───────── Micro ─────────
+  // ───────── Micro : demande explicite d'autorisation depuis Jarvis ─────────
+  let micGranted = false, micRequesting = false;
+  async function activateMicAndStart() {
+    if (!SR) { setMicState("unsupported", "Micro indisponible"); setSt("La reconnaissance vocale n'est pas prise en charge par ce navigateur. Utilisez le clavier ou ouvrez Jarvis dans Chrome."); return; }
+    if (micRequesting) return;
+    if (!window.isSecureContext) { setMicState("error", "HTTPS requis"); setSt("Le microphone exige une connexion sécurisée HTTPS. Ouvrez l'application avec son adresse HTTPS."); return; }
+    if (!micGranted && navigator.mediaDevices?.getUserMedia) {
+      micRequesting = true; setMicState("requesting", "Autorisation…"); setSt("Demande d'autorisation du microphone…");
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+        micGranted = true; setMicState("idle", "Micro autorisé");
+      } catch (e) {
+        const messages = { NotAllowedError: "Accès micro refusé. Autorisez le microphone dans les permissions du site puis réessayez.", PermissionDeniedError: "Accès micro refusé. Autorisez le microphone dans les permissions du site puis réessayez.", NotFoundError: "Aucun microphone détecté sur cet appareil.", NotReadableError: "Le microphone est déjà utilisé ou indisponible." };
+        setMicState("error", "Accès refusé"); setSt(messages[e.name] || "Impossible d'activer le microphone : " + (e.message || e.name));
+        micRequesting = false; return;
+      } finally { micRequesting = false; }
+    }
+    startRec();
+  }
   function startRec() {
     if (!SR) { setSt("Micro non pris en charge : utilisez le clavier."); return; }
     if (!rec) { rec = new SR(); rec.lang = "fr-FR"; rec.interimResults = true; rec.maxAlternatives = 1;
-      rec.onstart = () => { listening = true; setOrb(speaking ? "speak" : "listen"); setSt(hands ? "Mains libres : dites « Jarvis »" : "Je vous écoute…"); };
+      rec.onstart = () => { listening = true; setMicState("listening", "Écoute active"); setOrb(speaking ? "speak" : "listen"); setSt(hands ? "Mains libres : dites « Jarvis »" : "Je vous écoute…"); };
       rec.onresult = (ev) => { if ((speaking && window.speechSynthesis?.speaking) || Date.now() - lastSpeechEnd < 700) return; let fin = "", itm = ""; for (let i = ev.resultIndex; i < ev.results.length; i++) { const r = ev.results[i]; (r.isFinal ? (fin += r[0].transcript) : (itm += r[0].transcript)); }
         if (itm) setSt("… " + itm); if (!fin.trim()) return; const txt = fin.trim();
         const nt = norm(txt); setSt("Entendu : « " + clip(txt, 60) + " »");
         if (hands && !WAKE.test(nt) && Date.now() > awakeUntil) { setSt("Entendu : « " + clip(txt, 40) + " » — dites d'abord « Jarvis »"); return; }   // mains libres : seul « Jarvis » réveille
         if (hands && WAKE.test(nt) && nt.replace(WAKE, "").replace(/\b(ok|hey|dis|salut)\b/g, "").trim() === "") { awakeUntil = Date.now() + 9000; say("À vos ordres."); return; }
-        gotResult = true; convo = !hands; window.speechSynthesis?.cancel(); awakeUntil = Date.now() + 9000; handle(txt); };
-      rec.onerror = (e) => { const msg = { "not-allowed": "Autorisez le microphone dans le navigateur.", "no-speech": "Aucune parole détectée.", "audio-capture": "Microphone introuvable." }[e.error]; setSt(msg ?? "Micro : " + e.error); if (e.error === "not-allowed") hands = false; };
-      rec.onend = () => { listening = false; setOrb(""); if (convoNext && !gotResult) { convoNext = false; convo = false; } if (hands) { try { rec.start(); } catch { /* déjà actif */ } } else setSt("Jarvis prêt"); }; }
+        gotResult = true; convo = !hands; stopSpeech(); awakeUntil = Date.now() + 9000; handle(txt); };
+      rec.onerror = (e) => { const msg = { "not-allowed": "Autorisez le microphone dans le navigateur.", "no-speech": "Aucune parole détectée.", "audio-capture": "Microphone introuvable." }[e.error]; setMicState(e.error === "no-speech" ? "idle" : "error", e.error === "no-speech" ? "En attente" : "Erreur micro"); setSt(msg ?? "Micro : " + e.error); if (e.error === "not-allowed") { hands = false; $("#jv-hands").classList.remove("on"); } };
+      rec.onend = () => { listening = false; setOrb(""); if (convoNext && !gotResult) { convoNext = false; convo = false; } if (hands) { setMicState("listening", "Reconnexion…"); try { rec.start(); } catch { /* déjà actif */ } } else { if (!micError) setMicState("idle", micGranted ? "Micro autorisé" : "Micro prêt"); setSt(micError ? "Vérifiez l'autorisation du microphone puis réessayez." : "Jarvis prêt"); } }; }
     rec.continuous = hands; try { rec.start(); } catch { /* déjà actif */ }
   }
-  orb.addEventListener("click", () => { if (listening && !hands) { rec?.stop(); return; } if (speaking) { window.speechSynthesis?.cancel(); return; } startRec(); });
+  orb.addEventListener("click", () => { if (listening && !hands) { setMicState("idle", "Micro en pause"); rec?.stop(); return; } if (speaking) { stopSpeech(); return; } activateMicAndStart(); });
   const sendTxt = () => { const v = inEl.value.trim(); if (!v) return; inEl.value = ""; handle(v); };
   const setAuto = (on) => { autoMode = !!on; $("#jv-auto").classList.toggle("on", autoMode); $("#jv-auto").classList.toggle("warn", autoMode); };
   $("#jv-auto").addEventListener("click", () => handle(autoMode ? "mode prudent" : "mode autonome"));
@@ -303,8 +358,9 @@ export function initJarvis(A, stage) {
   const refreshIdeas = () => { try { const n = insights().length, b = $("#jv-badge"); b.hidden = !n; b.textContent = n; if (n && !announced && D.agents.length) { announced = true; addLine("jarvis", `J'ai ${plural(n, "proposition d'amélioration", "propositions d'amélioration")}. Touchez 💡 ou dites « propositions ».`); } } catch { /* données pas encore chargées */ } };
   setInterval(refreshIdeas, 15000); setTimeout(refreshIdeas, 3500);
   $("#jv-send").addEventListener("click", sendTxt); inEl.addEventListener("keydown", (e) => { if (e.key === "Enter") sendTxt(); e.stopPropagation(); });
-  $("#jv-voice").addEventListener("click", (e) => { voiceOn = !voiceOn; e.currentTarget.classList.toggle("on", voiceOn); e.currentTarget.textContent = voiceOn ? "🔊" : "🔇"; if (!voiceOn) window.speechSynthesis?.cancel(); setSt(voiceOn ? "Voix activée" : "Voix désactivée"); });
-  $("#jv-hands").addEventListener("click", (e) => { hands = !hands; e.currentTarget.classList.toggle("on", hands); if (hands) { if (!SR) { hands = false; e.currentTarget.classList.remove("on"); setSt("Mains libres indisponible : micro non pris en charge."); return; } if (listening) rec.stop(); setTimeout(startRec, 150); setSt("Mains libres : dites « Jarvis »"); } else { rec?.stop(); setSt("Jarvis prêt"); } });
+  $("#jv-voice").addEventListener("click", (e) => { voiceOn = !voiceOn; e.currentTarget.classList.toggle("on", voiceOn); e.currentTarget.textContent = voiceOn ? "🔊" : "🔇"; if (!voiceOn) stopSpeech(); setSt(voiceOn ? "Voix activée" : "Voix désactivée"); });
+  $("#jv-voice-style").addEventListener("click", cycleVoice);
+  $("#jv-hands").addEventListener("click", (e) => { hands = !hands; e.currentTarget.classList.toggle("on", hands); if (hands) { if (!SR) { setMicState("unsupported", "Micro indisponible"); hands = false; e.currentTarget.classList.remove("on"); setSt("Mains libres indisponible : micro non pris en charge."); return; } if (listening) rec.stop(); setTimeout(activateMicAndStart, 150); setSt("Activation du microphone…"); } else { setMicState("idle", "Micro en pause"); rec?.stop(); setSt("Jarvis prêt"); } });
   addLine("jarvis", "Salle de contrôle en ligne. Dites « Jarvis, situation » ou écrivez votre demande.");
   window.__jarvis = { crm: () => crmContext(""), crmRows: () => crmC.rows.slice(), insights, auto: () => autoMode, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say };
 }
