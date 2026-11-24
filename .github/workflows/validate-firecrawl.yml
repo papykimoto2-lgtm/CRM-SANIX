@@ -58,6 +58,9 @@ jobs:
       - name: Regenerate deployment bundles
         run: sh supabase/build_functions.sh
 
+      - name: Vérifier que les bundles Edge versionnés correspondent aux sources
+        run: git diff --exit-code -- supabase/deploy
+
       - name: Verify Firecrawl is present in generated agent bundles
         run: |
           grep -q "firecrawl_scrape" supabase/deploy/ai-sales-director/index.ts
