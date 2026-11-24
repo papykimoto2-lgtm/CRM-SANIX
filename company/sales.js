@@ -397,29 +397,27 @@ function newProspectForm() {
 
 async function openProspect(id) {
   const p = await q(S.sb.from("ai_prospects").select("*").eq("id",id).single());
-  const mailQuery = p.crm_rid
-    ? S.sb.from("crm_mails").select("id,subject,body,status,sent_at,sent_by").eq("client_rid",p.crm_rid).order("sent_at",{ascending:false}).limit(30)
-    : p.email
-      ? S.sb.from("crm_mails").select("id,subject,body,status,sent_at,sent_by").ilike("to_email",String(p.email).trim().replace(/[\\%_]/g,(c)=>"\\"+c)).order("sent_at",{ascending:false}).limit(30)
-      : null;
-  const waOutQuery = p.crm_rid
-    ? S.sb.from("crm_wa_messages").select("id,body,status,sent_at,sent_by,kind,template").eq("client_rid",p.crm_rid).order("sent_at",{ascending:false}).limit(30)
-    : p.phone_norm
-      ? S.sb.from("crm_wa_messages").select("id,body,status,sent_at,sent_by,kind,template").eq("to_phone",p.phone_norm).order("sent_at",{ascending:false}).limit(30)
-      : null;
-  const waInQuery = p.crm_rid
-    ? S.sb.from("crm_wa_inbound").select("id,body,received_at,kind").eq("client_rid",p.crm_rid).order("received_at",{ascending:false}).limit(30)
-    : p.phone_norm
-      ? S.sb.from("crm_wa_inbound").select("id,body,received_at,kind").eq("from_phone",p.phone_norm).order("received_at",{ascending:false}).limit(30)
-      : null;
-  const [msgs,os,hist,mails,waOut,waIn]=await Promise.all([
+  const mailByRidQuery = p.crm_rid ? S.sb.from("crm_mails").select("id,subject,body,status,sent_at,sent_by").eq("client_rid",p.crm_rid).order("sent_at",{ascending:false}).limit(30) : null;
+  const mailByEmailQuery = p.email ? S.sb.from("crm_mails").select("id,subject,body,status,sent_at,sent_by").ilike("to_email",String(p.email).trim().replace(/[\\%_]/g,(c)=>"\\"+c)).order("sent_at",{ascending:false}).limit(30) : null;
+  const waOutByRidQuery = p.crm_rid ? S.sb.from("crm_wa_messages").select("id,body,status,sent_at,sent_by,kind,template").eq("client_rid",p.crm_rid).order("sent_at",{ascending:false}).limit(30) : null;
+  const waOutByPhoneQuery = p.phone_norm ? S.sb.from("crm_wa_messages").select("id,body,status,sent_at,sent_by,kind,template").eq("to_phone",p.phone_norm).order("sent_at",{ascending:false}).limit(30) : null;
+  const waInByRidQuery = p.crm_rid ? S.sb.from("crm_wa_inbound").select("id,body,received_at,kind").eq("client_rid",p.crm_rid).order("received_at",{ascending:false}).limit(30) : null;
+  const waInByPhoneQuery = p.phone_norm ? S.sb.from("crm_wa_inbound").select("id,body,received_at,kind").eq("from_phone",p.phone_norm).order("received_at",{ascending:false}).limit(30) : null;
+  const [msgs,os,hist,mailByRid,mailByEmail,waOutByRid,waOutByPhone,waInByRid,waInByPhone]=await Promise.all([
     q(S.sb.from("ai_messages").select("canal,sens,auteur,contenu,statut,created_at").eq("prospect_id",id).order("created_at",{ascending:false}).limit(30)),
     q(S.sb.from("ai_offers").select("*").eq("prospect_id",id).order("created_at",{ascending:false}).limit(20)),
     q(S.sb.from("ai_stage_history").select("de,vers,par,at").eq("prospect_id",id).order("at",{ascending:false}).limit(30)),
-    mailQuery ? q(mailQuery).catch(()=>[]) : Promise.resolve([]),
-    waOutQuery ? q(waOutQuery).catch(()=>[]) : Promise.resolve([]),
-    waInQuery ? q(waInQuery).catch(()=>[]) : Promise.resolve([]),
+    mailByRidQuery ? q(mailByRidQuery).catch(()=>[]) : Promise.resolve([]),
+    mailByEmailQuery ? q(mailByEmailQuery).catch(()=>[]) : Promise.resolve([]),
+    waOutByRidQuery ? q(waOutByRidQuery).catch(()=>[]) : Promise.resolve([]),
+    waOutByPhoneQuery ? q(waOutByPhoneQuery).catch(()=>[]) : Promise.resolve([]),
+    waInByRidQuery ? q(waInByRidQuery).catch(()=>[]) : Promise.resolve([]),
+    waInByPhoneQuery ? q(waInByPhoneQuery).catch(()=>[]) : Promise.resolve([]),
   ]);
+  const uniqueRows = (...groups) => [...new Map(groups.flat().map(m=>[m.id,m])).values()];
+  const mails = uniqueRows(mailByRid,mailByEmail);
+  const waOut = uniqueRows(waOutByRid,waOutByPhone);
+  const waIn = uniqueRows(waInByRid,waInByPhone);
   const replies = mails.length
     ? await q(S.sb.from("crm_mail_replies").select("mail_id,from_email,received_at,body").in("mail_id",mails.map(m=>m.id)).order("received_at",{ascending:false}).limit(60)).catch(()=>[])
     : [];
