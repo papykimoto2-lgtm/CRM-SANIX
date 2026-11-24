@@ -4,6 +4,7 @@
 // pour éviter que deux fenêtres renouvellent le même jeton.
 import { SUPABASE_DEFAULT } from "./config.js";
 import { initJarvis } from "./live_voice.js";
+import { createProspectRelations } from "./live_relations.js";
 
 const $ = (s) => document.querySelector(s);
 const LS = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
@@ -810,9 +811,12 @@ $("#performance-panel").addEventListener("click", (ev) => { const b = ev.target.
 $("#missions").addEventListener("click", (ev) => { const m = ev.target.closest("[data-agent]"); if (m) { D.sel = m.dataset.agent; view3d?.focus(D.sel); renderDetail(); } });
 
 // ───────── Vue 3D (repli 2D si WebGL indisponible ou ?2d) ─────────
-let view3d = null;
+let view3d = null, relationsView = null, relationsMode = false;
+const relationsCanvas = $("#relations-canvas");
 const api3d = {
   get D() { return D; }, STATES, clip, agentState, deptColor, onSelect: (id) => { D.sel = id; renderDetail(); },
+  onProspect: (p) => { const name = p.entreprise || "Prospect"; $("#detail").hidden = false; $("#detail").innerHTML = `<h2>${esc(name)} <span class="tag">Prospect</span></h2><div class="muted" style="font-size:12px">${esc(p.ville || "Localisation non renseignée")} · ${esc(p.stage || "nouveau")}</div><div class="mis" style="margin-top:7px"><b>Responsable commercial</b><small>${esc(nameOf(p.owner_id))}</small></div><div class="muted" style="font-size:11px;margin-top:6px">${esc(p.telephone || p.email || "Aucun contact renseigné")}</div>`; },
+  onAgent: (a) => { D.sel = a.id; renderDetail(); },
   onHover: (h) => { if (!h) { tip.hidden = true; return; } const n = h.n, cur = D.tasks.find((t) => t.agent_id === n.id && t.statut === "en_cours") ?? D.tasks.find((t) => t.agent_id === n.id && OPENS.includes(t.statut));
     tip.innerHTML = `<b>${esc(n.a.nom)}</b><span class="muted">${esc(n.a.fonction ?? "")}</span><br><span class="tag" style="--c:${STATES[n.st][1]}">${esc(STATES[n.st][0])}</span>${cur ? `<br>${esc(clip(cur.titre, 90))}` : ""}`; tip.hidden = false; tip.style.left = Math.min(W - 290, h.x + 14) + "px"; tip.style.top = Math.max(6, h.y - 10) + "px"; },
 };
@@ -836,7 +840,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); if (relationsMode) relationsView?.update({ agents: D.agents, prospects: D.salesRows || [] }); renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
