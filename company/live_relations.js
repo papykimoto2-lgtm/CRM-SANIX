@@ -41,7 +41,10 @@ export function createProspectRelations(canvas, api) {
       if(!activityPairs.has(key)) activityPairs.set(key,a);
     }
     const owners=new Map();
-    for(const p of filteredProspects){if(p.owner_id&&byAgent.has(String(p.owner_id)))owners.set(String(p.id),String(p.owner_id));}
+    for(const p of filteredProspects){
+      const assigned=[p.owner_id,p.agent_id].find(id=>id&&byAgent.has(String(id)));
+      if(assigned) owners.set(String(p.id),String(assigned));
+    }
     for(const a of activityPairs.values()) if(!owners.has(String(a.prospect_id))) owners.set(String(a.prospect_id),String(a.agent_id));
     const linkedIds=new Set([...owners.keys()]);
     const ranked=filteredProspects.slice().sort((a,b)=>Number(linkedIds.has(String(b.id)))-Number(linkedIds.has(String(a.id)))||String(b.next_action_at||"").localeCompare(String(a.next_action_at||"")));
