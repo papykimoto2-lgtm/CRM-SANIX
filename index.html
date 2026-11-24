@@ -2230,7 +2230,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
             <div class="card-header"><span class="card-title">2 · Destinataires</span><span class="badge badge-muted" id="msg-cible-count">0</span></div>
             <div class="msg-filtres">
               <div><label class="form-label">Qui</label><select class="form-input" id="msg-f-statut" onchange="msgRender()"><option value="prospect">Prospects</option><option value="client">Clients</option><option value="tous">Prospects et clients</option></select></div>
-              <div><label class="form-label">Logiciel</label><select class="form-input" id="msg-f-logiciel" onchange="msgRender()"></select></div>
+              <div><label class="form-label">Logiciel</label><select class="form-input" id="msg-f-logiciel" onchange="msgLogicielChange()"></select></div>
               <div><label class="form-label">Secteur</label><select class="form-input" id="msg-f-secteur" onchange="msgRender()"></select></div>
               <div><label class="form-label">Étape</label><select class="form-input" id="msg-f-etape" onchange="msgRender()"></select></div>
             </div>
@@ -5550,6 +5550,12 @@ const FIRST_CONTACT_DEFAULT = {
     emailSubject: "Partenariat {societe} : logiciels de gestion pour PME",
     email: "{salut} {destinataire},\n\nJe suis {gerant}, de {societe}, éditeur de logiciels de gestion pour les PME africaines, basé à Abidjan. Nous proposons notamment DistriPro ERP (distribution), Compta Pro (comptabilité) et SANIX CRM (suivi commercial).\n\n{nom} accompagne déjà des entreprises sur leurs systèmes d'information. Nous cherchons un partenaire local pour présenter nos solutions à ses clients et les déployer.\n\nLe partenariat prévoit une commission sur les ventes apportées, la formation de votre équipe sur nos logiciels, des démonstrations menées avec nous chez vos clients et la protection des clients que vous nous apportez. Je vous en détaillerai les conditions lors d'un échange.\n\nSeriez-vous disponible pour un appel de 20 minutes cette semaine ? Je peux aussi vous envoyer une présentation et organiser une démonstration en ligne.\n\nCordialement,\n{signature}\n\nSi ce message ne vous concerne pas, répondez simplement « stop » et je ne vous écrirai plus."
   },
+  crm: {
+    label: 'CRM & pilotage commercial — CRM SANIX PRO',
+    wa: "{salut} 👋 Je m'adresse bien à l'équipe de {nom} ?\n\nJe suis {gerant}, de {societe} à {ville}. Nous avons développé *CRM SANIX PRO*, une plateforme de pilotage commercial pour centraliser les prospects, qualifier les opportunités, organiser le pipeline et suivre l'activité des équipes.\n\nLa solution associe fiches entreprises, historique des échanges, suivi des agents et assistance IA avec Jarvis pour aider les équipes à prioriser leurs actions.\n\nSeriez-vous disponible pour une démonstration personnalisée de 20 minutes {rdv} ?\n\n{demo_line}Si ce n'est pas le bon moment, dites-le-moi et je ne vous relancerai pas. 🙏",
+    emailSubject: "Prospection, suivi des ventes et relation client : découvrez CRM SANIX PRO",
+    email: "{salut} {destinataire},\n\nJe me permets de vous contacter au sujet de l'organisation commerciale de {nom}. SANIX AFRICA propose *CRM SANIX PRO*, une solution conçue pour centraliser les prospects, structurer leur qualification et donner une vision claire des opportunités en cours.\n\nCRM SANIX PRO permet notamment de :\n• centraliser les fiches prospects et entreprises ;\n• qualifier et prioriser les opportunités ;\n• suivre le pipeline et les prochaines actions ;\n• coordonner les agents commerciaux ;\n• conserver l'historique des échanges et relances ;\n• analyser les relations commerciales avec l'assistance IA Jarvis.\n\nNous souhaiterions vous présenter la solution lors d'une démonstration personnalisée de 20 à 30 minutes, {rdv}.\n\n{demo_line}Cordialement,\n{signature}\n\nSi ce message ne vous concerne pas, répondez simplement « stop » et je ne vous écrirai plus."
+  },
   generic: {
     label: 'Autres secteurs — logiciel recommandé',
     wa: "{salut} 👋 Je m'adresse bien à l'équipe de {nom} ?\n\nJe suis {gerant}, de {societe} à {ville}. Nous éditons des logiciels de gestion pensés pour les entreprises ivoiriennes (SYSCOHADA, utilisables hors connexion).\n\n{pitch}\n\nSeriez-vous partant pour une démo de 15 min {rdv} ?\n\n{demo_line}Si ce n'est pas le bon moment, dites-le-moi et je ne vous relancerai pas. 🙏",
@@ -5578,6 +5584,7 @@ function fcCfg(){
 function fcSegment(c){
   const l = _nrm(c.logiciel||'');
   if(/^partenaire/.test(_nrm(c.secteur||''))) return 'partenaire';   // distributeurs / intégrateurs : message de partenariat, pas d'offre client
+  if(l.includes('crm sanix') || l.includes('sanix crm')) return 'crm';
   if(l.includes('phyto')) return 'phyto';
   if(l.includes('avinest') || (l.includes('angel') && l.includes('agro'))) return 'avinest';   // Angel's Agro = AviNest Pro adapté au client Angel's Group
   if(l.includes('aluexpert')) return 'aluexpert';
@@ -8653,7 +8660,9 @@ function msgCanal(ch){
   // le texte d'un modèle de l'autre canal n'a pas de sens ici : on l'efface (un texte écrit à la main est conservé)
   const t=document.getElementById('msg-text'), o=document.getElementById('msg-objet');
   if(_msg.tplTexte && t.value===_msg.tplTexte){ t.value=''; o.value=''; _msg.tplTexte=''; _msg.tplId=''; }
-  msgRenderModeles(); msgRender();
+  msgRenderModeles();
+  if(!_msg.tplId) msgPreselectionnerModele();
+  msgRender();
 }
 function selectChannel(ch){ msgCanal(ch); }   // ancien nom, conservé
 
@@ -8888,6 +8897,43 @@ function renderMsgHistory(){
 }
 
 // ── Modèles (livrés + les vôtres) ──
+function msgSegmentLogicielSelectionne(){
+  const l=_nrm(_msgG('msg-f-logiciel'));
+  if(!l) return '';
+  if(l.includes('crm sanix') || l.includes('sanix crm')) return 'crm';
+  if(l.includes('aluexpert')) return 'aluexpert';
+  if(l.includes('immo')) return 'immo';
+  if(l.includes('livraison') || l.includes('angel')) return 'livraison';
+  if(l.includes('autogarage') || l.includes('garage')) return 'autogarage';
+  if(l.includes('avinest') || l.includes('avicole')) return 'avinest';
+  if(l.includes('phyto')) return 'phyto';
+  return '';
+}
+/** Prépositionne le modèle de premier contact correspondant au logiciel sélectionné et au canal actif. */
+function msgPreselectionnerModele(){
+  const k=msgSegmentLogicielSelectionne();
+  if(!k || !FIRST_CONTACT_DEFAULT[k]) return false;
+  const seg=document.getElementById('msg-tpl-seg');
+  if(seg) seg.value=k;
+  const i=MSG_TEMPLATES.findIndex(t=>t.fc===k && t.canal===_msg.canal);
+  if(i<0) return false;
+  msgRenderModeles();
+  msgChoisirModele('b'+i);
+  return true;
+}
+function msgLogicielChange(){
+  _msg.desel.clear();
+  const k=msgSegmentLogicielSelectionne();
+  if(k){
+    const seg=document.getElementById('msg-tpl-seg');
+    if(seg) seg.value=k;
+    msgRenderModeles();
+    msgPreselectionnerModele();
+  } else {
+    msgRender();
+    msgRenderModeles();
+  }
+}
 function msgModeles(){
   const perso=(CONFIG.messagerieModeles||[]).map(m=>({id:'u'+m.id,rid:m.id,canal:m.canal,titre:m.titre,msg:m.msg,seg:'perso',perso:true}));
   const base=MSG_TEMPLATES.map((t,i)=>({id:'b'+i,canal:t.canal,titre:t.titre,msg:t.msg,seg:t.fc||'gen'}));
