@@ -6,6 +6,7 @@ import { audit, cors, cronSecret, db, env, HttpError, json, requireOperator, saf
 import { runAgent } from "../_shared/agent.ts";
 import { BudgetError, LlmKeyMissingError, ProviderBillingError, ProviderConfigurationError, TransientLlmError } from "../_shared/llm.ts";
 import { MAX_RELANCES, tickFollowups } from "../_shared/followups.ts";
+import { callClaude, textOf } from "../_shared/llm.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -24,6 +25,22 @@ Deno.serve(async (req) => {
     }
 
     const op = await requireOperator(req);
+
+    if (body.action === "assistant_prospect") {
+      const prompt = str(body.prompt, 9000);
+      if (!prompt) throw new HttpError(400, "Prompt de génération manquant");
+      const { message } = await callClaude({
+        label: "sales_assistant",
+        system: "Tu es l’assistant commercial SANIX AFRICA. Tu aides les commerciaux à analyser un prospect et à préparer des contenus de vente B2B adaptés au marché ivoirien. Réponds en français, de façon précise, concrète et directement exploitable. N’invente jamais de faits sur l’entreprise, ses besoins, ses outils ou ses échanges. Distingue les hypothèses des informations confirmées. Ne prétends jamais qu’un message a été envoyé, qu’un appel a eu lieu ou qu’une action a été exécutée. Tu peux rédiger un brouillon, mais aucun contact externe ne doit être déclenché.",
+        messages: [{ role: "user", content: prompt }],
+        model: "claude-sonnet-5-5",
+        effort: "low",
+        maxTokens: 1200,
+      });
+      const text = textOf(message);
+      if (!text) throw new Error("Le service IA n’a retourné aucun contenu");
+      return json(req, { text }, 200);
+    }
 
     if (body.action === "mission") {
       const titre = str(body.titre, 150), consigne = str(body.consigne, 2000);

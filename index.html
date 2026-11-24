@@ -17322,21 +17322,17 @@ Style direct, percutant, adapté au marché ivoirien.`
   };
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    const data = await aisApi('/functions/v1/ai-sales-director', {
       method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model:'claude-sonnet-4-6',
-        max_tokens:1000,
-        messages:[{role:'user',content:prompts[_aiCurrentTab]||prompts.strategie}]
-      })
+      body:JSON.stringify({action:'assistant_prospect',prompt:prompts[_aiCurrentTab]||prompts.strategie}),
+      timeout:120000
     });
-    const data = await resp.json();
-    const text = data.content?.map(x=>x.text||'').join('')||'Erreur de génération.';
+    const text = String(data?.text||'').trim() || 'Le service IA n’a retourné aucun contenu.';
     _aiLastOutput = text;
     // Formatter la réponse
     outEl.innerHTML = '<div style="font-size:12px;line-height:1.8;white-space:pre-wrap;color:var(--text)">'+
-      text.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
+      text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
           .replace(/^(\d+\.)/gm,'<br><strong>$1</strong>')
           .replace(/^(OBJECTION|RÉPONSE|STRATÉGIE|ANALYSE|ACTION|SIGNAL|CALENDRIER|TECHNIQUE|SCRIPT|CONCESSION)(.*)$/gm,
             '<div style="margin-top:10px"><span style="background:var(--primary-l);color:var(--primary);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:800">$1</span>$2</div>')
