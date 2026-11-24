@@ -3,7 +3,7 @@
 // Les événements sans agent_id restent visibles comme non attribués : aucune relation n'est inventée.
 export function createProspectRelations(canvas, api) {
   const ctx = canvas.getContext("2d");
-  const state = { agents: [], prospects: [], activities: [], width: 0, height: 0, dpr: 1, nodes: [], edges: [], raf: 0, stopped: false, filters: { product: "", prospect: "" }, totalProspects: 0, camera: { x: 0, y: 0, scale: 1 }, selected: null, pointer: null };
+  const state = { agents: [], prospects: [], activities: [], width: 0, height: 0, dpr: 1, nodes: [], edges: [], raf: 0, stopped: false, filters: { product: "", prospect: "" }, totalProspects: 0, camera: { x: 0, y: 0, scale: 1 }, selected: null, pointer: null, manualPositions: new Map() };
   const palette = { nouveau:"#64748B",a_qualifier:"#94A3B8",qualifie:"#22D3EE",premier_contact:"#38BDF8",conversation:"#60A5FA",besoin_identifie:"#818CF8",interesse:"#A78BFA",rdv_propose:"#F59E0B",rdv_confirme:"#FBBF24",demo_realisee:"#F97316",offre_transmise:"#FB923C",negociation:"#E879F9",offre_acceptee:"#22C55E",contrat_transmis:"#4ADE80",marche_gagne:"#16A34A",client_fidelise:"#10B981",perdu:"#EF4444",en_veille:"#64748B" };
   const label = s => String(s || "nouveau").replace(/_/g," ");
   const norm = v => String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("fr").trim();
@@ -47,14 +47,14 @@ export function createProspectRelations(canvas, api) {
     const prospects=ranked.slice(0,70),groups=new Map();
     prospects.forEach(p=>{const owner=owners.get(String(p.id));if(owner){if(!groups.has(owner))groups.set(owner,[]);groups.get(owner).push(p);}});
     const agentNodes=[],prospectNodes=[];
-    left.forEach((a,i)=>agentNodes.push({id:String(a.id),kind:"agent",data:a,x:w*.16,y:h*(.12+.76*(i+.5)/Math.max(1,left.length)),r:7}));
+    left.forEach((a,i)=>{const id=String(a.id),pos=state.manualPositions.get(id);agentNodes.push({id,kind:"agent",data:a,x:pos?.x??w*.16,y:pos?.y??h*(.12+.76*(i+.5)/Math.max(1,left.length)),r:7});});
     const byOwner=new Map(agentNodes.map(n=>[n.id,n]));
     prospects.forEach((p,i)=>{
       const ownerId=owners.get(String(p.id))||null,owner=ownerId?byOwner.get(ownerId):null;
       const group=owner?groups.get(ownerId):[],index=owner?group.findIndex(x=>String(x.id)===String(p.id)):i;
       const x=owner?w*(.52+(index%3)*.045):w*.84;
       const y=owner?owner.y+(index-(group.length-1)/2)*24:h*(.10+.80*(i+0.5)/Math.max(1,prospects.length));
-      prospectNodes.push({id:String(p.id),kind:"prospect",data:p,owner,x,y:Math.max(34,Math.min(h-34,y)),r:5});
+      const id=String(p.id),pos=state.manualPositions.get(id);prospectNodes.push({id,kind:"prospect",data:p,owner,x:pos?.x??x,y:pos?.y??Math.max(34,Math.min(h-34,y)),r:5});
     });
     const nodeByProspect=new Map(prospectNodes.map(n=>[n.id,n]));
     const edges=[];
@@ -124,7 +124,7 @@ export function createProspectRelations(canvas, api) {
   const zoomAt=(factor,p={x:state.width/2,y:state.height/2})=>{const before=worldPoint(p);state.camera.scale=Math.max(.55,Math.min(2.8,state.camera.scale*factor));const after=worldPoint(p);state.camera.x+=(after.x-before.x)*state.camera.scale;state.camera.y+=(after.y-before.y)*state.camera.scale;};
   const resetCamera=()=>{state.camera={x:0,y:0,scale:1};};
   const onPointerDown=ev=>{if(ev.button!==undefined&&ev.button!==0)return;const p=screenPoint(ev),hit=hitAt(p);state.pointer={id:ev.pointerId,start:p,last:p,hit,moved:false,mode:hit?"node":"pan"};canvas.setPointerCapture?.(ev.pointerId);canvas.classList.toggle("dragging",!hit);};
-  const onPointerMove=ev=>{const p=screenPoint(ev),pt=state.pointer;if(!pt){canvas.style.cursor=hitAt(p)?"pointer":"grab";return;}const dx=p.x-pt.last.x,dy=p.y-pt.last.y;if(Math.hypot(p.x-pt.start.x,p.y-pt.start.y)>4)pt.moved=true;if(pt.moved){if(pt.mode==="pan"){state.camera.x+=dx;state.camera.y+=dy;}else if(pt.hit){const q=worldPoint(p);pt.hit.x=q.x;pt.hit.y=q.y;}}pt.last=p;};
+  const onPointerMove=ev=>{const p=screenPoint(ev),pt=state.pointer;if(!pt){canvas.style.cursor=hitAt(p)?"pointer":"grab";return;}const dx=p.x-pt.last.x,dy=p.y-pt.last.y;if(Math.hypot(p.x-pt.start.x,p.y-pt.start.y)>4)pt.moved=true;if(pt.moved){if(pt.mode==="pan"){state.camera.x+=dx;state.camera.y+=dy;}else if(pt.hit){const q=worldPoint(p);pt.hit.x=q.x;pt.hit.y=q.y;state.manualPositions.set(pt.hit.id,{x:q.x,y:q.y});}}pt.last=p;};
   const onPointerUp=()=>{const pt=state.pointer;if(!pt)return;state.pointer=null;canvas.classList.remove("dragging");if(!pt.moved&&pt.hit){state.selected=pt.hit.id;if(pt.hit.kind==="prospect")api.onProspect?.(pt.hit.data);else api.onAgent?.(pt.hit.data);}};
   const onWheel=ev=>{ev.preventDefault();zoomAt(ev.deltaY<0?1.12:.89,screenPoint(ev));};
   const onDoubleClick=ev=>{ev.preventDefault();resetCamera();};
