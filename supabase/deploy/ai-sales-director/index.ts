@@ -433,7 +433,7 @@ var store = {
     const p = data?.[0];
     if (!p) return;
     const quand = m.replied_at ?? (/* @__PURE__ */ new Date()).toISOString();
-    await db().from("ai_prospects").update({ last_inbound_at: quand, relances_sans_reponse: 0, email_statut: "verifiee", email_verifie_at: quand, email_verif_detail: "Le prospect a r\xE9pondu depuis cette adresse", ...(p.stage === "premier_contact" ? { stage: "conversation" } : {}) }).eq("id", p.id);
+    await db().from("ai_prospects").update({ last_inbound_at: quand, relances_sans_reponse: 0, email_statut: "verifiee", email_verifie_at: quand, email_verif_detail: "Le prospect a r\xE9pondu depuis cette adresse", ...(p.stage === "premier_contact" && !p.opt_out && !(textes && textes.some((t) => estDesinscription(t))) ? { stage: "conversation" } : {}) }).eq("id", p.id);
     if (textes && !p.opt_out && textes.some((t) => estDesinscription(t))) {
       await db().from("ai_prospects").update({ opt_out: true, opt_out_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", p.id);
       await db().from("ai_actions").insert({ agent: "gmail", action: "desinscription_stop", prospect_id: p.id, ok: true, payload: { canal: "email" } });
@@ -464,10 +464,18 @@ var store = {
     if (annulees?.length) await db().from("ai_actions").insert({ agent: "gmail", action: "relances_annulees_adresse_invalide", prospect_id: p.id, ok: true, payload: { relances: annulees.length } });
   },
   async syncProspectOutbound(clientRid, email, at) {
-    if (!clientRid) return;
-    const { data, error } = await db().from("ai_prospects").select("id,stage").eq("crm_rid", clientRid).limit(2);
-    if (error || !data || data.length !== 1) return;
-    const p = data[0];
+    let rows = [];
+    if (clientRid) {
+      const r = await db().from("ai_prospects").select("id,stage").eq("crm_rid", clientRid).limit(2);
+      rows = r.data ?? [];
+    }
+    if (rows.length === 0 && email) {
+      const safe = String(email).trim().replace(/[\\%_]/g, (c) => "\\" + c);
+      const r = await db().from("ai_prospects").select("id,stage").ilike("email", safe).limit(2);
+      rows = r.data ?? [];
+    }
+    if (rows.length !== 1) return;
+    const p = rows[0];
     await db().from("ai_prospects").update({ last_outbound_at: at, ...(["identifie", "enregistre", "qualifie"].includes(p.stage) ? { stage: "premier_contact" } : {}) }).eq("id", p.id);
   },
   async addInteraction(clientRid, interaction) {
