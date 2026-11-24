@@ -84,11 +84,19 @@ export const store: Store = {
     if (annulees?.length) await db().from("ai_actions").insert({ agent: "gmail", action: "relances_annulees_adresse_invalide", prospect_id: p.id, ok: true, payload: { relances: annulees.length } });
   },
   async syncProspectOutbound(clientRid, email, at) {
-    // Le rattachement stable est obligatoire : aucune recherche approximative par e-mail.
-    if (!clientRid) return;
-    const { data, error } = await db().from("ai_prospects").select("id,stage").eq("crm_rid", clientRid).limit(2);
-    if (error || !data || data.length !== 1) return;
-    const p = data[0];
+    // Le rattachement CRM est prioritaire ; l'e-mail n'est utilisé qu'en secours s'il identifie une seule fiche.
+    let rows = [];
+    if (clientRid) {
+      const r = await db().from("ai_prospects").select("id,stage").eq("crm_rid", clientRid).limit(2);
+      rows = r.data ?? [];
+    }
+    if (rows.length === 0 && email) {
+      const safe = String(email).trim().replace(/[\\%_]/g, (c) => "\\" + c);
+      const r = await db().from("ai_prospects").select("id,stage").ilike("email", safe).limit(2);
+      rows = r.data ?? [];
+    }
+    if (rows.length !== 1) return; // ambigu ou non lié : aucune fiche n'est modifiée par approximation
+    const p = rows[0];
     await db().from("ai_prospects").update({ last_outbound_at: at, ...(["identifie", "enregistre", "qualifie"].includes(p.stage) ? { stage: "premier_contact" } : {}) }).eq("id", p.id);
   },
   async addInteraction(clientRid, interaction) {");
