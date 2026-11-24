@@ -60,24 +60,28 @@ export function createProspectRelations(canvas, api) {
     });
     const byAgent=new Map(left.map(a=>[String(a.id),a]));
     const byProspect=new Map(filteredProspects.map(p=>[String(p.id),p]));
+    // Agréger toutes les preuves disponibles par paire agent/prospect.
+    // Une mission et une interaction peuvent coexister : aucune ne doit masquer l'autre.
     const activityPairs=new Map(), missionPairs=new Map();
     for(const t of state.tasks){
       if(!t.agent_id||!t.prospect_id||!byAgent.has(String(t.agent_id))||!byProspect.has(String(t.prospect_id))) continue;
       const key=String(t.agent_id)+"|"+String(t.prospect_id);
-      if(!missionPairs.has(key)) missionPairs.set(key,t);
+      if(!missionPairs.has(key)) missionPairs.set(key,[]);
+      missionPairs.get(key).push(t);
     }
     for(const a of state.activities){
       if(!a.agent_id||!a.prospect_id||!byAgent.has(String(a.agent_id))||!byProspect.has(String(a.prospect_id))) continue;
       const key=String(a.agent_id)+"|"+String(a.prospect_id);
-      if(!activityPairs.has(key)) activityPairs.set(key,a);
+      if(!activityPairs.has(key)) activityPairs.set(key,[]);
+      activityPairs.get(key).push(a);
     }
     const owners=new Map();
     for(const p of filteredProspects){
       const assigned=[p.agent_id].find(id=>id&&byAgent.has(String(id)));
       if(assigned) owners.set(String(p.id),String(assigned));
     }
-    for(const t of missionPairs.values()) if(!owners.has(String(t.prospect_id))) owners.set(String(t.prospect_id),String(t.agent_id));
-    for(const a of activityPairs.values()) if(!owners.has(String(a.prospect_id))) owners.set(String(a.prospect_id),String(a.agent_id));
+    for(const rows of missionPairs.values()) { const t=rows[0]; if(t&&!owners.has(String(t.prospect_id))) owners.set(String(t.prospect_id),String(t.agent_id)); }
+    for(const rows of activityPairs.values()) { const a=rows[0]; if(a&&!owners.has(String(a.prospect_id))) owners.set(String(a.prospect_id),String(a.agent_id)); }
     const linkedIds=new Set([...owners.keys()]);
     const ranked=filteredProspects.slice().sort((a,b)=>Number(linkedIds.has(String(b.id)))-Number(linkedIds.has(String(a.id)))||String(b.next_action_at||"").localeCompare(String(a.next_action_at||"")));
     const prospects=ranked.slice(0,70),groups=new Map();
@@ -94,16 +98,13 @@ export function createProspectRelations(canvas, api) {
     });
     const nodeByProspect=new Map(prospectNodes.map(n=>[n.id,n]));
     const edges=[];
-    for(const [key,t] of missionPairs){
-      if(activityPairs.has(key)) continue;
-      const [agentId,prospectId]=key.split("|"),from=byOwner.get(agentId),to=nodeByProspect.get(prospectId);
-      if(from&&to)edges.push({from,to,color:prospectColor(to.data),task:t,kind:"mission"});
-    }
-    for(const [key,a] of activityPairs){
-      const [agentId,prospectId]=key.split("|"),from=byOwner.get(agentId),to=nodeByProspect.get(prospectId);
-      if(from&&to)edges.push({from,to,color:prospectColor(to.data),activity:a,kind:"activity"});
-    }
     const linkedPairs=new Set([...activityPairs.keys(),...missionPairs.keys()]);
+    for(const key of linkedPairs){
+      const [agentId,prospectId]=key.split("|"),from=byOwner.get(agentId),to=nodeByProspect.get(prospectId);
+      if(!from||!to)continue;
+      const activities=activityPairs.get(key)||[],tasks=missionPairs.get(key)||[];
+      edges.push({from,to,color:prospectColor(to.data),activities,tasks,activity:activities[0]||null,task:tasks[0]||null,activityCount:activities.length,missionCount:tasks.length,kind:activities.length?"activity":"mission"});
+    }
     for(const n of prospectNodes){
       if(n.owner&&!linkedPairs.has(n.owner.id+"|"+n.id)) edges.push({from:n.owner,to:n,color:prospectColor(n.data),kind:"assignment"});
     }
@@ -129,7 +130,7 @@ export function createProspectRelations(canvas, api) {
     ctx.save();ctx.translate(w/2+state.camera.x,h/2+state.camera.y);ctx.scale(state.camera.scale,state.camera.scale);ctx.translate(-w/2,-h/2);
     for(const e of state.edges){
       const {from,to,color}=e;const active=!state.selected||from.id===state.selected||to.id===state.selected;ctx.globalAlpha=active?1:.12;ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.bezierCurveTo(state.width*.34,from.y,state.width*.38,to.y,to.x,to.y);
-      ctx.setLineDash(e.kind==="mission"?[5,4]:e.kind==="assignment"?[2,5]:[]);ctx.strokeStyle=e.kind==="activity"?color+"D8":e.kind==="mission"?color+"C0":color+"70";ctx.lineWidth=e.kind==="activity"?2:e.kind==="mission"?1.6:1.2;ctx.stroke();ctx.setLineDash([]);
+      ctx.setLineDash(e.kind==="mission"?[5,4]:e.kind==="assignment"?[2,5]:[]);ctx.strokeStyle=e.kind==="activity"?color+"D8":e.kind==="mission"?color+"C0":color+"70";ctx.lineWidth=e.activityCount&&e.missionCount?2.8:e.kind==="activity"?2:e.kind==="mission"?1.6:1.2;ctx.stroke();ctx.setLineDash([]);
       const seed=(Number(String(to.id).replace(/\D/g,"").slice(-4))||13)%97/97;
       const k=(t*.00012+seed)%1,q=1-k;
       const x=q*q*q*from.x+3*q*q*k*state.width*.34+3*q*k*k*state.width*.38+k*k*k*to.x;
@@ -164,13 +165,23 @@ export function createProspectRelations(canvas, api) {
   }
   const screenPoint=ev=>{const r=canvas.getBoundingClientRect();return{x:ev.clientX-r.left,y:ev.clientY-r.top};};
   const worldPoint=p=>({x:(p.x-state.width/2-state.camera.x)/state.camera.scale+state.width/2,y:(p.y-state.height/2-state.camera.y)/state.camera.scale+state.height/2});
-  const hitAt=p=>{const q=worldPoint(p);return [...state.nodes].reverse().find(n=>Math.hypot(n.x-q.x,n.y-q.y)<Math.max(15,n.r+8));};
+  const hitAt=p=>{
+    const q=worldPoint(p);
+    return [...state.nodes].reverse().find(n=>{
+      if(Math.hypot(n.x-q.x,n.y-q.y)<=Math.max(15,n.r+8))return true;
+      const data=n.data||{},name=String(n.kind==="agent"?(data.nom||data.code||"Agent"):(data.entreprise||"Prospect"));
+      ctx.save();ctx.font=n.kind==="agent"?"600 10px system-ui":"9px system-ui";
+      const width=ctx.measureText(name.length>23?name.slice(0,22)+"…":name).width;ctx.restore();
+      const left=n.x+(n.kind==="agent"?12:9),top=n.y-7;
+      return q.x>=left&&q.x<=left+Math.max(24,width)&&q.y>=top&&q.y<=n.y+9;
+    });
+  };
   const edgeAt=p=>{const q=worldPoint(p);let best=null,dist=Infinity;for(const e of state.edges){let prev={x:e.from.x,y:e.from.y};for(let i=1;i<=28;i++){const t=i/28,u=1-t,x=u*u*u*e.from.x+3*u*u*t*state.width*.34+3*u*t*t*state.width*.38+t*t*t*e.to.x,y=u*u*u*e.from.y+3*u*u*t*e.from.y+3*u*t*t*e.to.y+t*t*t*e.to.y,dx=x-prev.x,dy=y-prev.y,len=dx*dx+dy*dy||1,k=Math.max(0,Math.min(1,((q.x-prev.x)*dx+(q.y-prev.y)*dy)/len)),d=Math.hypot(q.x-(prev.x+k*dx),q.y-(prev.y+k*dy));if(d<dist){dist=d;best=e;}prev={x,y};}}return dist<10?best:null;};
   const zoomAt=(factor,p={x:state.width/2,y:state.height/2})=>{const before=worldPoint(p);state.camera.scale=Math.max(.55,Math.min(2.8,state.camera.scale*factor));const after=worldPoint(p);state.camera.x+=(after.x-before.x)*state.camera.scale;state.camera.y+=(after.y-before.y)*state.camera.scale;};
   const resetCamera=()=>{state.camera={x:0,y:0,scale:1};};
   const onPointerDown=ev=>{if(ev.button!==undefined&&ev.button!==0)return;const p=screenPoint(ev),hit=hitAt(p),edge=hit?null:edgeAt(p);state.pointer={id:ev.pointerId,start:p,last:p,hit,edge,moved:false,mode:hit?"node":edge?"relation":"pan"};canvas.setPointerCapture?.(ev.pointerId);canvas.classList.toggle("dragging",!hit&&!edge);};
   const onPointerMove=ev=>{const p=screenPoint(ev),pt=state.pointer;if(!pt){canvas.style.cursor=hitAt(p)?"pointer":"grab";return;}const dx=p.x-pt.last.x,dy=p.y-pt.last.y;if(Math.hypot(p.x-pt.start.x,p.y-pt.start.y)>4)pt.moved=true;if(pt.moved){if(pt.mode==="pan"){state.camera.x+=dx;state.camera.y+=dy;}else if(pt.mode==="node"&&pt.hit){const q=worldPoint(p);pt.hit.x=q.x;pt.hit.y=q.y;state.manualPositions.set(pt.hit.id,{x:q.x,y:q.y});}}pt.last=p;};
-  const onPointerUp=()=>{const pt=state.pointer;if(!pt)return;state.pointer=null;canvas.classList.remove("dragging");if(!pt.moved&&pt.edge){state.selected=null;state.selectedRelation=pt.edge;api.onRelation?.({kind:pt.edge.kind,agent:pt.edge.from.data,prospect:pt.edge.to.data,task:pt.edge.task||null,activity:pt.edge.activity||null});}else if(!pt.moved&&pt.hit){state.selected=pt.hit.id;state.selectedRelation=null;api.onRelation?.(null);if(pt.hit.kind==="prospect")api.onProspect?.(pt.hit.data);else api.onAgent?.(pt.hit.data);}};
+  const onPointerUp=()=>{const pt=state.pointer;if(!pt)return;state.pointer=null;canvas.classList.remove("dragging");if(!pt.moved&&pt.edge){state.selected=null;state.selectedRelation=pt.edge;api.onRelation?.({kind:pt.edge.kind,agent:pt.edge.from.data,prospect:pt.edge.to.data,task:pt.edge.task||null,activity:pt.edge.activity||null,tasks:pt.edge.tasks||[],activities:pt.edge.activities||[],missionCount:pt.edge.missionCount||0,activityCount:pt.edge.activityCount||0});}else if(!pt.moved&&pt.hit){state.selected=pt.hit.id;state.selectedRelation=null;api.onRelation?.(null);if(pt.hit.kind==="prospect")api.onProspect?.(pt.hit.data);else api.onAgent?.(pt.hit.data);}};
   const onWheel=ev=>{ev.preventDefault();zoomAt(ev.deltaY<0?1.12:.89,screenPoint(ev));};
   const onDoubleClick=ev=>{ev.preventDefault();resetCamera();};
   canvas.addEventListener("pointerdown",onPointerDown);canvas.addEventListener("pointermove",onPointerMove);canvas.addEventListener("pointerup",onPointerUp);canvas.addEventListener("pointercancel",onPointerUp);canvas.addEventListener("wheel",onWheel,{passive:false});canvas.addEventListener("dblclick",onDoubleClick);
