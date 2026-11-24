@@ -891,16 +891,17 @@ function renderRelationAgentOptions() {
   if (select.value !== current) relationFilters.agent = select.value;
 }
 function renderRelationProductOptions() {
-  const select = $("#relations-product"), current = select.value;
+  const select = $("#relations-product"), current = relationFilters.product || select.value;
   const products = (D.products || []).filter(p => p.actif !== false).slice().sort((a,b) => String(a.nom).localeCompare(String(b.nom), "fr"));
-  select.innerHTML = '<option value="">Tous les logiciels</option>' + products.map(p => `<option value="${esc(p.nom)}">${esc(p.nom)}</option>`).join("");
-  select.value = products.some(p => p.nom === current) ? current : relationFilters.product;
+  select.innerHTML = '<option value="">Tous les logiciels</option>' + products.map(p => `<option value="${esc(p.id)}">${esc(p.nom)}</option>`).join("");
+  select.value = products.some(p => String(p.id) === String(current)) ? String(current) : "";
+  relationFilters.product = select.value;
 }
 function updateRelationFilters() {
   relationFilters.agent = $("#relations-agent").value;
   relationFilters.product = $("#relations-product").value;
   relationFilters.prospect = $("#relations-prospect").value.trim();
-  relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.tasks || [], filters: relationFilters });
+  relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.tasks || [], products: D.products || [], aliases: D.productAliases || [], filters: relationFilters });
 }
 const relationsCanvas = $("#relations-canvas");
 const api3d = {
@@ -908,6 +909,8 @@ const api3d = {
   onProspect: (p) => { D.relationSel = null; D.sel = null; D.prospectSel = p; renderDetail(); },
   onAgent: (a) => { D.relationSel = null; D.prospectSel = null; D.sel = a.id; renderDetail(); },
   onRelation: (r) => { D.relationSel = r; if (r) { D.sel = r.agent.id; D.prospectSel = r.prospect; renderDetail(); window.__jarvis?.explainRelation?.(r); } else { D.relationSel = null; } },
+  onClearSelection: () => { D.relationSel = null; D.prospectSel = null; D.sel = null; $("#detail").hidden = true; renderDetail(); },
+  onLegend: (items) => { const el=$("#relations-legend"); if(!el)return; el.innerHTML=items.map(item=>`<span class="relations-legend-item"><i class="relations-legend-dot ${esc(item.type)}" style="--legend-color:${esc(item.color)}"></i><b>${esc(item.label)}</b>${item.count!=null?`<small>${item.count}</small>`:""}</span>`).join(""); },
   onHover: (h) => { if (!h) { tip.hidden = true; return; } const n = h.n, cur = D.tasks.find((t) => t.agent_id === n.id && t.statut === "en_cours") ?? D.tasks.find((t) => t.agent_id === n.id && OPENS.includes(t.statut));
     tip.innerHTML = `<b>${esc(n.a.nom)}</b><span class="muted">${esc(n.a.fonction ?? "")}</span><br><span class="tag" style="--c:${STATES[n.st][1]}">${esc(STATES[n.st][0])}</span>${cur ? `<br>${esc(clip(cur.titre, 90))}` : ""}`; tip.hidden = false; tip.style.left = Math.min(W - 290, h.x + 14) + "px"; tip.style.top = Math.max(6, h.y - 10) + "px"; },
 };
@@ -920,13 +923,17 @@ function initControls() {
   $("#relations-agent").addEventListener("change", updateRelationFilters);
   $("#relations-product").addEventListener("change", updateRelationFilters);
   $("#relations-prospect").addEventListener("input", updateRelationFilters);
-  $("#relations-reset").addEventListener("click", () => { $("#relations-agent").value = ""; $("#relations-product").value = ""; $("#relations-prospect").value = ""; updateRelationFilters(); });
+  $("#relations-reset").addEventListener("click", () => {
+    relationFilters.agent = ""; relationFilters.product = ""; relationFilters.prospect = "";
+    $("#relations-agent").value = ""; $("#relations-product").value = ""; $("#relations-prospect").value = "";
+    updateRelationFilters(); relationsView?.reset(); relationsView?.clearSelection();
+  });
   $("#relations-filters").addEventListener("click", (ev) => { const b=ev.target.closest("[data-rel-camera]");if(!b||!relationsView)return;const action=b.dataset.relCamera;if(action==="in")relationsView.zoom(1.22);else if(action==="out")relationsView.zoom(.82);else if(action==="reset")relationsView.reset(); });
   $("#ctl").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-c]"); if (!b) return; const c = b.dataset.c;
     if (c === "relations") {
       relationsMode = !relationsMode; b.classList.toggle("on", relationsMode);
       $("#stage3d").hidden = relationsMode; cv.hidden = relationsMode || !!view3d; relationsCanvas.hidden = !relationsMode; $("#relations-filters").hidden = !relationsMode;
-      if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView ??= createProspectRelations(relationsCanvas, { ...api3d, onFilterCount: (n, total) => { $("#relations-filter-count").textContent = n + " / " + total + " prospects"; } }); relationsView.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.tasks || [], filters: relationFilters }); relationsView.resize(); }
+      if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView ??= createProspectRelations(relationsCanvas, { ...api3d, onFilterCount: (n, total) => { $("#relations-filter-count").textContent = n + " / " + total + " prospects"; } }); relationsView.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.tasks || [], products: D.products || [], aliases: D.productAliases || [], filters: relationFilters }); relationsView.resize(); }
       else view3d?.resize();
       return;
     }
