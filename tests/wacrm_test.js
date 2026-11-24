@@ -5,7 +5,7 @@ const refuse = async (p, status, re, m) => { try { await p; } catch (e) { if (e.
   const W = await import("../supabase/functions/_shared/wacrm.ts");
   const ENV = { WHATSAPP_TOKEN: "TOKEN-SECRET", WHATSAPP_PHONE_NUMBER_ID: "123456", WHATSAPP_VERIFY_TOKEN: "v", WHATSAPP_APP_SECRET: "s" };
   let T = Date.parse("2026-11-17T10:00:00Z");
-  const S = { msgs: [], inb: [], optout: new Set(), agentsOptout: new Set(), inter: [] };
+  const S = { msgs: [], inb: [], optout: new Set(), agentsOptout: new Set(), inter: [], prospectOutbound: [], prospectInbound: [] };
   const store = {
     countSentSince: async (since) => S.msgs.filter((m) => m.status !== "echec" && m.sent_at > since).length,
     recentDuplicate: async (ph, tpl, since) => S.msgs.some((m) => m.to_phone === ph && m.template === tpl && m.status !== "echec" && m.sent_at > since),
@@ -18,6 +18,8 @@ const refuse = async (p, status, re, m) => { try { await p; } catch (e) { if (e.
     insertInbound: async (r) => { if (S.inb.some((x) => x.wa_message_id === r.wa_message_id)) return false; S.inb.push(r); return true; },
     setOptOut: async (ph) => { S.optout.add(ph); },
     addInteraction: async (rid, i) => { S.inter.push({ rid, ...i }); },
+    syncProspectOutbound: async (rid, phone, at) => { S.prospectOutbound.push({ rid, phone, at }); },
+    syncProspectInbound: async (rid, phone, at, optOut) => { S.prospectInbound.push({ rid, phone, at, optOut: !!optOut }); },
   };
   const calls = []; const META = { ok: true, status: 200, error: null };
   const res = (status, body) => ({ ok: status < 300, status, json: async () => body, text: async () => JSON.stringify(body) });
@@ -41,6 +43,7 @@ const refuse = async (p, status, re, m) => { try { await p; } catch (e) { if (e.
   ok(JSON.stringify(c0.body.template.components[0].parameters.map((p) => p.text)) === JSON.stringify(["Clinique Alpha", "MediCore Suite", "Admin Test"]), "les 3 variables partent dans l'ordre");
   ok(S.msgs[0].consent_by === "Admin Test" && S.msgs[0].sent_by === "Admin Test", "qui a envoyé et qui a confirmé l'accord du destinataire sont conservés");
   ok(S.inter.length === 1 && S.inter[0].rid === "c1" && S.inter[0].type === "Message WhatsApp", "l'envoi est tracé sur la fiche du prospect");
+  ok(S.prospectOutbound.some((x) => x.rid === "c1" && x.phone === "2250700000107"), "l'envoi WhatsApp synchronise le dernier contact dans la qualification");
   ok(!JSON.stringify(S.msgs).includes("TOKEN-SECRET") && !JSON.stringify(S.inter).includes("TOKEN-SECRET"), "le jeton Meta n'est écrit ni dans le journal ni sur les fiches");
 
   console.log("▶ Garde-fous à l'envoi");
@@ -74,6 +77,7 @@ const refuse = async (p, status, re, m) => { try { await p; } catch (e) { if (e.
   const traite = await W.routeInbound(d, { id: "wamid.IN1", from: "2250700000107", timestamp: String(Math.floor(T / 1000)), type: "text", text: { body: "Bonjour, je suis intéressé, pouvez-vous m'appeler ?" } }, "Dr Alpha");
   ok(traite === true && S.inb.length === 1 && S.inb[0].client_rid === "c1", "réponse d'un prospect contacté par le CRM : enregistrée sur sa fiche, traitée par un humain (pas par l'agent IA)");
   ok(S.inter.some((i) => i.type === "Réponse reçue par WhatsApp" && /Dr Alpha/.test(i.note) && i.etape === 1), "l'historique de la fiche indique la réponse (avec un extrait)");
+  ok(S.prospectInbound.some((x) => x.rid === "c1" && x.phone === "2250700000107"), "la réponse WhatsApp synchronise la dernière réponse dans la qualification");
   const rt = await W.sendText(d, op, { client_rid: "c1", to: "+225 0700000107", text: "Avec plaisir, je vous appelle cet après-midi." });
   ok(rt.wa_message_id && calls[calls.length - 1].body.type === "text" && calls[calls.length - 1].body.text.body.startsWith("Avec plaisir"), "fenêtre ouverte : la réponse libre part");
   T += 25 * 3600e3;
@@ -108,6 +112,7 @@ const refuse = async (p, status, re, m) => { try { await p; } catch (e) { if (e.
   S.msgs.filter((m) => m.to_phone === "2250700000107").forEach((m) => { m.sent_at = old; });
   ok((await W.routeInbound(d, { id: "wamid.IN2", from: "2250700000107", timestamp: String(Math.floor(T / 1000)), type: "text", text: { body: "STOP" } })) === true && S.optout.has("2250700000107"), "« STOP » : le numéro est désinscrit");
   ok(S.inter.some((i) => i.type === "Désinscription WhatsApp"), "la fiche indique la désinscription : ne plus lui écrire");
+  ok(S.prospectInbound.some((x) => x.optOut === true), "STOP met aussi à jour le statut opt-out de la fiche de qualification");
   await refuse(W.sendTemplate(d, op, { ...base, template: "autre_modele" }), 409, /STOP/, "après STOP : plus aucun envoi à ce numéro");
   const bouton = await W.routeInbound(d, { id: "wamid.IN3", from: "2250700000107", timestamp: "1", type: "button", button: { text: "Oui, rappelez-moi" } });
   ok(bouton === true && S.inb[S.inb.length - 1].body === "Oui, rappelez-moi", "un clic sur un bouton de réponse est lu comme du texte");

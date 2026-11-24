@@ -1959,6 +1959,8 @@ async function sendMail(d, op, i) {
   const id = await d.store.insertMail({ ...base, gmail_message_id: String(j.id), gmail_thread_id: j.threadId ? String(j.threadId) : null });
   if (i.client_rid) await d.store.addInteraction(i.client_rid, { date: now.toISOString(), type: "E-mail envoy\xE9", note: subject + " \u2192 " + to, ico: "\u{1F4E7}", source: "gmail" }).catch(() => {
   });
+  await d.store.syncProspectOutbound?.(i.client_rid ?? null, to, now.toISOString()).catch(() => {
+  });
   return { id, thread_id: j.threadId ? String(j.threadId) : null };
 }
 var ADRESSE_GENERIQUE = /^(info|infos|contact|contacts|admin|direction|commercial|accueil|secretariat|hello|bonjour|service)\d*@/i;
@@ -2070,12 +2072,12 @@ var store = {
     return (data ?? []).filter((m) => !(m.crm_mail_replies ?? []).length && (!m.last_checked_at || m.last_checked_at < checkedBeforeIso)).slice(0, limit).map(({ crm_mail_replies: _r, ...m }) => m);
   },
   async onProspectReply(m, textes) {
-    const q = db().from("ai_prospects").select("id, opt_out, relances_sans_reponse");
+    const q = db().from("ai_prospects").select("id, opt_out, relances_sans_reponse, stage");
     const { data } = m.client_rid ? await q.eq("crm_rid", m.client_rid).limit(1) : await q.ilike("email", m.to_email.replace(/[\\%_]/g, "\\$&")).limit(1);
     const p = data?.[0];
     if (!p) return;
     const quand = m.replied_at ?? (/* @__PURE__ */ new Date()).toISOString();
-    await db().from("ai_prospects").update({ last_inbound_at: quand, relances_sans_reponse: 0, email_statut: "verifiee", email_verifie_at: quand, email_verif_detail: "Le prospect a r\xE9pondu depuis cette adresse" }).eq("id", p.id);
+    await db().from("ai_prospects").update({ last_inbound_at: quand, relances_sans_reponse: 0, email_statut: "verifiee", email_verifie_at: quand, email_verif_detail: "Le prospect a r\xE9pondu depuis cette adresse", ...p.stage === "premier_contact" && !p.opt_out && !(textes && textes.some((t) => estDesinscription(t))) ? { stage: "conversation" } : {} }).eq("id", p.id);
     if (textes && !p.opt_out && textes.some((t) => estDesinscription(t))) {
       await db().from("ai_prospects").update({ opt_out: true, opt_out_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", p.id);
       await db().from("ai_actions").insert({ agent: "gmail", action: "desinscription_stop", prospect_id: p.id, ok: true, payload: { canal: "email" } });
@@ -2104,6 +2106,21 @@ var store = {
     if (!p) return;
     const { data: annulees } = await db().from("ai_followups").update({ statut: "annulee" }).eq("prospect_id", p.id).eq("statut", "planifiee").select("id");
     if (annulees?.length) await db().from("ai_actions").insert({ agent: "gmail", action: "relances_annulees_adresse_invalide", prospect_id: p.id, ok: true, payload: { relances: annulees.length } });
+  },
+  async syncProspectOutbound(clientRid, email, at) {
+    let rows = [];
+    if (clientRid) {
+      const r = await db().from("ai_prospects").select("id,stage").eq("crm_rid", clientRid).limit(2);
+      rows = r.data ?? [];
+    }
+    if (rows.length === 0 && email) {
+      const safe2 = String(email).trim().replace(/[\\%_]/g, (c) => "\\" + c);
+      const r = await db().from("ai_prospects").select("id,stage").ilike("email", safe2).limit(2);
+      rows = r.data ?? [];
+    }
+    if (rows.length !== 1) return;
+    const p = rows[0];
+    await db().from("ai_prospects").update({ last_outbound_at: at, ...["identifie", "enregistre", "qualifie"].includes(p.stage) ? { stage: "premier_contact" } : {} }).eq("id", p.id);
   },
   async addInteraction(clientRid, interaction) {
     const { data } = await db().from("crm_records").select("rid").eq("entity", "clients").eq("rid", clientRid).is("deleted_at", null).maybeSingle();

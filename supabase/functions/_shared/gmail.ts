@@ -42,6 +42,8 @@ export type Store = {
   /** Un e-mail récent à cette adresse est revenu « non distribué » (adresse inexistante ou boîte pleine). */
   recentBounce(toEmail: string, sinceIso: string): Promise<boolean>;
   addInteraction(clientRid: string, interaction: Record<string, unknown>): Promise<void>;
+  /** Synchronise un envoi confirmé avec la fiche IA liée. */
+  syncProspectOutbound?(clientRid: string | null, email: string, at: string): Promise<void>;
   /** Enregistre le texte des réponses d'un e-mail (sans doublon : un message Gmail n'est enregistré qu'une fois). */
   saveReplies(mailId: string, replies: ReplyRow[]): Promise<void>;
   /** Un prospect a répondu (texte lu ou non) : met à jour sa fiche côté agents (dernier échange, relances remises à zéro) et, si la réponse demande l'arrêt (« STOP »), le désinscrit. Facultatif. */
@@ -343,6 +345,7 @@ export async function sendMail(d: Deps, op: { user_id: string | null; nom: strin
   }
   const id = await d.store.insertMail({ ...base, gmail_message_id: String(j.id), gmail_thread_id: j.threadId ? String(j.threadId) : null });
   if (i.client_rid) await d.store.addInteraction(i.client_rid, { date: now.toISOString(), type: "E-mail envoyé", note: subject + " → " + to, ico: "📧", source: "gmail" }).catch(() => {});
+  await d.store.syncProspectOutbound?.(i.client_rid ?? null, to, now.toISOString()).catch(() => {});
   return { id, thread_id: j.threadId ? String(j.threadId) : null };
 }
 

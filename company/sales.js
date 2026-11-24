@@ -396,17 +396,43 @@ function newProspectForm() {
 }
 
 async function openProspect(id) {
-  const [p,msgs,os,hist]=await Promise.all([
-    q(S.sb.from("ai_prospects").select("*").eq("id",id).single()),
+  const p = await q(S.sb.from("ai_prospects").select("*").eq("id",id).single());
+  const mailByRidQuery = p.crm_rid ? S.sb.from("crm_mails").select("id,subject,body,status,sent_at,sent_by").eq("client_rid",p.crm_rid).order("sent_at",{ascending:false}).limit(30) : null;
+  const mailByEmailQuery = p.email ? S.sb.from("crm_mails").select("id,subject,body,status,sent_at,sent_by").ilike("to_email",String(p.email).trim().replace(/[\\%_]/g,(c)=>"\\"+c)).order("sent_at",{ascending:false}).limit(30) : null;
+  const waOutByRidQuery = p.crm_rid ? S.sb.from("crm_wa_messages").select("id,body,status,sent_at,sent_by,kind,template").eq("client_rid",p.crm_rid).order("sent_at",{ascending:false}).limit(30) : null;
+  const waOutByPhoneQuery = p.phone_norm ? S.sb.from("crm_wa_messages").select("id,body,status,sent_at,sent_by,kind,template").eq("to_phone",p.phone_norm).order("sent_at",{ascending:false}).limit(30) : null;
+  const waInByRidQuery = p.crm_rid ? S.sb.from("crm_wa_inbound").select("id,body,received_at,kind").eq("client_rid",p.crm_rid).order("received_at",{ascending:false}).limit(30) : null;
+  const waInByPhoneQuery = p.phone_norm ? S.sb.from("crm_wa_inbound").select("id,body,received_at,kind").eq("from_phone",p.phone_norm).order("received_at",{ascending:false}).limit(30) : null;
+  const [msgs,os,hist,mailByRid,mailByEmail,waOutByRid,waOutByPhone,waInByRid,waInByPhone]=await Promise.all([
     q(S.sb.from("ai_messages").select("canal,sens,auteur,contenu,statut,created_at").eq("prospect_id",id).order("created_at",{ascending:false}).limit(30)),
     q(S.sb.from("ai_offers").select("*").eq("prospect_id",id).order("created_at",{ascending:false}).limit(20)),
     q(S.sb.from("ai_stage_history").select("de,vers,par,at").eq("prospect_id",id).order("at",{ascending:false}).limit(30)),
+    mailByRidQuery ? q(mailByRidQuery).catch(()=>[]) : Promise.resolve([]),
+    mailByEmailQuery ? q(mailByEmailQuery).catch(()=>[]) : Promise.resolve([]),
+    waOutByRidQuery ? q(waOutByRidQuery).catch(()=>[]) : Promise.resolve([]),
+    waOutByPhoneQuery ? q(waOutByPhoneQuery).catch(()=>[]) : Promise.resolve([]),
+    waInByRidQuery ? q(waInByRidQuery).catch(()=>[]) : Promise.resolve([]),
+    waInByPhoneQuery ? q(waInByPhoneQuery).catch(()=>[]) : Promise.resolve([]),
   ]);
+  const uniqueRows = (...groups) => [...new Map(groups.flat().map(m=>[m.id,m])).values()];
+  const mails = uniqueRows(mailByRid,mailByEmail);
+  const waOut = uniqueRows(waOutByRid,waOutByPhone);
+  const waIn = uniqueRows(waInByRid,waInByPhone);
+  const replies = mails.length
+    ? await q(S.sb.from("crm_mail_replies").select("mail_id,from_email,received_at,body").in("mail_id",mails.map(m=>m.id)).order("received_at",{ascending:false}).limit(60)).catch(()=>[])
+    : [];
+  const exchanges = [
+    ...msgs.map(m=>({channel:m.canal,sens:m.sens==="entrant"?"Reçu":"Envoyé",author:m.auteur,at:m.created_at,body:m.contenu,status:m.statut})),
+    ...mails.map(m=>({channel:"E-mail",sens:"Envoyé",author:m.sent_by||"CRM",at:m.sent_at,body:m.body,status:m.status,subject:m.subject})),
+    ...replies.map(m=>({channel:"E-mail",sens:"Reçu",author:m.from_email||"Prospect",at:m.received_at,body:m.body,status:"réponse"})),
+    ...waOut.map(m=>({channel:"WhatsApp",sens:"Envoyé",author:m.sent_by||"CRM",at:m.sent_at,body:m.body,status:m.status,subject:m.template||null})),
+    ...waIn.map(m=>({channel:"WhatsApp",sens:"Reçu",author:"Prospect",at:m.received_at,body:m.body,status:"reçu"})),
+  ].filter(m=>m.at).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at)).slice(0,60);
   selected=p;
   openModal(html`<h3>${p.entreprise}</h3><p class="small muted">${p.secteur||"Secteur non renseigné"} · ${p.ville||"Ville non renseignée"} · créé ${fmtDT(p.created_at)}</p>
     <div class="grid g2">
       <div class="card"><b>Contact</b><p>${p.decideur||"—"}<br>${p.telephone||"—"}<br>${p.email||"—"}</p></div>
-      <div class="card"><b>Qualification</b><p><b>${p.score}/100</b> · ${p.priorite}<br>Potentiel : ${money(p.potentiel_fcfa)}<br>Opt-out : ${p.opt_out?"Oui":"Non"}</p></div>
+      <div class="card"><b>Qualification</b><p><b>${p.score}/100</b> · ${p.priorite}<br>Étape : <b>${LABEL[p.stage]??p.stage??"Non renseignée"}</b><br>Potentiel : ${money(p.potentiel_fcfa)}<br>Dernier envoi : ${p.last_outbound_at?fmtDT(p.last_outbound_at):"Aucun"}<br>Dernière réponse : ${p.last_inbound_at?fmtDT(p.last_inbound_at):"Aucune"}<br>Opt-out : ${p.opt_out?"Oui":"Non"}</p></div>
     </div>
     <div class="card" style="margin:10px 0"><b>Rattachement SANIX CRM</b><form id="sales-link-form" class="form"><label class="f">Identifiant client CRM<input name="crm_client_id" type="number" min="1" step="1" value="${p.crm_client_id??""}" placeholder="ID numérique du client"></label><button class="btn sm" type="submit">Enregistrer le lien</button></form></div>
     <h4>Responsable & prochaine action</h4>
@@ -427,7 +453,7 @@ async function openProspect(id) {
     <h4>Produits recommandés</h4><p>${(p.produits_recommandes??[]).map(productName).join(", ")||"Non déterminés"}</p>
     <h4>Résumé IA</h4><div class="pv">${p.resume_ia||"Aucun résumé disponible."}</div>
     <h4>Offres</h4>${os.length?html`<div class="scroll"><table class="tbl"><thead><tr><th>Référence</th><th>Montant TTC</th><th>Statut</th></tr></thead><tbody>${os.map(o=>html`<tr><td>${o.reference}</td><td>${money(o.total_ttc)}</td><td>${o.statut}</td></tr>`)}</tbody></table></div>`:html`<p class="muted">Aucune offre créée.</p>`}
-    <h4>Historique des échanges</h4>${msgs.length?msgs.map(m=>html`<div class="card" style="margin:6px 0"><div class="small muted">${m.canal} · ${m.sens} · ${m.auteur} · ${fmtDT(m.created_at)}</div><div class="pv">${m.contenu}</div></div>`):html`<p class="muted">Aucun échange enregistré.</p>`}`);
+    <h4>Historique des échanges · Gmail, WhatsApp et agents IA</h4>${exchanges.length?exchanges.map(m=>html`<div class="card" style="margin:6px 0"><div class="small muted">${m.channel} · ${m.sens} · ${m.author||"—"} · ${fmtDT(m.at)} · ${m.status||"—"}</div>${m.subject?html`<b>${m.subject}</b>`:""}<div class="pv">${String(m.body??"Contenu non disponible").slice(0,4000)}</div></div>`):html`<p class="muted">Aucun échange enregistré.</p>`}`);
   $("#sales-next-form").onsubmit=async e=>{
     e.preventDefault();const rawValue=new FormData(e.currentTarget).get("next_action_at");
     const next_action_at=rawValue?new Date(rawValue).toISOString():null;

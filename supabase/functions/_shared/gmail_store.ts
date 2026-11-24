@@ -52,11 +52,11 @@ export const store: Store = {
   },
   async onProspectReply(m, textes) {
     // Prospect côté agents : retrouvé par la clé stable du CRM, à défaut par l'adresse e-mail.
-    const q = db().from("ai_prospects").select("id, opt_out, relances_sans_reponse");
+    const q = db().from("ai_prospects").select("id, opt_out, relances_sans_reponse, stage");
     const { data } = m.client_rid ? await q.eq("crm_rid", m.client_rid).limit(1) : await q.ilike("email", m.to_email.replace(/[\\%_]/g, "\\$&")).limit(1);
     const p = data?.[0]; if (!p) return;
     const quand = m.replied_at ?? new Date().toISOString();
-    await db().from("ai_prospects").update({ last_inbound_at: quand, relances_sans_reponse: 0, email_statut: "verifiee", email_verifie_at: quand, email_verif_detail: "Le prospect a répondu depuis cette adresse" }).eq("id", p.id);   // une réponse arrête les relances
+    await db().from("ai_prospects").update({ last_inbound_at: quand, relances_sans_reponse: 0, email_statut: "verifiee", email_verifie_at: quand, email_verif_detail: "Le prospect a répondu depuis cette adresse", ...(p.stage === "premier_contact" && !p.opt_out && !(textes && textes.some((t) => estDesinscription(t))) ? { stage: "conversation" } : {}) }).eq("id", p.id);   // une réponse arrête les relances ; aucune étape ultérieure n'est rétrogradée
     if (textes && !p.opt_out && textes.some((t) => estDesinscription(t))) {
       await db().from("ai_prospects").update({ opt_out: true, opt_out_at: new Date().toISOString() }).eq("id", p.id);
       await db().from("ai_actions").insert({ agent: "gmail", action: "desinscription_stop", prospect_id: p.id, ok: true, payload: { canal: "email" } });
@@ -82,6 +82,22 @@ export const store: Store = {
     const p = data?.[0]; if (!p) return;
     const { data: annulees } = await db().from("ai_followups").update({ statut: "annulee" }).eq("prospect_id", p.id).eq("statut", "planifiee").select("id");
     if (annulees?.length) await db().from("ai_actions").insert({ agent: "gmail", action: "relances_annulees_adresse_invalide", prospect_id: p.id, ok: true, payload: { relances: annulees.length } });
+  },
+  async syncProspectOutbound(clientRid, email, at) {
+    // Le rattachement CRM est prioritaire ; l'e-mail n'est utilisé qu'en secours s'il identifie une seule fiche.
+    let rows = [];
+    if (clientRid) {
+      const r = await db().from("ai_prospects").select("id,stage").eq("crm_rid", clientRid).limit(2);
+      rows = r.data ?? [];
+    }
+    if (rows.length === 0 && email) {
+      const safe = String(email).trim().replace(/[\\%_]/g, (c) => "\\" + c);
+      const r = await db().from("ai_prospects").select("id,stage").ilike("email", safe).limit(2);
+      rows = r.data ?? [];
+    }
+    if (rows.length !== 1) return; // ambigu ou non lié : aucune fiche n'est modifiée par approximation
+    const p = rows[0];
+    await db().from("ai_prospects").update({ last_outbound_at: at, ...(["identifie", "enregistre", "qualifie"].includes(p.stage) ? { stage: "premier_contact" } : {}) }).eq("id", p.id);
   },
   async addInteraction(clientRid, interaction) {
     // Jamais de création de fiche : on n'écrit que sur une fiche cliente qui existe déjà.
