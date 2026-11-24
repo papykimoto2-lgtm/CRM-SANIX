@@ -497,3 +497,14 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .prospect-history li small,.prospect-history li span{font-size:9px;color:var(--mute);overflow-wrap:anywhere}
 .prospect-workbench-note{font-size:9px;line-height:1.4;color:var(--mute);margin:10px 0 0}
 @media(max-width:640px){.prospect-workbench-grid{gap:5px}.prospect-workbench-grid>div{padding:6px}}
+
+/* Missions commerciales déclenchées depuis la fiche du prospect. */
+.prospect-assign-toggle,.prospect-assign-submit{width:100%;border:1px solid rgba(34,211,238,.38);background:rgba(8,35,58,.78);color:#CFFAFE;border-radius:8px;padding:9px 10px;font-size:11px;font-weight:650;cursor:pointer}
+.prospect-assign-form{display:grid;gap:8px;margin-top:9px;padding:10px;border:1px solid var(--line);border-radius:9px;background:rgba(5,15,31,.65)}
+.prospect-assign-form[hidden]{display:none}
+.prospect-assign-form label{display:grid;gap:4px;color:var(--mute);font-size:10px}
+.prospect-assign-form input,.prospect-assign-form textarea,.prospect-assign-form select{width:100%;min-width:0;border:1px solid var(--line);border-radius:7px;background:#0B1930;color:var(--tx);padding:8px;font:inherit;font-size:11px}
+.prospect-assign-form textarea{resize:vertical}
+.prospect-assign-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.prospect-assign-submit:disabled{opacity:.55;cursor:wait}
+.prospect-assign-status{font-size:10px;color:#FCA5A5;overflow-wrap:anywhere}

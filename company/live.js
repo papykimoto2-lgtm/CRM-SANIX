@@ -41,7 +41,7 @@ async function pull() {
   safe.err = null;
   const [ag, tk, ac, cr, nT, nA, rc, td, ap, bu, gv, sales, offers, costs, waStatus, waOut, waIn, waOpt, orders, tasks90, costs90, execRows, execConfig, products, productAliases] = await Promise.all([
     safe(sb.from("ai_agents").select("id,code,nom,fonction,niveau,manager_id,departement_id,etat,activite"), null),
-    safe(sb.from("ai_agent_tasks").select("id,agent_id,donneur_agent_id,parent_id,type,titre,objectifs,statut,priorite,produit,started_at,updated_at,created_at,executions,echeance,progression,rapport").gte("updated_at", since(7)).order("updated_at", { ascending: false }).limit(600), null),
+    safe(sb.from("ai_agent_tasks").select("id,agent_id,donneur_agent_id,parent_id,prospect_id,type,titre,objectifs,statut,priorite,produit,started_at,updated_at,created_at,executions,echeance,progression,rapport").gte("updated_at", since(7)).order("updated_at", { ascending: false }).limit(600), null),
     safe(sb.from("ai_actions").select("id,action,agent_id,task_id,payload,ok,at").order("at", { ascending: false }).limit(60), null),
     safe(sb.from("ai_actions").select("task_id").eq("action", "abonnement_prospect_cree").gte("at", since(3)).limit(1500), null),
     safe(sb.from("ai_prospects").select("id", { count: "exact", head: true }).gte("created_at", day.toISOString()), null),
@@ -704,9 +704,10 @@ function renderLegend() { $("#legend").innerHTML = Object.entries(STATES).map(([
 function renderDetail() {
   const el = $("#detail"), a = agentById(D.sel);
   if (D.prospectSel) {
-    const p = D.prospectSel, assigned = agentById(p.agent_id) || agentById(p.owner_id);
+    const p = D.prospectSel, prospectTasks = D.tasks.filter((t) => String(t.prospect_id || "") === String(p.id)).sort((a,b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0));
+    const assigned = agentById(p.agent_id) || agentById(prospectTasks[0]?.agent_id);
     const history = D.relationRows.filter((r) => String(r.prospect_id) === String(p.id)).slice(0, 8);
-    const tasks = assigned ? D.tasks.filter((t) => String(t.agent_id) === String(assigned.id) && OPENS.includes(t.statut)).slice(0, 3) : [];
+    const tasks = prospectTasks.slice(0, 5);
     const products = Array.isArray(p.produits_recommandes) ? p.produits_recommandes : (p.produits_recommandes ? [p.produits_recommandes] : []);
     const contact = p.telephone ? `<a href="tel:${esc(p.telephone)}">Appeler ${esc(p.telephone)}</a>` : "";
     const email = p.email ? `<a href="mailto:${esc(p.email)}">Écrire par e-mail</a>` : "";
@@ -723,9 +724,34 @@ function renderDetail() {
       <div class="prospect-workbench-contact">${contact}${email}</div>
       <div class="prospect-workbench-products"><small>Logiciel(s)</small><b>${esc(products.filter(Boolean).join(" · ") || "Non renseigné")}</b></div>
       <section class="prospect-workbench-section"><h3>Activité commerciale récente</h3><ul class="prospect-history">${activityRows}</ul></section>
-      <section class="prospect-workbench-section"><h3>Missions ouvertes de l'agent</h3>${tasks.length ? tasks.map((t) => `<div class="mis" style="--c:${TASK_C[t.statut]};margin-top:6px"><b>${esc(clip(t.titre, 80))}</b><small>${esc(TASK_L[t.statut] || t.statut)} · P${esc(t.priorite)}</small></div>`).join("") : '<div class="muted">Aucune mission ouverte associée à cet agent.</div>'}</section>
-      <p class="prospect-workbench-note">Consultation en lecture seule : aucune relance, affectation ou modification n'est déclenchée depuis cette fiche.</p>`;
+      <section class="prospect-workbench-section"><h3>Missions liées à ce prospect</h3>${tasks.length ? tasks.map((t) => `<div class="mis" style="--c:${TASK_C[t.statut]};margin-top:6px"><b>${esc(clip(t.titre, 80))}</b><small>${esc(agentById(t.agent_id)?.nom || "Agent inconnu")} · ${esc(TASK_L[t.statut] || t.statut)} · P${esc(t.priorite)}</small></div>`).join("") : '<div class="muted">Aucune mission liée à ce prospect.</div>'}</section>
+      <section class="prospect-workbench-section"><button type="button" class="prospect-assign-toggle" id="prospect-assign-toggle">＋ Créer une mission pour un agent</button><form id="prospect-assign-form" class="prospect-assign-form" hidden>
+        <label>Agent IA<select name="agent" required><option value="">Choisir un agent actif</option>${D.agents.filter(a => a.etat === "actif" && a.archived_at == null).sort((a,b) => String(a.nom).localeCompare(String(b.nom),"fr")).map(a => `<option value="${esc(a.id)}" ${assigned?.id === a.id ? "selected" : ""}>${esc(a.nom)} · ${esc(a.code || "")}</option>`).join("")}</select></label>
+        <label>Mission<input name="title" type="text" minlength="3" maxlength="200" required placeholder="Ex. Contacter le décideur et qualifier le besoin"></label>
+        <label>Consigne<textarea name="description" maxlength="7900" rows="3" placeholder="Contexte, objectif et résultat attendu"></textarea></label>
+        <div class="prospect-assign-row"><label>Priorité<select name="priority"><option value="3">Normale</option><option value="4">Haute</option><option value="5">Urgente</option><option value="2">Basse</option><option value="1">Très basse</option></select></label><label>Échéance<select name="deadline"><option value="">Sans échéance</option><option value="24">24 heures</option><option value="72">3 jours</option><option value="168">7 jours</option><option value="336">14 jours</option></select></label></div>
+        <button type="submit" class="prospect-assign-submit">Confier la mission</button><small class="prospect-assign-status" id="prospect-assign-status" aria-live="polite"></small>
+      </form></section>
+      <p class="prospect-workbench-note">La création passe par le contrôle d'accès de la direction. La mission est enregistrée dans le moteur SANIX AI ; aucune relance ou communication externe n'est envoyée automatiquement.</p>`;
     $("#prospect-detail-close")?.addEventListener("click", () => { D.prospectSel = null; el.hidden = true; });
+    $("#prospect-assign-toggle")?.addEventListener("click", () => { const form = $("#prospect-assign-form"); form.hidden = !form.hidden; });
+    $("#prospect-assign-form")?.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const form = ev.currentTarget, submit = form.querySelector('[type="submit"]'), status = $("#prospect-assign-status");
+      const fd = new FormData(form), agent = String(fd.get("agent") || ""), title = String(fd.get("title") || "").trim(), description = String(fd.get("description") || "").trim();
+      if (!agent || title.length < 3) { status.textContent = "Choisis un agent et renseigne un titre valide."; return; }
+      submit.disabled = true; submit.textContent = "Création en cours…"; status.textContent = "";
+      try {
+        const { data, error } = await sb.rpc("crm_assign_mission", { p_agent: agent, p_prospect: p.id, p_titre: title, p_description: description || title, p_priorite: Number(fd.get("priority") || 3), p_echeance_h: fd.get("deadline") ? Number(fd.get("deadline")) : null });
+        if (error) throw error;
+        conn("ok", "Mission confiée · actualisation du réseau");
+        await cycle();
+      } catch (err) {
+        submit.disabled = false; submit.textContent = "Confier la mission";
+        status.textContent = String(err?.message || err).slice(0, 220);
+        conn("bad", "Création de mission refusée");
+      }
+    });
     return;
   }
   if (!a) { el.hidden = true; return; }
@@ -857,7 +883,7 @@ function updateRelationFilters() {
   relationFilters.agent = $("#relations-agent").value;
   relationFilters.product = $("#relations-product").value;
   relationFilters.prospect = $("#relations-prospect").value.trim();
-  relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], filters: relationFilters });
+  relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.tasks || [], filters: relationFilters });
 }
 const relationsCanvas = $("#relations-canvas");
 const api3d = {
@@ -882,7 +908,7 @@ function initControls() {
     if (c === "relations") {
       relationsMode = !relationsMode; b.classList.toggle("on", relationsMode);
       $("#stage3d").hidden = relationsMode; cv.hidden = relationsMode || !!view3d; relationsCanvas.hidden = !relationsMode; $("#relations-filters").hidden = !relationsMode;
-      if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView ??= createProspectRelations(relationsCanvas, { ...api3d, onFilterCount: (n, total) => { $("#relations-filter-count").textContent = n + " / " + total + " prospects"; } }); relationsView.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], filters: relationFilters }); relationsView.resize(); }
+      if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView ??= createProspectRelations(relationsCanvas, { ...api3d, onFilterCount: (n, total) => { $("#relations-filter-count").textContent = n + " / " + total + " prospects"; } }); relationsView.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.tasks || [], filters: relationFilters }); relationsView.resize(); }
       else view3d?.resize();
       return;
     }
@@ -900,7 +926,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], filters: relationFilters }); } renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.tasks || [], filters: relationFilters }); } renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
