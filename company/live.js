@@ -66,7 +66,7 @@ async function pull() {
     safe(sb.from("ai_products").select("id,nom,actif").eq("actif", true).order("nom"), null),
     safe(sb.from("ai_product_aliases").select("alias,product_id"), null),
   ]);
-  const relationRows = await safe(sb.from("ai_actions").select("id,action,agent_id,prospect_id,ok,at").not("prospect_id", "is", null).order("at", { ascending: false }).limit(500), null);
+  const relationRows = await safe(sb.from("ai_actions").select("id,action,agent_id,task_id,prospect_id,payload,ok,at").not("prospect_id", "is", null).order("at", { ascending: false }).limit(500), null);
   if (!ag?.data || !tk?.data) throw safe.err ?? new Error("Données indisponibles");
   if (!D.depts.length) { const dp = await safe(sb.from("ai_departments").select("id,nom,couleur"), null); D.depts = dp?.data ?? []; }
   D.agents = ag.data; D.tasks = tk.data; D.actions = ac?.data ?? D.actions; D.relationRows = relationRows?.data ?? D.relationRows;
@@ -703,7 +703,31 @@ function renderTicker() {
 function renderLegend() { $("#legend").innerHTML = Object.entries(STATES).map(([, [l, c]]) => `<span><i style="background:${c};box-shadow:0 0 8px ${c}"></i>${l}</span>`).join(""); }
 function renderDetail() {
   const el = $("#detail"), a = agentById(D.sel);
-  if (D.prospectSel) { const p = D.prospectSel; el.hidden = false; el.innerHTML = `<h2>${esc(p.entreprise || "Prospect")} <span class="tag">Prospect</span></h2><div class="muted" style="font-size:12px">${esc(p.ville || "Localisation non renseignée")} · ${esc(p.stage || "nouveau")}</div><div class="mis" style="margin-top:7px"><b>Agent IA associé</b><small>${esc((agentById(p.agent_id) || agentById(p.owner_id))?.nom || "Non renseigné")}</small></div><div class="muted" style="font-size:11px;margin-top:6px">${esc(p.telephone || p.email || "Aucun contact renseigné")}</div>`; return; }
+  if (D.prospectSel) {
+    const p = D.prospectSel, assigned = agentById(p.agent_id) || agentById(p.owner_id);
+    const history = D.relationRows.filter((r) => String(r.prospect_id) === String(p.id)).slice(0, 8);
+    const tasks = assigned ? D.tasks.filter((t) => String(t.agent_id) === String(assigned.id) && OPENS.includes(t.statut)).slice(0, 3) : [];
+    const products = Array.isArray(p.produits_recommandes) ? p.produits_recommandes : (p.produits_recommandes ? [p.produits_recommandes] : []);
+    const contact = p.telephone ? `<a href="tel:${esc(p.telephone)}">Appeler ${esc(p.telephone)}</a>` : "";
+    const email = p.email ? `<a href="mailto:${esc(p.email)}">Écrire par e-mail</a>` : "";
+    const next = p.next_action_at ? new Date(p.next_action_at).toLocaleString("fr-FR", { timeZone: "Africa/Abidjan" }) : "Aucune relance programmée";
+    const activityRows = history.length ? history.map((r) => {
+      const payload = r.payload && typeof r.payload === "object" ? (r.payload.message || r.payload.resultat || r.payload.reason || r.payload.status || "") : "";
+      const summary = payload ? String(payload).slice(0, 150) : (r.ok === false ? "Action signalée en échec" : "Événement enregistré");
+      const who = agentById(r.agent_id)?.nom || (r.agent_id ? "Agent non chargé" : "Agent non identifié");
+      return `<li><b>${esc(String(r.action || "activité").replace(/_/g, " "))}</b><small>${esc(who)} · ${esc(ago(r.at))} · ${r.ok === false ? "Échec" : "Enregistré"}</small><span>${esc(summary)}</span></li>`;
+    }).join("") : "<li>Aucune activité reliée à ce prospect dans les 500 derniers événements chargés.</li>";
+    el.hidden = false;
+    el.innerHTML = `<div class="prospect-workbench-head"><div><h2>${esc(p.entreprise || "Prospect")} <span class="tag">Prospect</span></h2><div class="muted">${esc(p.ville || "Localisation non renseignée")} · ${esc(p.stage || "nouveau")}</div></div><button type="button" id="prospect-detail-close" aria-label="Fermer la fiche">×</button></div>
+      <div class="prospect-workbench-grid"><div><small>Agent responsable</small><b>${esc(assigned?.nom || "Non affecté")}</b></div><div><small>Score CRM</small><b>${p.score != null && Number.isFinite(Number(p.score)) ? esc(p.score) : "Non renseigné"}</b></div><div><small>Potentiel</small><b>${p.potentiel_fcfa != null && Number.isFinite(Number(p.potentiel_fcfa)) ? esc(Number(p.potentiel_fcfa).toLocaleString("fr-FR") + " FCFA") : "Non renseigné"}</b></div><div><small>Prochaine action</small><b>${esc(next)}</b></div></div>
+      <div class="prospect-workbench-contact">${contact}${email}</div>
+      <div class="prospect-workbench-products"><small>Logiciel(s)</small><b>${esc(products.filter(Boolean).join(" · ") || "Non renseigné")}</b></div>
+      <section class="prospect-workbench-section"><h3>Activité commerciale récente</h3><ul class="prospect-history">${activityRows}</ul></section>
+      <section class="prospect-workbench-section"><h3>Missions ouvertes de l'agent</h3>${tasks.length ? tasks.map((t) => `<div class="mis" style="--c:${TASK_C[t.statut]};margin-top:6px"><b>${esc(clip(t.titre, 80))}</b><small>${esc(TASK_L[t.statut] || t.statut)} · P${esc(t.priorite)}</small></div>`).join("") : '<div class="muted">Aucune mission ouverte associée à cet agent.</div>'}</section>
+      <p class="prospect-workbench-note">Consultation en lecture seule : aucune relance, affectation ou modification n'est déclenchée depuis cette fiche.</p>`;
+    $("#prospect-detail-close")?.addEventListener("click", () => { D.prospectSel = null; el.hidden = true; });
+    return;
+  }
   if (!a) { el.hidden = true; return; }
   const st = STATES[agentState(a)], mine = D.tasks.filter((t) => t.agent_id === a.id && OPENS.includes(t.statut)).slice(0, 4);
   el.hidden = false; el.innerHTML = `<h2>${esc(a.nom)} <span class="tag" style="--c:${st[1]}">${esc(st[0])}</span></h2><div class="muted" style="font-size:12px">${esc(a.fonction ?? "")}</div>${mine.map((t) => `<div class="mis" style="--c:${TASK_C[t.statut]};margin-top:6px"><b>${esc(clip(t.titre, 80))}</b><small>${esc(TASK_L[t.statut])} · P${esc(t.priorite)}</small></div>`).join("") || `<div class="muted" style="margin-top:6px">Aucune mission ouverte.</div>`}`;
