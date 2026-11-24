@@ -121,7 +121,7 @@ export function createProspectRelations(canvas, api) {
       }
     }
     ctx.fillStyle="#DCE8FA";ctx.font="600 11px system-ui";
-    ctx.fillText(total+" prospects affichés · "+linked+" reliés · "+activityEdges+" relations issues d'activités · "+noAgent+" activités sans agent identifié",16,h-16);
+    ctx.fillText(total+" prospects affichés · "+linked+" reliés · "+assigned+" affectations CRM · "+activityEdges+" activités liées · "+noAgent+" activités sans agent identifié",16,h-16);
     state.raf=requestAnimationFrame(draw);
   }
   const screenPoint=ev=>{const r=canvas.getBoundingClientRect();return{x:ev.clientX-r.left,y:ev.clientY-r.top};};
