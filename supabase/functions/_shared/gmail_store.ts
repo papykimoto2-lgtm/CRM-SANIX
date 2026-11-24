@@ -99,14 +99,6 @@ export const store: Store = {
     const p = rows[0];
     await db().from("ai_prospects").update({ last_outbound_at: at, ...(["identifie", "enregistre", "qualifie"].includes(p.stage) ? { stage: "premier_contact" } : {}) }).eq("id", p.id);
   },
-  async addInteraction(clientRid, interaction) {");
-      const r = await db().from("ai_prospects").select("id,stage").ilike("email", safe).limit(2);
-      rows = r.data ?? [];
-    }
-    if (rows.length !== 1) return; // ambigu ou non lié : aucune fiche n'est modifiée par approximation
-    const p = rows[0];
-    await db().from("ai_prospects").update({ last_outbound_at: at, ...(["identifie", "enregistre", "qualifie"].includes(p.stage) ? { stage: "premier_contact" } : {}) }).eq("id", p.id);
-  },
   async addInteraction(clientRid, interaction) {
     // Jamais de création de fiche : on n'écrit que sur une fiche cliente qui existe déjà.
     const { data } = await db().from("crm_records").select("rid").eq("entity", "clients").eq("rid", clientRid).is("deleted_at", null).maybeSingle();
