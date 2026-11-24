@@ -69,6 +69,8 @@ export function initJarvis(A, stage) {
     try { next(); } catch { finish(); }
   }
 
+  function stopSpeech() { speechRun++; clearTimeout(guard); window.speechSynthesis?.cancel(); speaking = false; lastSpeechEnd = Date.now(); A.view?.speaking(false); setOrb(listening ? "listen" : ""); }
+
   // ───────── Réponses locales (données réelles) ─────────
   const run = () => D.agents.filter((a) => A.agentState(a) === "run");
   const openT = (f) => D.tasks.filter((t) => A.OPENS.includes(t.statut) && (!f || f(t)));
@@ -323,12 +325,12 @@ export function initJarvis(A, stage) {
         const nt = norm(txt); setSt("Entendu : « " + clip(txt, 60) + " »");
         if (hands && !WAKE.test(nt) && Date.now() > awakeUntil) { setSt("Entendu : « " + clip(txt, 40) + " » — dites d'abord « Jarvis »"); return; }   // mains libres : seul « Jarvis » réveille
         if (hands && WAKE.test(nt) && nt.replace(WAKE, "").replace(/\b(ok|hey|dis|salut)\b/g, "").trim() === "") { awakeUntil = Date.now() + 9000; say("À vos ordres."); return; }
-        gotResult = true; convo = !hands; window.speechSynthesis?.cancel(); awakeUntil = Date.now() + 9000; handle(txt); };
+        gotResult = true; convo = !hands; stopSpeech(); awakeUntil = Date.now() + 9000; handle(txt); };
       rec.onerror = (e) => { const msg = { "not-allowed": "Autorisez le microphone dans le navigateur.", "no-speech": "Aucune parole détectée.", "audio-capture": "Microphone introuvable." }[e.error]; setSt(msg ?? "Micro : " + e.error); if (e.error === "not-allowed") hands = false; };
       rec.onend = () => { listening = false; setOrb(""); if (convoNext && !gotResult) { convoNext = false; convo = false; } if (hands) { try { rec.start(); } catch { /* déjà actif */ } } else setSt("Jarvis prêt"); }; }
     rec.continuous = hands; try { rec.start(); } catch { /* déjà actif */ }
   }
-  orb.addEventListener("click", () => { if (listening && !hands) { rec?.stop(); return; } if (speaking) { window.speechSynthesis?.cancel(); return; } startRec(); });
+  orb.addEventListener("click", () => { if (listening && !hands) { rec?.stop(); return; } if (speaking) { stopSpeech(); return; } startRec(); });
   const sendTxt = () => { const v = inEl.value.trim(); if (!v) return; inEl.value = ""; handle(v); };
   const setAuto = (on) => { autoMode = !!on; $("#jv-auto").classList.toggle("on", autoMode); $("#jv-auto").classList.toggle("warn", autoMode); };
   $("#jv-auto").addEventListener("click", () => handle(autoMode ? "mode prudent" : "mode autonome"));
@@ -337,7 +339,7 @@ export function initJarvis(A, stage) {
   const refreshIdeas = () => { try { const n = insights().length, b = $("#jv-badge"); b.hidden = !n; b.textContent = n; if (n && !announced && D.agents.length) { announced = true; addLine("jarvis", `J'ai ${plural(n, "proposition d'amélioration", "propositions d'amélioration")}. Touchez 💡 ou dites « propositions ».`); } } catch { /* données pas encore chargées */ } };
   setInterval(refreshIdeas, 15000); setTimeout(refreshIdeas, 3500);
   $("#jv-send").addEventListener("click", sendTxt); inEl.addEventListener("keydown", (e) => { if (e.key === "Enter") sendTxt(); e.stopPropagation(); });
-  $("#jv-voice").addEventListener("click", (e) => { voiceOn = !voiceOn; e.currentTarget.classList.toggle("on", voiceOn); e.currentTarget.textContent = voiceOn ? "🔊" : "🔇"; if (!voiceOn) window.speechSynthesis?.cancel(); setSt(voiceOn ? "Voix activée" : "Voix désactivée"); });
+  $("#jv-voice").addEventListener("click", (e) => { voiceOn = !voiceOn; e.currentTarget.classList.toggle("on", voiceOn); e.currentTarget.textContent = voiceOn ? "🔊" : "🔇"; if (!voiceOn) stopSpeech(); setSt(voiceOn ? "Voix activée" : "Voix désactivée"); });
   $("#jv-voice-style").addEventListener("click", cycleVoice);
   $("#jv-hands").addEventListener("click", (e) => { hands = !hands; e.currentTarget.classList.toggle("on", hands); if (hands) { if (!SR) { hands = false; e.currentTarget.classList.remove("on"); setSt("Mains libres indisponible : micro non pris en charge."); return; } if (listening) rec.stop(); setTimeout(startRec, 150); setSt("Mains libres : dites « Jarvis »"); } else { rec?.stop(); setSt("Jarvis prêt"); } });
   addLine("jarvis", "Salle de contrôle en ligne. Dites « Jarvis, situation » ou écrivez votre demande.");
