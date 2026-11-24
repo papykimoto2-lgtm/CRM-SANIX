@@ -754,6 +754,27 @@ function renderDetail() {
       <section class="prospect-workbench-section"><h3>Origine et suivi</h3><div class="prospect-data-grid">${field("Source",p.source)}${field("Créé le",fmtDate(p.created_at))}${field("Mis à jour le",fmtDate(p.updated_at))}${field("Dernier entrant",fmtDate(p.last_inbound_at))}${field("Dernier sortant",fmtDate(p.last_outbound_at))}${field("Opposition",p.opt_out ? "Oui" : "Non")}${field("Date opposition",fmtDate(p.opt_out_at))}</div>${sourceUrl}</section>
       <section class="prospect-workbench-section"><h3>Activité commerciale récente</h3><ul class="prospect-history">${activityRows}</ul></section>
       <section class="prospect-workbench-section"><h3>Missions liées à ce prospect</h3>${tasks.length ? tasks.map((t) => `<div class="mis" style="--c:${TASK_C[t.statut]};margin-top:6px"><b>${esc(clip(t.titre, 80))}</b><small>${esc(agentById(t.agent_id)?.nom || "Agent inconnu")} · ${esc(TASK_L[t.statut] || t.statut)} · P${esc(t.priorite)}</small></div>`).join("") : '<div class="muted">Aucune mission liée à ce prospect.</div>'}</section>
+      <section class="prospect-workbench-section"><button type="button" class="prospect-assign-toggle" id="prospect-edit-toggle">✎ Modifier la fiche et programmer une relance</button><form id="prospect-edit-form" class="prospect-assign-form" hidden>
+        <div class="prospect-edit-grid">
+          <label>Entreprise<input name="entreprise" maxlength="220" required value="${esc(p.entreprise || "")}"></label>
+          <label>Secteur<input name="secteur" maxlength="180" value="${esc(p.secteur || "")}"></label>
+          <label>Décideur<input name="decideur" maxlength="180" value="${esc(p.decideur || "")}"></label>
+          <label>Fonction du décideur<input name="decideur_fonction" maxlength="140" value="${esc(p.decideur_fonction || "")}"></label>
+          <label>Téléphone<input name="telephone" maxlength="60" value="${esc(p.telephone || "")}"></label>
+          <label>WhatsApp<input name="whatsapp" maxlength="60" value="${esc(p.whatsapp || "")}"></label>
+          <label>E-mail<input name="email" type="email" maxlength="220" value="${esc(p.email || "")}"></label>
+          <label>Site web<input name="site_web" type="url" maxlength="500" value="${esc(p.site_web || "")}" placeholder="https://"></label>
+          <label>Ville<input name="ville" maxlength="120" value="${esc(p.ville || "")}"></label>
+          <label>Adresse<input name="adresse" maxlength="300" value="${esc(p.adresse || "")}"></label>
+          <label>Logiciel actuel<input name="logiciel_actuel" maxlength="180" value="${esc(p.logiciel_actuel || "")}"></label>
+          <label>Étape commerciale<select name="stage">${[...new Set(["nouveau","premier_contact","conversation","qualifie","besoin_identifie","interesse","rdv_propose","rdv_confirme","demo_realisee","offre_transmise","negociation","offre_acceptee","contrat_transmis","client_fidelise","perdu","en_veille","marche_gagne",p.stage].filter(Boolean))].map(x=>`<option value="${esc(x)}" ${p.stage===x?"selected":""}>${esc(x.replace(/_/g," "))}</option>`).join("")}</select></label>
+          <label>Budget estimé (FCFA)<input name="budget_estime" type="number" min="0" step="1" value="${p.budget_estime ?? ""}"></label>
+          <label>Potentiel commercial (FCFA)<input name="potentiel_fcfa" type="number" min="0" step="1" value="${p.potentiel_fcfa ?? ""}"></label>
+          <label class="prospect-edit-full">Prochaine relance<input name="next_action_at" type="datetime-local" value="${p.next_action_at ? (()=>{const d=new Date(p.next_action_at);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-")+"T"+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")})() : ""}"></label>
+        </div>
+        <small class="muted">Laisser la date vide supprime la programmation de relance. Enregistrer ne déclenche aucun message.</small>
+        <button type="submit" class="prospect-assign-submit">Enregistrer les modifications</button><small class="prospect-assign-status" id="prospect-edit-status" aria-live="polite"></small>
+      </form></section>
       <section class="prospect-workbench-section"><button type="button" class="prospect-assign-toggle" id="prospect-assign-toggle">＋ Créer une mission pour un agent</button><form id="prospect-assign-form" class="prospect-assign-form" hidden>
         <label>Agent IA<select name="agent" required><option value="">Choisir un agent actif</option>${D.agents.filter(a => a.etat === "actif" && a.archived_at == null).sort((a,b) => String(a.nom).localeCompare(String(b.nom),"fr")).map(a => `<option value="${esc(a.id)}" ${assigned?.id === a.id ? "selected" : ""}>${esc(a.nom)} · ${esc(a.code || "")}</option>`).join("")}</select></label>
         <label>Mission<input name="title" type="text" minlength="3" maxlength="200" required placeholder="Ex. Contacter le décideur et qualifier le besoin"></label>
@@ -763,6 +784,38 @@ function renderDetail() {
       </form></section>
       <p class="prospect-workbench-note">La création passe par le contrôle d'accès de la direction. La mission est enregistrée dans le moteur SANIX AI ; aucune relance ou communication externe n'est envoyée automatiquement.</p>`;
     $("#prospect-detail-close")?.addEventListener("click", () => { D.prospectSel = null; el.hidden = true; });
+    $("#prospect-edit-toggle")?.addEventListener("click", () => { const form = $("#prospect-edit-form"); form.hidden = !form.hidden; });
+    $("#prospect-edit-form")?.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const form = ev.currentTarget, submit = form.querySelector('[type="submit"]'), status = $("#prospect-edit-status"), fd = new FormData(form);
+      const requiredName = String(fd.get("entreprise") || "").trim();
+      if (!requiredName) { status.textContent = "Le nom de l'entreprise est obligatoire."; return; }
+      const nullable = (key) => { const v = String(fd.get(key) ?? "").trim(); return v || null; };
+      const numeric = (key) => { const v = String(fd.get(key) ?? "").trim(); return v === "" ? null : Number(v); };
+      const rawDate = String(fd.get("next_action_at") || "").trim();
+      const patch = {
+        entreprise: requiredName, secteur: nullable("secteur"), decideur: nullable("decideur"), decideur_fonction: nullable("decideur_fonction"),
+        telephone: nullable("telephone"), whatsapp: nullable("whatsapp"), email: nullable("email"), site_web: nullable("site_web"),
+        ville: nullable("ville"), adresse: nullable("adresse"), logiciel_actuel: nullable("logiciel_actuel"), stage: String(fd.get("stage") || p.stage),
+        budget_estime: numeric("budget_estime"), potentiel_fcfa: numeric("potentiel_fcfa"),
+        next_action_at: rawDate ? new Date(rawDate).toISOString() : null
+      };
+      if ([patch.budget_estime,patch.potentiel_fcfa].some(v=>v!=null && (!Number.isFinite(v)||v<0))) { status.textContent = "Les montants doivent être des nombres positifs."; return; }
+      submit.disabled = true; submit.textContent = "Enregistrement…"; status.textContent = "";
+      try {
+        const { data, error } = await sb.from("ai_prospects").update(patch).eq("id",p.id).select("id").maybeSingle();
+        if (error) throw error;
+        if (!data) throw new Error("Modification non appliquée : droits insuffisants ou prospect inaccessible.");
+        conn("ok","Fiche prospect mise à jour");
+        await cycle();
+        D.prospectSel = (D.salesRows || []).find(x=>String(x.id)===String(p.id)) || D.prospectSel;
+        renderDetail();
+      } catch (err) {
+        submit.disabled = false; submit.textContent = "Enregistrer les modifications";
+        status.textContent = String(err?.message || err).slice(0,220);
+        conn("bad","Modification du prospect refusée");
+      }
+    });
     $("#prospect-assign-toggle")?.addEventListener("click", () => { const form = $("#prospect-assign-form"); form.hidden = !form.hidden; });
     $("#prospect-assign-form")?.addEventListener("submit", async (ev) => {
       ev.preventDefault();
