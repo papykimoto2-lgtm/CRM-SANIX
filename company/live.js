@@ -66,10 +66,16 @@ async function pull() {
     safe(sb.from("ai_products").select("id,nom,actif").eq("actif", true).order("nom"), null),
     safe(sb.from("ai_product_aliases").select("alias,product_id"), null),
   ]);
-  const relationRows = await safe(sb.from("ai_actions").select("id,action,agent_id,task_id,prospect_id,payload,ok,at").not("prospect_id", "is", null).order("at", { ascending: false }).limit(500), null);
+  const [relationRows, approvalRows, communicationRows] = await Promise.all([
+    safe(sb.from("ai_actions").select("id,action,agent_id,task_id,prospect_id,payload,ok,at").not("prospect_id", "is", null).order("at", { ascending: false }).limit(500), null),
+    safe(sb.from("ai_approvals").select("id,type,motif,payload,statut,created_at,agent_id,task_id,commentaire").eq("statut", "en_attente").order("created_at", { ascending: false }).limit(20), null),
+    safe(sb.from("ai_agent_communications").select("id,type,objet,contenu,created_at,de_agent_id,vers_agent_id,task_id").order("created_at", { ascending: false }).limit(80), null),
+  ]);
   if (!ag?.data || !tk?.data) throw safe.err ?? new Error("Données indisponibles");
   if (!D.depts.length) { const dp = await safe(sb.from("ai_departments").select("id,nom,couleur"), null); D.depts = dp?.data ?? []; }
   D.agents = ag.data; D.tasks = tk.data; D.actions = ac?.data ?? D.actions; D.relationRows = relationRows?.data ?? D.relationRows;
+  D.pendingApprovals = approvalRows?.data ?? [];
+  D.communications = communicationRows?.data ?? [];
   if (cr?.data) { D.created = {}; for (const r of cr.data) if (r.task_id) D.created[r.task_id] = (D.created[r.task_id] ?? 0) + 1; }
   D.nToday = nT?.count ?? D.nToday; D.nTotal = nA?.count ?? D.nTotal; D.recent = rc?.data ?? D.recent; D.todayRows = td?.data ?? D.todayRows;
   D.approvals = ap?.count ?? D.approvals; D.budget = bu?.data ?? D.budget; D.gov = gv?.data ?? D.gov;
@@ -657,6 +663,13 @@ function renderExecutiveCommandCenter() {
   const activeAgents = agents.filter(a => a.etat === "actif");
   const dg = agents.find(a => Number(a.niveau) === 1 || a.code === "sanix_ai_general_director");
   const jarvis = agents.find(a => /jarvis/i.test([a.code,a.nom,a.fonction].join(" ")));
+  const approvals = Array.isArray(D.pendingApprovals) ? D.pendingApprovals : [];
+  const communications = Array.isArray(D.communications) ? D.communications : [];
+  const dgComms = dg ? communications.filter(m => m.de_agent_id === dg.id || m.vers_agent_id === dg.id) : [];
+  const decisions = dgComms.filter(m => m.type === "decision").slice(0,5);
+  const dgAlerts = dgComms.filter(m => m.type === "alerte").slice(0,5);
+  const dgReports = dgComms.filter(m => m.type === "rapport").slice(0,4);
+  const awaitingReview = tasks.filter(t => t.statut === "attente_validation");
   const descendants = id => {
     const found = new Set(), queue = [id];
     while (queue.length) {
@@ -678,13 +691,15 @@ function renderExecutiveCommandCenter() {
   if (overdueTasks.length) alerts.push(overdueTasks.length+" mission(s) dépassent leur échéance dans le périmètre chargé.");
   if (blockedTasks.length) alerts.push(blockedTasks.length+" mission(s) sont bloquées ou en échec dans le périmètre chargé.");
   if (!dg) alerts.push("Directeur général IA non identifié dans les agents chargés.");
-  if (!jarvis) alerts.push("Jarvis non identifié dans les agents chargés.");
+  if (!jarvis) alerts.push("Jarvis est une interface vocale et n'est pas répertorié comme agent dans l'organigramme.");
+  if (approvals.length) alerts.push(approvals.length+" validation(s) du Président attendent une décision.");
+  if (awaitingReview.length) alerts.push(awaitingReview.length+" livrable(s) d'agent(s) attendent une évaluation.");
   if (goal === null || !(goal>0)) alerts.push("Objectif de chiffre d’affaires non renseigné pour ce mois.");
   else if (attainment !== null && attainment < Math.round(elapsed/days*100)) alerts.push("Le rythme de CA est inférieur à la progression calendaire de l’objectif.");
   if (D.execRows !== null && !expenses.length) alerts.push("Aucune dépense de gestion saisie pour le mois.");
   if (productRows.some(([id])=>id==="hors_perimetre")) alerts.push("Certaines commandes ne sont pas encore rattachées à un logiciel du catalogue.");
   const report = "RAPPORT DE DIRECTION SANIX — "+month+"\nCA signé HT : "+money(ca)+"\nObjectif : "+(goal>0?money(goal):"non défini")+"\nAtteinte : "+fmtPct(attainment)+"\nDépenses réelles saisies : "+(D.execRows===null?"indisponibles":money(expenseActual))+"\nDépenses retenues (réel sinon prévu) : "+(D.execRows===null?"indisponibles":money(expenseRetained))+"\nSolde après dépenses suivies (indicateur simplifié, pas un bénéfice) : "+(D.execRows===null?"non calculé":money(ca-expenseRetained));
-  el.innerHTML = `<div class="panel-head"><h2>Executive Command Center · V13</h2><span class="panel-source">Pilotage global · lecture seule</span></div>
+  el.innerHTML = `<div class="panel-head"><h2>Executive Command Center · V15</h2><span class="panel-source">Pilotage global · lecture seule</span></div>
     <div class="executive-grid">
       <div><b>${D.orderRows===null?"n/d":money(ca)}</b><small>CA signé HT · mois en cours</small></div>
       <div><b>${goal===null?"Non défini":money(goal)}</b><small>Objectif mensuel paramétré</small></div>
@@ -707,6 +722,23 @@ function renderExecutiveCommandCenter() {
     </div>
     <div class="executive-section"><h3>Performance des directions · période chargée</h3>
       ${directionRows.length ? directionRows.slice(0,8).map(d=>`<div class="executive-direction"><div><b>${esc(d.name)}</b><small>${d.agents} agent(s) dans sa ligne hiérarchique</small></div><span>${d.open} ouvertes · ${d.done} terminées</span><em>${d.overdue} retard · ${d.blocked} bloquées</em></div>`).join("") : '<p class="panel-muted">Aucune direction de niveau 2 identifiée dans les données chargées.</p>'}
+    </div>
+    <div class="executive-section executive-decisions">
+      <h3>Arbitrages du Président · validations en attente</h3>
+      <div class="executive-facts"><span>Demandes nécessitant ton accord</span><b>${approvals.length}</b></div>
+      ${approvals.length ? approvals.slice(0,6).map(a=>`<article class="executive-decision-card"><div><b>${esc(a.motif || a.type || "Demande de validation")}</b><small>${esc(a.type || "demande")} · ${ago(a.created_at)}</small></div><p>${esc(a.payload?.details || a.payload?.apercu || a.payload?.message || a.payload?.description || "Détails complémentaires à consulter dans l'onglet Validations.")}</p><small>Référence : ${esc(a.id.slice(0,8))}${a.task_id ? " · mission liée" : ""}</small></article>`).join("") : '<p class="panel-muted">Aucune validation en attente dans ai_approvals.</p>'}
+      <h3>Livrables à contrôler</h3>
+      <div class="executive-facts"><span>Missions en attente de validation</span><b>${awaitingReview.length}</b></div>
+      ${awaitingReview.length ? awaitingReview.slice(0,6).map(t=>`<article class="executive-decision-card"><div><b>${esc(t.titre)}</b><small>${esc(nameOf(t.agent_id))} · ${ago(t.updated_at)}</small></div><p>${esc(t.rapport || t.progression || t.resultat_attendu || "Rapport non renseigné : ouvrir la mission pour examiner les éléments disponibles.")}</p><small>${t.evaluation == null ? "Non évalué" : "Évaluation : "+t.evaluation+"/100"} · ${esc(t.id.slice(0,8))}</small></article>`).join("") : '<p class="panel-muted">Aucun livrable en attente de validation parmi les missions chargées.</p>'}
+    </div>
+    <div class="executive-section executive-decisions">
+      <h3>Journal des décisions du Directeur général</h3>
+      ${decisions.length ? decisions.map(m=>`<article class="executive-decision-card"><div><b>${esc(m.objet)}</b><small>${ago(m.created_at)} · ${m.vers_agent_id === dg?.id ? "Décision reçue par le DG" : "Décision émise par le DG"}</small></div><p>${esc(m.contenu)}</p>${m.task_id ? `<small>Mission liée : ${esc(m.task_id.slice(0,8))}</small>` : ""}</article>`).join("") : '<p class="panel-muted">Aucune décision du DG enregistrée dans le journal de communications sur les données récentes.</p>'}
+      <h3>Remontées et alertes vers la direction</h3>
+      ${dgAlerts.length ? dgAlerts.map(m=>`<article class="executive-decision-card is-alert"><div><b>${esc(m.objet)}</b><small>${ago(m.created_at)} · ${m.de_agent_id ? esc(nameOf(m.de_agent_id)) : "Système"}</small></div><p>${esc(m.contenu)}</p></article>`).join("") : '<p class="panel-muted">Aucune alerte récente adressée au DG dans le journal.</p>'}
+      <h3>Rapports reçus par la direction</h3>
+      ${dgReports.length ? dgReports.map(m=>`<article class="executive-decision-card"><div><b>${esc(m.objet)}</b><small>${ago(m.created_at)} · ${m.de_agent_id ? esc(nameOf(m.de_agent_id)) : "Système"}</small></div><p>${esc(m.contenu)}</p></article>`).join("") : '<p class="panel-muted">Aucun rapport récent adressé au DG dans le journal.</p>'}
+      <p class="panel-note">Le journal provient de ai_agent_communications. Jarvis n'étant pas un agent autonome dans l'organigramme, ses échanges vocaux ne sont pas présentés comme des remontées enregistrées tant qu'ils ne sont pas effectivement persistés.</p>
     </div>
     <div class="executive-section"><h3>Performance par logiciel · CA HT</h3>
       ${productRows.length ? productRows.slice(0,8).map(([id,value])=>`<div class="executive-product"><span>${esc(id==="hors_perimetre"?"Hors périmètre":productName.get(id)||id)}</span><b>${money(value)}</b></div>`).join("") : '<p class="panel-muted">Aucune vente exploitable sur le mois.</p>'}
