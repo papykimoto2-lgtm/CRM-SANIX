@@ -99,6 +99,7 @@ const { launch, ok, newPage } = require("./harness.js");
     await ask2("que sais-tu de MIDAS ?"); ok((await page.evaluate(() => window.__CALLS.filter((c) => c.fn === "ai-jarvis").at(-1).body.context.crm.trouves.map((x) => x.nom))).join() === "MIDAS", "fiche trouvée par son nom");
     await page.evaluate(() => window.__jarvis.setLLM(false)); const rc = await ask2("combien de prospects AutoGarage ?"); ok(/3 fiches dans le CRM pour AutoGarage Pro/.test(rc), "sans serveur : situation des prospects calculée localement (" + rc.slice(0, 80) + ")"); await page.evaluate(() => window.__jarvis.setLLM(true));
     await ask2("mode autonome"); ok(await page.evaluate(() => window.__jarvis.auto()), "mode autonome activé");
+    ok(await page.evaluate(() => localStorage.getItem("sanix_jarvis_autonomous_mode_v2") === "1" && document.querySelector("#jv-auto").getAttribute("aria-pressed") === "true"), "mode autonome mémorisé et état du bouton accessible");
     await ask2("exécute la consigne AutoGarage"); await page.waitForTimeout(400); ok((await page.evaluate(() => window.__CALLS.filter((c) => c.body?.action === "instruction").length)) === nI0 + 1 && await page.evaluate(() => window.__jarvis.pending() === null), "mode autonome : la consigne part sans confirmation");
     ok((await page.evaluate(() => window.__CALLS.filter((c) => c.fn === "ai-jarvis").at(-1).body.context.mode)) === "autonome", "le serveur est informé du mode");
     await ask2("mode prudent"); ok(!(await page.evaluate(() => window.__jarvis.auto())), "retour au mode prudent");
