@@ -1620,6 +1620,8 @@ var TransientLlmError = class extends Error {
 };
 var ProviderBillingError = class extends Error {
 };
+var ProviderQuotaError = class extends Error {
+};
 var ProviderConfigurationError = class extends Error {
 };
 var LlmKeyMissingError = class extends TransientLlmError {
@@ -1647,6 +1649,10 @@ async function callClaude(o) {
   const { data: b, error: budgetError } = await db().rpc("ai_budget_check", { p_agent: o.agentId ?? null });
   if (budgetError || !b) throw new BudgetError("Contr\xF4le du budget IA indisponible");
   if (b.ok === false) throw new BudgetError(String(b.raison ?? "Budget IA atteint"));
+  const { data: providerState } = await db().from("ai_governance").select("provider_pause_until,provider_pause_reason").eq("id", 1).maybeSingle();
+  if (providerState?.provider_pause_until && new Date(providerState.provider_pause_until).getTime() > Date.now()) {
+    throw new ProviderQuotaError(providerState.provider_pause_reason || "Quota du fournisseur IA atteint ; appels suspendus jusqu'\xE0 r\xE9initialisation.");
+  }
   const model = o.model ?? await modelForLevel(o.niveau);
   const params = {
     model,
@@ -1673,6 +1679,14 @@ async function callClaude(o) {
     const status = e.status;
     const message2 = errMsg(e);
     const normalized = message2.toLowerCase();
+    if (status === 400 && /you have reached.*api usage limits|specified api usage limits|usage limit.*regain access/.test(normalized)) {
+      const resetMatch = message2.match(/regain access on (\\d{4}-\\d{2}-\\d{2}) at (\\d{2}:\\d{2}) UTC/i);
+      const resetAt = resetMatch ? /* @__PURE__ */ new Date(`${resetMatch[1]}T${resetMatch[2]}:00Z`) : new Date(Date.now() + 24 * 60 * 60 * 1e3);
+      if (!Number.isFinite(resetAt.getTime()) || resetAt.getTime() <= Date.now()) resetAt.setTime(Date.now() + 24 * 60 * 60 * 1e3);
+      const reason = `Plafond Anthropic atteint. Reprise automatique pr\xE9vue le ${resetAt.toISOString()}. Les appels IA sont suspendus pour \xE9viter les tentatives inutiles.`;
+      await db().from("ai_governance").update({ provider_pause_until: resetAt.toISOString(), provider_pause_reason: reason }).eq("id", 1);
+      throw new ProviderQuotaError(reason);
+    }
     if (/credit balance|insufficient credit|credit.*too low|billing.*(inactive|disabled|payment)|payment required|purchase credits/.test(normalized)) {
       throw new ProviderBillingError("Facturation Anthropic : cr\xE9dits insuffisants ou facturation inactive. V\xE9rifier le compte associ\xE9 \xE0 ANTHROPIC_API_KEY.");
     }
@@ -4468,6 +4482,14 @@ async function onError(ctx, e) {
     await incidentOnce("llm_indisponible", "attention", `Service IA indisponible : ${clip(e.message, 200)}`, 3 * 6e4);
     return "reportee";
   }
+  if (e instanceof ProviderQuotaError) {
+    const note = `[Syst\xE8me] ${e.message} Mission mise en attente sans p\xE9naliser ni suspendre l'agent. Elle ne sera pas relanc\xE9e tant que le quota fournisseur ne sera pas r\xE9tabli.`;
+    await db().from("ai_agent_tasks").update({ statut: "bloquee", progression: await saveJournal(ctx, note) }).eq("id", task.id);
+    await db().from("ai_agents").update({ activite: "disponible" }).eq("id", agent.id).not("activite", "eq", "en_reunion");
+    await incidentOnce("fournisseur_quota_atteint", "critique", e.message, 24 * 36e5);
+    await publishActivity(agent.id, "disponible", task.id);
+    return "bloquee";
+  }
   if (e instanceof ProviderBillingError || e instanceof ProviderConfigurationError) {
     const billing = e instanceof ProviderBillingError;
     const type = billing ? "fournisseur_credits_insuffisants" : "fournisseur_authentification";
@@ -5508,6 +5530,7 @@ Deno.serve(async (req) => {
     throw new HttpError(400, "Action inconnue");
   } catch (e) {
     if (e instanceof BudgetError) return json(req, { error: e.message }, 429);
+    if (e instanceof ProviderQuotaError) return json(req, { error: e.message, code: "ANTHROPIC_USAGE_LIMIT" }, 503);
     if (e instanceof TransientLlmError) return json(req, { error: e instanceof LlmKeyMissingError ? "Cl\xE9 ANTHROPIC_API_KEY absente : l'ajouter dans Supabase \u2192 Edge Functions \u2192 Secrets" : "Service IA momentan\xE9ment indisponible, r\xE9essayez" }, 503);
     const status = e instanceof HttpError ? e.status : 500;
     if (status === 500) console.error(e);
