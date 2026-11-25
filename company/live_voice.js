@@ -210,7 +210,10 @@ export function initJarvis(A, stage) {
   }
   const HELP = "Je peux : donner la situation, le nombre de fiches, qui travaille, les blocages, l'avancement d'un logiciel (par exemple AutoGarage), ce que fait un agent, piloter la caméra (zoom, vue d'ensemble, montre tel agent, rotation, plein cadre) et transmettre une demande au directeur général après votre confirmation.";
 
-  let autoMode = false;
+  const JARVIS_AUTO_KEY = "sanix_jarvis_autonomous_mode_v2";
+  const JARVIS_AUTO_RUN_KEY = "sanix_jarvis_autonomous_last_run_v2";
+  const readAutoMode = () => { try { return localStorage.getItem(JARVIS_AUTO_KEY) === "1"; } catch { return false; } };
+  let autoMode = readAutoMode(), autoCycleBusy = false;
   // ───────── CRM en lecture seule : prospects, clients et leur situation (cache 2 min) ─────────
   let crmC = { at: 0, rows: [] };
   async function loadCrm() {
@@ -301,8 +304,8 @@ export function initJarvis(A, stage) {
   function insights() {
     const out = [], h = A.health(), now = Date.now(), day = 864e5, I = (gravite, constat, piste, texte) => out.push({ gravite, constat, piste, action: texte ? { kind: "instruction", texte } : null });
     const blocked = D.tasks.filter((t) => ["bloquee", "echouee"].includes(t.statut) && now - Date.parse(t.updated_at) < day);
-    if (blocked.length) I(blocked.length >= 3 ? "haute" : "moyenne", `${plural(blocked.length, "mission bloquée", "missions bloquées")} sur 24 heures : ${blocked.slice(0, 2).map((t) => clip(t.titre, 50)).join(" ; ")}`, "analyser les causes et relancer autrement", `Analyse les ${blocked.length} missions bloquées ou échouées des dernières 24 heures (${blocked.slice(0, 3).map((t) => t.titre).join(" ; ")}), identifie la cause de chaque blocage et propose-moi un plan de reprise.`);
-    if (h.stale) I("haute", `${plural(h.stale, "mission figée", "missions figées")} depuis plus de 90 minutes`, "vérifier et débloquer les agents concernés", "Vérifie les missions en cours depuis plus de 90 minutes sans progression, débloque-les ou reprogramme-les, et dis-moi la cause.");
+    if (blocked.length) I(blocked.length >= 3 ? "haute" : "moyenne", `${plural(blocked.length, "mission bloquée", "missions bloquées")} sur 24 heures : ${blocked.slice(0, 2).map((t) => clip(t.titre, 50)).join(" ; ")}`, "analyser les causes et préparer un plan de reprise", `Analyse les ${blocked.length} missions bloquées ou échouées des dernières 24 heures (${blocked.slice(0, 3).map((t) => t.titre).join(" ; ")}), identifie les causes et prépare un plan de reprise à soumettre à la direction. Ne relance aucune mission et ne contacte aucun prospect.`);
+    if (h.stale) I("haute", `${plural(h.stale, "mission figée", "missions figées")} depuis plus de 90 minutes`, "diagnostiquer le blocage et préparer un plan de reprise", "Analyse les missions en cours depuis plus de 90 minutes sans progression. Identifie les causes et prépare un plan de reprise à soumettre à la direction. Ne relance, ne réassigne et ne modifie aucune mission.");
     const prosp = D.tasks.filter((t) => t.produit && /prospect/i.test(t.titre) && ["terminee", "bloquee", "echouee"].includes(t.statut) && now - Date.parse(t.updated_at) < 2 * day), byP = {};
     for (const t of prosp) { const b = (byP[t.produit] ??= { c: 0, g: 0 }); b.c += D.created[t.id] ?? 0; b.g += A.targetOf(t) || 20; }
     for (const [pid, b] of Object.entries(byP)) if (b.c < b.g * .25) { const lab = PRODUCTS[pid]?.[1] ?? pid; I("haute", `Prospection ${lab} : ${b.c} fiches créées pour ${b.g} visées`, "changer de sources (sites propres, annuaires professionnels, réseaux)", `La prospection ${lab} sous-performe (${b.c} fiches pour ${b.g} visées). Propose une stratégie de recherche différente (sources avec coordonnées publiques) et relance les chasseurs concernés.`); }
@@ -476,16 +479,54 @@ export function initJarvis(A, stage) {
   }
   orb.addEventListener("click", () => { if (listening && !hands) { setMicState("idle", "Micro en pause"); rec?.stop(); return; } if (speaking) { stopSpeech(); return; } activateMicAndStart(); });
   const sendTxt = () => { const v = inEl.value.trim(); if (!v) return; inEl.value = ""; handle(v); };
-  const setAuto = (on) => { autoMode = !!on; $("#jv-auto").classList.toggle("on", autoMode); $("#jv-auto").classList.toggle("warn", autoMode); };
+  const setAuto = (on) => {
+    autoMode = !!on;
+    try { localStorage.setItem(JARVIS_AUTO_KEY, autoMode ? "1" : "0"); } catch { /* stockage indisponible : mode valable pour cette session */ }
+    $("#jv-auto").classList.toggle("on", autoMode);
+    $("#jv-auto").classList.toggle("warn", autoMode);
+    $("#jv-auto").setAttribute("aria-pressed", String(autoMode));
+    $("#jv-auto").title = autoMode
+      ? "Mode autonome actif : supervision toutes les minutes ; seules les consignes internes sûres sont transmises automatiquement."
+      : "Mode prudent : Jarvis demande votre confirmation avant les actions.";
+    setSt(autoMode ? "Mode autonome · supervision active" : "Mode prudent · confirmation requise");
+  };
   $("#jv-auto").addEventListener("click", () => handle(autoMode ? "mode prudent" : "mode autonome"));
   $("#jv-ideas").addEventListener("click", () => handle("Jarvis, quelles améliorations me proposes-tu ?"));
   let announced = false;
   const refreshIdeas = () => { try { const n = insights().length, b = $("#jv-badge"); b.hidden = !n; b.textContent = n; if (n && !announced && D.agents.length) { announced = true; addLine("jarvis", `J'ai ${plural(n, "proposition d'amélioration", "propositions d'amélioration")}. Touchez 💡 ou dites « propositions ».`); } } catch { /* données pas encore chargées */ } };
+  // Supervision proactive : une seule consigne interne à la fois, dédupliquée pendant 6 h.
+  // Aucun envoi WhatsApp/e-mail, aucune action financière, aucune suppression ni redémarrage de mission.
+  async function runAutoCycle() {
+    if (!autoMode || autoCycleBusy || pending_busy || pending || document.hidden) return { skipped: true };
+    let last = null;
+    try { last = JSON.parse(localStorage.getItem(JARVIS_AUTO_RUN_KEY) || "null"); } catch { /* stockage absent */ }
+    const candidate = insights().find((x) => x.action?.texte && x.constat);
+    if (!candidate) return { idle: true };
+    const signature = norm(candidate.constat + "|" + candidate.action.texte).slice(0, 500);
+    if (last?.signature === signature && Date.now() - Number(last.at || 0) < 6 * 3600000) return { duplicate: true };
+    autoCycleBusy = true;
+    try {
+      const result = await sendPending({ kind: "instruction", texte:
+        "SUPERVISION AUTONOME JARVIS — constat : " + candidate.constat +
+        ". Piste : " + candidate.piste + ". Consigne : " + candidate.action.texte +
+        " Limites impératives : analyse et prépare un plan interne ; ne contacte aucun prospect ou client, n'envoie aucun WhatsApp ni e-mail, ne prends aucun engagement financier, ne supprime aucune fiche et ne relance/réassigne/modifie aucune mission sans validation de la direction."
+      });
+      if (result === "transmis") {
+        try { localStorage.setItem(JARVIS_AUTO_RUN_KEY, JSON.stringify({ signature, at: Date.now(), constat: candidate.constat })); } catch { /* le cycle reste valide pour la session */ }
+        addLine("jarvis", "Supervision autonome : une consigne interne a été transmise au directeur général. Les actions externes et sensibles restent soumises à validation.");
+        return { sent: true, constat: candidate.constat };
+      }
+      return { sent: false };
+    } finally { autoCycleBusy = false; }
+  }
+  setAuto(autoMode);
   setInterval(refreshIdeas, 15000); setTimeout(refreshIdeas, 3500);
+  setInterval(() => { runAutoCycle().catch((e) => addLine("jarvis", "Supervision suspendue : " + clip(e.message, 140))); }, 60000);
+  setTimeout(() => { if (autoMode) runAutoCycle().catch(() => {}); }, 12000);
   $("#jv-send").addEventListener("click", sendTxt); inEl.addEventListener("keydown", (e) => { if (e.key === "Enter") sendTxt(); e.stopPropagation(); });
   $("#jv-voice").addEventListener("click", (e) => { voiceOn = !voiceOn; e.currentTarget.classList.toggle("on", voiceOn); e.currentTarget.textContent = voiceOn ? "🔊" : "🔇"; if (!voiceOn) stopSpeech(); setSt(voiceOn ? "Voix activée" : "Voix désactivée"); });
   $("#jv-voice-style").addEventListener("click", cycleVoice);
   $("#jv-hands").addEventListener("click", (e) => { hands = !hands; e.currentTarget.classList.toggle("on", hands); if (hands) { if (!SR) { setMicState("unsupported", "Micro indisponible"); hands = false; e.currentTarget.classList.remove("on"); setSt("Mains libres indisponible : micro non pris en charge."); return; } if (listening) rec.stop(); setTimeout(activateMicAndStart, 150); setSt("Activation du microphone…"); } else { setMicState("idle", "Micro en pause"); rec?.stop(); setSt("Jarvis prêt"); } });
   addLine("jarvis", "Salle de contrôle en ligne. Dites « Jarvis, situation » ou écrivez votre demande.");
-  window.__jarvis = { crm: () => crmContext(""), crmRows: () => crmC.rows.slice(), insights, auto: () => autoMode, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say, explainRelation: (r) => say(relationExplanation(r)), explainProspect: (p, history, tasks, meta) => say(prospectExplanation(p, history, tasks, meta)) };
+  window.__jarvis = { crm: () => crmContext(""), crmRows: () => crmC.rows.slice(), insights, auto: () => autoMode, runAutoCycle, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say, explainRelation: (r) => say(relationExplanation(r)), explainProspect: (p, history, tasks, meta) => say(prospectExplanation(p, history, tasks, meta)) };
 }
