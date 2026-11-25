@@ -602,3 +602,21 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .executive-decision-card small{display:block;color:var(--mute);font-size:9px;margin-top:3px;overflow-wrap:anywhere}
 .executive-decision-card p{font-size:10px;line-height:1.5;color:var(--tx);margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere;max-height:120px;overflow:auto}
 .executive-decision-card.is-alert{border-left:3px solid var(--warn)}
+
+
+/* V16 — accès direct au tableau de pilotage DG, sans surcharge de la salle de contrôle. */
+.exec-view-toggle{border-color:rgba(168,85,247,.65);color:#E9D5FF;background:rgba(88,28,135,.28);font-weight:700;white-space:nowrap}
+.exec-view-toggle[aria-pressed="true"]{border-color:var(--cy);color:var(--cy);background:rgba(8,145,178,.18)}
+body.exec-view{overflow:hidden}
+body.exec-view .kpis,body.exec-view .grid>.left,body.exec-view .grid>.stage,body.exec-view .ticker{display:none!important}
+body.exec-view #live{gap:8px}
+body.exec-view .grid{display:block;min-height:0;height:auto;overflow:visible;flex:1}
+body.exec-view .col.right{display:block;height:auto;overflow:visible;padding:0}
+body.exec-view .col.right>*:not(#executive-panel){display:none!important}
+body.exec-view #executive-panel{display:flex!important;position:fixed;z-index:40;inset:66px 14px 14px;margin:0;padding:18px 20px;overflow:auto;overscroll-behavior:contain;background:linear-gradient(145deg,#0B1830,#071120);border:1px solid rgba(168,85,247,.5);border-radius:16px;box-shadow:0 18px 70px rgba(0,0,0,.65);gap:14px}
+body.exec-view #executive-panel>h2{font-size:18px;letter-spacing:.1em;color:#E9D5FF}
+body.exec-view .executive-section{padding:14px;border-radius:12px;background:rgba(15,28,52,.65);border:1px solid var(--line)}
+body.exec-view .executive-section h3{font-size:13px;margin:0 0 10px;color:var(--cy);letter-spacing:.05em}
+body.exec-view .executive-decision-card{padding:11px;margin:8px 0}
+body.exec-view .executive-facts{padding:8px 0}
+@media(max-width:640px){body.exec-view #executive-panel{inset:60px 6px 6px;padding:12px;gap:10px}body.exec-view .exec-view-toggle{font-size:10px;padding:6px 8px}}

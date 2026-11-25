@@ -1252,6 +1252,14 @@ async function boot() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { gate("Session absente : ouvrez cette fenêtre depuis le Bureau SANIX AI (bouton « Salle de contrôle »)."); return; }
   $("#gate").hidden = true; $("#live").hidden = false; renderLegend(); resize(); new ResizeObserver(resize).observe(cv.parentElement);
+  const execToggle = $("#exec-view-toggle");
+  const setExecutiveView = (on) => {
+    document.body.classList.toggle("exec-view", on);
+    if (execToggle) { execToggle.setAttribute("aria-pressed", String(on)); execToggle.textContent = on ? "← Retour salle" : "▦ Pilotage DG"; execToggle.title = on ? "Revenir à la salle de contrôle" : "Ouvrir le tableau de pilotage du Directeur général"; }
+    if (on) $("#executive-panel")?.scrollIntoView?.({behavior:"smooth",block:"start"});
+  };
+  execToggle?.addEventListener("click", () => setExecutiveView(!document.body.classList.contains("exec-view")));
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && document.body.classList.contains("exec-view")) setExecutiveView(false); });
   $("#fs").addEventListener("click", () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.()));
   requestAnimationFrame(draw); tick(); setInterval(tick, 1000); askSession(); setInterval(askSession, 20 * 60000);
   await init3d(); initControls();
