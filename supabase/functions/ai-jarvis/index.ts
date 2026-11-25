@@ -1,7 +1,7 @@
 // JARVIS — assistant conversationnel de la Salle de contrôle (JWT opérateur « direction »).
 // Corps : { message, history?, context } → { reply, actions }. Modèle Sonnet, budget IA appliqué par callClaude.
 import { audit, cors, db, errMsg, HttpError, json, requireOperator } from "../_shared/core.ts";
-import { BudgetError, callClaude, LlmKeyMissingError, ProviderBillingError, ProviderConfigurationError, TransientLlmError } from "../_shared/llm.ts";
+import { BudgetError, callClaude, LlmKeyMissingError, ProviderBillingError, ProviderConfigurationError, ProviderQuotaError, TransientLlmError } from "../_shared/llm.ts";
 import { buildContext, cleanHistory, JARVIS_FORMAT, knownCrmIds, knownIds, parseReply, SYSTEM } from "../_shared/company/jarvis.ts";
 import { commissions, compta, FINANCE_LIMITES, knownFinanceIds, levee } from "../_shared/company/jarvis_finance.ts";
 
@@ -132,6 +132,7 @@ Deno.serve(async (req) => {
   } catch (e) {
     if (e instanceof HttpError) return json(req, { error: e.message }, e.status);
     if (e instanceof BudgetError) return json(req, { error: "Budget IA atteint : " + e.message, code: "budget" }, 429);
+    if (e instanceof ProviderQuotaError) return json(req, { error: e.message, code: "ANTHROPIC_USAGE_LIMIT" }, 503);
     if (e instanceof LlmKeyMissingError || e instanceof ProviderBillingError || e instanceof ProviderConfigurationError) return json(req, { error: e.message, code: "config" }, 503);
     if (e instanceof TransientLlmError) return json(req, { error: "Service IA momentanément indisponible", code: "transient" }, 503);
     await audit({ agent: "jarvis", action: "jarvis_erreur", ok: false, payload: { e: errMsg(e) } }).catch(() => {});
