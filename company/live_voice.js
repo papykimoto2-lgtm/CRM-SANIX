@@ -489,6 +489,7 @@ export function initJarvis(A, stage) {
       ? "Mode autonome actif : supervision toutes les minutes ; seules les consignes internes sûres sont transmises automatiquement."
       : "Mode prudent : Jarvis demande votre confirmation avant les actions.";
     setSt(autoMode ? "Mode autonome · supervision active" : "Mode prudent · confirmation requise");
+    if (autoMode) setTimeout(() => runAutoCycle().catch((e) => addLine("jarvis", "Supervision suspendue : " + clip(e.message, 140))), 8000);
   };
   $("#jv-auto").addEventListener("click", () => handle(autoMode ? "mode prudent" : "mode autonome"));
   $("#jv-ideas").addEventListener("click", () => handle("Jarvis, quelles améliorations me proposes-tu ?"));
