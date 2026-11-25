@@ -26,6 +26,12 @@ export async function tickCompany(): Promise<TickResult> {
   res.expires = Number(n ?? 0);
   try { res.outbox = await flushOutbox(); } catch (e) { await audit({ agent: "tick", action: "outbox_erreur", ok: false, payload: { e: errMsg(e) } }); }
 
+  // Coupe-circuit fournisseur : aucune mission n'est réclamée pendant la suspension.
+  const { data: providerPause } = await db().from("ai_governance").select("provider_pause_until,provider_pause_reason").eq("id", 1).maybeSingle();
+  if (providerPause?.provider_pause_until && new Date(providerPause.provider_pause_until).getTime() > Date.now()) {
+    return { ...res, ignore: providerPause.provider_pause_reason || "Quota fournisseur IA suspendu : missions conservées en attente." };
+  }
+
   // Clé IA absente des secrets Edge : rien n'est lancé (aucune mission réclamée, aucune faute imputée aux agents) ; incident critique, une seule fois
   if (!llmKeyPresent()) {
     await incidentOnce("cle_ia_absente", "critique", "Secret ANTHROPIC_API_KEY absent : les agents sont en pause. Supabase → Edge Functions → Secrets → ajouter ANTHROPIC_API_KEY.", 6 * 3600e3);
