@@ -56,8 +56,8 @@ const P = { prospect_id: S({ description: "UUID du prospect" }) };
 
 type Props = Record<string, unknown>;
 const DEFS: Record<string, { description: string; props: Props }> = {
-  lister_prospects: { description: "Liste des prospects du CRM (filtrable). Les prospects listés entrent dans ton périmètre de travail.",
-    props: { stage: nul("string"), secteur: nul("string"), ville: nul("string"), score_min: nul("integer"), limite: { type: "integer" } } },
+  lister_prospects: { description: "Liste paginée des prospects du CRM. Filtres : stage, secteur, ville, produit (identifiant exact dans produits_recommandes, ex. sanixcrmpro), score_min. Utilise offset=0 puis offset=limite pour parcourir toutes les pages ; limite max 100. Les prospects listés entrent dans ton périmètre de travail.",
+    props: { stage: nul("string"), secteur: nul("string"), ville: nul("string"), produit: nul("string"), score_min: nul("integer"), limite: { type: "integer" }, offset: { type: "integer" } } },
   verifier_adresse: { description: "Vérifie l'adresse e-mail du prospect (syntaxe, domaine, retours « non distribué ») sans rien envoyer et enregistre son statut sur la fiche : invalide (n'écris pas), a_confirmer (domaine valide, boîte non garantie : écris en petit volume), verifiee (le prospect a déjà répondu).", props: P },
   get_prospect: { description: "Fiche prospect, 30 derniers messages tous canaux, offres, RDV, relances.", props: P },
   recommend_products: { description: "Logiciels SANIX pertinents pour un secteur et des besoins.", props: { secteur: S(), besoins_texte: S() } },
@@ -162,7 +162,10 @@ export async function runCrmTool(ctx: CrmCtx, name: string, raw: Record<string, 
       if (input.secteur) q = q.ilike("secteur", `%${String(input.secteur).replace(/[%,()]/g, "")}%`);
       if (input.ville) q = q.ilike("ville", `%${String(input.ville).replace(/[%,()]/g, "")}%`);
       if (input.score_min !== null) q = q.gte("score", clamp(input.score_min, 100));
-      const { data, error } = await q.order("score", { ascending: false }).limit(Math.max(1, Math.min(50, Math.round(Number(input.limite) || 20))));
+      if (input.produit) q = q.contains("produits_recommandes", [String(input.produit).trim().toLowerCase()]);
+      const limit = Math.max(1, Math.min(100, Math.round(Number(input.limite) || 20)));
+      const offset = Math.max(0, Math.min(10000, Math.round(Number(input.offset) || 0)));
+      const { data, error } = await q.order("score", { ascending: false }).range(offset, offset + limit - 1);
       if (error) throw new Error(error.message);
       for (const p of data ?? []) ctx.scope.add(String(p.id).toLowerCase());
       return data;
