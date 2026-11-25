@@ -27,6 +27,12 @@ Fenêtre d'affichage en direct de l'activité des agents, pour un second écran,
 - Caméra à la voix : « zoom avant / arrière », « vue d'ensemble », « montre le directeur commercial », « arrête / lance la rotation », « plein cadre ».
 - Toute autre demande : Jarvis propose de la transmettre au directeur général IA ; **rien n'est envoyé sans « oui »**. La réponse du directeur est ensuite lue à voix haute dès son arrivée.
 
+**Mode autonome Jarvis**
+- Le bouton ⚡ active/désactive le mode et mémorise le choix sur le navigateur (conservé après rechargement).
+- Lorsque le mode est actif et que la salle est ouverte avec une session valide, Jarvis examine les signaux de supervision toutes les minutes et peut transmettre au directeur général une consigne interne prioritaire, une à la fois ; un même signal est dédupliqué pendant 6 h.
+- Le mode autonome n'est pas un accès « sans limites » : aucune communication externe, action financière, suppression de fiche, relance/réaffectation de mission n'est lancée par la boucle proactive. Ces opérations restent soumises aux contrôles et validations existants.
+- La supervision proactive du navigateur s'arrête quand la salle est fermée ou masquée ; l'orchestration normale des agents continue côté serveur selon le planificateur de l'entreprise virtuelle.
+
 **Mode dynamique (mouvement perpétuel)** — activé par défaut, bouton ✺ ou voix (« mode calme » / « active le mode dynamique ») : les agents orbitent en permanence autour du directeur général (anneaux en sens alternés, vitesses différentes), les liens suivent, la caméra « respire » doucement et suit l'agent sélectionné. Le mode calme fige les agents.
 
 **Jarvis conversationnel** — la fonction Edge `ai-jarvis` (Haiku, budget IA appliqué, JWT direction) reçoit la demande, les 8 derniers échanges et un instantané en direct (agents, missions, indicateurs, activité) et répond en langage naturel, lu à voix haute. Elle peut commander l'interface (zoom, vue d'ensemble, focus sur un agent, mode calme/dynamique, panneaux) et **proposer** une consigne au directeur général ou une mission à un agent : rien n'est envoyé sans « oui ». Après une réponse vocale, le micro se rouvre seul pour la suite de la discussion. Sans serveur (budget, réseau, fonction non déployée), Jarvis retombe sur ses réponses locales.
