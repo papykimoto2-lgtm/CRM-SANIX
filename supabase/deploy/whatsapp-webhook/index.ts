@@ -2195,8 +2195,8 @@ var mk = (name, description, properties, strict) => ({
 var P = { prospect_id: S({ description: "UUID du prospect" }) };
 var DEFS = {
   lister_prospects: {
-    description: "Liste des prospects du CRM (filtrable). Les prospects list\xE9s entrent dans ton p\xE9rim\xE8tre de travail.",
-    props: { stage: nul("string"), secteur: nul("string"), ville: nul("string"), score_min: nul("integer"), limite: { type: "integer" } }
+    description: "Liste pagin\xE9e des prospects du CRM. Filtres : stage, secteur, ville, produit (identifiant exact dans produits_recommandes, ex. sanixcrmpro), score_min. Utilise offset=0 puis offset=limite pour parcourir toutes les pages ; limite max 100. Les prospects list\xE9s entrent dans ton p\xE9rim\xE8tre de travail.",
+    props: { stage: nul("string"), secteur: nul("string"), ville: nul("string"), produit: nul("string"), score_min: nul("integer"), limite: { type: "integer" }, offset: { type: "integer" } }
   },
   verifier_adresse: { description: "V\xE9rifie l'adresse e-mail du prospect (syntaxe, domaine, retours \xAB non distribu\xE9 \xBB) sans rien envoyer et enregistre son statut sur la fiche : invalide (n'\xE9cris pas), a_confirmer (domaine valide, bo\xEEte non garantie : \xE9cris en petit volume), verifiee (le prospect a d\xE9j\xE0 r\xE9pondu).", props: P },
   get_prospect: { description: "Fiche prospect, 30 derniers messages tous canaux, offres, RDV, relances.", props: P },
@@ -2338,7 +2338,10 @@ async function runCrmTool(ctx, name, raw) {
       if (input.secteur) q = q.ilike("secteur", `%${String(input.secteur).replace(/[%,()]/g, "")}%`);
       if (input.ville) q = q.ilike("ville", `%${String(input.ville).replace(/[%,()]/g, "")}%`);
       if (input.score_min !== null) q = q.gte("score", clamp(input.score_min, 100));
-      const { data, error } = await q.order("score", { ascending: false }).limit(Math.max(1, Math.min(50, Math.round(Number(input.limite) || 20))));
+      if (input.produit) q = q.contains("produits_recommandes", [String(input.produit).trim().toLowerCase()]);
+      const limit = Math.max(1, Math.min(100, Math.round(Number(input.limite) || 20)));
+      const offset = Math.max(0, Math.min(1e4, Math.round(Number(input.offset) || 0)));
+      const { data, error } = await q.order("score", { ascending: false }).range(offset, offset + limit - 1);
       if (error) throw new Error(error.message);
       for (const p of data ?? []) ctx.scope.add(String(p.id).toLowerCase());
       return data;
