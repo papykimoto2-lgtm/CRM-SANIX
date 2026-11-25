@@ -3218,6 +3218,17 @@ Seriez-vous disponible pour une démonstration {rdv} ?
       <div class="tab active" data-v="wa" onclick="relanceVersion('wa')">📱 Version WhatsApp / SMS</div>
       <div class="tab" data-v="email" onclick="relanceVersion('email')">📧 Version e-mail</div>
     </div>
+    <div class="form-group" id="rel-medicor-role-wrap" style="display:none">
+      <label class="form-label">🎯 Destinataire / angle de prospection santé</label>
+      <select class="form-input" id="rel-medicor-role" onchange="medicorRoleChange(this.value)">
+        <option value="direction">Direction générale / direction d’établissement</option>
+        <option value="medical">Direction médicale / médecins responsables</option>
+        <option value="finance">Direction administrative et financière</option>
+        <option value="laboratory">Responsable laboratoire / biologie médicale</option>
+        <option value="it">Responsable informatique / DSI</option>
+      </select>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Le texte WhatsApp ou e-mail est adapté au rôle choisi. Vous pouvez encore le modifier avant envoi.</div>
+    </div>
     <div class="form-group" id="rel-subject-wrap" style="display:none">
       <label class="form-label">Objet de l'e-mail</label>
       <input type="text" class="form-input" id="rel-subject">
@@ -5673,6 +5684,58 @@ function fcAddPortail(body, canal){
   return parts.join('\n\n');
 }
 // → {subject, body} prêts à envoyer pour ce prospect ; canal : 'wa' (aussi SMS) ou 'email'
+// Bibliothèque de prospection MediCore Suite : angle adapté à chaque décideur santé.
+const MEDICOR_ROLE_TEMPLATES = {
+  direction: {
+    label: 'Direction générale / direction d’établissement',
+    subject: 'Pilotage global et visibilité financière de {nom} — MediCore Suite',
+    wa: "{salut} 👋 Je vous contacte au sujet du pilotage de {nom}. MediCore Suite aide les établissements de santé à réunir dans un même environnement l'activité médicale, administrative et financière : parcours patient, services, facturation, achats, stocks et tableaux de bord. L'objectif est de donner à la direction une vision plus claire de l'activité et des points de contrôle. Seriez-vous disponible pour une présentation ciblée de 20 minutes {rdv} ?",
+    email: "{salut} {destinataire},\n\nJe souhaite vous présenter *MediCore Suite*, une solution de gestion intégrée destinée aux établissements de santé.\n\nPour la direction, l'enjeu est de disposer d'une vision consolidée de l'activité : admissions et parcours patients, activité des services, facturation, encaissements, achats, stocks et indicateurs administratifs et financiers.\n\nLa démonstration peut être orientée sur vos priorités : visibilité sur les recettes, coordination des services, contrôle des dépenses et tableaux de bord de direction.\n\nPuis-je vous proposer un échange de 20 à 30 minutes {rdv} ?\n\nCordialement,\n{signature}"
+  },
+  medical: {
+    label: 'Direction médicale / médecins responsables',
+    subject: 'Coordination du parcours patient et dossier médical — {nom}',
+    wa: "{salut} Docteur, je vous contacte pour vous présenter MediCore Suite. La solution accompagne la coordination du parcours patient : dossier patient informatisé, consultations, urgences, hospitalisations et échanges avec les services de laboratoire et d'imagerie. Nous souhaitons surtout comprendre votre organisation actuelle et les points où les équipes perdent du temps. Accepteriez-vous une démonstration orientée pratique médicale de 20 minutes {rdv} ?",
+    email: "{salut} Docteur {destinataire},\n\nJe me permets de vous présenter *MediCore Suite*, une solution conçue pour mieux coordonner le parcours de soins et les informations médicales au sein d'un établissement.\n\nLa démonstration destinée à l'équipe médicale porte notamment sur :\n• dossier patient informatisé et historique de prise en charge ;\n• consultations, urgences et hospitalisations ;\n• coordination avec le laboratoire et l'imagerie ;\n• continuité de l'information entre les services et archivage des dossiers.\n\nNous aimerions recueillir votre avis sur les besoins de vos praticiens et les étapes du parcours patient à améliorer en priorité.\n\nSeriez-vous disponible pour un échange de 20 minutes {rdv} ?\n\nBien cordialement,\n{signature}"
+  },
+  finance: {
+    label: 'Direction administrative et financière / comptabilité',
+    subject: 'Facturation, encaissements et contrôle financier de {nom}',
+    wa: "{salut} 👋 Je souhaite vous présenter le volet administratif et financier de MediCore Suite. La solution relie la facturation des prestations au suivi des encaissements, des achats, des stocks et à la comptabilité générale et analytique. L'objectif est de faciliter le contrôle des recettes, des dépenses et des écarts. Pourrions-nous organiser une démonstration ciblée de 20 minutes {rdv} ?",
+    email: "{salut} {destinataire},\n\nMediCore Suite propose un pilotage administratif et financier adapté aux établissements de santé.\n\nPour votre direction financière, nous pouvons présenter les flux suivants :\n• facturation des consultations, actes et prestations ;\n• suivi des règlements et des soldes ;\n• rapprochement de l'activité des services avec les recettes ;\n• achats, fournisseurs et suivi des stocks ;\n• comptabilité générale et analytique et tableaux de bord.\n\nL'objectif de la démonstration est de vérifier avec vous comment mieux suivre les recettes, maîtriser les dépenses et fiabiliser les informations de gestion.\n\nAuriez-vous un créneau de 20 à 30 minutes {rdv} ?\n\nCordialement,\n{signature}"
+  },
+  laboratory: {
+    label: 'Responsable laboratoire / biologie médicale',
+    subject: 'Demandes d’examens et suivi du laboratoire — {nom}',
+    wa: "{salut} 👋 MediCore Suite permet de présenter un circuit de laboratoire mieux intégré au parcours patient : demandes d'examens, suivi des prélèvements et des statuts, organisation des résultats et lien avec les services prescripteurs. Nous souhaiterions comprendre votre fonctionnement actuel et vous montrer le module laboratoire. Seriez-vous disponible pour une démonstration de 20 minutes {rdv} ?",
+    email: "{salut} {destinataire},\n\nJe vous contacte pour vous présenter le volet laboratoire de *MediCore Suite*.\n\nLa démonstration peut couvrir le circuit des demandes d'examens, leur suivi depuis les services prescripteurs, l'organisation des étapes du traitement et la disponibilité des résultats dans le parcours patient.\n\nNous souhaitons comprendre vos procédures actuelles : réception des demandes, priorisation, suivi des examens, validation et transmission des résultats. Cela nous permettra de concentrer la présentation sur les besoins réels de votre laboratoire.\n\nSeriez-vous disponible pour un échange de 20 minutes {rdv} ?\n\nCordialement,\n{signature}"
+  },
+  it: {
+    label: 'Responsable informatique / DSI',
+    subject: 'Architecture, sécurité et intégration du SI médical — {nom}',
+    wa: "{salut} 👋 Je vous contacte pour une présentation technique de MediCore Suite. Nous pouvons examiner avec vous le périmètre fonctionnel, les profils et droits d'accès, la circulation des données entre les services, la continuité d'exploitation, les sauvegardes et les modalités de déploiement. L'objectif est de vérifier l'adéquation avec l'architecture et les exigences de sécurité de {nom}. Seriez-vous disponible pour un échange technique {rdv} ?",
+    email: "{salut} {destinataire},\n\nJe souhaite vous présenter *MediCore Suite* sous l'angle du système d'information et de son intégration dans l'établissement.\n\nLa réunion technique peut aborder :\n• architecture applicative et périmètre des modules ;\n• gestion des profils, habilitations et traçabilité des accès ;\n• circulation des informations entre admissions, consultations, laboratoire, imagerie, pharmacie et facturation ;\n• sauvegardes, continuité d'exploitation et modalités de déploiement ;\n• prérequis techniques, accompagnement et support.\n\nNous préférons valider avec votre équipe les exigences d'infrastructure, de sécurité et d'interopérabilité avant toute proposition de déploiement.\n\nPourrions-nous organiser un échange technique de 30 minutes {rdv} ?\n\nCordialement,\n{signature}"
+  }
+};
+let _medicorRole = 'direction';
+function medicorRoleFor(c){
+  const t=_nrm([c.contact,c.fonction,c.poste,c.notes].filter(Boolean).join(' '));
+  if(/laboratoire|biologiste|biologie|analyses medicales/.test(t)) return 'laboratory';
+  if(/informatique|informaticien|dsi|systeme d information|it manager|responsable it/.test(t)) return 'it';
+  if(/medecin|docteur|medical|soins|praticien|chef de service/.test(t)) return 'medical';
+  if(/financ|comptab|daf|gestionnaire|administratif/.test(t)) return 'finance';
+  return 'direction';
+}
+function medicorBuild(c, canal, role){
+  const t=MEDICOR_ROLE_TEMPLATES[role]||MEDICOR_ROLE_TEMPLATES.direction;
+  const subject=fcFill(t.subject,c);
+  const body=fcFill(t[canal==='email'?'email':'wa'],c);
+  return {subject,body};
+}
+function medicorRoleChange(role){
+  _medicorRole=MEDICOR_ROLE_TEMPLATES[role]?role:'direction';
+  relanceVersion(_relVersion);
+}
 function fcGet(c, canal){
   const t = fcCfg()[fcSegment(c)];
   return canal==='email'
@@ -13165,9 +13228,11 @@ function relanceRenderCanal(){
 function relanceOpen(id){
   const c = CLIENTS.find(x=>x.id===id); if(!c) return;
   _relanceClientId = id;
+  _medicorRole = fcSegment(c)==='medicor' ? medicorRoleFor(c) : 'direction';
   const etape = aiGetEtape(c);
   document.getElementById('rel-nom').textContent = c.nom;
   document.getElementById('rel-etape-lbl').textContent = 'Étape : '+(CONV_ETAPES[etape]||'Nouveau')+' · '+(c.phone||'sans numéro')+(c.email?' · '+c.email:'');
+  const mr=document.getElementById('rel-medicor-role-wrap'); if(mr){mr.style.display=fcSegment(c)==='medicor' && etape===0?'':'none'; const sel=document.getElementById('rel-medicor-role'); if(sel) sel.value=_medicorRole;}
   relanceVersion(bestChannel(c)==='email' ? 'email' : 'wa');
   { const si=document.getElementById('rel-sched-at'); if(si) si.value=schedToInputVal(schedDefaultAt()); }
   relanceRenderCanal();
@@ -13186,14 +13251,14 @@ function relanceOpen(id){
 let _relVersion = 'wa', _relAuto = '';
 function relanceBuildSubject(c, etape, v){
   if(v!=='email') return '';
-  if(etape===0) return fcGet(c,'email').subject;
+  if(etape===0) return fcSegment(c)==='medicor' ? medicorBuild(c,'email',_medicorRole).subject : fcGet(c,'email').subject;
   return (c.logiciel||'Solutions de gestion')+' — '+relanceCfg().societe;
 }
 function relanceVersion(v){
   const c = CLIENTS.find(x=>x.id===_relanceClientId); if(!c) return;
   _relVersion = v;
   const et = aiGetEtape(c);
-  const txt = relanceBuildMsg(c, et, v);
+  const txt = (fcSegment(c)==='medicor' && et===0) ? medicorBuild(c,v,_medicorRole).body : relanceBuildMsg(c, et, v);
   document.getElementById('rel-msg').value = txt; _relAuto = txt;
   document.getElementById('rel-subject').value = relanceBuildSubject(c, et, v);
   document.getElementById('rel-subject-wrap').style.display = v==='email' ? '' : 'none';
