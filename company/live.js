@@ -17,7 +17,7 @@ const ORIGIN = location.origin;
 const STATES = { run: ["Au travail", "#22D3EE"], wait: ["Coordonne ses équipes", "#A855F7"], valid: ["Attend une validation", "#F59E0B"], bad: ["Mission bloquée", "#EF4444"], queue: ["Mission en attente", "#64748B"], idle: ["Disponible", "#3B5A94"], off: ["Suspendu", "#475569"] };
 const TASK_C = { en_cours: "#22D3EE", attente_sous_taches: "#A855F7", attente_validation: "#F59E0B", a_faire: "#64748B", bloquee: "#EF4444", echouee: "#EF4444", terminee: "#22C55E" };
 const TASK_L = { en_cours: "En cours", attente_sous_taches: "Attend ses équipes", attente_validation: "À valider", a_faire: "À faire", bloquee: "Bloquée", echouee: "Échouée", terminee: "Terminée", annulee: "Annulée" };
-const D = { agents: [], depts: [], tasks: [], tasks90: null, orderRows: null, execRows: null, execConfig: null, products: null, productAliases: null, actions: [], relationRows: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, costCenter90: null, salesRows: null, offerRows: null, whatsapp: null, gov: null, prospectHistory: null, prospectNetworkOrigin: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0 };
+const D = { agents: [], depts: [], tasks: [], tasks90: null, orderRows: null, execRows: null, execConfig: null, products: null, productAliases: null, actions: [], relationRows: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, costCenter90: null, salesRows: null, offerRows: null, whatsapp: null, gov: null, prospectHistory: null, prospectNetworkOrigin: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0, journalAgent: "", journalKind: "" };
 let sb = null;
 
 // ───────── Configuration et session ─────────
@@ -42,7 +42,7 @@ async function pull() {
   const [ag, tk, ac, cr, nT, nA, rc, td, ap, bu, gv, sales, offers, costs, waStatus, waOut, waIn, waOpt, orders, tasks90, costs90, execRows, execConfig, products, productAliases] = await Promise.all([
     safe(sb.from("ai_agents").select("id,code,nom,fonction,niveau,manager_id,departement_id,etat,activite"), null),
     safe(sb.from("ai_agent_tasks").select("id,agent_id,donneur_agent_id,parent_id,prospect_id,type,titre,objectifs,statut,priorite,produit,started_at,updated_at,created_at,executions,echeance,progression,rapport").gte("updated_at", since(7)).order("updated_at", { ascending: false }).limit(600), null),
-    safe(sb.from("ai_actions").select("id,action,agent_id,task_id,payload,ok,at").order("at", { ascending: false }).limit(60), null),
+    safe(sb.from("ai_actions").select("id,action,agent_id,task_id,payload,ok,at").order("at", { ascending: false }).limit(150), null),
     safe(sb.from("ai_actions").select("task_id").eq("action", "abonnement_prospect_cree").gte("at", since(3)).limit(1500), null),
     safe(sb.from("ai_prospects").select("id", { count: "exact", head: true }).gte("created_at", day.toISOString()), null),
     safe(sb.from("ai_prospects").select("id", { count: "exact", head: true }), null),
@@ -69,7 +69,7 @@ async function pull() {
   const [relationRows, approvalRows, communicationRows] = await Promise.all([
     safe(sb.from("ai_actions").select("id,action,agent_id,task_id,prospect_id,payload,ok,at").not("prospect_id", "is", null).order("at", { ascending: false }).limit(500), null),
     safe(sb.from("ai_approvals").select("id,type,motif,payload,statut,created_at,agent_id,task_id,commentaire").eq("statut", "en_attente").order("created_at", { ascending: false }).limit(20), null),
-    safe(sb.from("ai_agent_communications").select("id,type,objet,contenu,created_at,de_agent_id,vers_agent_id,task_id").order("created_at", { ascending: false }).limit(80), null),
+    safe(sb.from("ai_agent_communications").select("id,type,objet,contenu,created_at,de_agent_id,vers_agent_id,task_id").order("created_at", { ascending: false }).limit(120), null),
   ]);
   if (!ag?.data || !tk?.data) throw safe.err ?? new Error("Données indisponibles");
   if (!D.depts.length) { const dp = await safe(sb.from("ai_departments").select("id,nom,couleur"), null); D.depts = dp?.data ?? []; }
@@ -235,6 +235,38 @@ function renderWorkfloor() {
   const delivered = D.tasks.filter(t => t.statut === "terminee").sort((a,b) => Date.parse(b.updated_at || 0)-Date.parse(a.updated_at || 0)).slice(0,5);
   if (resultsEl) resultsEl.innerHTML = delivered.map(t => '<article class="wf-result"><b>✓ ' + esc(clip(t.titre,48)) + '</b><small>' + esc(nameOf(t.agent_id)) + ' · ' + esc(ago(t.updated_at)) + '</small>' + (t.rapport ? '<p>' + esc(clip(String(t.rapport),105)) + '</p>' : '') + '</article>').join("") || '<div class="workfloor-empty">Aucun livrable terminé dans la période chargée.</div>';
   if (meta) meta.textContent = active.length + ' missions actives · ' + comms.length + ' échanges chargés · actualisation ' + new Date().toLocaleTimeString("fr-FR",{timeZone:"Africa/Abidjan"});
+}
+
+
+function journalEvents() {
+  const events = [];
+  for (const a of D.actions || []) {
+    const [ic, label] = actView(a);
+    events.push({ at: a.at, kind: a.ok === false ? "error" : "action", agent: a.agent_id || "", icon: a.ok === false ? "⚠" : ic, title: label, detail: a.task_id ? "Mission liée" : "", source: "Action enregistrée" });
+  }
+  for (const c of D.communications || []) {
+    events.push({ at: c.created_at, kind: "communication", agent: c.de_agent_id || c.vers_agent_id || "", icon: c.type === "alerte" ? "⚠" : "↔", title: c.objet || c.type || "Échange entre agents", detail: clip(String(c.contenu || ""), 230), source: (c.de_agent_id ? nameOf(c.de_agent_id) : "Direction") + " → " + (c.vers_agent_id ? nameOf(c.vers_agent_id) : "Direction") });
+  }
+  for (const t of D.tasks || []) {
+    events.push({ at: t.created_at, kind: "mission", agent: t.agent_id || "", icon: "▣", title: t.titre || "Mission sans titre", detail: "Mission enregistrée · état actuel : " + (TASK_L[t.statut] || t.statut), source: nameOf(t.agent_id) });
+    const progressText = typeof t.progression === "string" && /erreur|bloqu|échec|failed|error/i.test(t.progression) ? t.progression : "";
+    if (progressText) events.push({ at: t.updated_at, kind: "error", agent: t.agent_id || "", icon: "⚠", title: "Incident signalé sur : " + (t.titre || "mission"), detail: clip(progressText, 230), source: nameOf(t.agent_id) });
+  }
+  return events.filter(e => e.at && Number.isFinite(Date.parse(e.at))).sort((a,b) => Date.parse(b.at)-Date.parse(a.at));
+}
+function renderJournal() {
+  const list = $("#wf-journal-list"), meta = $("#wf-journal-meta"), agentSelect = $("#wf-journal-agent");
+  if (!list || !agentSelect) return;
+  const current = D.journalAgent || "";
+  agentSelect.innerHTML = '<option value="">Tous les agents</option>' + D.agents.slice().sort((a,b) => String(a.nom).localeCompare(String(b.nom),"fr")).map(a => '<option value="' + esc(a.id) + '">' + esc(a.nom || a.code || "Agent") + '</option>').join("");
+  agentSelect.value = current;
+  const all = journalEvents();
+  const filtered = all.filter(e => (!D.journalAgent || e.agent === D.journalAgent) && (!D.journalKind || e.kind === D.journalKind));
+  list.innerHTML = filtered.slice(0,100).map(e => {
+    const stamp = new Intl.DateTimeFormat("fr-FR",{timeZone:"Africa/Abidjan",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"}).format(new Date(e.at));
+    return '<article class="wf-journal-item kind-' + esc(e.kind) + '"><i>' + esc(e.icon) + '</i><div><b>' + esc(e.title) + '</b><small>' + esc(e.source) + ' · ' + esc(stamp) + ' · ' + esc(ago(e.at)) + '</small>' + (e.detail ? '<p>' + esc(e.detail) + '</p>' : '') + '</div></article>';
+  }).join("") || '<div class="workfloor-empty">Aucun événement correspondant dans l’historique chargé.</div>';
+  if (meta) meta.textContent = all.length + ' événements réels · ' + filtered.length + ' affichés · fenêtre des missions : 7 jours';
 }
 
 function renderBusiness() {
@@ -1199,6 +1231,11 @@ $("#workflow-steps").addEventListener("click", (ev) => { const b = ev.target.clo
 $("#ops-panel").addEventListener("click", (ev) => { const b = ev.target.closest("[data-ops-agent]"); if (!b) return; D.sel = b.dataset.opsAgent; view3d?.focus(D.sel); renderDetail(); });
 $("#performance-panel").addEventListener("click", (ev) => { const b = ev.target.closest("[data-performance-agent]"); if (!b) return; D.sel = b.dataset.performanceAgent; view3d?.focus(D.sel); renderDetail(); });
 $("#missions").addEventListener("click", (ev) => { const m = ev.target.closest("[data-agent]"); if (m) { D.sel = m.dataset.agent; view3d?.focus(D.sel); renderDetail(); } });
+$("#wf-journal-toggle")?.addEventListener("click", () => { const panel = $("#wf-journal"), on = panel.hidden; panel.hidden = !on; $("#wf-journal-toggle").setAttribute("aria-expanded", String(on)); if (on) { renderJournal(); panel.scrollIntoView({behavior:"smooth",block:"nearest"}); } });
+$("#wf-journal-close")?.addEventListener("click", () => { $("#wf-journal").hidden = true; $("#wf-journal-toggle")?.setAttribute("aria-expanded","false"); });
+$("#wf-journal-agent")?.addEventListener("change", ev => { D.journalAgent = ev.target.value; renderJournal(); });
+$("#wf-journal-kind")?.addEventListener("change", ev => { D.journalKind = ev.target.value; renderJournal(); });
+
 
 // ───────── Vue 3D (repli 2D si WebGL indisponible ou ?2d) ─────────
 let view3d = null, relationsView = null, relationsMode = false;
@@ -1271,7 +1308,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.tasks || [], filters: relationFilters }); } renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderWorkfloor(); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.tasks || [], filters: relationFilters }); } renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderWorkfloor(); if (!$("#wf-journal")?.hidden) renderJournal(); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
