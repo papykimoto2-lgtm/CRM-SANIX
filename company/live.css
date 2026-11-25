@@ -593,3 +593,12 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .executive-direction>span{color:var(--tx);text-align:right}
 .executive-direction>em{font-style:normal;color:var(--warn);text-align:right;white-space:nowrap}
 @media(max-width:640px){.executive-command-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.executive-direction{grid-template-columns:minmax(0,1fr) auto}.executive-direction>em{grid-column:2}}
+
+/* Executive Command Center V15 — journal des décisions, validations et retours de direction. */
+.executive-decisions{margin-top:10px}
+.executive-decision-card{border:1px solid var(--line);border-radius:9px;padding:8px 10px;margin:6px 0;background:rgba(8,18,36,.48);min-width:0}
+.executive-decision-card>div{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.executive-decision-card>div b{font-size:11px;line-height:1.4;overflow-wrap:anywhere}
+.executive-decision-card small{display:block;color:var(--mute);font-size:9px;margin-top:3px;overflow-wrap:anywhere}
+.executive-decision-card p{font-size:10px;line-height:1.5;color:var(--tx);margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere;max-height:120px;overflow:auto}
+.executive-decision-card.is-alert{border-left:3px solid var(--warn)}
