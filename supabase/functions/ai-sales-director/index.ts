@@ -4,7 +4,7 @@
 //  {action:"tick"}  + en-tête x-cron-secret                                    → relances dues (pg_cron / scheduler)
 import { audit, cors, cronSecret, db, env, HttpError, json, requireOperator, safeEqual } from "../_shared/core.ts";
 import { runAgent } from "../_shared/agent.ts";
-import { BudgetError, LlmKeyMissingError, ProviderBillingError, ProviderConfigurationError, TransientLlmError } from "../_shared/llm.ts";
+import { BudgetError, LlmKeyMissingError, ProviderBillingError, ProviderConfigurationError, ProviderQuotaError, TransientLlmError } from "../_shared/llm.ts";
 import { MAX_RELANCES, tickFollowups } from "../_shared/followups.ts";
 import { callClaude, textOf } from "../_shared/llm.ts";
 
@@ -74,6 +74,7 @@ Deno.serve(async (req) => {
     throw new HttpError(400, "Action inconnue");
   } catch (e) {
     if (e instanceof BudgetError) return json(req, { error: e.message, code: "AI_BUDGET_BLOCKED" }, 429);
+    if (e instanceof ProviderQuotaError) return json(req, { error: e.message, code: "ANTHROPIC_USAGE_LIMIT" }, 503);
     if (e instanceof ProviderBillingError) return json(req, { error: e.message, code: "ANTHROPIC_BILLING_REQUIRED" }, 402);
     if (e instanceof ProviderConfigurationError) return json(req, { error: e.message, code: "ANTHROPIC_CONFIGURATION_ERROR" }, 503);
     if (e instanceof TransientLlmError) return json(req, { error: e instanceof LlmKeyMissingError ? "Clé ANTHROPIC_API_KEY absente : l'ajouter dans Supabase → Edge Functions → Secrets" : "Service IA momentanément indisponible, réessayez", code: "AI_PROVIDER_TEMPORARY_ERROR" }, 503);
