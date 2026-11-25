@@ -508,9 +508,12 @@ export function initJarvis(A, stage) {
     autoCycleBusy = true;
     try {
       const result = await sendPending({ kind: "instruction", texte:
-        "SUPERVISION AUTONOME JARVIS — constat : " + candidate.constat +
-        ". Piste : " + candidate.piste + ". Consigne : " + candidate.action.texte +
-        " Limites impératives : analyse et prépare un plan interne ; ne contacte aucun prospect ou client, n'envoie aucun WhatsApp ni e-mail, ne prends aucun engagement financier, ne supprime aucune fiche et ne relance/réassigne/modifie aucune mission sans validation de la direction."
+        "REMONTEE DE JARVIS AU DIRECTEUR GENERAL — chef de cabinet opérationnel. " +
+        "Constat observé dans la Salle de contrôle : " + candidate.constat +
+        ". Piste de diagnostic : " + candidate.piste +
+        ". Demande au DG : vérifie ce constat avec consulter_indicateurs, consulter_taches et consulter_performance selon le sujet ; identifie la cause racine ; décide si une action est nécessaire ; si oui, délègue au directeur compétent avec livrable, responsable, échéance, indicateur et dépendances ; contrôle ensuite le résultat et rends compte au Président via repondre_president. " +
+        "Jarvis ne donne pas d'ordre aux équipes et cette remontée ne vaut pas validation du Président. " +
+        "Garde-fous : aucune communication externe, aucun WhatsApp/e-mail, aucun engagement financier ou contractuel, aucune suppression, aucun changement de budget ou redémarrage/réaffectation de mission sans autorisation appropriée."
       });
       if (result === "transmis") {
         try { localStorage.setItem(JARVIS_AUTO_RUN_KEY, JSON.stringify({ signature, at: Date.now(), constat: candidate.constat })); } catch { /* le cycle reste valide pour la session */ }
