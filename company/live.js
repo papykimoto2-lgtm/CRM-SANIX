@@ -208,6 +208,28 @@ function renderFeed(markNew) {
   $("#feed").innerHTML = D.actions.slice(0, 40).map((a) => { const [ic, tx] = actView(a); return `<div class="it ${markNew && a.id > D.lastId ? "new" : ""}"><span class="ic">${ic}</span><div><b>${esc(nameOf(a.agent_id))}</b> ${tx.replace(/</g, "&lt;")}<small>${ago(a.at)}</small></div></div>`; }).join("") || `<div class="muted">Aucune action récente.</div>`;
   if (markNew) for (const a of fresh.slice(0, 6).reverse()) (view3d ? view3d.fx(a) : fx(a)); if (D.actions.length) D.lastId = Math.max(D.lastId, ...D.actions.map((a) => a.id));
 }
+function renderWorkfloor() {
+  const taskEl = $("#workfloor-tasks"), eventEl = $("#workfloor-events"), meta = $("#workfloor-meta");
+  if (!taskEl || !eventEl) return;
+  const active = D.tasks.filter(t => ["en_cours","attente_sous_taches","attente_validation"].includes(t.statut))
+    .sort((a,b) => (a.statut === "en_cours" ? 0 : 1) - (b.statut === "en_cours" ? 0 : 1) || Date.parse(b.updated_at || 0) - Date.parse(a.updated_at || 0)).slice(0,5);
+  taskEl.innerHTML = active.map(t => {
+    const progress = Number(t.progression);
+    const hasProgress = Number.isFinite(progress) && progress >= 0 && progress <= 100;
+    const status = TASK_L[t.statut] || t.statut;
+    return '<article class="workfloor-task" style="--task-color:' + (TASK_C[t.statut] || "#22D3EE") + '">' +
+      '<b>' + esc(clip(t.titre || "Mission sans titre", 58)) + '</b>' +
+      '<small>' + esc(nameOf(t.agent_id)) + ' · <span class="wf-state">' + esc(status) + '</span></small>' +
+      '<small>' + (t.started_at ? 'Depuis ' + esc(dur(Date.now() - Date.parse(t.started_at))) : 'Mise à jour ' + esc(ago(t.updated_at))) +
+      (hasProgress ? ' · ' + Math.round(progress) + '% déclaré' : '') + '</small></article>';
+  }).join("") || '<div class="workfloor-empty">Aucune mission en exécution ou coordination actuellement.</div>';
+  eventEl.innerHTML = D.actions.slice(0,4).map(a => {
+    const [ic, description] = actView(a);
+    return '<div class="workfloor-event"><em>' + esc(nameOf(a.agent_id)) + '</em> ' + esc(description.replace(/<[^>]*>/g,"")) + '<small>' + esc(ago(a.at)) + '</small></div>';
+  }).join("") || '<div class="workfloor-empty">En attente de la première action enregistrée.</div>';
+  if (meta) meta.textContent = active.length + ' missions actives affichées · ' + D.actions.length + ' actions récentes · rafraîchi à ' + new Date().toLocaleTimeString("fr-FR",{timeZone:"Africa/Abidjan"});
+}
+
 function renderBusiness() {
   const el = $("#business-panel"); if (!el) return;
   if (!Array.isArray(D.salesRows)) { el.innerHTML = '<h2>Pilotage commercial</h2><p class="panel-muted">Indicateurs commerciaux indisponibles avec les autorisations actuelles.</p>'; return; }
@@ -1242,7 +1264,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.tasks || [], filters: relationFilters }); } renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.tasks || [], filters: relationFilters }); } renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderWorkfloor(); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
