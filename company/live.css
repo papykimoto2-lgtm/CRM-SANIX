@@ -582,3 +582,14 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .crm-followup-treat{border:1px solid rgba(34,211,238,.35);border-radius:8px;padding:8px 10px;background:rgba(34,211,238,.08);color:#a5f3fc;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap}
 .crm-followup-treat:hover,.crm-followup-treat:focus-visible{background:rgba(34,211,238,.17);border-color:#22d3ee;outline:none}
 @media(max-width:520px){.crm-followup-item{grid-template-columns:1fr}.crm-followup-treat{justify-self:start}}
+
+/* Executive Command Center V14 — commandement et performance des directions. */
+.executive-command-grid{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:6px}
+.executive-command-grid>div:first-child b,.executive-command-grid>div:nth-child(2) b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.executive-direction{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:7px 3px;border-bottom:1px solid rgba(27,44,77,.7);font-size:10px}
+.executive-direction>div{min-width:0}
+.executive-direction b,.executive-direction small{display:block;overflow-wrap:anywhere}
+.executive-direction small{color:var(--mute);font-size:9px;margin-top:2px}
+.executive-direction>span{color:var(--tx);text-align:right}
+.executive-direction>em{font-style:normal;color:var(--warn);text-align:right;white-space:nowrap}
+@media(max-width:640px){.executive-command-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.executive-direction{grid-template-columns:minmax(0,1fr) auto}.executive-direction>em{grid-column:2}}

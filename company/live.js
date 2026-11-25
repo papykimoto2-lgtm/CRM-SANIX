@@ -646,6 +646,39 @@ function renderExecutiveCommandCenter() {
   const missing = D.orderRows === null || D.execRows === null || D.execConfig === null || D.products === null;
   const fmtPct = n => n === null ? "n/d" : n.toLocaleString("fr-FR")+" %";
   const alerts = [];
+  // Pilotage des agents et des directions : uniquement les agents et missions réellement chargés.
+  const agents = Array.isArray(D.agents) ? D.agents : [];
+  const tasks = Array.isArray(D.tasks) ? D.tasks : [];
+  const terminal = new Set(["terminee","annulee"]);
+  const openTasks = tasks.filter(t => !terminal.has(String(t.statut || "").toLowerCase()));
+  const overdueTasks = openTasks.filter(t => t.echeance && Date.parse(t.echeance) < now.getTime());
+  const blockedTasks = openTasks.filter(t => ["bloquee","echouee"].includes(String(t.statut || "").toLowerCase()));
+  const doneTasks = tasks.filter(t => String(t.statut || "").toLowerCase() === "terminee");
+  const activeAgents = agents.filter(a => a.etat === "actif");
+  const dg = agents.find(a => Number(a.niveau) === 1 || a.code === "sanix_ai_general_director");
+  const jarvis = agents.find(a => /jarvis/i.test([a.code,a.nom,a.fonction].join(" ")));
+  const descendants = id => {
+    const found = new Set(), queue = [id];
+    while (queue.length) {
+      const parent = queue.shift();
+      for (const a of agents) if (a.manager_id === parent && !found.has(a.id)) { found.add(a.id); queue.push(a.id); }
+    }
+    return found;
+  };
+  const directors = agents.filter(a => Number(a.niveau) === 2 && a.etat !== "archive");
+  const directionRows = directors.map(dir => {
+    const scope = descendants(dir.id); scope.add(dir.id);
+    const ownTasks = tasks.filter(t => scope.has(t.agent_id));
+    const open = ownTasks.filter(t => !terminal.has(String(t.statut || "").toLowerCase()));
+    return { name: dir.nom, agents: scope.size, open: open.length,
+      overdue: open.filter(t => t.echeance && Date.parse(t.echeance) < now.getTime()).length,
+      blocked: open.filter(t => ["bloquee","echouee"].includes(String(t.statut || "").toLowerCase())).length,
+      done: ownTasks.filter(t => String(t.statut || "").toLowerCase() === "terminee").length };
+  }).sort((a,b) => (b.overdue+b.blocked)-(a.overdue+a.blocked) || b.open-a.open);
+  if (overdueTasks.length) alerts.push(overdueTasks.length+" mission(s) dépassent leur échéance dans le périmètre chargé.");
+  if (blockedTasks.length) alerts.push(blockedTasks.length+" mission(s) sont bloquées ou en échec dans le périmètre chargé.");
+  if (!dg) alerts.push("Directeur général IA non identifié dans les agents chargés.");
+  if (!jarvis) alerts.push("Jarvis non identifié dans les agents chargés.");
   if (goal === null || !(goal>0)) alerts.push("Objectif de chiffre d’affaires non renseigné pour ce mois.");
   else if (attainment !== null && attainment < Math.round(elapsed/days*100)) alerts.push("Le rythme de CA est inférieur à la progression calendaire de l’objectif.");
   if (D.execRows !== null && !expenses.length) alerts.push("Aucune dépense de gestion saisie pour le mois.");
@@ -659,6 +692,21 @@ function renderExecutiveCommandCenter() {
       <div><b>${D.execRows===null?"n/d":money(expenseActual)}</b><small>Dépenses réelles saisies</small></div>
       <div><b>${D.execRows===null?"n/d":money(expenseRetained)}</b><small>Dépenses retenues · réel sinon prévu</small></div>
       <div><b>${D.execRows===null?"n/d":money(ca-expenseRetained)}</b><small>Solde après dépenses suivies · indicatif</small></div>
+    </div>
+    <div class="executive-section"><h3>Commandement IA · DG & Jarvis</h3>
+      <div class="executive-grid executive-command-grid">
+        <div><b>${dg ? esc(dg.nom) : "Non identifié"}</b><small>Directeur général IA · ${dg ? esc(dg.etat || "état inconnu") : "source agents"}</small></div>
+        <div><b>${jarvis ? esc(jarvis.nom) : "Non identifié"}</b><small>Jarvis · ${jarvis ? esc(jarvis.etat || "état inconnu") : "source agents"}</small></div>
+        <div><b>${agents.length ? activeAgents.length+" / "+agents.length : "n/d"}</b><small>Agents actifs / agents chargés</small></div>
+      </div>
+      <div class="executive-facts"><span>Missions ouvertes · période chargée</span><b>${openTasks.length}</b></div>
+      <div class="executive-facts"><span>Missions en retard</span><b>${overdueTasks.length}</b></div>
+      <div class="executive-facts"><span>Missions bloquées / en échec</span><b>${blockedTasks.length}</b></div>
+      <div class="executive-facts"><span>Missions terminées · période chargée</span><b>${doneTasks.length}</b></div>
+      <p class="panel-note">Périmètre : missions récentes chargées par la Salle de contrôle (7 jours). Les compteurs ne représentent pas l'historique complet. L'identification du DG et de Jarvis repose sur les agents présents dans Supabase.</p>
+    </div>
+    <div class="executive-section"><h3>Performance des directions · période chargée</h3>
+      ${directionRows.length ? directionRows.slice(0,8).map(d=>`<div class="executive-direction"><div><b>${esc(d.name)}</b><small>${d.agents} agent(s) dans sa ligne hiérarchique</small></div><span>${d.open} ouvertes · ${d.done} terminées</span><em>${d.overdue} retard · ${d.blocked} bloquées</em></div>`).join("") : '<p class="panel-muted">Aucune direction de niveau 2 identifiée dans les données chargées.</p>'}
     </div>
     <div class="executive-section"><h3>Performance par logiciel · CA HT</h3>
       ${productRows.length ? productRows.slice(0,8).map(([id,value])=>`<div class="executive-product"><span>${esc(id==="hors_perimetre"?"Hors périmètre":productName.get(id)||id)}</span><b>${money(value)}</b></div>`).join("") : '<p class="panel-muted">Aucune vente exploitable sur le mois.</p>'}
