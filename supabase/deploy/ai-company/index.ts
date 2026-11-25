@@ -1651,7 +1651,7 @@ async function callClaude(o) {
   if (b.ok === false) throw new BudgetError(String(b.raison ?? "Budget IA atteint"));
   const { data: providerState } = await db().from("ai_governance").select("provider_pause_until,provider_pause_reason").eq("id", 1).maybeSingle();
   if (providerState?.provider_pause_until && new Date(providerState.provider_pause_until).getTime() > Date.now()) {
-    throw new ProviderQuotaError(providerState.provider_pause_reason || "Quota du fournisseur IA atteint ; appels suspendus jusqu'à réinitialisation.");
+    throw new ProviderQuotaError(providerState.provider_pause_reason || "Quota du fournisseur IA atteint ; appels suspendus jusqu'\xE0 r\xE9initialisation.");
   }
   const model = o.model ?? await modelForLevel(o.niveau);
   const params = {
@@ -1681,9 +1681,9 @@ async function callClaude(o) {
     const normalized = message2.toLowerCase();
     if (status === 400 && /you have reached.*api usage limits|specified api usage limits|usage limit.*regain access/.test(normalized)) {
       const resetMatch = message2.match(/regain access on (\\d{4}-\\d{2}-\\d{2}) at (\\d{2}:\\d{2}) UTC/i);
-      const resetAt = resetMatch ? new Date(`${resetMatch[1]}T${resetMatch[2]}:00Z`) : new Date(Date.now() + 24 * 60 * 60 * 1000);
-      if (!Number.isFinite(resetAt.getTime()) || resetAt.getTime() <= Date.now()) resetAt.setTime(Date.now() + 24 * 60 * 60 * 1000);
-      const reason = "Plafond Anthropic atteint. Reprise automatique prévue le " + resetAt.toISOString() + ". Les appels IA sont suspendus pour éviter les tentatives inutiles.";
+      const resetAt = resetMatch ? /* @__PURE__ */ new Date(`${resetMatch[1]}T${resetMatch[2]}:00Z`) : new Date(Date.now() + 24 * 60 * 60 * 1e3);
+      if (!Number.isFinite(resetAt.getTime()) || resetAt.getTime() <= Date.now()) resetAt.setTime(Date.now() + 24 * 60 * 60 * 1e3);
+      const reason = `Plafond Anthropic atteint. Reprise automatique pr\xE9vue le ${resetAt.toISOString()}. Les appels IA sont suspendus pour \xE9viter les tentatives inutiles.`;
       await db().from("ai_governance").update({ provider_pause_until: resetAt.toISOString(), provider_pause_reason: reason }).eq("id", 1);
       throw new ProviderQuotaError(reason);
     }
@@ -1769,7 +1769,26 @@ var MANAGER_METHOD = `M\xC9THODE DE MANAGEMENT
 3. Ordonner par d\xE9pendances (assigner_mission avec depend_de) : recherche \u2192 enrichissement \u2192 qualification \u2192 contact \u2192 rendez-vous \u2192 offre.
 4. Une fois les missions lanc\xE9es : attendre_sous_taches. \xC0 la reprise, lis les rapports, \xE9value (evaluer_tache), corrige (modifier_agent, r\xE9attribution), puis conclus.
 5. Agent faible : r\xE9viser sa charte, lui adjoindre un compl\xE9ment, le remplacer ou le suspendre. Jamais de multiplication d'agents sans r\xE9sultat.`;
-var DG_RULES = `INTERLOCUTEUR : le Pr\xE9sident (direction de SANIX AFRICA). R\xE9ponds-lui avec repondre_president : plan d'action d\xE8s que ton organisation est en place, synth\xE8se des r\xE9sultats, question ou demande de validation. Pour une question simple (\xAB pourquoi\u2026 \xBB, \xAB analyse\u2026 \xBB), consulte les indicateurs puis r\xE9ponds directement. Au-del\xE0 de tes d\xE9l\xE9gations, demande validation ; ne pr\xE9sume jamais l'accord. Si l'instruction vient de WhatsApp (marqu\xE9e \xAB par WhatsApp \xBB dans la conversation), r\xE9ponds en 12 lignes maximum, sans tableau ni mise en forme lourde : texte court, chiffres cl\xE9s, d\xE9cision attendue.`;
+var DG_RULES = `MANDAT DE DIRECTION G\xC9N\xC9RALE \u2014 AUTORIT\xC9 ET RESPONSABILIT\xC9
+Tu es le seul directeur g\xE9n\xE9ral de SANIX AI VIRTUAL COMPANY. Tu es responsable du r\xE9sultat collectif de toutes les directions et de tous les agents, pas seulement de l'ex\xE9cution de ta propre mission. Le Pr\xE9sident est ton seul sup\xE9rieur et d\xE9cide des orientations majeures.
+
+M\xC9THODE EX\xC9CUTIVE OBLIGATOIRE
+1. Cadrer : reformule le r\xE9sultat m\xE9tier attendu, le p\xE9rim\xE8tre (produit, segment, zone), la cible chiffr\xE9e, l'\xE9ch\xE9ance, le budget et les contraintes. Si un \xE9l\xE9ment manque, pose une seule question d\xE9terminante ou propose une hypoth\xE8se explicitement signal\xE9e.
+2. Diagnostiquer avant d'agir : consulte consulter_indicateurs, consulter_taches et consulter_performance. Examine les missions ouvertes, retards, blocages, r\xE9sultats, charge et co\xFBts. Ne d\xE9duis jamais la performance d'un agent de sa seule pr\xE9sence visuelle.
+3. D\xE9cider : classe les priorit\xE9s par impact m\xE9tier, urgence, confiance des donn\xE9es, co\xFBt et d\xE9pendances. Choisis au plus 3 priorit\xE9s simultan\xE9es pour \xE9viter la dispersion. Distingue faits v\xE9rifi\xE9s, hypoth\xE8ses et risques.
+4. Organiser : d\xE9l\xE8gue d'abord aux directeurs de niveau 2 ; laisse-les g\xE9rer leurs \xE9quipes. Cr\xE9e des sous-missions avec livrable v\xE9rifiable, crit\xE8res d'acceptation, objectifs chiffr\xE9s, responsable unique, \xE9ch\xE9ance, priorit\xE9 et d\xE9pendances. N'envoie pas deux missions concurrentes pour le m\xEAme r\xE9sultat. N'interviens directement aupr\xE8s d'un agent inf\xE9rieur que si aucun directeur comp\xE9tent n'est disponible ou si une escalade est justifi\xE9e.
+5. Piloter : apr\xE8s d\xE9l\xE9gation, appelle attendre_sous_taches. \xC0 la reprise, lis les rapports et les r\xE9sultats, contr\xF4le les preuves, compare le r\xE9alis\xE9 \xE0 l'objectif, \xE9value chaque livrable avec evaluer_tache et demande une correction si le r\xE9sultat est incomplet. Une mission termin\xE9e sans preuve exploitable n'est pas un succ\xE8s.
+6. Arbitrer : en cas de retard, \xE9chec ou d\xE9pendance, identifie la cause (comp\xE9tence, donn\xE9es, acc\xE8s, budget, charge, consigne). R\xE9affecte ou r\xE9vise la charte seulement apr\xE8s diagnostic. Ne cr\xE9e pas d'agents suppl\xE9mentaires par r\xE9flexe. Demande validation au Pr\xE9sident pour tout d\xE9passement de d\xE9l\xE9gation, changement de budget, communication externe non autoris\xE9e, engagement contractuel ou d\xE9cision irr\xE9versible.
+7. Capitaliser : m\xE9morise les proc\xE9dures et enseignements r\xE9utilisables ; rappelle-les avant de relancer une recherche. Mesure le co\xFBt IA par r\xE9sultat m\xE9tier et privil\xE9gie la solution la plus efficace, pas le plus grand nombre d'agents.
+8. Rendre compte : r\xE9ponds au Pr\xE9sident avec repondre_president \xE0 chaque instruction structurante. Pr\xE9sente : d\xE9cision recommand\xE9e, raisons, responsables, livrables, \xE9ch\xE9ances, indicateurs, risques, validations n\xE9cessaires et prochaine revue. En fin de mission, donne les r\xE9sultats obtenus, \xE9carts, causes et actions correctives.
+
+COMP\xC9TENCES DE DIRECTION \xC0 MOBILISER
+Strat\xE9gie et objectifs ; planification multi-produits ; allocation des ressources ; organisation et conception d'\xE9quipes ; management et \xE9valuation ; pilotage commercial et CRM ; lecture financi\xE8re et arbitrage budg\xE9taire ; gestion des risques et d\xE9pendances ; am\xE9lioration continue ; communication ex\xE9cutive ; coordination inter-directions. Pour les analyses sp\xE9cialis\xE9es, mandate le directeur comp\xE9tent et synth\xE9tise ses conclusions au lieu d'inventer une expertise ou des chiffres.
+
+RELATION AVEC JARVIS
+Jarvis est ton chef de cabinet op\xE9rationnel et ton capteur de terrain, pas un sup\xE9rieur hi\xE9rarchique ni un donneur d'ordre autonome. Ses remont\xE9es (situation, anomalies, demandes du Pr\xE9sident) sont des signaux \xE0 v\xE9rifier. Croise-les avec les outils et les donn\xE9es de l'entreprise. R\xE9ponds de fa\xE7on exploitable : d\xE9cision, mission(s) confi\xE9e(s), responsable(s), \xE9ch\xE9ance(s), statut de validation et point de contr\xF4le. Si Jarvis signale une anomalie, accuse r\xE9ception, diagnostique-la et donne un plan de traitement ; ne lui demande pas de faire le travail du directeur g\xE9n\xE9ral.
+
+INTERLOCUTEUR : le Pr\xE9sident de SANIX AFRICA. Utilise repondre_president pour le plan d'action, les r\xE9sultats, les questions et les demandes de validation. Pour une question simple, consulte les indicateurs pertinents puis r\xE9ponds directement. Au-del\xE0 de tes d\xE9l\xE9gations, demande validation ; ne pr\xE9sume jamais l'accord. Si l'instruction vient de WhatsApp (marqu\xE9e \xAB par WhatsApp \xBB), r\xE9ponds en 12 lignes maximum, sans tableau ni mise en forme lourde : texte court, chiffres cl\xE9s, d\xE9cision attendue.`;
 var SECTIONS = [
   ["identite", "Identit\xE9"],
   ["fonction", "Fonction"],
@@ -2565,7 +2584,7 @@ async function runCrmTool(ctx, name, raw) {
       if (input.score_min !== null) q = q.gte("score", clamp(input.score_min, 100));
       if (input.produit) q = q.contains("produits_recommandes", [String(input.produit).trim().toLowerCase()]);
       const limit = Math.max(1, Math.min(100, Math.round(Number(input.limite) || 20)));
-      const offset = Math.max(0, Math.min(10000, Math.round(Number(input.offset) || 0)));
+      const offset = Math.max(0, Math.min(1e4, Math.round(Number(input.offset) || 0)));
       const { data, error } = await q.order("score", { ascending: false }).range(offset, offset + limit - 1);
       if (error) throw new Error(error.message);
       for (const p of data ?? []) ctx.scope.add(String(p.id).toLowerCase());
@@ -3915,11 +3934,6 @@ var IMPL = {
       echeance: heures ? new Date(Date.now() + heures * 36e5).toISOString() : null
     }).select("id").single();
     if (error) throw new Error(error.code === "23505" ? "Une mission identique est d\xE9j\xE0 ouverte pour cet agent : ne la recr\xE9e pas" : error.message);
-    // Lire l'agent effectivement retenu par le trigger de capacit\xE9.
-    const { data: actualTask, error: actualError } = await db()
-      .from("ai_agent_tasks").select("agent_id").eq("id", t.id).single();
-    if (actualError || !actualTask?.agent_id) throw new Error(actualError?.message ?? "Agent r\xE9ellement affect\xE9 introuvable");
-    const actualAgent = ctx.org.byId(actualTask.agent_id);
     if (deps.length) {
       const { error: e2 } = await db().from("ai_task_dependencies").insert(deps.map((d) => ({ task_id: t.id, depend_de: d })));
       if (e2) {
@@ -3927,10 +3941,9 @@ var IMPL = {
         throw new Error(e2.message);
       }
     }
-    const assignedId = actualTask.agent_id;
-    (ctx.assigned ??= /* @__PURE__ */ new Set()).add(assignedId);
-    move(ctx, ctx.agent.id, `assign:${assignedId}`, { lieu: "poste_agent", cible: assignedId, ms: 12e3, motif: "brief" });
-    return { task_id: t.id, agent: actualAgent?.code ?? assignedId, agent_reaffecte: assignedId !== target2.id, statut: "a_faire", depend_de: deps };
+    (ctx.assigned ??= /* @__PURE__ */ new Set()).add(target2.id);
+    move(ctx, ctx.agent.id, `assign:${target2.id}`, { lieu: "poste_agent", cible: target2.id, ms: 12e3, motif: "brief" });
+    return { task_id: t.id, agent: target2.code, statut: "a_faire", depend_de: deps };
   },
   async attendre_sous_taches(ctx) {
     const open = await openChildren(ctx.task.id);
@@ -4470,7 +4483,7 @@ async function onError(ctx, e) {
     return "reportee";
   }
   if (e instanceof ProviderQuotaError) {
-    const note = `[Système] ${e.message} Mission mise en attente sans pénaliser ni suspendre l'agent. Elle ne sera pas relancée tant que le quota fournisseur ne sera pas rétabli.`;
+    const note = `[Syst\xE8me] ${e.message} Mission mise en attente sans p\xE9naliser ni suspendre l'agent. Elle ne sera pas relanc\xE9e tant que le quota fournisseur ne sera pas r\xE9tabli.`;
     await db().from("ai_agent_tasks").update({ statut: "bloquee", progression: await saveJournal(ctx, note) }).eq("id", task.id);
     await db().from("ai_agents").update({ activite: "disponible" }).eq("id", agent.id).not("activite", "eq", "en_reunion");
     await incidentOnce("fournisseur_quota_atteint", "critique", e.message, 24 * 36e5);
@@ -4782,7 +4795,7 @@ async function tickCompany() {
   }
   const { data: providerPause } = await db().from("ai_governance").select("provider_pause_until,provider_pause_reason").eq("id", 1).maybeSingle();
   if (providerPause?.provider_pause_until && new Date(providerPause.provider_pause_until).getTime() > Date.now()) {
-    return { ...res, ignore: providerPause.provider_pause_reason || "Quota fournisseur IA suspendu : missions conservées en attente." };
+    return { ...res, ignore: providerPause.provider_pause_reason || "Quota fournisseur IA suspendu : missions conserv\xE9es en attente." };
   }
   if (!llmKeyPresent()) {
     await incidentOnce("cle_ia_absente", "critique", "Secret ANTHROPIC_API_KEY absent : les agents sont en pause. Supabase \u2192 Edge Functions \u2192 Secrets \u2192 ajouter ANTHROPIC_API_KEY.", 6 * 36e5);
@@ -5445,8 +5458,8 @@ async function reportTick(now = /* @__PURE__ */ new Date()) {
   await db().rpc("ai_compute_performance", { p_jour: jourAbidjan(now) });
   const { data: providerPause } = await db().from("ai_governance").select("provider_pause_until,provider_pause_reason").eq("id", 1).maybeSingle();
   if (providerPause?.provider_pause_until && new Date(providerPause.provider_pause_until).getTime() > now.getTime()) {
-    const incidents = await flushIncidents(now);
-    return { generes: [], incidents, ignore: providerPause.provider_pause_reason || "Rapports IA suspendus jusqu'au rétablissement du quota fournisseur." };
+    const incidents2 = await flushIncidents(now);
+    return { generes: [], incidents: incidents2 };
   }
   const { data: settings } = await db().from("ai_report_settings").select("*");
   const generes = [];
