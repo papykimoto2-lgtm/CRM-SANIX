@@ -1,7 +1,7 @@
 // Relances commerciales planifiées (ai_followups) : réservation atomique (ai_claim_due_followups), reprise après erreur avec attente
 // croissante, aucune perte quand l'IA est indisponible, protection contre le double envoi après une reprise.
 import { audit, db } from "./core.ts";
-import { BudgetError, TransientLlmError } from "./llm.ts";
+import { BudgetError, ProviderQuotaError, TransientLlmError } from "./llm.ts";
 
 export const MAX_RELANCES = 4;        // relances sans réponse avant mise en veille du prospect
 export const MAX_TENTATIVES = 5;      // erreurs répétées (hors pannes IA) avant annulation de la relance
@@ -48,7 +48,7 @@ export async function tickFollowups(runRelance: RunRelance, limit = 10) {
       await finishFollowup(f.id, "faite");
       traites++;
     } catch (e) {
-      if (e instanceof BudgetError || e instanceof TransientLlmError) {
+      if (e instanceof ProviderQuotaError || e instanceof BudgetError || e instanceof TransientLlmError) {
         // Panne du fournisseur IA, budget atteint ou clé absente : ce n'est pas la faute de la relance (tentative rendue), on s'arrête là.
         await retryFollowup(f, (e as Error).message, { minimumMinutes: 60, refund: true });
         reprogrammes++;
