@@ -223,11 +223,18 @@ function renderWorkfloor() {
       '<small>' + (t.started_at ? 'Depuis ' + esc(dur(Date.now() - Date.parse(t.started_at))) : 'Mise à jour ' + esc(ago(t.updated_at))) +
       (hasProgress ? ' · ' + Math.round(progress) + '% déclaré' : '') + '</small></article>';
   }).join("") || '<div class="workfloor-empty">Aucune mission en exécution ou coordination actuellement.</div>';
-  eventEl.innerHTML = D.actions.slice(0,4).map(a => {
-    const [ic, description] = actView(a);
-    return '<div class="workfloor-event"><em>' + esc(nameOf(a.agent_id)) + '</em> ' + esc(description.replace(/<[^>]*>/g,"")) + '<small>' + esc(ago(a.at)) + '</small></div>';
-  }).join("") || '<div class="workfloor-empty">En attente de la première action enregistrée.</div>';
-  if (meta) meta.textContent = active.length + ' missions actives affichées · ' + D.actions.length + ' actions récentes · rafraîchi à ' + new Date().toLocaleTimeString("fr-FR",{timeZone:"Africa/Abidjan"});
+  const comms = (D.communications || []).slice(0,6);
+  const delegations = D.tasks.filter(t => t.parent_id || t.donneur_agent_id).slice(0,6);
+  const exchangeRows = comms.map(c => {
+    const from = nameOf(c.de_agent_id), to = nameOf(c.vers_agent_id);
+    return '<div class="workfloor-event"><em>' + esc(from) + '</em> → <em>' + esc(to) + '</em> ' + esc(clip(c.objet || c.type || "Échange",48)) + '<small>' + esc(ago(c.created_at)) + '</small></div>';
+  });
+  delegations.forEach(t => exchangeRows.push('<div class="workfloor-event"><em>' + esc(nameOf(t.donneur_agent_id)) + '</em> → <em>' + esc(nameOf(t.agent_id)) + '</em> délégation : ' + esc(clip(t.titre,38)) + '<small>' + esc(ago(t.created_at)) + '</small></div>'));
+  eventEl.innerHTML = exchangeRows.slice(0,6).join("") || '<div class="workfloor-empty">Aucun échange ou transfert enregistré récemment.</div>';
+  const resultsEl = $("#workfloor-results");
+  const delivered = D.tasks.filter(t => t.statut === "terminee").sort((a,b) => Date.parse(b.updated_at || 0)-Date.parse(a.updated_at || 0)).slice(0,5);
+  if (resultsEl) resultsEl.innerHTML = delivered.map(t => '<article class="wf-result"><b>✓ ' + esc(clip(t.titre,48)) + '</b><small>' + esc(nameOf(t.agent_id)) + ' · ' + esc(ago(t.updated_at)) + '</small>' + (t.rapport ? '<p>' + esc(clip(String(t.rapport),105)) + '</p>' : '') + '</article>').join("") || '<div class="workfloor-empty">Aucun livrable terminé dans la période chargée.</div>';
+  if (meta) meta.textContent = active.length + ' missions actives · ' + comms.length + ' échanges chargés · actualisation ' + new Date().toLocaleTimeString("fr-FR",{timeZone:"Africa/Abidjan"});
 }
 
 function renderBusiness() {
