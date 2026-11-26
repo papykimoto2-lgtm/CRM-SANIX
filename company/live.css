@@ -673,3 +673,36 @@ body.exec-view .executive-facts{padding:8px 0}
 .wf-journal-item p{margin:4px 0 0;color:#C2D2EA;font-size:9px;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:1100px){.wf-journal{top:365px;bottom:54px;left:10px;right:58px}}
 @media(max-width:640px){.wf-journal{top:360px;left:8px;right:54px;bottom:50px;padding:8px}.wf-journal-filters{gap:5px}.wf-journal-filters label{flex-direction:column;align-items:flex-start}.wf-journal-filters select{max-width:100%;width:100%}.wf-journal-item{padding:6px}.wf-journal-item p{font-size:8px}}
+
+/* ═══ Scène épurée (v2) : la scène 3D reste lisible, les panneaux s'ouvrent à la demande ═══ */
+.ov-bar{position:absolute;z-index:7;top:12px;left:12px;display:flex;gap:6px;flex-wrap:wrap;max-width:calc(100% - 76px)}
+.ov-bar button{height:32px;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:rgba(5,11,22,.82);color:var(--tx);font:600 11px var(--font);cursor:pointer;backdrop-filter:blur(6px)}
+.ov-bar button:hover{border-color:var(--cy)}.ov-bar button[aria-pressed=true]{background:rgba(34,211,238,.18);border-color:var(--cy);color:#CFFAFE}
+.workflow-panel,.workfloor-panel{display:none}
+.stage[data-ov=workflow] .workflow-panel{display:flex;top:52px;right:62px}
+.stage[data-ov=workfloor] .workfloor-panel{display:block;top:52px;max-height:min(300px,56%)}
+.stage[data-ov=workfloor] .wf-journal{top:52px}
+.stage:has(#relations-filters:not([hidden])) .workflow-panel,.stage:has(#relations-filters:not([hidden])) .workfloor-panel,.stage:has(#relations-filters:not([hidden])) .wf-journal{top:var(--rel-top,104px)}
+/* Filtres du réseau : une seule ligne, sous la barre des panneaux */
+.relations-filters{top:52px;padding:6px 9px;gap:8px;flex-wrap:wrap}
+.relations-filters label{flex-direction:row;align-items:center;gap:6px}
+.relations-filters select,.relations-filters input{height:30px;min-width:130px}
+/* Légendes : à la demande, une seule à la fois */
+.legend,.relations-legend{display:none}
+.stage.legend-on .legend{display:flex}.stage.legend-on .relations-legend:not([hidden]){display:flex}
+.stage:has(#relations-canvas:not([hidden])).legend-on .legend{display:none}
+.legend,.relations-legend{bottom:78px!important;max-width:calc(100% - 130px)}
+/* Jarvis : barre compacte, seul le dernier message reste visible tant qu'on ne survole ni ne saisit */
+#jarvis{width:min(560px,calc(100% - 110px))}
+#jarvis:not(:hover):not(:focus-within) #jv-log .ln:not(:last-child){display:none}
+#jv-log{max-height:120px}
+.hint{display:none}
+/* Colonne de droite : accordéon (tout replié sauf alertes, santé et flux) */
+.acc>.panel-head,.acc>h2{cursor:pointer;position:relative;padding-right:22px}
+.acc>.panel-head::after,.acc>h2::after{content:"▾";position:absolute;right:2px;top:50%;transform:translateY(-50%);color:var(--mute);font-size:12px;transition:transform .2s}
+.acc.collapsed>.panel-head::after,.acc.collapsed>h2::after{transform:translateY(-50%) rotate(-90deg)}
+.acc.collapsed>:not(.panel-head):not(h2){display:none}
+.acc.collapsed{padding-bottom:10px}
+@media(max-width:640px){.ov-bar{top:8px;left:8px;max-width:calc(100% - 64px)}.ov-bar button{height:30px;padding:0 9px;font-size:10px}.stage[data-ov=workflow] .workflow-panel,.stage[data-ov=workfloor] .workfloor-panel{top:46px;left:8px;right:54px}.relations-filters{top:46px}}
+/* Le réseau relationnel démarre sous la barre des panneaux et les filtres (rien n'est masqué) */
+.stage:has(#relations-filters:not([hidden])) #relations-canvas{inset:auto 0 0 0;top:var(--rel-top,106px);height:calc(100% - var(--rel-top,106px))}

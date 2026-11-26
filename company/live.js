@@ -1297,6 +1297,19 @@ function initControls() {
     if (!view3d) return;
     if (c === "in") view3d.zoom(.72); else if (c === "out") view3d.zoom(1.4); else if (c === "reset") view3d.reset(); else if (c === "auto") b.classList.toggle("on", view3d.toggleAuto()); else if (c === "dyn") b.classList.toggle("on", view3d.toggleDynamic());
     else if (c === "focus") { document.body.classList.toggle("focus"); setTimeout(() => view3d.resize(), 60); } });
+  // Scène épurée : un seul panneau (Workflow ou Opérations) ouvert à la demande, légende à part ; panneaux de droite repliés (accordéon mémorisé).
+  { const stage = $(".stage"), bar = $("#ov-bar");
+    bar?.addEventListener("click", (ev) => { const b = ev.target.closest("button[data-ov]"); if (!b) return; const k = b.dataset.ov;
+      if (k === "legend") stage.classList.toggle("legend-on"); else stage.dataset.ov = stage.dataset.ov === k ? "" : k;
+      bar.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.ov === "legend" ? stage.classList.contains("legend-on") : stage.dataset.ov === x.dataset.ov))); setTimeout(() => (relationsMode ? null : view3d?.resize()), 40); });
+    document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && stage.dataset.ov) { stage.dataset.ov = ""; bar.querySelectorAll("button[data-ov]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.ov === "legend" && stage.classList.contains("legend-on")))); } });
+    const rf = $("#relations-filters"); if (rf && window.ResizeObserver) new ResizeObserver(() => { if (!rf.hidden) stage.style.setProperty("--rel-top", Math.ceil(rf.offsetTop + rf.offsetHeight + 8) + "px"); }).observe(rf);   // les filtres peuvent passer sur deux lignes : la scène démarre toujours dessous
+    const KEY = "sanix_live_acc", IDS = ["business-panel", "finance-panel", "whatsapp-panel", "performance-panel", "ops-panel", "bi-panel", "forecast-panel", "executive-panel"];
+    let open = new Set(); try { open = new Set(JSON.parse(localStorage.getItem(KEY) || "[]")); } catch { /* aucune préférence */ }
+    for (const id of IDS) { const el = document.getElementById(id); if (el) { el.classList.add("acc"); el.classList.toggle("collapsed", !open.has(id)); } }
+    $(".col.right")?.addEventListener("click", (ev) => { const head = ev.target.closest(".panel-head,.acc>h2"); const card = head?.closest(".acc"); if (!card || ev.target.closest("a,button,select,input")) return;
+      card.classList.toggle("collapsed"); const now = new Set(IDS.filter((id) => document.getElementById(id) && !document.getElementById(id).classList.contains("collapsed"))); try { localStorage.setItem(KEY, JSON.stringify([...now])); } catch { /* mémoire indisponible */ } });
+  }
   setTimeout(() => $("#hint")?.classList.add("off"), 9000);
 }
 
