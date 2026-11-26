@@ -30,6 +30,8 @@ try{var _t=localStorage.getItem("sanix_theme");if(_t&&_t!=="turquoise")document.
 <script src="shared/paiements.js" defer></script>
 <script src="shared/strategie.js" defer></script>
 <script src="shared/afaire.js" defer></script>
+<script src="shared/terrain.js" defer></script>
+<script src="shared/terrain_ui.js" defer></script>
 <script src="shared/bureau.js" defer></script>
 <script src="shared/messagerie.js" defer></script>
 <script src="shared/contrat.js" defer></script>
@@ -1996,6 +1998,9 @@ Seriez-vous disponible pour une démonstration {rdv} ?
         </div>
       </div>
     </div>
+
+    <!-- ══ VIEW: TERRAIN (prospection physique) ══ -->
+    <div id="view-terrain" class="hidden fade-in"></div>
 
     <!-- ══ VIEW: CARTE ══ -->
     <div id="view-carte" class="hidden fade-in">
@@ -5509,6 +5514,7 @@ let DEALS = [];
 
 const CLIENTS_SEED = [];
 let CLIENTS = [...CLIENTS_SEED];
+window.__terrainClients = () => CLIENTS;   // module Terrain (shared/terrain_ui.js)
 
 let EQUIPE = [];
 
@@ -6335,7 +6341,7 @@ const ACTIVITIES = [];
 // ═══════════════════════════════════════
 const NAV_GROUPS = {
   accueil:   {views:[['dashboard','🏠 Tableau de bord'],['bureau','🏢 Bureau du jour'],['agenda','📅 Agenda du jour']], badges:['sb-agenda-badge']},
-  trouver:   {views:[['clients','👤 Clients & Prospects'],['carte','🗺️ Carte'],['rapports','📋 Rapports terrain'],['journal','📝 Journal & PV']], badges:['sb-prospects-badge','sb-rapports-badge']},
+  trouver:   {views:[['clients','👤 Clients & Prospects'],['carte','🗺️ Carte'],['terrain','📍 Terrain'],['rapports','📋 Rapports terrain'],['journal','📝 Journal & PV']], badges:['sb-prospects-badge','sb-rapports-badge']},
   convaincre:{views:[['marketing','🎯 Moteur Marketing'],['messagerie','💬 Messagerie'],['logiciels','💻 Catalogue'],['presentations','🎬 Démos']], badges:['sb-pres-badge']},
   ventes:    {views:[['pipeline','🎯 Pipeline'],['qualification','✅ Qualification'],['strategie','🎯 Stratégie par logiciel'],['conversion','🚀 Relances prioritaires'],['commandes','🛒 Commandes'],['contrats','📝 Contrats']], badges:['sb-conv-badge','sb-cmd-badge','sb-contrat-badge']},
   livraison: {views:[['licences','🔑 Licences'],['planning','📅 Planning déploiement']], badges:['sb-lic-badge']},
@@ -6670,7 +6676,7 @@ function navigate(view, el) {
   document.getElementById('topbar-title').textContent = {
     dashboard:'Tableau de bord',bureau:'Bureau du jour',budget:'Budget & plan d\'actions',pipeline:'Pipeline Commercial',clients:'Clients & Prospects',
     intel:'CRM Intelligence',agenda:'Agenda intelligent',marketing:'Moteur Marketing',journal:'Journal & PV de contact',direction:'Direction & Cockpit',cockpit:'Cockpit IA',aisales:'Directeur commercial IA',conversion:'Moteur de Conversion',logiciels:'Catalogue Logiciels',equipe:'Équipe & Apporteurs',apporteurs:'Apporteurs d\'affaires',commissions:'Gestion des Commissions',carte:'Carte & Géolocalisation',
-    planning:'Planning Déploiement',rapports:'Rapports Terrain',messagerie:'Messagerie',
+    planning:'Planning Déploiement',rapports:'Rapports Terrain',terrain:'Terrain — tournées & géolocalisation',messagerie:'Messagerie',
     parametrage:'Paramétrage',apresvente:'Après-vente & fidélisation',qualification:'Qualification des prospects',strategie:'Stratégie par logiciel',
     presentations:'Présentations & Démos',commandes:'Commandes Clients',contrats:'Contrats & Conventions',
     licences:'Licences Attribuées',documents:'Documents & Modèles',comptabilite:'Comptabilité SYSCOHADA',financement:'Financement',levee:'Levée de fonds',creditia:'Crédit IA'
@@ -6678,6 +6684,7 @@ function navigate(view, el) {
   try{ afficherNote(_orig in NOTES_VUES ? _orig : view); }catch(e){ console.error(e); }
   if(view==='messagerie'){ try{ initMessagerie(); }catch(e){ console.error(e); } }
   if(view === 'carte') setTimeout(()=>{ initMap(); updateCarteStats(); }, 100);
+  if(view === 'terrain') setTimeout(()=>{ try{ Terrain.init(); }catch(e){ console.error(e); } }, 30);
   if(view === 'clients') setTimeout(_dupUpdateBtn, 300);
   if(view === 'pipeline') setTimeout(()=>{ populatePipelineFilters(); initPipeline(); }, 60);
   if(view === 'commissions') setTimeout(initCommissions, 50);
@@ -9846,14 +9853,14 @@ const ROLE_BG = {
   apporteur:'#FFFBEB'
 };
 const PERMISSIONS = {
-  super_admin:['bureau','qualification','strategie','budget','financement','levee','creditia','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports','users','parametrage','parametres'],
-  manager:    ['bureau','qualification','strategie','budget','financement','levee','creditia','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','planning','rapports'],
-  commercial: ['qualification','strategie','journal','dashboard','pipeline','clients','logiciels','messagerie','carte','rapports'],
+  super_admin:['bureau','qualification','strategie','budget','financement','levee','creditia','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','terrain','planning','rapports','users','parametrage','parametres'],
+  manager:    ['bureau','qualification','strategie','budget','financement','levee','creditia','aisales','journal','dashboard','pipeline','clients','logiciels','equipe','commissions','messagerie','carte','terrain','planning','rapports'],
+  commercial: ['qualification','strategie','journal','dashboard','pipeline','clients','logiciels','messagerie','carte','terrain','rapports'],
   apporteur:  ['pipeline','clients','messagerie','rapports'],
 };
 const PERM_LABELS = {
   dashboard:'Tableau de bord',pipeline:'Pipeline',clients:'Clients',logiciels:'Logiciels',
-  equipe:'Équipe',commissions:'Commissions',messagerie:'Messagerie',carte:'Carte',planning:'Planning',
+  equipe:'Équipe',commissions:'Commissions',messagerie:'Messagerie',carte:'Carte',terrain:'Terrain',planning:'Planning',
   rapports:'Rapports',aisales:'Directeur IA',users:'Gestion utilisateurs',parametrage:'Paramétrage',parametres:'Sync cloud'
 };
 const PERM_ICONS = {
