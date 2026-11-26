@@ -650,16 +650,58 @@ async function loadFinanceSnapshot(message = "") {
     couts_ia: { mois_usd: costRows === null ? null : sum(costRows, (r) => num2(r.cout_usd)), budget_mois_usd: aiBudget === null ? null : num2(aiBudget), lignes: costRows?.length ?? null }
   };
 }
+var LIMITE_PAR_MIN = 15;
+var MAX_CORPS = 2e5;
+async function limiter(userId) {
+  const depuis = new Date(Date.now() - 6e4).toISOString();
+  const { count } = await db().from("ai_actions").select("id", { count: "exact", head: true }).eq("action", "jarvis_appel").eq("payload->>par", userId).gte("at", depuis);
+  if ((count ?? 0) >= LIMITE_PAR_MIN) throw new HttpError(429, "Trop de demandes : patientez une minute");
+  await audit({ agent: "jarvis", action: "jarvis_appel", ok: true, payload: { par: userId } });
+}
+async function revalider(actions) {
+  const agentIds = /* @__PURE__ */ new Set(), rids = /* @__PURE__ */ new Set();
+  for (const a of actions) {
+    if ("agent_id" in a && a.agent_id) agentIds.add(a.agent_id);
+    if ("rids" in a && a.type.startsWith("crm_")) a.rids.forEach((r) => rids.add(r));
+  }
+  const [ag, cl] = await Promise.all([
+    agentIds.size ? db().from("ai_agents").select("id").in("id", [...agentIds]).neq("etat", "archive") : Promise.resolve({ data: [] }),
+    rids.size ? db().from("crm_records").select("rid").eq("entity", "clients").is("deleted_at", null).in("rid", [...rids]) : Promise.resolve({ data: [] })
+  ]);
+  const okA = new Set((ag.data ?? []).map((x) => x.id)), okC = new Set((cl.data ?? []).map((x) => x.rid));
+  const out = [];
+  for (const a of actions) {
+    if ("agent_id" in a && a.agent_id && !okA.has(a.agent_id)) continue;
+    if ("rids" in a && a.type.startsWith("crm_")) {
+      const r = a.rids.filter((x) => okC.has(x));
+      if (!r.length) continue;
+      out.push({ ...a, rids: r });
+      continue;
+    }
+    out.push(a);
+  }
+  return out;
+}
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors(req) });
   if (req.method !== "POST") return json(req, { error: "M\xE9thode non autoris\xE9e" }, 405);
   try {
     const op = await requireOperator(req);
     if (op.role === "commercial") throw new HttpError(403, "R\xE9serv\xE9 \xE0 la direction");
-    const body = await req.json().catch(() => ({}));
+    if (Number(req.headers.get("content-length") ?? 0) > MAX_CORPS) throw new HttpError(413, "Requ\xEAte trop volumineuse");
+    const raw = await req.text();
+    if (raw.length > MAX_CORPS) throw new HttpError(413, "Requ\xEAte trop volumineuse");
+    const body = (() => {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return {};
+      }
+    })();
     const message = typeof body.message === "string" ? body.message.trim() : "";
     if (message.length < 1) throw new HttpError(400, "Message vide");
     if (message.length > 1500) throw new HttpError(400, "Message trop long");
+    await limiter(op.user_id);
     const history = cleanHistory(body.history);
     const context = body.context && typeof body.context === "object" ? { ...body.context } : {};
     delete context.finance;
@@ -690,6 +732,7 @@ DEMANDE DU PR\xC9SIDENT : ${message}`;
     });
     const text = out.content.map((b) => b.type === "text" ? b.text : "").join("");
     const r = parseReply(text, knownIds(context), knownCrmIds(context), knownFinanceIds(context.finance));
+    r.actions = await revalider(r.actions);
     await audit({ agent: "jarvis", action: "jarvis_reponse", ok: true, payload: { par: op.user_id, nb_actions: r.actions.length, types: r.actions.map((a) => a.type), finance: !!context.finance } });
     return json(req, r, 200);
   } catch (e) {

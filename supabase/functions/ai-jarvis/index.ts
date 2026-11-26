@@ -2,7 +2,7 @@
 // Corps : { message, history?, context } → { reply, actions }. Modèle Sonnet, budget IA appliqué par callClaude.
 import { audit, cors, db, errMsg, HttpError, json, requireOperator } from "../_shared/core.ts";
 import { BudgetError, callClaude, LlmKeyMissingError, ProviderBillingError, ProviderConfigurationError, TransientLlmError } from "../_shared/llm.ts";
-import { buildContext, cleanHistory, JARVIS_FORMAT, knownCrmIds, knownIds, parseReply, SYSTEM } from "../_shared/company/jarvis.ts";
+import { buildContext, cleanHistory, JARVIS_FORMAT, type JarvisAction, knownCrmIds, knownIds, parseReply, SYSTEM } from "../_shared/company/jarvis.ts";
 import { commissions, compta, FINANCE_LIMITES, knownFinanceIds, levee } from "../_shared/company/jarvis_finance.ts";
 
 
@@ -104,16 +104,50 @@ async function loadFinanceSnapshot(message = ""): Promise<Record<string, unknown
   };
 }
 
+const LIMITE_PAR_MIN = 15, MAX_CORPS = 200_000;
+/** #6 : limite de débit par opérateur (journal ai_actions : partagé entre instances). */
+async function limiter(userId: string): Promise<void> {
+  const depuis = new Date(Date.now() - 60_000).toISOString();
+  const { count } = await db().from("ai_actions").select("id", { count: "exact", head: true })
+    .eq("action", "jarvis_appel").eq("payload->>par", userId).gte("at", depuis);
+  if ((count ?? 0) >= LIMITE_PAR_MIN) throw new HttpError(429, "Trop de demandes : patientez une minute");
+  await audit({ agent: "jarvis", action: "jarvis_appel", ok: true, payload: { par: userId } });
+}
+/** #4 : les identifiants proposés par le modèle sont revalidés en base (le contexte vient du navigateur). */
+async function revalider(actions: JarvisAction[]): Promise<JarvisAction[]> {
+  const agentIds = new Set<string>(), rids = new Set<string>();
+  for (const a of actions) {
+    if ("agent_id" in a && a.agent_id) agentIds.add(a.agent_id);
+    if ("rids" in a && a.type.startsWith("crm_")) a.rids.forEach((r) => rids.add(r));
+  }
+  const [ag, cl] = await Promise.all([
+    agentIds.size ? db().from("ai_agents").select("id").in("id", [...agentIds]).neq("etat", "archive") : Promise.resolve({ data: [] }),
+    rids.size ? db().from("crm_records").select("rid").eq("entity", "clients").is("deleted_at", null).in("rid", [...rids]) : Promise.resolve({ data: [] }),
+  ]);
+  const okA = new Set(((ag.data ?? []) as { id: string }[]).map((x) => x.id)), okC = new Set(((cl.data ?? []) as { rid: string }[]).map((x) => x.rid));
+  const out: JarvisAction[] = [];
+  for (const a of actions) {
+    if ("agent_id" in a && a.agent_id && !okA.has(a.agent_id)) continue;
+    if ("rids" in a && a.type.startsWith("crm_")) { const r = a.rids.filter((x) => okC.has(x)); if (!r.length) continue; out.push({ ...a, rids: r } as JarvisAction); continue; }
+    out.push(a);
+  }
+  return out;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors(req) });
   if (req.method !== "POST") return json(req, { error: "Méthode non autorisée" }, 405);
   try {
     const op = await requireOperator(req);
     if (op.role === "commercial") throw new HttpError(403, "Réservé à la direction");
-    const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+    if (Number(req.headers.get("content-length") ?? 0) > MAX_CORPS) throw new HttpError(413, "Requête trop volumineuse");
+    const raw = await req.text();
+    if (raw.length > MAX_CORPS) throw new HttpError(413, "Requête trop volumineuse");
+    const body = (() => { try { return JSON.parse(raw); } catch { return {}; } })() as Record<string, unknown>;
     const message = typeof body.message === "string" ? body.message.trim() : "";
     if (message.length < 1) throw new HttpError(400, "Message vide");
     if (message.length > 1500) throw new HttpError(400, "Message trop long");
+    await limiter(op.user_id);
     const history = cleanHistory(body.history);
     const context = body.context && typeof body.context === "object" ? { ...(body.context as Record<string, unknown>) } : {};
     delete context.finance; // les chiffres financiers fournis par le navigateur ne sont jamais fiables
@@ -129,6 +163,7 @@ Deno.serve(async (req) => {
     });
     const text = out.content.map((b) => (b.type === "text" ? b.text : "")).join("");
     const r = parseReply(text, knownIds(context), knownCrmIds(context), knownFinanceIds(context.finance));
+    r.actions = await revalider(r.actions);
     await audit({ agent: "jarvis", action: "jarvis_reponse", ok: true, payload: { par: op.user_id, nb_actions: r.actions.length, types: r.actions.map((a) => a.type), finance: !!context.finance } });
     return json(req, r, 200);
   } catch (e) {
