@@ -121,8 +121,8 @@ function vuePipeline(){
       <button class="btn sm" type="button" data-act="sales-vue" data-vue="prospects">☷ Liste</button>
       <button class="btn sm pri" type="button" data-act="sales-vue" data-vue="pipeline">▥ Kanban</button>
     </div>
-    <div style="display:grid;grid-template-columns:minmax(180px,220px) minmax(0,1fr);gap:12px;align-items:start">
-      <aside style="display:grid;gap:10px">
+    <div class="pipe-layout">
+      <aside class="pipe-kpis">
         <div class="card kpi" style="border-left:4px solid #10b981"><span>Pipeline total actif</span><b style="font-size:23px">${money(total)}</b><span>${activeRows.length} opportunités actives</span></div>
         <div class="card kpi"><span>Opportunités gagnées</span><b style="font-size:25px">${won.length}</b><span>${money(won.reduce((s,p)=>s+Number(p.potentiel_fcfa||0),0))}</span></div>
         <div class="card kpi"><span>Opportunités perdues</span><b style="font-size:25px">${lost.length}</b><span>${money(lost.reduce((s,p)=>s+Number(p.potentiel_fcfa||0),0))}</span></div>
@@ -130,11 +130,11 @@ function vuePipeline(){
         <div class="card kpi"><span>Prévision pondérée</span><b style="font-size:18px">${money(weighted)}</b><span>Selon l'étape commerciale</span></div>
         <div class="card kpi"><span>Actions en retard</span><b style="font-size:23px">${rows.filter(isOverdue).length}</b><span>${rows.filter(p=>!p.owner_id&&!CLOSED.includes(p.stage)).length} non attribuées</span></div>
       </aside>
-      <div class="scroll" style="overflow-x:auto"><div class="pipe" style="display:flex;gap:10px;align-items:flex-start;min-width:max-content;padding-bottom:8px">
+      <div class="scroll pipe-scroll"><div class="pipe">
       ${raw(PHASES.map(([key,label,stages])=>{
         const col=rows.filter(p=>stages.includes(p.stage)).sort((a,b)=>(b.score??0)-(a.score??0));
         const pot=col.reduce((t,p)=>t+Number(p.potentiel_fcfa||0),0);
-        return html`<div class="card pipe-col" data-phase="${key}" style="width:245px;flex:none;padding:8px">
+        return html`<div class="card pipe-col" data-phase="${key}">
           <div style="display:flex;justify-content:space-between;gap:6px;align-items:center"><b>${label}</b><span class="pill"><i></i>${col.length}</span></div>
           <div class="small muted" style="margin:2px 0 6px">${money(pot)}</div>
           ${raw(col.slice(0,30).map(p=>html`<div class="card pipe-card" style="margin:6px 0;padding:9px">
