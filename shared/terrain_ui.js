@@ -42,6 +42,7 @@
     var nb = (S.rapports || []).filter(function (r) { return r.statut === "soumis"; }).length;
     var onglets = [["jour", "📅 Ma journée"]].concat(S.dir ? [["supervision", "🛰️ Supervision" + (nb ? " (" + nb + ")" : "")]] : []).concat([["perf", "📊 Performance"]]);
     el.innerHTML = '<h1 class="page-title">📍 Terrain</h1><p class="page-sub">Feuille de route, géolocalisation en tournée, rapport de mission et indicateurs</p>'
+      + '<div style="margin-bottom:10px"><button class="btn btn-sm btn-outline" onclick="Terrain.qrInstall()">📲 Installer l\'app sur un téléphone (QR code)</button></div>'
       + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">' + onglets.map(function (o) { return '<button class="btn btn-sm ' + (S.tab === o[0] ? "" : "btn-outline") + '" onclick="Terrain.onglet(\'' + o[0] + '\')">' + o[1] + '</button>'; }).join("") + '</div>'
       + '<div id="terrain-corps"></div>';
     var c = $("terrain-corps");
@@ -58,8 +59,29 @@
       + '<button class="btn btn-sm" onclick="Terrain.consentir()">J\'accepte la géolocalisation en tournée</button></div></div>';
   }
 
+  // Sur téléphone, application non installée (ouverture par QR code ou lien) : invitation à installer.
+  function bandeauInstallation() {
+    try {
+      if (!G.pwaAppareil || !G.pwaEstInstallee || G.pwaEstInstallee() || !G.pwaAppareil().mobile || location.protocol === "file:") return "";
+      return '<div class="card" style="padding:14px;margin-bottom:12px;border-left:4px solid var(--primary)"><b>📲 Installez l\'application</b><p style="margin:6px 0;font-size:13px">Accès direct depuis l\'écran d\'accueil, plein écran, ouverture plus rapide et feuille de route disponible hors connexion.</p><button class="btn btn-sm" onclick="appInstaller()">Installer SANIX CRM</button></div>';
+    } catch (e) { return ""; }
+  }
+  // Adresse d'entrée de l'application commerciale : le CRM, ouvert directement sur Terrain après connexion.
+  function adresseApp() { return location.origin + location.pathname.replace(/[^\/]*$/, "") + "?page=terrain&source=qr"; }
+  function qrInstall() {
+    var url = adresseApp(), local = /^(localhost|127\.|0\.0\.0\.0)/.test(location.hostname) || location.protocol === "file:", svg = "";
+    try { svg = G.__terrainQr ? G.__terrainQr(url, { px: 220, border: 2 }) : ""; } catch (e) { svg = ""; }
+    var msg = "Application commerciale SANIX : ouvrez ce lien sur votre téléphone, connectez-vous, puis touchez « Installer » : " + url;
+    modale('<h3 style="margin:0 0 6px">📲 Application commerciale</h3><p style="font-size:13px;margin:0 0 10px">Scannez ce QR code avec l\'appareil photo du téléphone du commercial.</p>'
+      + (local ? '<div style="font-size:12px;background:var(--warning-l);color:var(--warning);padding:8px 12px;border-radius:8px;margin-bottom:10px">⚠ Ce QR pointe vers une adresse locale : ouvrez le CRM depuis son adresse publique avant de l\'imprimer.</div>' : "")
+      + '<div id="tr-qr" style="display:flex;justify-content:center;background:#fff;padding:12px;border-radius:12px;margin-bottom:8px">' + (svg || '<span style="color:#666">QR indisponible</span>') + '</div>'
+      + '<div style="font-size:11px;word-break:break-all;color:var(--muted);text-align:center;margin-bottom:10px">' + E(url) + '</div>'
+      + '<ol style="font-size:13px;padding-left:18px;margin:0 0 10px"><li>Scannez le QR code : le CRM s\'ouvre.</li><li>Connectez-vous avec votre compte : l\'écran <b>Terrain</b> s\'affiche.</li><li><b>Android</b> : touchez « Installer SANIX CRM ». <b>iPhone</b> : Safari → Partager → « Sur l\'écran d\'accueil ».</li></ol>'
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm" onclick="Terrain.copierLien()">📋 Copier le lien</button><a class="btn btn-sm btn-outline" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(msg) + '">💬 Envoyer par WhatsApp</a><button class="btn btn-sm btn-outline" onclick="Terrain.fermer()">Fermer</button></div>');
+  }
+  function copierLien() { var u = adresseApp(); (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(function () { toast("🔗 Lien copié"); }).catch(function () { prompt("Copiez le lien :", u); }); }
   function vueJour() {
-    var mob = (S.profil && S.profil.mobilite) || "moto", h = bandeauConsentement();
+    var mob = (S.profil && S.profil.mobilite) || "moto", h = bandeauInstallation() + bandeauConsentement();
     var moi = S.tournees.filter(function (t) { return !S.dir || t.commercial === uid(); });
     var liste = S.dir ? S.tournees : moi;
     h += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap"><label class="form-label" style="margin:0">Jour</label><input type="date" class="form-input" style="max-width:170px" value="' + E(S.jour || auj()) + '" onchange="Terrain.jour(this.value)">'
@@ -283,6 +305,6 @@
     init: function () { charger(); }, onglet: function (t) { S.tab = t; (t === "perf" ? chargerKpi() : Promise.resolve()).then(function () { if (t === "supervision") return charger(); rendre(); }); },
     jour: function (j) { S.jour = j || auj(); charger(); }, periode: function (p) { S.periode = Number(p) || 30; chargerKpi().then(rendre); },
     consentir: consentir, demarrer: demarrer, annuler: annuler, arrivee: arrivee, formulaireResultat: formulaireResultat, champsIssue: champsIssue, enregistrerResultat: enregistrerResultat,
-    formulaireFin: formulaireFin, terminer: terminer, fermer: fermer, formulairePlanif: formulairePlanif, filtrer: filtrer, cocher: cocher, toutCocher: toutCocher, creerTournee: creerTournee, valider: valider, exporter: exporter
+    formulaireFin: formulaireFin, terminer: terminer, fermer: fermer, formulairePlanif: formulairePlanif, filtrer: filtrer, cocher: cocher, toutCocher: toutCocher, creerTournee: creerTournee, valider: valider, exporter: exporter, qrInstall: qrInstall, copierLien: copierLien
   };
 })(typeof window !== "undefined" ? window : globalThis);

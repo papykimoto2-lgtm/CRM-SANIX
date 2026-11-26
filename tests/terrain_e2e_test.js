@@ -57,6 +57,12 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     ok(await page.evaluate(() => __appels.some((a) => a[0] === "terrain_resultat" && a[1].p_issue === "devis" && a[1].p_valeur === 450000)), "résultat envoyé avec issue et montant");
     const inter = await page.evaluate(() => CLIENTS.find((c) => c.id === 95001).interactions.map((i) => i.type + "|" + i.note));
     ok(inter.some((x) => x.startsWith("Visite terrain|") && x.includes("Devis demandé")), "interaction « Visite terrain » ajoutée à la fiche du prospect en base");
+    console.log("▶ Installation par QR code");
+    await page.click("#view-terrain button:has-text(\"QR code\")"); await page.waitForTimeout(400);
+    ok(await page.evaluate(() => !!document.querySelector("#tr-qr svg")), "QR code affiché");
+    ok(await page.evaluate(() => document.getElementById("tr-modale").innerText.includes("?page=terrain&source=qr")), "le QR ouvre l'écran Terrain (page=terrain)");
+    ok(await page.evaluate(() => [...document.querySelectorAll("#tr-modale a")].some((a) => a.href.startsWith("https://wa.me/?text="))), "partage WhatsApp du lien");
+    await page.click("#tr-modale button:has-text(\"Fermer\")"); await page.waitForTimeout(200);
     console.log("▶ Performance");
     await page.click("#view-terrain button:has-text(\"Performance\")"); await page.waitForTimeout(600);
     t = await txt();

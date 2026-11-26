@@ -5514,7 +5514,8 @@ let DEALS = [];
 
 const CLIENTS_SEED = [];
 let CLIENTS = [...CLIENTS_SEED];
-window.__terrainClients = () => CLIENTS;   // module Terrain (shared/terrain_ui.js)
+window.__terrainClients = () => CLIENTS;
+window.__terrainQr = (t,o) => SXQR.svg(t,o);   // module Terrain (shared/terrain_ui.js)
 
 let EQUIPE = [];
 
@@ -6647,7 +6648,7 @@ function pwaAnnoncerMiseAJour(){
 window.addEventListener('load',()=>{
   const pg=new URLSearchParams(location.search).get('page'); if(!pg) return;
   const go=()=>{ if(typeof currentUser==='undefined'||!currentUser) return false; if(pg==='new-deal'){ navigate('pipeline',null); setTimeout(()=>{ try{ openNewDeal(); }catch(e){} },300); } else if(document.getElementById('view-'+pg)) navigate(pg,null); return true; };
-  let n=0; const t=setInterval(()=>{ if(go()||++n>30) clearInterval(t); },300);
+  let n=0; const t=setInterval(()=>{ if(go()||++n>1200) clearInterval(t); },500);   // jusqu'à 10 min : le temps de se connecter après un scan de QR code
 });
 
 // Vues fusionnées : l'ancienne entrée ouvre l'écran qui la contient

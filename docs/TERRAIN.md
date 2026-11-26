@@ -12,6 +12,8 @@ Menu **Trouver → 📍 Terrain**. Migration `20261220000000_terrain_commerciaux
 | Indicateurs | Par commercial et période (7/30/90 j) : visites, réalisation, RDV, devis, ventes, valeur, km, durée de visite, présence vérifiée, **score /100** (activité 40, présence 20, conversion 30, régularité 10). Export CSV. |
 | Supervision | Carte en direct, avancement par commercial, rapports à valider. Réservé à la direction. |
 
+| Installation par QR code | Bouton **📲 Installer l'app sur un téléphone (QR code)** : le QR ouvre `?page=terrain&source=qr`. Après connexion, l'écran Terrain s'affiche et un bandeau propose l'installation (Android : bouton Installer ; iPhone : Safari → Partager → Sur l'écran d'accueil). Lien copiable, partage WhatsApp. Raccourci « Terrain : ma tournée » sur l'icône installée. |
+
 ## Vie privée (à valider avec votre conseil)
 Le suivi d'un salarié relève de la protection des données personnelles (loi ivoirienne n° 2013-450, ARTCI ; équivalent dans les autres pays OHADA concernés). Mesures intégrées : consentement daté et révocable, suivi limité à la tournée, information affichée pendant la tournée, accès limité au commercial et à la direction, durée de conservation de 30 jours, journal des actions. Prévoir une mention dans le règlement intérieur ou le contrat et, si la loi locale l'exige, une déclaration à l'autorité.
 
