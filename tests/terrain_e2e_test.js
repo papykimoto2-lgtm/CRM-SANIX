@@ -38,6 +38,12 @@ const ok = (c, m) => { if (!c) throw new Error("ÉCHEC : " + m); console.log("  
     });
     await page.waitForTimeout(700);
     const txt = () => page.evaluate(() => document.getElementById("view-terrain").innerText.replace(/\s+/g, " "));
+    console.log("▶ Entrée directe du menu");
+    await page.evaluate(() => navigate("dashboard", null)); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => document.getElementById("view-terrain").classList.contains("hidden")), "hors Terrain : écran masqué");
+    await page.evaluate(() => document.getElementById("sb-terrain-item").click()); await page.waitForTimeout(600);
+    ok(await page.evaluate(() => !document.getElementById("view-terrain").classList.contains("hidden") && document.getElementById("sb-terrain-item").classList.contains("active")), "« Prospection terrain » ouvre Terrain et s'allume");
+    ok(await page.evaluate(() => !document.querySelector('.sb-item[data-grp="trouver"]').classList.contains("active")), "le groupe « Prospects & Clients » ne s'allume pas en double");
     console.log("▶ Ma journée");
     let t = await txt();
     ok(t.includes("Marcory matin") && t.includes("Garage Alpha") && t.includes("Hôtel Beta") && t.includes("non géolocalisé"), "feuille de route : tournée et prospects, dont un non géolocalisé");
