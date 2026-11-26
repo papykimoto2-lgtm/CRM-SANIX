@@ -60,3 +60,20 @@ table{border-collapse:separate;border-spacing:0}th{background:#f6f9fb;color:#617
   #kanban-board{grid-template-columns:repeat(6,minmax(250px,82vw));gap:9px}
   #pipeline-bar{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
 }
+
+/* — Tablette : menu réduit en barre d'icônes (portrait) ou plus étroit (paysage), cibles tactiles de 40 px — */
+@media(min-width:769px) and (max-width:1100px){:root{--nav-w:208px}.content{padding-left:14px;padding-right:14px}}
+@media(min-width:769px) and (max-width:900px){
+  :root{--nav-w:68px}
+  .sidebar{padding:10px 4px 56px}
+  .sidebar .sb-item{justify-content:center;padding:10px 0;margin:2px 6px;position:relative}
+  .sidebar .sb-item>span:not(.sb-badge),.sidebar .sb-item>small,.sidebar .sb-logo>div:not(.sb-logo-ico):not(.sb-icon),.sidebar .sb-user>div:not(.sb-avatar),.sidebar .sb-user .sb-logout-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .sidebar .sb-badge{position:absolute;top:2px;right:4px;margin:0;padding:1px 5px;font-size:9px}
+  .sidebar .sb-section{font-size:0;padding:6px 14px 2px;border-top:1px solid rgba(255,255,255,.08);margin-top:4px}
+  .sidebar .sb-logo{justify-content:center;padding:14px 0 8px}
+  .sidebar .sb-clock{display:none}
+  .sidebar .sb-user{justify-content:center;padding:8px 0}
+  .sidebar .sb-icon{width:38px;height:38px;font-size:18px}
+}
+@media(pointer:coarse){.btn,.btn-sm,.form-input,select.form-input,.sb-item,.grp-tab{min-height:40px}.grp-tab{display:flex;align-items:center}}
+@media(max-width:768px){.content{padding-bottom:96px}}   /* le bouton flottant ne masque plus le bas des écrans */
