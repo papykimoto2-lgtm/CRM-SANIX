@@ -8804,7 +8804,7 @@ function msgRender(){
   // exclus et pourquoi
   const ks=Object.keys(res.exclus);
   document.getElementById('msg-exclus').innerHTML = ks.length
-    ? '<details class="msg-excl"><summary>'+res.nbExclus+' exclu'+(res.nbExclus>1?'s':'')+' — pourquoi ?</summary>'+ks.sort((a,b)=>res.exclus[b].length-res.exclus[a].length).map(k=>'<div><b>'+_msgEsc(SM.RAISONS[k]||k)+'</b> : '+res.exclus[k].length+'<div class="msg-sous">'+res.exclus[k].slice(0,5).map(c=>_msgEsc(c.nom)).join(', ')+(res.exclus[k].length>5?'…':'')+'</div></div>').join('')+'</details>'
+    ? '<details class="msg-excl"'+(res.retenus.length?'':' open')+'><summary>'+res.nbExclus+' exclu'+(res.nbExclus>1?'s':'')+' — pourquoi ?</summary>'+ks.sort((a,b)=>res.exclus[b].length-res.exclus[a].length).map(k=>'<div><b>'+_msgEsc(SM.RAISONS[k]||k)+'</b> : '+res.exclus[k].length+'<div class="msg-sous">'+res.exclus[k].slice(0,5).map(c=>_msgEsc(c.nom)).join(', ')+(res.exclus[k].length>5?'…':'')+'</div></div>').join('')+'</details>'
     : '';
   // ligne Gmail
   const g=document.getElementById('msg-gmail-ligne');
