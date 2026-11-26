@@ -110,3 +110,13 @@ Quand le connecteur Supabase de Claude est branché sur **le bon compte** (véri
 **Les fichiers `deploy/*/index.ts` sont générés** : après toute modification de `functions/`, régénérer (`sh supabase/build_functions.sh`) et committer le résultat, sinon les §1, §5 et §6 déploient l'ancien code.
 
 Puis redéployer `ai-company`, `ai-sales-director` et `whatsapp-webhook` (§1, §5 ou §6). **Consentement** : désactivé, la validation du président reste le garde-fou ; activé (*Gouvernance → Exiger une preuve de consentement*), un prospect ne reçoit rien sans `ai_prospects.consentement` daté et justifié pour le canal (`{"email":{"at":"2026-11-10T09:00:00Z","preuve":"formulaire de contact"}}`) ou, pour WhatsApp, sans message entrant de moins de 24 h (le webhook enregistre ce consentement à la première réponse du prospect).
+
+## Verify JWT par fonction
+| Fonction | Verify JWT | Raison |
+|---|---|---|
+| `ai-jarvis`, `crm-whatsapp`, `crm-vercel` | **actif** | appelées uniquement par un opérateur connecté ; le contrôle de la plateforme s'ajoute à `requireOperator` |
+| `ai-company`, `ai-sales-director` | désactivé | planificateur (`x-cron-secret`) |
+| `whatsapp-webhook` | désactivé | signature HMAC de Meta |
+| `crm-gmail` | désactivé | retour OAuth Google sans JWT ; planificateur |
+
+Réglage versionné dans `supabase/config.toml` (CLI) et appliqué par `tools/deploy_functions.sh`. Une clé « publishable » n'est pas un JWT : l'appel doit porter la session de l'utilisateur.

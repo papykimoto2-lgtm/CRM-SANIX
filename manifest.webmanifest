@@ -25,6 +25,7 @@
     { "name": "Clients & Prospects", "short_name": "Clients", "url": "./?page=clients", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "Pipeline commercial", "short_name": "Pipeline", "url": "./?page=pipeline", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "Nouveau deal", "short_name": "Nouveau deal", "url": "./?page=new-deal", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Terrain : ma tournée", "short_name": "Terrain", "url": "./?page=terrain", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "Commandes", "short_name": "Commandes", "url": "./?page=commandes", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
   ]
 }

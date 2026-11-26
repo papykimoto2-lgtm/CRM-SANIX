@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Migration 20261125000000 (correctifs de la revue d'interconnexion) sur un PostgreSQL réel.
+# Migration 20261125010000 (correctifs de la revue d'interconnexion) sur un PostgreSQL réel.
 # Prérequis : PGHOST / PGPORT / PGUSER (super-utilisateur). Usage : ./revue_interconnexion_sql_test.sh
 set -euo pipefail
-HERE="$(cd "$(dirname "$0")" && pwd)"; MIG="$HERE/../../migrations/20261125000000_correctifs_revue_interconnexion.sql"
+HERE="$(cd "$(dirname "$0")" && pwd)"; MIG="$HERE/../../migrations/20261125010000_correctifs_revue_interconnexion.sql"
 P="psql -v ON_ERROR_STOP=1 -q -At -U ${PGUSER:-postgres}"; DB="rv_test_$$"
 bash "$HERE/setup_db.sh" >/dev/null 2>&1
 $P -d postgres -c "create database $DB template vc_tpl" >/dev/null
