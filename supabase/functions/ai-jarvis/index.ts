@@ -12,11 +12,11 @@ function asksFinance(message: string): boolean {
   return /(^| )(ca|chiffre d affaires|chiffre affaires|chiffre affaire|chiffres affaires|vente|ventes|commande|commandes|encaissement|encaissements|acompte|acomptes|solde|soldes|facture|factures|finance|financier|financiere|tresorerie|depense|depenses|charge|charges|marge|rentabilite|paiement|paiements|budget|comptabilite|ecriture|ecritures|benefice|profit|resultat|commission|commissions|levee|financeur|financeurs|financement|tva|creance|creances|syscohada|journal|balance|grand livre|sig|fec|investisseur|investisseurs|subvention|banque|banques)( |$)/.test(q);
 }
 async function loadFinanceSnapshot(message = ""): Promise<Record<string, unknown>> {
-  const { data, error } = await db().from("crm_records").select("entity,rid,data,updated_at")
-    .in("entity", ["commandes", "ecritures", "documents", "pil_depenses", "pil_config"])
-    .is("deleted_at", null).limit(1500);
-  if (error) throw error;
-  const rows = (data ?? []) as { entity: string; data: Record<string, unknown> | null }[];
+  const ENT = ["commandes", "ecritures", "documents", "pil_depenses", "pil_config"], CAP = 1500;
+  const res = await Promise.all(ENT.map((e) => db().from("crm_records").select("entity,rid,data,updated_at").eq("entity", e).is("deleted_at", null).limit(CAP + 1)));
+  const tronque: string[] = [];
+  const rows: { entity: string; data: Record<string, unknown> | null }[] = [];
+  res.forEach((r, i) => { if (r.error) throw r.error; const l = (r.data ?? []) as typeof rows; if (l.length > CAP) tronque.push(ENT[i]); rows.push(...l.slice(0, CAP)); });
   const by = (entity: string) => rows.filter(r => r.entity === entity).map(r => r.data ?? {});
   const num = (v: unknown): number => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, n) : 0; };
   const date = (v: unknown): string => /^\d{4}-\d{2}-\d{2}/.test(String(v ?? "")) ? String(v).slice(0, 10) : "";
@@ -70,6 +70,17 @@ async function loadFinanceSnapshot(message = ""): Promise<Record<string, unknown
   const costRows = costRowsResult.error ? null : (costRowsResult.data ?? []);
   const aiBudget = budgetResult.error ? null : budgetResult.data?.budget_mois_usd ?? null;
   return {
+    // Mises en garde en PREMIER : la sérialisation bornée coupe la fin, jamais les limites.
+    limites: [
+      ...(tronque.length ? ["ATTENTION : données tronquées à " + CAP + " lignes pour : " + tronque.join(", ") + ". Les totaux sont INCOMPLETS : dis-le."] : []),
+      "CA calculé sur htNet, ou TTC/1,18 si HT absent, pour les commandes confirmées, en cours ou livrées.",
+      "Encaissements calculés uniquement sur les paiements datés non estimés ; acomptes déclarés présentés séparément.",
+      "Solde à recouvrer issu du champ solde des commandes, sans rapprochement bancaire.",
+      "Dépenses limitées aux lignes saisies dans Budget & actions ; les écritures comptables ne sont pas agrégées.",
+      "Aucun bénéfice net, trésorerie bancaire ou marge par logiciel ne peut être déduit de ces seuls champs.",
+      "Coûts IA en USD, séparés des montants FCFA.",
+      ...FINANCE_LIMITES,
+    ],
     ...extra, disponible: true, devise: "FCFA", date_analyse: today, mois: month,
     commandes: {
       nombre: orders.length, ca_ht_total: sum(orders, ht), ca_ht_mois: sum(monthOrders, ht),
@@ -90,15 +101,6 @@ async function loadFinanceSnapshot(message = ""): Promise<Record<string, unknown
     objectif_ca_ht_mois: objective,
     comptabilite: { ecritures_enregistrees: entries.length, factures_documents: docs.filter(d => String(d.type ?? "").toLowerCase() === "facture").length },
     couts_ia: { mois_usd: costRows === null ? null : sum(costRows, r => num(r.cout_usd)), budget_mois_usd: aiBudget === null ? null : num(aiBudget), lignes: costRows?.length ?? null },
-    limites: [
-      "CA calculé sur htNet, ou TTC/1,18 si HT absent, pour les commandes confirmées, en cours ou livrées.",
-      "Encaissements calculés uniquement sur les paiements datés non estimés ; acomptes déclarés présentés séparément.",
-      "Solde à recouvrer issu du champ solde des commandes, sans rapprochement bancaire.",
-      "Dépenses limitées aux lignes saisies dans Budget & actions ; les écritures comptables ne sont pas agrégées.",
-      "Aucun bénéfice net, trésorerie bancaire ou marge par logiciel ne peut être déduit de ces seuls champs.",
-      "Coûts IA en USD, séparés des montants FCFA.",
-      ...FINANCE_LIMITES,
-    ],
   };
 }
 
@@ -116,8 +118,8 @@ Deno.serve(async (req) => {
     const context = body.context && typeof body.context === "object" ? { ...(body.context as Record<string, unknown>) } : {};
     delete context.finance; // les chiffres financiers fournis par le navigateur ne sont jamais fiables
     if (asksFinance(message)) {
-      try { context.finance = await loadFinanceSnapshot(message); }
-      catch { context.finance = { disponible: false }; }
+      try { context.finance = await loadFinanceSnapshot(message); await audit({ agent: "jarvis", action: "jarvis_lecture_finance", ok: true, payload: { par: op.user_id } }).catch(() => {}); }
+      catch (e) { context.finance = { disponible: false }; await audit({ agent: "jarvis", action: "jarvis_finance_erreur", ok: false, payload: { par: op.user_id, e: errMsg(e) } }).catch(() => {}); }
     }
     const user = `CONTEXTE EN DIRECT\n${buildContext(context)}\n\nDEMANDE DU PRÉSIDENT : ${message}`;
     const messages = [...history, { role: "user" as const, content: user }];
@@ -127,7 +129,7 @@ Deno.serve(async (req) => {
     });
     const text = out.content.map((b) => (b.type === "text" ? b.text : "")).join("");
     const r = parseReply(text, knownIds(context), knownCrmIds(context), knownFinanceIds(context.finance));
-    await audit({ agent: "jarvis", action: "jarvis_reponse", ok: true, payload: { par: op.user_id, nb_actions: r.actions.length } });
+    await audit({ agent: "jarvis", action: "jarvis_reponse", ok: true, payload: { par: op.user_id, nb_actions: r.actions.length, types: r.actions.map((a) => a.type), finance: !!context.finance } });
     return json(req, r, 200);
   } catch (e) {
     if (e instanceof HttpError) return json(req, { error: e.message }, e.status);
