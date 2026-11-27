@@ -1299,6 +1299,8 @@ function initControls() {
     else if (c === "focus") { document.body.classList.toggle("focus"); setTimeout(() => view3d.resize(), 60); } });
   // Scène épurée : un seul panneau (Workflow ou Opérations) ouvert à la demande, légende à part ; panneaux de droite repliés (accordéon mémorisé).
   { const stage = $(".stage"), bar = $("#ov-bar");
+    $("#ov-menu")?.addEventListener("click", (ev) => { const o = $("#ov-bar").classList.toggle("open"); ev.currentTarget.setAttribute("aria-expanded", String(o)); });
+    $("#ov-bar")?.addEventListener("click", (ev) => { if (ev.target.closest("button[data-ov]")) { $("#ov-bar").classList.remove("open"); $("#ov-menu")?.setAttribute("aria-expanded", "false"); } });
     bar?.addEventListener("click", (ev) => { const b = ev.target.closest("button[data-ov]"); if (!b) return; const k = b.dataset.ov;
       if (k === "legend") stage.classList.toggle("legend-on"); else stage.dataset.ov = stage.dataset.ov === k ? "" : k;
       bar.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.ov === "legend" ? stage.classList.contains("legend-on") : stage.dataset.ov === x.dataset.ov))); setTimeout(() => (relationsMode ? null : view3d?.resize()), 40); });

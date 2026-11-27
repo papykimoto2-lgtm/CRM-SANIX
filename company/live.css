@@ -706,3 +706,27 @@ body.exec-view .executive-facts{padding:8px 0}
 @media(max-width:640px){.ov-bar{top:8px;left:8px;max-width:calc(100% - 64px)}.ov-bar button{height:30px;padding:0 9px;font-size:10px}.stage[data-ov=workflow] .workflow-panel,.stage[data-ov=workfloor] .workfloor-panel{top:46px;left:8px;right:54px}.relations-filters{top:46px}}
 /* Le réseau relationnel démarre sous la barre des panneaux et les filtres (rien n'est masqué) */
 .stage:has(#relations-filters:not([hidden])) #relations-canvas{inset:auto 0 0 0;top:var(--rel-top,106px);height:calc(100% - var(--rel-top,106px))}
+
+/* Téléphone : en-tête sur une ligne, indicateurs en bandeau défilant, panneaux de la scène dans un menu déroulant */
+.ov-menu{display:none}
+@media (max-width:640px){
+  .hd{flex-wrap:nowrap;gap:8px;min-width:0}
+  .hd .grow{display:none}
+  .logo{flex:1 1 auto;min-width:0;gap:8px}
+  .logo>div{min-width:0}
+  .logo b{font-size:11px;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .conn span{display:none}
+  .exec-view-toggle{white-space:nowrap;flex:none;font-size:11px;padding:6px 9px}
+  #fs{display:none}
+  .kpis{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;scrollbar-width:none;padding-bottom:2px}
+  .kpis::-webkit-scrollbar{display:none}
+  .kpi{flex:0 0 142px;scroll-snap-align:start;padding:6px 10px}
+  .kpi small{font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kpi b{font-size:20px}
+  .kpi em{display:block;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stage{min-height:62dvh}
+  .ov-menu{display:inline-flex;align-items:center;height:30px;padding:0 10px;font-size:11px}
+  .ov-bar{flex-direction:column;align-items:flex-start}
+  .ov-bar button[data-ov]{display:none}
+  .ov-bar.open button[data-ov]{display:inline-flex}
+}
