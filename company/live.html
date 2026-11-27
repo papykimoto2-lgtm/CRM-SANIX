@@ -27,6 +27,11 @@
       <div class="card grow mission-card"><div class="mission-head"><h2>Missions en direct</h2><span id="mission-summary" class="mission-summary" aria-live="polite">Chargement…</span></div><nav class="mission-filters" id="mission-filters" aria-label="Filtrer les missions"><button type="button" data-filter="all" class="on" aria-pressed="true">Toutes</button><button type="button" data-filter="en_cours" aria-pressed="false">En cours</button><button type="button" data-filter="waiting" aria-pressed="false">En attente</button><button type="button" data-filter="attente_validation" aria-pressed="false">À valider</button><button type="button" data-filter="blocked" aria-pressed="false">Bloquées</button></nav><div id="missions" class="list"></div></div>
     </aside>
     <section class="stage">
+      <div class="ov-bar" id="ov-bar" role="toolbar" aria-label="Panneaux de la scène">
+        <button type="button" data-ov="workflow" aria-pressed="false" title="Workflow des missions (7 jours)">⛓ Workflow</button>
+        <button type="button" data-ov="workfloor" aria-pressed="false" title="Missions en cours, échanges et résultats livrés">📡 Opérations</button>
+        <button type="button" data-ov="legend" aria-pressed="false" title="Légende des couleurs">ℹ Légende</button>
+      </div>
       <section class="workflow-panel" id="workflow-panel" aria-label="Cartographie des workflows">
         <div class="workflow-top"><div><b>WORKFLOW ROUTING</b><small>Missions actualisées sur 7 jours · compteurs du même périmètre</small></div><div class="agent-health" id="agent-health"></div></div>
         <div class="workflow-steps" id="workflow-steps" aria-live="polite"></div>

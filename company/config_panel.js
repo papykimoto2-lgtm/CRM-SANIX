@@ -170,7 +170,8 @@ function cellForm() {
 
 // ─── Agents ──────────────────────────────────────────────────────────────────
 function viewAgents() {
-  return html`<div class="actions" style="margin-bottom:10px"><button class="btn pri" type="button" data-act="cfg-agent-new">＋ Créer un agent</button></div>
+  return html`<div class="actions" style="margin-bottom:10px"><button class="btn pri" type="button" data-act="cfg-agent-new">＋ Créer un agent</button> <button class="btn" type="button" data-act="cfg-mode-tous" data-id="abonnement">🧾 Connecter tous les agents à l'abonnement Claude</button> <button class="btn" type="button" data-act="cfg-mode-tous" data-id="api">Tous en mode API</button></div>
+    <p class="small muted">${agentsActifs().filter((a) => a.mode_execution === "abonnement").length} / ${agentsActifs().length} agents en mode abonnement. Les missions sont exécutées par la tâche planifiée Claude Code (voir docs/EXECUTEUR_ABONNEMENT.md) : sans elle, elles restent en attente.</p>
     <p class="small muted">Un agent est créé depuis un <b>rôle</b> (modèle de poste : niveau, outils, charte type) ; tout peut être ajusté. Suspendre ou réactiver un agent se fait depuis le bureau 3D ou l'organisation.</p>
     <div class="scroll"><table class="tbl"><thead><tr><th>Agent</th><th>Rôle</th><th>Niv.</th><th>Responsable</th><th>État</th><th>Mode</th><th class="num">Outils</th><th></th></tr></thead><tbody>${agentsActifs().map((a) => html`<tr><td><b>${a.nom}</b><div class="small muted">${a.fonction}</div></td>
       <td>${roleName(a.role_code)}</td><td>${a.niveau}</td><td>${a.manager_id ? agentName(a.manager_id) : "—"}</td><td>${a.etat}</td><td>${a.mode_execution === "abonnement" ? "🧾 abonnement" : "API"}</td><td class="num">${(a.outils ?? []).length}</td>
@@ -297,6 +298,10 @@ export async function configAction(el, ev) {
     else if (a === "cfg-member-add") { if (!el.value) return; await rpc("ai_cfg_set_member", { p_cell: el.dataset.cell, p_role: el.dataset.role, p_agent: el.value, p_on: true, p_ordre: 0 }); await refresh(main); }
     else if (a === "cfg-member-del") { await rpc("ai_cfg_set_member", { p_cell: el.dataset.cell, p_role: el.dataset.role, p_agent: el.dataset.agent, p_on: false, p_ordre: 0 }); await refresh(main); }
     else if (a === "cfg-agent-new") agentForm(null);
+    else if (a === "cfg-mode-tous") {
+      if (!confirm(id === "abonnement" ? "Connecter tous les agents actifs à l'abonnement Claude ? Le moteur API ne les lancera plus ; leurs missions attendront l'exécuteur planifié." : "Repasser tous les agents en mode API (crédit Console) ?")) return;
+      const r = await rpc("ai_cfg_set_mode_execution_tous", { p_mode: id }); toast(`${r.agents ?? 0} agent(s) passé(s) en mode ${id}`, "ok"); await refresh(main);
+    }
     else if (a === "cfg-agent-edit") agentForm(S.agents.find((x) => x.id === id));
     else if (a === "cfg-role-new") roleForm(null);
     else if (a === "cfg-role-edit") roleForm(D.roles.find((x) => x.code === id));

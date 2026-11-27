@@ -14,6 +14,8 @@ REF="${PROJECT_REF:-izgpvhwhbrgeagjfhfli}"
 API="${API_BASE:-https://api.supabase.com}/v1/projects/$REF"
 FN="${FUNCTIONS_BASE:-https://$REF.supabase.co/functions/v1}"
 NAMES=(ai-company ai-sales-director whatsapp-webhook)
+# Fonctions appelées uniquement par un opérateur connecté (JWT) : Verify JWT ACTIF (défense en profondeur ; requireOperator reste exécuté).
+JWT_NAMES=(ai-jarvis crm-whatsapp crm-vercel)
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 FAILS=0; TODO=()
 
@@ -53,29 +55,30 @@ c=$(sqlq "select now()::text as t"); T0="$(jq -r '.[0].t // empty' "$WORK/out.js
 
 # ── 2. Déploiement des fonctions ────────────────────────────────────
 deploy() {
-  local n="$1" f="$HERE/deploy/$1/index.ts" meta body c
+  local n="$1" jwt="${2:-false}" f="$HERE/deploy/$1/index.ts" meta body c
   [ -s "$f" ] || { fail "$n : fichier $f absent (générer : sh supabase/build_functions.sh)"; return; }
-  meta=$(jq -cn --arg n "$n" '{entrypoint_path:"index.ts", name:$n, verify_jwt:false}')
+  meta=$(jq -cn --arg n "$n" --argjson j "$jwt" '{entrypoint_path:"index.ts", name:$n, verify_jwt:$j}')
   c=$(api POST "/functions/deploy?slug=$n" --form-string "metadata=$meta" -F "file=@$f;filename=index.ts")
   if [[ "$c" != 2* ]]; then
     warn "$n : API de déploiement HTTP $c ($(err)) — essai par l'API historique"
-    body=$(jq -n --arg s "$n" --rawfile b "$f" '{slug:$s, name:$s, body:$b, verify_jwt:false}')
+    body=$(jq -n --arg s "$n" --argjson j "$jwt" --rawfile b "$f" '{slug:$s, name:$s, body:$b, verify_jwt:$j}')
     c=$(printf '%s' "$body" | api PATCH "/functions/$n" -H 'Content-Type: application/json' -d @-)
     [ "$c" != 404 ] || c=$(printf '%s' "$body" | api POST /functions -H 'Content-Type: application/json' -d @-)
     [[ "$c" == 2* ]] || { fail "$n : déploiement refusé (HTTP $c : $(err))"; return; }
   fi
   c=$(api GET "/functions/$n")
   [ "$c" = 200 ] || { fail "$n : lecture impossible après déploiement (HTTP $c : $(err))"; return; }
-  if [ "$(jq -r .verify_jwt "$WORK/out.json")" != false ]; then
-    c=$(api PATCH "/functions/$n" -H 'Content-Type: application/json' -d '{"verify_jwt":false}')
-    [[ "$c" == 2* ]] || { fail "$n : impossible de désactiver Verify JWT (HTTP $c : $(err))"; return; }
+  if [ "$(jq -r .verify_jwt "$WORK/out.json")" != "$jwt" ]; then
+    c=$(api PATCH "/functions/$n" -H 'Content-Type: application/json' -d "{\"verify_jwt\":$jwt}")
+    [[ "$c" == 2* ]] || { fail "$n : impossible de régler Verify JWT (HTTP $c : $(err))"; return; }
     c=$(api GET "/functions/$n")
   fi
-  [ "$(jq -r .verify_jwt "$WORK/out.json")" = false ] && ok "$n : version $(jq -r .version "$WORK/out.json"), statut $(jq -r .status "$WORK/out.json"), Verify JWT désactivé" \
-    || fail "$n : Verify JWT toujours actif (le planificateur serait refusé)"
+  [ "$(jq -r .verify_jwt "$WORK/out.json")" = "$jwt" ] && ok "$n : version $(jq -r .version "$WORK/out.json"), statut $(jq -r .status "$WORK/out.json"), Verify JWT $jwt" \
+    || fail "$n : Verify JWT différent de $jwt"
 }
 section "2. Fonctions Edge"
-for n in "${NAMES[@]}"; do deploy "$n"; done
+for n in "${NAMES[@]}"; do deploy "$n" false; done
+for n in "${JWT_NAMES[@]}"; do [ -s "$HERE/deploy/$n/index.ts" ] && deploy "$n" true || warn "$n : bundle absent, non déployé"; done
 
 if [ -n "${DELETE_FUNCTIONS:-}" ]; then
   for s in ${DELETE_FUNCTIONS//,/ }; do
@@ -88,7 +91,7 @@ c=$(api GET /functions)
 if [ "$c" = 200 ]; then
   log "  Fonctions du projet :"; jq -r '.[] | "    \(.slug)  v\(.version)  \(.status)  verify_jwt=\(.verify_jwt)"' "$WORK/out.json"
   for s in $(jq -r '.[].slug' "$WORK/out.json"); do
-    [[ " ${NAMES[*]} " == *" $s "* ]] || warn "fonction étrangère à SANIX AI : « $s » (à supprimer si elle est inutile)"
+    [[ " ${NAMES[*]} ${JWT_NAMES[*]} crm-gmail " == *" $s "* ]] || warn "fonction étrangère à SANIX AI : « $s » (à supprimer si elle est inutile)"
   done
 fi
 

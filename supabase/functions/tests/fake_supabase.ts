@@ -39,7 +39,7 @@ type Filter = [string, string, unknown];
 class Query implements PromiseLike<any> {
   private op: "select" | "insert" | "update" | "delete" = "select";
   private cols = "*"; private filters: Filter[] = []; private payload: any; private orders: string[] = [];
-  private lim: number | null = null; private one: "single" | "maybe" | null = null; private ret = false;
+  private lim: number | null = null; private off: number | null = null; private one: "single" | "maybe" | null = null; private ret = false;
   private head = false; private count = false;
   constructor(private table: string) {}
   select(cols = "*", opts?: { count?: string; head?: boolean }) {
@@ -61,6 +61,7 @@ class Query implements PromiseLike<any> {
   not(c: string, op: string, v: unknown) { this.filters.push([c, `not ${op}`, v]); return this; }
   order(c: string, o?: { ascending?: boolean }) { this.orders.push(`${q(c)} ${o?.ascending === false ? "desc" : "asc"}`); return this; }
   limit(n: number) { this.lim = n; return this; }
+  range(from: number, to: number) { this.off = from; this.lim = to - from + 1; return this; }   // pagination PostgREST (bornes incluses)
   single() { this.one = "single"; return this; }
   maybeSingle() { this.one = "maybe"; return this; }
   then(res: any, rej: any) { return this.run().then(res, rej); }
@@ -95,7 +96,7 @@ class Query implements PromiseLike<any> {
       if (this.op === "select") {
         text = this.count && this.head ? `select count(*)::int as n from ${t}` : `select ${cols} from ${t}`;
         text += this.where(params);
-        if (!this.head) { if (this.orders.length) text += ` order by ${this.orders.join(", ")}`; if (this.lim !== null) text += ` limit ${this.lim}`; }
+        if (!this.head) { if (this.orders.length) text += ` order by ${this.orders.join(", ")}`; if (this.lim !== null) text += ` limit ${this.lim}`; if (this.off !== null) text += ` offset ${this.off}`; }
       } else if (this.op === "insert") {
         const rows = Array.isArray(this.payload) ? this.payload : [this.payload];
         const keys = [...new Set(rows.flatMap((r: any) => Object.keys(r).filter((k) => r[k] !== undefined)))];
