@@ -360,11 +360,19 @@ export function initJarvis(A, stage) {
       missions: D.tasks.slice(0, 30).map((t) => ({ statut: t.statut, agent: nm(t.agent_id), produit: t.produit ?? "", titre: t.titre, fiches: A.targetOf(t) ? `${D.created[t.id] ?? 0}/${A.targetOf(t)}` : "" })),
       recent: (D.actions ?? []).slice(0, 10).map((a) => ({ quand: new Date(a.at).toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan", hour: "2-digit", minute: "2-digit" }), agent: nm(a.agent_id), action: String(a.action ?? "") })) };
   }
+  // Mémoire permanente de Jarvis (direction) : lue une fois, rafraîchie après écriture ; donnée de contexte, jamais une consigne
+  let memCache = null;
+  async function jarvisMemory(force) {
+    if (memCache && !force) return memCache;
+    try { const r = await A.sb.rpc("ai_jarvis_memoire"); memCache = r.error ? [] : (r.data ?? []); } catch { memCache = []; }
+    return memCache;
+  }
   async function askLLM(raw) {
     if (Date.now() < llmDown || !A.sb?.functions?.invoke) return null;
     setOrb("think"); setSt("Jarvis réfléchit…");
     try {
       const ctx = snapshot(); try { const r = await A.sb.from("ai_executive_messages").select("auteur,contenu,created_at").order("created_at", { ascending: false }).limit(6); ctx.dg = (r.data ?? []).reverse().map((m) => ({ auteur: m.auteur, texte: m.contenu })); } catch { /* dialogue indisponible */ }
+      try { const m = await jarvisMemory(); if (m.length) ctx.memoire_president = m.slice(0, 30).map((x) => ({ categorie: x.categorie, souvenir: x.contenu })); } catch { /* mémoire indisponible */ }
       try { ctx.crm = await crmContext(raw); } catch { /* CRM indisponible : Jarvis répond avec le reste du contexte */ }
       try { const r = await A.sb.rpc("ai_envoi_etat"); if (r?.data && !r.error) { const e = r.data; ctx.kpi.envoi_planifie = { fenetre_ouverte: e.fenetre_ouverte, prochain_creneau: e.prochain_creneau ? new Date(e.prochain_creneau).toLocaleString("fr-FR", { timeZone: "Africa/Abidjan", weekday: "short", hour: "2-digit", minute: "2-digit" }) : null, horaires: `${e.debut}-${e.fin}`, wa_aujourdhui: `${e.wa_envoyes_aujourdhui}/${e.plafond_wa_jour}`, en_file: e.en_file, a_valider: e.a_valider }; } } catch { /* planification non installée */ }
       const call = A.sb.functions.invoke("ai-jarvis", { body: { message: raw, history: hist.slice(-8), context: ctx } });
@@ -434,6 +442,22 @@ export function initJarvis(A, stage) {
       } else if (yes) { const p = pending; pending = null; await sendPending(p); return "transmis"; }
       else if (no) { pending = null; return reply("D'accord, j'annule."); }
       else pending = null;
+    }
+    if (/^(retiens|memorise|souviens toi|rappelle toi|n'? ?oublie pas)\b/.test(t)) {
+      const m = raw.replace(/^\s*(?:ok |hey |dis |salut |bonjour )?(?:jarvis|jarvi|jarvice|jarviss|jarvys|gervais|gervaise|charvis|djarvis|sanix|assistant)?[\s,;:.!-]*/i, "").match(/^(?:retiens|mémorise|memorise|souviens[- ]toi|rappelle[- ]toi|n['’ ]oublie pas)\s+(?:bien\s+)?(?:que\s+|qu['’]|de\s+)?(.{3,})$/i);
+      if (!m) return reply("Que dois-je retenir ?");
+      const txt = m[1].trim(), cat = /prefer|toujours|jamais|j'? ?aime|je veux que/.test(norm(txt)) ? "preference" : /decid|valide|choisi/.test(norm(txt)) ? "decision" : /regle|consigne|obligatoire|interdit/.test(norm(txt)) ? "consigne" : "fait";
+      try { const r = await A.sb.rpc("ai_jarvis_memoriser", { p_contenu: txt, p_categorie: cat }); if (r.error) throw new Error(r.error.message); memCache = null; return reply(r.data?.doublon ? "Je le savais déjà." : "Retenu. Je m'en souviendrai."); }
+      catch (e) { return reply("Je n'ai pas pu le retenir : " + clip(e.message, 120)); }
+    }
+    if (/^(oublie|efface|supprime) (de ta memoire |dans ta memoire )?(que |ce que |le souvenir )?\S/.test(t) && !/prospect|fiche|client|agent|mission/.test(t.split(" ").slice(0, 3).join(" "))) {
+      const q = raw.replace(/^\s*(?:ok |hey |dis )?(?:jarvis|sanix|assistant)?[\s,;:.!-]*/i, "").replace(/^(?:oublie|efface|supprime)\s+(?:de ta mémoire\s+|de ta memoire\s+|dans ta mémoire\s+|dans ta memoire\s+)?(?:que\s+|ce que\s+|le souvenir\s+)?/i, "").trim();
+      try { const r = await A.sb.rpc("ai_jarvis_oublier", { p_texte: q }); if (r.error) throw new Error(r.error.message); memCache = null; const n = r.data?.correspondances ?? 0; return reply(r.data?.ok ? "C'est oublié." : n === 0 ? "Je n'ai aucun souvenir qui correspond." : `${n} souvenirs correspondent : précisez lequel, ou supprimez-le dans l'onglet Mémoire.`); }
+      catch (e) { return reply("Je n'ai pas pu l'oublier : " + clip(e.message, 120)); }
+    }
+    if (/(que sais tu|qu'? ?est ce que tu (sais|retiens)|de quoi te souviens tu|(ta|ma|tes) (memoire|souvenirs))/.test(t) && !/prospect|client|fiche/.test(t)) {
+      const rows = await jarvisMemory(true);
+      return reply(rows.length ? `Je retiens ${plural(rows.length, "élément", "éléments")} : ` + rows.slice(0, 5).map((x) => clip(x.contenu, 90)).join(" ; ") + (rows.length > 5 ? ". La suite est dans l'onglet Mémoire." : ".") : "Je n'ai encore rien en mémoire. Dites « Jarvis, retiens que… ».");
     }
     if (/zoom(e)? (avant|plus)|rapproche|agrandi|plus pres/.test(t)) { if (!view()) return reply("La vue 3D n'est pas disponible sur cet appareil."); view().zoom(.7); return reply("Zoom avant."); }
     if (/zoom(e)? (arriere|moins)|recule|eloigne|plus loin|reduis la vue/.test(t)) { if (!view()) return reply("La vue 3D n'est pas disponible."); view().zoom(1.45); return reply("Zoom arrière."); }
