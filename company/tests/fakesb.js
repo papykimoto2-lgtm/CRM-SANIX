@@ -100,6 +100,13 @@
       });
       return Promise.resolve({ data: { ok: true, results, cursor: 1 }, error: null });
     }
+    // Centre mémoire (test memoire_test.js) : présent seulement si le jeu de données porte ai_agent_memory
+    if (name.startsWith("ai_memoire_") && T("ai_agent_memory")) {
+      const M = T("ai_agent_memory");
+      if (name === "ai_memoire_centre") return Promise.resolve({ data: { souvenirs: M.length, partages: M.filter((m) => !m.agent_id).length, valides: M.filter((m) => m.statut === "valide").length, a_verifier: M.filter((m) => m.statut !== "valide" && !m.task_id).length, experiences: M.filter((m) => m.task_id).length, archives: 0, jarvis: (T("ai_jarvis_memory") ?? []).length, dossiers: 0, par_agent: [{ agent_id: null, nom: "Partagée", n: M.filter((m) => !m.agent_id).length }, ...[...new Set(M.filter((m) => m.agent_id).map((m) => m.agent_id))].map((id) => ({ agent_id: id, nom: "Agent " + id, n: M.filter((m) => m.agent_id === id).length }))] }, error: null });
+      if (name === "ai_memoire_liste") return Promise.resolve({ data: M.filter((m) => (!args.p_agent || m.agent_id === args.p_agent) && (!args.p_partage || !m.agent_id) && (!args.p_statut || (args.p_statut === "valide" ? m.statut === "valide" : args.p_statut === "experience" ? m.task_id : m.statut !== "valide" && !m.task_id))).map((m) => ({ ...m, agent_nom: m.agent_id ? "Agent " + m.agent_id : "Partagée", experience: !!m.task_id })), error: null });
+      if (name === "ai_memoire_valider") { const i = M.findIndex((m) => m.id === args.p_id); if (i < 0) return Promise.resolve({ data: null, error: { message: "Souvenir introuvable" } }); if (args.p_ok) { M[i].statut = "valide"; M[i].task_id = null; } else M.splice(i, 1); return Promise.resolve({ data: { ok: true }, error: null }); }
+    }
     // Mémoire de Jarvis (test memoire_test.js) : présente seulement si le jeu de données porte la table ai_jarvis_memory
     if (name.startsWith("ai_jarvis_") && T("ai_jarvis_memory")) {
       const M = T("ai_jarvis_memory");
