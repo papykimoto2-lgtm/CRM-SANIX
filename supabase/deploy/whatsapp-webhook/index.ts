@@ -4160,6 +4160,9 @@ var IMPL = {
       echeance: heures ? new Date(Date.now() + heures * 36e5).toISOString() : null
     }).select("id").single();
     if (error) throw new Error(error.code === "23505" ? "Une mission identique est d\xE9j\xE0 ouverte pour cet agent : ne la recr\xE9e pas" : error.message);
+    const { data: actualTask, error: actualError } = await db().from("ai_agent_tasks").select("agent_id").eq("id", t.id).single();
+    if (actualError || !actualTask?.agent_id) throw new Error(actualError?.message ?? "Agent r\xE9ellement affect\xE9 introuvable");
+    const actualAgent = ctx.org.byId(actualTask.agent_id);
     if (deps2.length) {
       const { error: e2 } = await db().from("ai_task_dependencies").insert(deps2.map((d) => ({ task_id: t.id, depend_de: d })));
       if (e2) {
@@ -4167,9 +4170,10 @@ var IMPL = {
         throw new Error(e2.message);
       }
     }
-    (ctx.assigned ??= /* @__PURE__ */ new Set()).add(target.id);
-    move(ctx, ctx.agent.id, `assign:${target.id}`, { lieu: "poste_agent", cible: target.id, ms: 12e3, motif: "brief" });
-    return { task_id: t.id, agent: target.code, statut: "a_faire", depend_de: deps2 };
+    const assignedId = actualTask.agent_id;
+    (ctx.assigned ??= /* @__PURE__ */ new Set()).add(assignedId);
+    move(ctx, ctx.agent.id, `assign:${assignedId}`, { lieu: "poste_agent", cible: assignedId, ms: 12e3, motif: "brief" });
+    return { task_id: t.id, agent: actualAgent?.code ?? assignedId, agent_reaffecte: assignedId !== target.id, statut: "a_faire", depend_de: deps2 };
   },
   async attendre_sous_taches(ctx) {
     const open = await openChildren(ctx.task.id);
