@@ -443,6 +443,18 @@ export function initJarvis(A, stage) {
       else if (no) { pending = null; return reply("D'accord, j'annule."); }
       else pending = null;
     }
+    if (/(qu'? ?as tu appris|appris aujourd|sais tu faire de nouveau|nouvelles? competences? (acquises?|maitrisees?)|que dois tu (encore )?apprendre|ce que tu dois (encore )?apprendre|tes lacunes|que te manque t il)/.test(t)) {
+      try {
+        const r = await A.sb.rpc("ai_memoire_metacognition"); if (r.error) throw new Error(r.error.message); const m = r.data ?? {}, j = m.aujourdhui ?? {}, ap = m.a_apprendre ?? {};
+        if (/dois tu (encore )?apprendre|lacunes|te manque/.test(t)) {
+          const p = [ap.erreurs_repetees ? `${plural(ap.erreurs_repetees, "erreur répétée", "erreurs répétées")} à corriger` : "", ap.a_verifier ? `${plural(ap.a_verifier, "souvenir", "souvenirs")} à vérifier par vous` : "", ap.a_revalider ? `${plural(ap.a_revalider, "connaissance", "connaissances")} à revalider` : "", (ap.agents_peu_evalues ?? []).length ? `${plural(ap.agents_peu_evalues.length, "agent", "agents")} avec moins de 5 évaluations (niveau non mesurable)` : ""].filter(Boolean);
+          return reply(p.length ? "Ce qu'il reste à consolider : " + p.join(" ; ") + "." : "Rien d'urgent : aucune lacune détectée.");
+        }
+        if (/faire de nouveau|competences/.test(t)) { const n = m.nouveau ?? []; return reply(n.length ? `Connaissances validées récemment : ` + n.map((x) => clip(x, 110)).join(" ; ") + "." : "Aucune nouvelle connaissance validée ces 14 derniers jours. Validez des souvenirs dans l'onglet Mémoire."); }
+        const tot = (j.souvenirs ?? 0) + (j.experiences ?? 0) + (j.lecons ?? 0) + (j.bilans ?? 0) + (j.dossiers ?? 0);
+        return reply(tot ? `Aujourd'hui : ${plural(j.experiences ?? 0, "expérience de mission", "expériences de mission")}, ${plural(j.souvenirs ?? 0, "souvenir", "souvenirs")}, ${plural(j.lecons ?? 0, "leçon commerciale", "leçons commerciales")}, ${plural(j.dossiers ?? 0, "note de dossier", "notes de dossier")}.` + ((j.exemples ?? []).length ? " Par exemple : " + clip(j.exemples[0], 120) : "") : "Rien de nouveau mémorisé aujourd'hui.");
+      } catch (e) { return reply("Je n'ai pas pu consulter ma mémoire : " + clip(e.message, 120)); }
+    }
     if (/^(retiens|memorise|souviens toi|rappelle toi|n'? ?oublie pas)\b/.test(t)) {
       const m = raw.replace(/^\s*(?:ok |hey |dis |salut |bonjour )?(?:jarvis|jarvi|jarvice|jarviss|jarvys|gervais|gervaise|charvis|djarvis|sanix|assistant)?[\s,;:.!-]*/i, "").match(/^(?:retiens|mémorise|memorise|souviens[- ]toi|rappelle[- ]toi|n['’ ]oublie pas)\s+(?:bien\s+)?(?:que\s+|qu['’]|de\s+)?(.{3,})$/i);
       if (!m) return reply("Que dois-je retenir ?");
