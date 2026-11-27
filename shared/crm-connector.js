@@ -524,16 +524,77 @@
   }
   // Instruction à l'agent responsable : devient une mission pour cet agent sur ce dossier (direction seulement, journalisée par le moteur).
   var drafts = {}, PRIORITES = { 3: 'Normale', 4: 'Haute', 5: 'Urgente' };
+  function sugHtml(c, p) {
+    var sg = suggestions(c, p), h = '<div style="margin-top:8px;font-size:11px;color:var(--muted)">' + esc(sg.situation) + '</div>';
+    if (sg.opt) h += '<div style="margin-top:6px;padding:6px 8px;border-radius:8px;background:#FEF3C7;color:#92400E;font-size:11px">🚫 Prospect désinscrit : aucune relance ni message.</div>';
+    else if (sg.ouvertes) h += '<div style="margin-top:6px;padding:6px 8px;border-radius:8px;background:#EEF2FF;color:#3730A3;font-size:11px">⏳ ' + sg.ouvertes + ' mission(s) déjà en cours pour ce dossier : évitez les doublons.</div>';
+    if (!sg.items.length) return h;
+    return h + '<div style="margin-top:8px;font-size:11px;font-weight:700">💡 Suggestions selon la situation</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">'
+      + sg.items.map(function (x, i) { return '<button type="button" class="btn btn-outline btn-sm" style="font-size:11px" title="' + esc(x.texte) + '" onclick="SanixCrmSync.instrSuggere(' + Number(c.id) + ',' + i + ')">' + esc(x.label) + '</button>'; }).join('') + '</div>';
+  }
   function instructionForm(c, p) {
     if (!p.agent || !p.agent.id || !p.prospect || !p.prospect.id) return '';
     var d = drafts[c.id] || { texte: '', prio: 3, ouvert: false };
     return '<details id="crm-instr" style="margin:10px 0;border:1px solid var(--border);border-radius:10px;padding:8px 12px;background:var(--surface2)"' + (d.ouvert ? ' open' : '') + ' ontoggle="SanixCrmSync.instrOuvert(' + Number(c.id) + ',this.open)">'
-      + '<summary style="cursor:pointer;font-weight:700;font-size:13px">💬 Donner une instruction à ' + esc(p.agent.nom) + '</summary>'
+      + '<summary style="cursor:pointer;font-weight:700;font-size:13px">💬 Donner une instruction à ' + esc(p.agent.nom) + (function () { var n = suggestions(c, p).items.length; return n ? ' <span class="badge badge-primary" style="font-size:10px">' + n + ' suggestion' + (n > 1 ? 's' : '') + '</span>' : ''; })() + '</summary>'
+      + sugHtml(c, p)
       + '<div style="margin-top:8px;font-size:11px;color:var(--muted)">Elle devient une mission de cet agent sur ce dossier, traitée à sa prochaine exécution. Aucun message n\'est envoyé au prospect sans votre validation.</div>'
       + '<textarea id="crm-instr-txt" rows="3" maxlength="2000" placeholder="Ex. : Relance ce prospect par WhatsApp demain matin en proposant une démonstration d\'ImmoSuite." style="width:100%;margin-top:8px;padding:8px;border:1px solid var(--border);border-radius:8px;font:inherit;font-size:12px;resize:vertical" oninput="SanixCrmSync.instrBrouillon(' + Number(c.id) + ',this.value)">' + esc(d.texte) + '</textarea>'
       + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px"><label style="font-size:11px;color:var(--muted)">Priorité <select id="crm-instr-prio" style="font-size:12px" onchange="SanixCrmSync.instrPrio(' + Number(c.id) + ',this.value)">'
       + Object.keys(PRIORITES).map(function (k) { return '<option value="' + k + '"' + (Number(d.prio) === Number(k) ? ' selected' : '') + '>' + PRIORITES[k] + '</option>'; }).join('')
       + '</select></label><button class="btn btn-primary btn-sm" id="crm-instr-btn" onclick="SanixCrmSync.instruire(' + Number(c.id) + ')">Envoyer l\'instruction</button></div></details>';
+  }
+  // Suggestions d'instructions selon la situation du prospect (étape, ancienneté du dernier contact, coordonnées, missions ouvertes, offres, rendez-vous) :
+  // règles déterministes, aucune requête IA. Objectif commun : faire avancer le prospect jusqu'à la signature.
+  function joursDepuis(iso) { var t = Date.parse(iso); return isNaN(t) ? null : Math.floor((Date.now() - t) / 864e5); }
+  function suggestions(c, p) {
+    var out = [], st = String(p.prospect && p.prospect.stage || ''), score = p.prospect && p.prospect.score != null ? Number(p.prospect.score) : null;
+    var nom = c.nom || 'ce prospect', logiciel = c.logiciel || (p.prospect && p.prospect.produits && p.prospect.produits[0]) || 'le logiciel adapté';
+    var inter = (c.interactions || []).slice().sort(function (a, b) { return Date.parse(b.date) - Date.parse(a.date); });
+    var dernier = inter.length ? joursDepuis(inter[0].date) : null;
+    var rejete = inter.some(function (i) { return /non distribu/i.test((i.type || '') + ' ' + (i.note || '')); });
+    var ouvertes = (p.missions || []).filter(function (m) { return ['a_faire', 'en_cours', 'attente_sous_taches', 'attente_validation'].indexOf(m.statut) >= 0; });
+    var offres = p.offres || [], rdv = p.rdv || [];
+    var add = function (id, label, texte, prio) { out.push({ id: id, label: label, texte: texte + ' Objectif : faire avancer ' + nom + ' vers la signature et la conversion en client.', prio: prio || 3 }); };
+    if (p.prospect && p.prospect.opt_out) { return { opt: true, items: [{ id: 'veille', label: 'Mettre en veille', texte: 'Ce prospect s\'est désinscrit : mets le dossier en veille avec le motif, aucune relance ni message.', prio: 3 }], situation: 'Désinscrit : aucun contact autorisé' }; }
+    if (!c.phone && !c.email) add('coord', 'Retrouver les coordonnées', 'Retrouve un numéro ou une adresse e-mail publiés pour ' + nom + ' (site officiel, annuaire professionnel) et ajoute la source.', 3);
+    if (rejete) add('mail', 'Corriger l\'e-mail rejeté', 'L\'e-mail de ' + nom + ' a été rejeté (non distribué) : retrouve la bonne adresse sur le site officiel, ou prépare un message WhatsApp ou un appel à la place.', 4);
+    switch (st) {
+      case 'identifie': case 'enregistre':
+        add('qualif', 'Qualifier le prospect', 'Qualifie ' + nom + ' : secteur, taille, décideur, besoin et budget probables ; donne un score sur 100 justifié et recommande ' + logiciel + '.', 3); break;
+      case 'qualifie':
+        add('premier', 'Préparer le premier message', 'Rédige le premier message personnalisé pour ' + nom + ' (WhatsApp si numéro, sinon e-mail) autour de ' + logiciel + ', soumis à ma validation avant envoi.', score != null && score >= 70 ? 4 : 3); break;
+      case 'premier_contact':
+        if (dernier == null || dernier >= 3) add('relance', 'Relancer autrement', 'Relance ' + nom + ' par un autre canal que le premier contact : message court avec une question de découverte, soumis à validation.', 3);
+        else add('attendre', 'Préparer la suite', 'Prépare la prochaine étape pour ' + nom + ' selon sa réponse : questions de découverte et proposition de rendez-vous.', 3); break;
+      case 'conversation': case 'besoin_identifie':
+        add('besoin', 'Cerner le besoin', 'Identifie le besoin de ' + nom + ' (nombre d\'utilisateurs, outils actuels, budget, décideur) puis propose un rendez-vous de démonstration de ' + logiciel + '.', 4); break;
+      case 'interesse':
+        add('rdv', 'Proposer une démonstration', 'Propose à ' + nom + ' trois créneaux de démonstration cette semaine et prépare la fiche de préparation.', 4); break;
+      case 'rdv_propose': case 'rdv_confirme':
+        add('prepa', 'Préparer la démonstration', 'Prépare la démonstration pour ' + nom + ' : points clés de ' + logiciel + ' pour son activité et réponses aux objections probables.', 4); break;
+      case 'demo_realisee':
+        add('offre', 'Rédiger l\'offre', 'Rédige l\'offre adaptée pour ' + nom + ' avec la grille officielle (remise dans ta délégation seulement) et un message d\'accompagnement soumis à validation.', 4); break;
+      case 'offre_transmise': case 'negociation':
+        add('nego', 'Relancer l\'offre', 'Relance ' + nom + ' sur l\'offre transmise : traite les objections (prix, concurrent), propose un plan de paiement et escalade si une remise dépasse ta délégation.', 5); break;
+      case 'offre_acceptee': case 'contrat_transmis':
+        add('contrat', 'Finaliser le contrat', 'Prépare le contrat et le planning de déploiement pour ' + nom + ' et rappelle l\'acompte attendu.', 5); break;
+      case 'perdu': case 'en_veille':
+        add('reveil', 'Programmer une réactivation', 'Analyse pourquoi ' + nom + ' n\'a pas avancé et programme une réactivation dans 60 jours avec un nouvel angle.', 2); break;
+    }
+    if (dernier != null && dernier >= 14 && ['perdu', 'en_veille'].indexOf(st) < 0) add('inactif', 'Réveiller le dossier', 'Le dossier de ' + nom + ' est inactif depuis ' + dernier + ' jours : analyse la cause et propose une relance à valeur ajoutée (cas client, offre limitée dans le temps).', 3);
+    if (score != null && score < 40 && ['identifie', 'enregistre'].indexOf(st) >= 0) add('fiable', 'Vérifier la fiabilité', 'Vérifie que la fiche de ' + nom + ' est fiable (activité réelle, coordonnées, décideur) avant d\'investir du temps commercial.', 2);
+    if (rdv.length && !offres.length && st !== 'demo_realisee') add('cr', 'Compte rendu et suite', 'Rédige le compte rendu du dernier rendez-vous avec ' + nom + ' et propose la prochaine étape vers l\'offre.', 4);
+    var seen = {}; out = out.filter(function (x) { if (seen[x.id]) return false; seen[x.id] = 1; return true; }).slice(0, 4);
+    var sit = 'Étape : ' + (st || 'inconnue') + (score != null ? ' · score ' + score + '/100' : '') + (dernier != null ? ' · dernier contact il y a ' + dernier + ' j' : ' · aucun contact enregistré') + (ouvertes.length ? ' · ' + ouvertes.length + ' mission(s) ouverte(s)' : '');
+    return { opt: false, items: out, situation: sit, ouvertes: ouvertes.length };
+  }
+  function instrSuggere(id, k) {
+    var c = STORES.clients.get().find(function (x) { return String(x.id) === String(id); }); var p = c && panelCache[c._rid]; if (!p) return;
+    var sg = suggestions(c, p).items[Number(k)]; if (!sg) return;
+    var d = drafts[id] = drafts[id] || { texte: '', prio: 3, ouvert: true }; d.texte = sg.texte; d.prio = sg.prio; d.ouvert = true;
+    var ta = document.getElementById('crm-instr-txt'), pr = document.getElementById('crm-instr-prio');
+    if (ta) { ta.value = sg.texte; ta.focus(); } if (pr) pr.value = String(sg.prio);
   }
   function instrBrouillon(id, v) { (drafts[id] = drafts[id] || { texte: '', prio: 3, ouvert: true }).texte = v; }
   function instrPrio(id, v) { (drafts[id] = drafts[id] || { texte: '', prio: 3, ouvert: true }).prio = Number(v) || 3; }
@@ -620,7 +681,7 @@
 
   window.SanixCrmSync = {
     renewSession: renewSession, version: 1, available: function () { return !!(cfg() && session() && backend !== 'absent'); }, rpcAux: function (name, body) { return rpc(name, body, 20000, true); }, status: status, syncNow: function () { backend = 'unknown'; return sync(); }, flush: flush, pull: pull, scan: function (e) { return e ? scan(e) : ORDER.map(scan); },
-    openPanel: openPanel, exportBackup: exportBackup, backup: backup, delegate: delegate, claim: claim, instruire: instruire, instrBrouillon: instrBrouillon, instrPrio: instrPrio, instrOuvert: instrOuvert, clientPanel: clientPanel, onChange: function (f) { listeners.push(f); },
+    openPanel: openPanel, exportBackup: exportBackup, backup: backup, delegate: delegate, claim: claim, instruire: instruire, instrSuggere: instrSuggere, suggestions: suggestions, instrBrouillon: instrBrouillon, instrPrio: instrPrio, instrOuvert: instrOuvert, clientPanel: clientPanel, onChange: function (f) { listeners.push(f); },
     confirmDeletes: function () { suspiciousInfo = null; var save = allowDeletes; ORDER.forEach(function (e) { var known = state.hash[e] || {}, arr = STORES[e].get(), have = {}; arr.forEach(function (o) { have[ridOf(e, o)] = 1; }); Object.keys(known).forEach(function (rid) { if (!have[rid]) queue(e, rid, 'delete', 'x', { client_ts: new Date().toISOString() }); }); }); persistOutbox(); kick(0); emit(); },
     restoreFromServer: function () { suspiciousInfo = null; state.cursor = 0; ORDER.forEach(function (e) { var known = state.hash[e] || {}, have = {}; STORES[e].get().forEach(function (o) { have[ridOf(e, o)] = 1; }); Object.keys(known).forEach(function (rid) { if (!have[rid]) { delete known[rid]; delete state.ver[e + ':' + rid]; } }); }); persistState(); kick(0); emit(); },
     retryEvent: function (id) { return rpc('crm_event_retry', { p_id: id }).then(function () { toast('↻ Événement remis en file'); refreshServer(); }).catch(function (e) { toast('❌ ' + e.message); }); },
