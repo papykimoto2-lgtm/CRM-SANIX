@@ -5,8 +5,8 @@ const { launch, newPage, ok, loadFixture } = require("./harness.js");
   try {
     const fx = loadFixture(), d = (n) => new Date(Date.now() + n * 864e5).toISOString();
     fx.ai_goals_fixture = [
-      { id: "g1", titre: "20 prospects qualifiés AluExpert", metrique: "qualifies", produit: null, agent_id: null, agent_nom: "IA Lead Qualifier", cible: 20, baseline: 5, actuel: 18, fait: 13, pct: 65, temps_pct: 50, etat: "en_bonne_voie", statut: "actif", debut: d(-10), echeance: d(10) },
-      { id: "g2", titre: "3 rendez-vous confirmés", metrique: "rdv", produit: null, agent_id: null, agent_nom: null, cible: 3, baseline: 0, actuel: 0, fait: 0, pct: 0, temps_pct: 60, etat: "en_retard", statut: "actif", debut: d(-12), echeance: d(8) },
+      { id: "g1", titre: "20 prospects qualifiés AluExpert", metrique: "qualifies", produit: null, agent_id: null, agent_nom: "IA Lead Qualifier", cible: 20, baseline: 5, actuel: 18, fait: 13, pct: 65, temps_pct: 50, etat: "en_bonne_voie", statut: "actif", joignables_pct: 90, retours_pct: 4, optout: 0, cout_usd: 3.5, cout_unitaire: 0.27, alerte_qualite: false, debut: d(-10), echeance: d(10) },
+      { id: "g2", titre: "3 rendez-vous confirmés", metrique: "rdv", produit: null, agent_id: null, agent_nom: null, cible: 3, baseline: 0, actuel: 0, fait: 0, pct: 0, temps_pct: 60, etat: "en_retard", statut: "actif", joignables_pct: 20, retours_pct: 45, optout: 2, cout_usd: 1.2, cout_unitaire: null, alerte_qualite: true, debut: d(-12), echeance: d(8) },
       { id: "g3", titre: "Ancien objectif", metrique: "offres", produit: null, agent_id: null, agent_nom: null, cible: 2, baseline: 0, actuel: 2, fait: 2, pct: 100, temps_pct: 100, etat: "atteint", statut: "atteint", debut: d(-40), echeance: d(-10) }];
     const { page, errors } = await newPage(browser, { fixture: JSON.stringify(fx) });
     await page.goto(`http://localhost:${port}/company/live.html?debug=1&fast=1`); await page.waitForSelector("#live:not([hidden])"); await page.waitForTimeout(2200);
@@ -20,6 +20,8 @@ const { launch, newPage, ok, loadFixture } = require("./harness.js");
     ok((await page.locator(".goal").count()) === 3, "3 objectifs affichés (2 actifs + 1 clôturé)");
     const t = await page.locator("#main").innerText();
     ok(/13 \/ 20/.test(t) && /65 %/.test(t) && /En retard/.test(t) && /En bonne voie/.test(t), "progression, pourcentage et état affichés");
+    ok(/90 %.*joignables/.test(t) && /4 %.*invalides/.test(t) && /3\.50 \$/.test(t) && /0\.27 \$ par unité/.test(t), "indicateurs de qualité et coût par unité affichés");
+    ok(/Résultat à contrôler/.test(t), "alerte qualité affichée");
     await page.fill("#g-titre", "10 démonstrations ImmoSuite"); await page.selectOption("#g-metrique", "demos"); await page.fill("#g-cible", "10"); await page.click("#goal-form button[type=submit]"); await page.waitForTimeout(500);
     ok(/10 démonstrations ImmoSuite/.test(await page.locator("#main").innerText()) && /Démonstrations réalisées/.test(await page.locator("#main").innerText()), "création d'un objectif");
     const call = await page.evaluate(() => (window.__CALLS ?? []).filter((c) => c.rpc === "ai_goal_creer").pop());

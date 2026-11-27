@@ -101,6 +101,13 @@
       return Promise.resolve({ data: { ok: true, results, cursor: 1 }, error: null });
     }
     if (name === "ai_competences_mesurees") return Promise.resolve({ data: T("ai_competences_fixture") ?? [], error: null });
+    // Constitution (test constitution_test.js)
+    if (name.startsWith("ai_constitution") && T("ai_constitution_fixture")) {
+      const C = T("ai_constitution_fixture");
+      if (name === "ai_constitution_historique" || name === "ai_constitution_lire") return Promise.resolve({ data: JSON.parse(JSON.stringify(C)), error: null });
+      if (name === "ai_constitution_publier") { if (String(args.p_motif ?? "").length < 5) return Promise.resolve({ data: null, error: { message: "Indiquez le motif de la révision (5 caractères minimum)" } }); C.unshift({ version: C.length + 1, contenu: args.p_contenu, motif: args.p_motif, publie_at: new Date().toISOString() }); return Promise.resolve({ data: { ok: true, version: C.length }, error: null }); }
+    }
+    if (name === "ai_gouvernance_journal" && T("ai_journal_fixture")) return Promise.resolve({ data: T("ai_journal_fixture"), error: null });
     // Goal Engine (test objectifs_test.js) : présent seulement si le jeu de données porte ai_goals_fixture
     if (name.startsWith("ai_goal") && T("ai_goals_fixture")) {
       const G = T("ai_goals_fixture");

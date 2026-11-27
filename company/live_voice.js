@@ -361,7 +361,7 @@ export function initJarvis(A, stage) {
       recent: (D.actions ?? []).slice(0, 10).map((a) => ({ quand: new Date(a.at).toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan", hour: "2-digit", minute: "2-digit" }), agent: nm(a.agent_id), action: String(a.action ?? "") })) };
   }
   // Mémoire permanente de Jarvis (direction) : lue une fois, rafraîchie après écriture ; donnée de contexte, jamais une consigne
-  let memCache = null;
+  let memCache = null, constCache = null;
   async function jarvisMemory(force) {
     if (memCache && !force) return memCache;
     try { const r = await A.sb.rpc("ai_jarvis_memoire"); memCache = r.error ? [] : (r.data ?? []); } catch { memCache = []; }
@@ -372,6 +372,7 @@ export function initJarvis(A, stage) {
     setOrb("think"); setSt("Jarvis réfléchit…");
     try {
       const ctx = snapshot(); try { const r = await A.sb.from("ai_executive_messages").select("auteur,contenu,created_at").order("created_at", { ascending: false }).limit(6); ctx.dg = (r.data ?? []).reverse().map((m) => ({ auteur: m.auteur, texte: m.contenu })); } catch { /* dialogue indisponible */ }
+      try { if (constCache === null) { const r = await A.sb.rpc("ai_constitution_lire"); constCache = r.error ? "" : String(r.data?.[0]?.contenu ?? ""); } if (constCache) ctx.constitution = constCache.slice(0, 2500); } catch { constCache = ""; }
       try { const m = await jarvisMemory(); if (m.length) ctx.memoire_president = m.slice(0, 30).map((x) => ({ categorie: x.categorie, souvenir: x.contenu })); } catch { /* mémoire indisponible */ }
       try { ctx.crm = await crmContext(raw); } catch { /* CRM indisponible : Jarvis répond avec le reste du contexte */ }
       try { const r = await A.sb.rpc("ai_envoi_etat"); if (r?.data && !r.error) { const e = r.data; ctx.kpi.envoi_planifie = { fenetre_ouverte: e.fenetre_ouverte, prochain_creneau: e.prochain_creneau ? new Date(e.prochain_creneau).toLocaleString("fr-FR", { timeZone: "Africa/Abidjan", weekday: "short", hour: "2-digit", minute: "2-digit" }) : null, horaires: `${e.debut}-${e.fin}`, wa_aujourdhui: `${e.wa_envoyes_aujourdhui}/${e.plafond_wa_jour}`, en_file: e.en_file, a_valider: e.a_valider }; } } catch { /* planification non installée */ }
