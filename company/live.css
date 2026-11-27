@@ -743,3 +743,21 @@ body.exec-view .executive-facts{padding:8px 0}
   .relations-filters .relations-camera{grid-column:2;justify-content:flex-end}
   .relations-filters small{grid-column:1/-1;width:auto;margin:0}
 }
+
+/* Fiche prospect en plein écran (bouton « ⛶ Plein écran ») */
+body.prospect-full-open{overflow:hidden}
+#detail.prospect-full{position:fixed!important;inset:0;z-index:80;width:auto!important;height:100dvh;max-height:none!important;margin:0!important;border-radius:0!important;overflow:auto!important;padding:max(14px,env(safe-area-inset-top)) clamp(14px,3vw,40px) 40px;background:var(--bg,#050B16)}
+#detail.prospect-full .prospect-workbench-head{position:sticky;top:-1px;z-index:2;padding:8px 0;background:var(--bg,#050B16)}
+#detail.prospect-full .prospect-workbench-head h2{font-size:clamp(18px,2.4vw,28px)}
+#detail.prospect-full .prospect-workbench-grid{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+#detail.prospect-full .prospect-data-grid{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+#detail.prospect-full .prospect-workbench-grid b,#detail.prospect-full .prospect-workbench-products b{font-size:13px}
+#detail.prospect-full .prospect-workbench-grid small,#detail.prospect-full .prospect-workbench-products small{font-size:11px}
+#detail.prospect-full .prospect-workbench-section h3{font-size:12px}
+@media (min-width:1100px){#detail.prospect-full{max-width:1280px;margin:0 auto!important;left:0;right:0}}
+@media (max-width:700px){
+  #detail.prospect-full .prospect-workbench-head{flex-direction:column;align-items:stretch}
+  #detail.prospect-full .prospect-workbench-head-actions{width:100%;flex-wrap:wrap;justify-content:flex-start;gap:6px}
+  #detail.prospect-full .prospect-workbench-head-actions button{min-width:0;flex:1 1 auto}
+  #detail.prospect-full #prospect-detail-close{flex:0 0 auto;min-width:44px}
+}

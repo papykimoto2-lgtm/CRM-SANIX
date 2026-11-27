@@ -18,7 +18,7 @@
       eq: (c, v) => (s.f.push([c, "eq", v]), api), neq: (c, v) => (s.f.push([c, "neq", v]), api), in: (c, v) => (s.f.push([c, "in", v]), api), is: (c, v) => (s.f.push([c, "is", v]), api),
       gte: (c, v) => (s.f.push([c, "gte", v]), api), lte: (c, v) => (s.f.push([c, "lte", v]), api), ilike: (c, v) => (s.f.push([c, "ilike", v]), api), not: (c, o, v) => (s.f.push([c, "not." + o, v]), api),
       or: (str) => (s.f.push([null, "or", str.split(",").map((p) => { const [c, op, ...v] = p.split("."); return [c, op, v.join(".")]; })]), api),
-      order: (c, o) => (s.orders.push([c, o?.ascending !== false]), api), limit: (n) => ((s.lim = n), api),
+      order: (c, o) => (s.orders.push([c, o?.ascending !== false]), api), limit: (n) => ((s.lim = n), api), range: (a, b) => ((s.off = a, s.lim = b - a + 1), api),
       single: () => ((s.one = "single"), api), maybeSingle: () => ((s.one = "maybe"), api),
       then(res, rej) { return Promise.resolve(run()).then(res, rej); },
     };
@@ -39,7 +39,7 @@
       else if (s.op === "delete") { out = rows.filter(ok); out.forEach((r) => rows.splice(rows.indexOf(r), 1)); }
       else out = rows.filter(ok);
       if (s.op === "select") for (const [c, asc] of [...s.orders].reverse()) out = [...out].sort((a, b) => (asc ? 1 : -1) * cmp(a[c], b[c]));
-      if (s.lim !== null) out = out.slice(0, s.lim);
+      if (s.lim !== null) out = out.slice(s.off ?? 0, (s.off ?? 0) + s.lim);
       if (s.op === "select" || s.ret) {
         if (s.cols.includes("ai_prospects(")) out = out.map((r) => ({ ...r, ai_prospects: r.prospect_id ? (({ entreprise, decideur, phone_norm, telephone, whatsapp }) => ({ entreprise: entreprise ?? null, decideur, phone_norm, telephone, whatsapp }))(T("ai_prospects").find((p) => p.id === r.prospect_id) ?? {}) : null }));
         else if (s.cols !== "*") { const cols = s.cols.split(",").map((c) => c.trim()); out = out.map((r) => Object.fromEntries(cols.map((c) => { const m = /^(\w+):(\w+)(?:->>?(\w+))?$/.exec(c); return m ? [m[1], m[3] ? r[m[2]]?.[m[3]] : r[m[2]]] : [c, r[c]]; }))); }

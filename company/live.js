@@ -890,6 +890,14 @@ function renderTicker() {
   const tr = $("#ticker"); if (tr.dataset.k !== one) { tr.dataset.k = one; tr.innerHTML = one + one; }
 }
 function renderLegend() { $("#legend").innerHTML = Object.entries(STATES).map(([, [l, c]]) => `<span><i style="background:${c};box-shadow:0 0 8px ${c}"></i>${l}</span>`).join(""); }
+/** Fiche prospect en plein écran : classe sur #detail (mémorisée entre deux rafraîchissements), Échap pour sortir. */
+function setProspectFull(on) {
+  const el = $("#detail"); if (!el) return;
+  el.classList.toggle("prospect-full", !!on); document.body.classList.toggle("prospect-full-open", !!on);
+  const b = $("#prospect-fullscreen"); if (b) { b.textContent = on ? "⛶ Quitter le plein écran" : "⛶ Plein écran"; b.setAttribute("aria-pressed", String(!!on)); }
+  if (on) el.scrollTop = 0;
+}
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && $("#detail")?.classList.contains("prospect-full")) { ev.stopPropagation(); setProspectFull(false); } }, true);
 function renderDetail() {
   const el = $("#detail"), a = agentById(D.sel);
   if (D.relationSel) {
@@ -970,7 +978,7 @@ function renderDetail() {
       return `<li><b>${esc(String(r.action || "activité").replace(/_/g, " "))}</b><small>${esc(who)} · ${esc(ago(r.at))} · ${r.ok === false ? "Échec" : "Enregistré"}</small><span>${esc(summary)}</span></li>`;
     }).join("") : "<li>Aucune activité reliée à ce prospect dans les 500 derniers événements chargés.</li>";
     el.hidden = false;
-    el.innerHTML = `<div class="prospect-workbench-head"><div><h2>${esc(p.entreprise || "Prospect")} <span class="tag">Prospect</span></h2><div class="muted">${esc(p.ville || "Localisation non renseignée")} · ${esc(p.stage || "nouveau")}</div></div><div class="prospect-workbench-head-actions">${D.prospectNetworkOrigin ? '<button type="button" id="prospect-back-network" class="prospect-network-back">← Retour au réseau</button>' : ""}<button type="button" id="prospect-jarvis-analysis" class="prospect-assign-toggle">✦ Analyse commerciale Jarvis</button><button type="button" id="prospect-detail-close" aria-label="Fermer la fiche">×</button></div></div>
+    el.innerHTML = `<div class="prospect-workbench-head"><div><h2>${esc(p.entreprise || "Prospect")} <span class="tag">Prospect</span></h2><div class="muted">${esc(p.ville || "Localisation non renseignée")} · ${esc(p.stage || "nouveau")}</div></div><div class="prospect-workbench-head-actions">${D.prospectNetworkOrigin ? '<button type="button" id="prospect-back-network" class="prospect-network-back">← Retour au réseau</button>' : ""}<button type="button" id="prospect-fullscreen" class="prospect-assign-toggle" aria-pressed="${el.classList.contains("prospect-full")}">${el.classList.contains("prospect-full") ? "⛶ Quitter le plein écran" : "⛶ Plein écran"}</button><button type="button" id="prospect-jarvis-analysis" class="prospect-assign-toggle">✦ Analyse commerciale Jarvis</button><button type="button" id="prospect-detail-close" aria-label="Fermer la fiche">×</button></div></div>
       <div class="prospect-workbench-grid"><div><small>Agent responsable</small><b>${esc(assigned?.nom || "Non affecté")}</b></div><div><small>Score CRM</small><b>${p.score != null && Number.isFinite(Number(p.score)) ? esc(p.score) : "Non renseigné"}</b></div><div><small>Potentiel</small><b>${p.potentiel_fcfa != null && Number.isFinite(Number(p.potentiel_fcfa)) ? esc(Number(p.potentiel_fcfa).toLocaleString("fr-FR") + " FCFA") : "Non renseigné"}</b></div><div><small>Prochaine action</small><b>${esc(next)}</b></div></div>
       <div class="prospect-workbench-contact">${contact}${email}</div>
       <div class="prospect-workbench-products"><small>Logiciel(s)</small><b>${esc(products.filter(Boolean).join(" · ") || "Non renseigné")}</b></div>
@@ -1015,7 +1023,8 @@ function renderDetail() {
         <button type="submit" class="prospect-assign-submit">Confier la mission</button><small class="prospect-assign-status" id="prospect-assign-status" aria-live="polite"></small>
       </form></section>
       <p class="prospect-workbench-note">La création passe par le contrôle d'accès de la direction. La mission est enregistrée dans le moteur SANIX AI ; aucune relance ou communication externe n'est envoyée automatiquement.</p>`;
-    $("#prospect-detail-close")?.addEventListener("click", () => { D.prospectSel = null; D.prospectHistory = null; D.prospectNetworkOrigin = null; el.hidden = true; });
+    $("#prospect-fullscreen")?.addEventListener("click", () => setProspectFull(!el.classList.contains("prospect-full")));
+    $("#prospect-detail-close")?.addEventListener("click", () => { setProspectFull(false); D.prospectSel = null; D.prospectHistory = null; D.prospectNetworkOrigin = null; el.hidden = true; });
     $("#prospect-jarvis-analysis")?.addEventListener("click", () => window.__jarvis?.explainProspect?.(p, history, prospectTasks, { historyHasMore, historyLoading }));
     $("#prospect-back-network")?.addEventListener("click", () => {
       const origin = D.prospectNetworkOrigin;
@@ -1352,5 +1361,5 @@ async function boot() {
   await cycle(); setInterval(() => cycle(), /[?&]fast/.test(location.search) ? 800 : 6000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) cycle(); });
 }
-if (/[?&]debug/.test(location.search)) window.__live = { D, nodes: () => nodes, cycle, get view3d() { return view3d; } };
+if (/[?&]debug/.test(location.search)) window.__live = { D, renderDetail, nodes: () => nodes, cycle, get view3d() { return view3d; } };
 boot();
