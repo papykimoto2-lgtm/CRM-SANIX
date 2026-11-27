@@ -961,9 +961,12 @@ function renderDetail() {
     const website = /^https?:\/\//i.test(String(p.site_web || "")) ? `<a href="${esc(p.site_web)}" target="_blank" rel="noopener">Site web ↗</a>` : esc(p.site_web || "");
     const sourceUrl = /^https?:\/\//i.test(String(p.source_url || "")) ? `<a href="${esc(p.source_url)}" target="_blank" rel="noopener">Voir la source ↗</a>` : "";
     const activityRows = history.length ? history.map((r) => {
-      const payload = r.payload && typeof r.payload === "object" ? (r.payload.note || r.payload.message || r.payload.resultat || r.payload.reason || r.payload.status || "") : "";
-      const summary = payload ? String(payload).slice(0, 150) : (r.ok === false ? "Action signalée en échec" : "Événement enregistré");
-      const who = agentById(r.agent_id)?.nom || (r.payload?.author_id ? "Équipe SANIX · " + String(r.payload.author_id).slice(0,8) : (r.agent_id ? "Agent non chargé" : "Agent non identifié"));
+      const ch = r.action === "prospect_modifie" && r.payload?.changements && typeof r.payload.changements === "object" ? r.payload.changements : null;
+      const val = (v) => v == null || v === "" ? "vide" : typeof v === "object" ? JSON.stringify(v) : String(v);
+      const chSummary = ch ? Object.entries(ch).slice(0, 4).map(([k, c]) => k.replace(/_/g, " ") + " : " + val(c?.avant).slice(0, 40) + " → " + val(c?.apres).slice(0, 40)).join(" · ") + (Object.keys(ch).length > 4 ? " · +" + (Object.keys(ch).length - 4) : "") : "";
+      const payload = ch ? chSummary : r.payload && typeof r.payload === "object" ? (r.payload.note || r.payload.message || r.payload.resultat || r.payload.reason || r.payload.status || "") : "";
+      const summary = payload ? String(payload).slice(0, ch ? 260 : 150) : (r.ok === false ? "Action signalée en échec" : "Événement enregistré");
+      const who = agentById(r.agent_id)?.nom || (r.payload?.auteur_nom ? "Équipe SANIX · " + r.payload.auteur_nom : r.payload?.author_id ? "Équipe SANIX · " + String(r.payload.author_id).slice(0,8) : r.payload?.origine === "automatique" ? "Automatique (IA ou système)" : (r.agent_id ? "Agent non chargé" : "Agent non identifié"));
       return `<li><b>${esc(String(r.action || "activité").replace(/_/g, " "))}</b><small>${esc(who)} · ${esc(ago(r.at))} · ${r.ok === false ? "Échec" : "Enregistré"}</small><span>${esc(summary)}</span></li>`;
     }).join("") : "<li>Aucune activité reliée à ce prospect dans les 500 derniers événements chargés.</li>";
     el.hidden = false;
