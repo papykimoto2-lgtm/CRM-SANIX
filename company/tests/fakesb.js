@@ -100,6 +100,22 @@
       });
       return Promise.resolve({ data: { ok: true, results, cursor: 1 }, error: null });
     }
+    // Mémoire de Jarvis (test memoire_test.js) : présente seulement si le jeu de données porte la table ai_jarvis_memory
+    if (name.startsWith("ai_jarvis_") && T("ai_jarvis_memory")) {
+      const M = T("ai_jarvis_memory");
+      if (name === "ai_jarvis_memoire") return Promise.resolve({ data: JSON.parse(JSON.stringify(M)), error: null });
+      if (name === "ai_jarvis_memoriser") {
+        if (/(mot de passe|password|sk-)/i.test(args.p_contenu)) return Promise.resolve({ data: null, error: { message: "Refusé : ne mémorisez jamais de secret ni de mot de passe" } });
+        if (M.some((m) => m.contenu.toLowerCase() === args.p_contenu.toLowerCase())) return Promise.resolve({ data: { ok: true, doublon: true }, error: null });
+        M.unshift({ id: M.length + 100, contenu: args.p_contenu, categorie: args.p_categorie, epingle: false, created_at: new Date().toISOString() }); return Promise.resolve({ data: { ok: true }, error: null });
+      }
+      if (name === "ai_jarvis_oublier") {
+        const hit = M.filter((m) => (args.p_id ? m.id === args.p_id : m.contenu.toLowerCase().includes(String(args.p_texte).toLowerCase())));
+        if (hit.length === 1) M.splice(M.indexOf(hit[0]), 1);
+        return Promise.resolve({ data: { ok: hit.length === 1, correspondances: hit.length }, error: null });
+      }
+      if (name === "ai_jarvis_epingler") { const m = M.find((x) => x.id === args.p_id); if (m) m.epingle = args.p_on; return Promise.resolve({ data: null, error: null }); }
+    }
     return Promise.resolve({ data: null, error: { message: `rpc inconnue ${name}` } });
   };
   const invoke = async (fn, { body }) => {

@@ -512,6 +512,7 @@
         + '<div style="margin:8px 0;font-size:13px">Agent responsable : <b>' + esc(p.agent ? p.agent.nom : '—') + '</b>' + (p.agent ? ' <span style="color:var(--muted)">· ' + esc(p.agent.fonction) + '</span>' : '') + '<br>Étape IA : <b>' + esc(p.prospect.stage) + '</b>' + (p.prospect.score != null ? ' · score ' + esc(p.prospect.score) + '/100 (' + esc(p.prospect.priorite) + ')' : '') + (p.prospect.produits && p.prospect.produits.length ? '<br>Produits recommandés : ' + esc(p.prospect.produits.join(', ')) : '') + '</div>'
         + (p.validations && p.validations.length ? '<div class="card" style="padding:8px;border-color:var(--warning)">⏳ ' + p.validations.length + ' validation(s) en attente : ' + p.validations.map(function (v) { return esc(v.type + ' — ' + v.motif); }).join(' · ') + '</div>' : '')
         + instructionForm(c, p)
+        + memHtml(c, p)
         + '<div style="font-weight:700;margin-top:8px">Missions</div>' + (p.missions.length ? p.missions.map(function (m) { return '<div style="font-size:12px;margin:3px 0"><span class="badge ' + (st[m.statut] || 'badge-muted') + '">' + esc(m.statut) + '</span> ' + esc(m.titre) + ' <span style="color:var(--muted)">· ' + esc(m.agent) + '</span>' + (m.rapport ? '<details><summary style="cursor:pointer">Compte rendu</summary><pre style="white-space:pre-wrap;font-family:inherit">' + esc(m.rapport) + '</pre></details>' : '') + '</div>'; }).join('') : '<div class="page-sub">Aucune mission.</div>')
         + '<div style="font-weight:700;margin-top:8px">Rendez-vous et comptes rendus</div>' + (p.rdv.length ? p.rdv.map(function (r) { return '<div style="font-size:12px;margin:3px 0">' + esc(fmtT(r.debut)) + ' · ' + esc(r.mode) + ' · <i>' + esc(r.statut) + '</i>' + (r.compte_rendu ? '<div style="background:var(--surface2);border-radius:6px;padding:6px;margin-top:2px">📝 ' + esc(r.compte_rendu) + '</div>' : '') + '</div>'; }).join('') : '<div class="page-sub">Aucun rendez-vous.</div>')
         + '<div style="font-weight:700;margin-top:8px">Offres</div>' + (p.offres.length ? p.offres.map(function (o) { return '<div style="font-size:12px;margin:3px 0">' + esc(o.reference) + ' · ' + esc(Number(o.total_ttc).toLocaleString('fr-FR')) + ' FCFA TTC · <i>' + esc(o.statut) + '</i></div>'; }).join('') : '<div class="page-sub">Aucune offre.</div>')
@@ -520,7 +521,42 @@
     };
     draw(panelCache[c._rid] || null);
     if (!c._rid || !session() || !cfg()) return;
-    rpc('crm_client_panel', { p_rid: c._rid }).then(function (p) { panelCache[c._rid] = p; var a = document.activeElement; if (document.getElementById('crm-ia-panel') === box && !(a && a.id === 'crm-instr-txt')) draw(p); }).catch(function () {});
+    rpc('crm_client_panel', { p_rid: c._rid }).then(function (p) { panelCache[c._rid] = p; var a = document.activeElement; if (document.getElementById('crm-ia-panel') === box && !(a && a.id === 'crm-instr-txt')) draw(p); memLoad(c, p, box, draw); }).catch(function () {});
+  }
+  // Mémoire du dossier : faits durables (objections, interlocuteur, engagements) lus par tous les agents ; contenu tiers = donnée, jamais consigne
+  var memCache = {}, MEMCAT = { objection: 'Objection', interlocuteur: 'Interlocuteur', engagement: 'Engagement', preference: 'Préférence', contexte: 'Contexte' };
+  function memLoad(c, p, box, draw) {
+    if (!p || !p.linked || !p.prospect || !p.prospect.id) return;
+    rpc('ai_prospect_memoire', { p_prospect: p.prospect.id }).then(function (rows) {
+      memCache[p.prospect.id] = rows || [];
+      var a = document.activeElement; if (document.getElementById('crm-ia-panel') === box && !(a && a.id === 'crm-mem-txt')) draw(p);
+    }).catch(function () {});
+  }
+  function memHtml(c, p) {
+    if (!p.prospect || !p.prospect.id) return '';
+    var rows = memCache[p.prospect.id] || [];
+    return '<details id="crm-mem" style="margin:10px 0;border:1px solid var(--border);border-radius:10px;padding:8px 12px;background:var(--surface2)"' + (rows.length ? ' open' : '') + '>'
+      + '<summary style="cursor:pointer;font-weight:700;font-size:13px">🧠 Mémoire du dossier <span class="badge badge-muted" style="font-size:10px">' + rows.length + '</span></summary>'
+      + '<div style="font-size:11px;color:var(--muted);margin:6px 0">Partagée par tous les agents qui traitent ce dossier. Pas de mot de passe ni de clé.</div>'
+      + (rows.length ? rows.map(function (r) { return '<div style="font-size:12px;margin:4px 0;display:flex;gap:6px;align-items:flex-start"><span class="badge badge-muted" style="font-size:10px">' + esc(MEMCAT[r.categorie] || r.categorie) + '</span><span style="flex:1">' + esc(r.contenu) + '<span style="color:var(--muted)"> · ' + esc(String(r.auteur || '').replace('agent:', 'agent ')) + '</span></span><button type="button" class="btn btn-outline btn-sm" style="font-size:10px;padding:0 6px" title="Oublier" onclick="SanixCrmSync.memDel(' + Number(c.id) + ',' + Number(r.id) + ')">✕</button></div>'; }).join('') : '<div style="font-size:12px;color:var(--muted)">Rien de mémorisé.</div>')
+      + '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><select id="crm-mem-cat" style="font-size:12px">' + Object.keys(MEMCAT).map(function (k) { return '<option value="' + k + '"' + (k === 'contexte' ? ' selected' : '') + '>' + MEMCAT[k] + '</option>'; }).join('') + '</select>'
+      + '<input id="crm-mem-txt" maxlength="500" placeholder="Ex. : décideur = DG, préfère WhatsApp le matin" style="flex:1;min-width:160px;font-size:12px" onkeydown="if(event.key===\'Enter\'){event.preventDefault();SanixCrmSync.memAdd(' + Number(c.id) + ')}">'
+      + '<button type="button" class="btn btn-primary btn-sm" onclick="SanixCrmSync.memAdd(' + Number(c.id) + ')">Mémoriser</button></div></details>';
+  }
+  function memCtx(id) { var c = STORES.clients.get().find(function (x) { return String(x.id) === String(id); }), p = c && c._rid && panelCache[c._rid]; return p && p.prospect && p.prospect.id ? { c: c, p: p } : null; }
+  function memAdd(id) {
+    var x = memCtx(id), t = document.getElementById('crm-mem-txt'), txt = t ? String(t.value || '').trim() : '';
+    if (!x) { toast('⏳ Dossier pas encore synchronisé'); return Promise.resolve(false); }
+    if (txt.length < 3) { toast('✏️ Écrivez le souvenir (3 caractères minimum)'); return Promise.resolve(false); }
+    return rpc('ai_prospect_memoriser', { p_prospect: x.p.prospect.id, p_contenu: txt, p_categorie: (document.getElementById('crm-mem-cat') || {}).value || 'contexte' })
+      .then(function (r) { toast(r && r.doublon ? 'ℹ️ Déjà mémorisé' : '🧠 Mémorisé pour ce dossier'); delete panelCache[x.c._rid]; clientPanel(id); return true; })
+      .catch(function (e) { var m = String((e && e.message) || e); toast(/secret|mot de passe/i.test(m) ? '🔒 ' + m : (e && String(e.code) === '42501') ? '🔒 Réservé aux opérateurs' : '❌ ' + m.slice(0, 120)); return false; });
+  }
+  function memDel(id, mid) {
+    var x = memCtx(id); if (!x || !window.confirm('Oublier ce souvenir ?')) return Promise.resolve(false);
+    return rpc('ai_prospect_oublier', { p_id: mid })
+      .then(function () { toast('🧠 Oublié'); delete panelCache[x.c._rid]; clientPanel(id); return true; })
+      .catch(function (e) { toast((e && String(e.code) === '42501') || /Réservé/.test(String((e && e.message) || e)) ? '🔒 Réservé à la direction' : '❌ ' + String((e && e.message) || e).slice(0, 120)); return false; });
   }
   // Instruction à l'agent responsable : devient une mission pour cet agent sur ce dossier (direction seulement, journalisée par le moteur).
   var drafts = {}, PRIORITES = { 3: 'Normale', 4: 'Haute', 5: 'Urgente' };
@@ -681,7 +717,7 @@
 
   window.SanixCrmSync = {
     renewSession: renewSession, version: 1, available: function () { return !!(cfg() && session() && backend !== 'absent'); }, rpcAux: function (name, body) { return rpc(name, body, 20000, true); }, status: status, syncNow: function () { backend = 'unknown'; return sync(); }, flush: flush, pull: pull, scan: function (e) { return e ? scan(e) : ORDER.map(scan); },
-    openPanel: openPanel, exportBackup: exportBackup, backup: backup, delegate: delegate, claim: claim, instruire: instruire, instrSuggere: instrSuggere, suggestions: suggestions, instrBrouillon: instrBrouillon, instrPrio: instrPrio, instrOuvert: instrOuvert, clientPanel: clientPanel, onChange: function (f) { listeners.push(f); },
+    openPanel: openPanel, exportBackup: exportBackup, backup: backup, delegate: delegate, claim: claim, instruire: instruire, memAdd: memAdd, memDel: memDel, instrSuggere: instrSuggere, suggestions: suggestions, instrBrouillon: instrBrouillon, instrPrio: instrPrio, instrOuvert: instrOuvert, clientPanel: clientPanel, onChange: function (f) { listeners.push(f); },
     confirmDeletes: function () { suspiciousInfo = null; var save = allowDeletes; ORDER.forEach(function (e) { var known = state.hash[e] || {}, arr = STORES[e].get(), have = {}; arr.forEach(function (o) { have[ridOf(e, o)] = 1; }); Object.keys(known).forEach(function (rid) { if (!have[rid]) queue(e, rid, 'delete', 'x', { client_ts: new Date().toISOString() }); }); }); persistOutbox(); kick(0); emit(); },
     restoreFromServer: function () { suspiciousInfo = null; state.cursor = 0; ORDER.forEach(function (e) { var known = state.hash[e] || {}, have = {}; STORES[e].get().forEach(function (o) { have[ridOf(e, o)] = 1; }); Object.keys(known).forEach(function (rid) { if (!have[rid]) { delete known[rid]; delete state.ver[e + ':' + rid]; } }); }); persistState(); kick(0); emit(); },
     retryEvent: function (id) { return rpc('crm_event_retry', { p_id: id }).then(function () { toast('↻ Événement remis en file'); refreshServer(); }).catch(function (e) { toast('❌ ' + e.message); }); },
