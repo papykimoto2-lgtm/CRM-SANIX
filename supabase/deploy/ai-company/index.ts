@@ -3934,6 +3934,9 @@ var IMPL = {
       echeance: heures ? new Date(Date.now() + heures * 36e5).toISOString() : null
     }).select("id").single();
     if (error) throw new Error(error.code === "23505" ? "Une mission identique est d\xE9j\xE0 ouverte pour cet agent : ne la recr\xE9e pas" : error.message);
+    const { data: actualTask, error: actualError } = await db().from("ai_agent_tasks").select("agent_id").eq("id", t.id).single();
+    if (actualError || !actualTask?.agent_id) throw new Error(actualError?.message ?? "Agent r\xE9ellement affect\xE9 introuvable");
+    const actualAgent = ctx.org.byId(actualTask.agent_id);
     if (deps.length) {
       const { error: e2 } = await db().from("ai_task_dependencies").insert(deps.map((d) => ({ task_id: t.id, depend_de: d })));
       if (e2) {
@@ -3941,9 +3944,10 @@ var IMPL = {
         throw new Error(e2.message);
       }
     }
-    (ctx.assigned ??= /* @__PURE__ */ new Set()).add(target2.id);
-    move(ctx, ctx.agent.id, `assign:${target2.id}`, { lieu: "poste_agent", cible: target2.id, ms: 12e3, motif: "brief" });
-    return { task_id: t.id, agent: target2.code, statut: "a_faire", depend_de: deps };
+    const assignedId = actualTask.agent_id;
+    (ctx.assigned ??= /* @__PURE__ */ new Set()).add(assignedId);
+    move(ctx, ctx.agent.id, `assign:${assignedId}`, { lieu: "poste_agent", cible: assignedId, ms: 12e3, motif: "brief" });
+    return { task_id: t.id, agent: actualAgent?.code ?? assignedId, agent_reaffecte: assignedId !== target2.id, statut: "a_faire", depend_de: deps };
   },
   async attendre_sous_taches(ctx) {
     const open = await openChildren(ctx.task.id);
@@ -5459,7 +5463,7 @@ async function reportTick(now = /* @__PURE__ */ new Date()) {
   const { data: providerPause } = await db().from("ai_governance").select("provider_pause_until,provider_pause_reason").eq("id", 1).maybeSingle();
   if (providerPause?.provider_pause_until && new Date(providerPause.provider_pause_until).getTime() > now.getTime()) {
     const incidents2 = await flushIncidents(now);
-    return { generes: [], incidents: incidents2 };
+    return { generes: [], incidents: incidents2, ignore: providerPause.provider_pause_reason || "Rapports IA suspendus jusqu'au r\xE9tablissement du quota fournisseur." };
   }
   const { data: settings } = await db().from("ai_report_settings").select("*");
   const generes = [];
