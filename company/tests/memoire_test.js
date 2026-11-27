@@ -3,7 +3,8 @@ const { launch, newPage, ok, loadFixture } = require("./harness.js");
 (async () => {
   const { server, browser, port } = await launch(4312);
   try {
-    const fx = loadFixture(); fx.ai_jarvis_memory = [{ id: 1, contenu: "Le président préfère les relances le matin", categorie: "preference", epingle: true, created_at: new Date().toISOString() }];
+    const fx = loadFixture(); fx.ai_agent_memory = [{ id: 11, agent_id: null, contenu: "Toujours vérifier le site officiel avant un e-mail", tags: [], importance: 3, statut: "a_verifier", task_id: null, created_at: new Date().toISOString() }, { id: 12, agent_id: "a1", contenu: "Mission X terminée", tags: [], importance: 2, statut: "a_verifier", task_id: "t1", created_at: new Date().toISOString() }, { id: 13, agent_id: "a1", contenu: "Source AutoGarage fiable", tags: [], importance: 4, statut: "valide", task_id: null, created_at: new Date().toISOString() }];
+    fx.ai_jarvis_memory = [{ id: 1, contenu: "Le président préfère les relances le matin", categorie: "preference", epingle: true, created_at: new Date().toISOString() }];
     const { page, errors } = await newPage(browser, { fixture: JSON.stringify(fx) });
     await page.goto(`http://localhost:${port}/company/live.html?debug=1&fast=1`); await page.waitForSelector("#live:not([hidden])"); await page.waitForTimeout(2200);
     await page.evaluate(() => window.__jarvis.setLLM(false));
@@ -36,6 +37,18 @@ const { launch, newPage, ok, loadFixture } = require("./harness.js");
     await page.evaluate(() => { window.confirm = () => true; });
     await row().locator("[data-mem=del]").click(); await page.waitForTimeout(400);
     ok(!/devis supérieurs/.test(await page.locator("#mem-list").innerText()) && /relances le matin/.test(await page.locator("#mem-list").innerText()), "suppression ciblée");
+    console.log("▶ Centre mémoire");
+    await page.waitForSelector("#mc-list");
+    ok(/Souvenirs/.test(await page.locator("#main").innerText()) && (await page.locator("#mc-list .row").count()) === 3, "compteurs et 3 souvenirs d'agents listés");
+    await page.selectOption("#mc-statut", "experience"); await page.waitForTimeout(400);
+    ok((await page.locator("#mc-list .row").count()) === 1 && /Mission X/.test(await page.locator("#mc-list").innerText()), "filtre expériences");
+    await page.selectOption("#mc-statut", ""); await page.waitForTimeout(400);
+    const r1 = page.locator("#mc-list .row", { hasText: "site officiel" });
+    await r1.locator("[data-mc=ok]").click(); await page.waitForTimeout(400);
+    ok(/validé/.test(await page.locator("#mc-list .row", { hasText: "site officiel" }).innerText()), "validation : statut validé");
+    await page.evaluate(() => { window.prompt = () => "obsolète"; });
+    await page.locator("#mc-list .row", { hasText: "Mission X" }).locator("[data-mc=ko]").click(); await page.waitForTimeout(400);
+    ok(!/Mission X/.test(await page.locator("#mc-list").innerText()), "invalidation : souvenir retiré de la liste");
     ok(errors.filter((e) => !/favicon|Failed to load resource/.test(e)).length === 0, "aucune erreur console : " + errors.slice(0, 2).join(" | "));
   } finally { await browser.close(); server.close?.(); }
 })().catch((e) => { console.error(e.message); process.exit(1); });
