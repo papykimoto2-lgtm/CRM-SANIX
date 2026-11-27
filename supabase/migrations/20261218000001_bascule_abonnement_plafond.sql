@@ -7,6 +7,12 @@
 -- Quand la pause est levée : les agents basculés reviennent à leur mode d'origine, dès qu'ils n'ont plus de mission en cours.
 -- Les agents passés en « abonnement » à la main (hors cette bascule) ne sont jamais restaurés.
 
+-- Pause fournisseur : colonnes créées en production par la migration provider_quota_circuit_breaker (appliquée hors dépôt).
+-- Déclarées ici, de façon idempotente, pour qu'une base rejouée depuis le dépôt (CI, nouvel environnement) les possède aussi.
+alter table public.ai_governance
+  add column if not exists provider_pause_until timestamptz,
+  add column if not exists provider_pause_reason text;
+
 create table if not exists public.ai_bascule_modes (
   agent_id    uuid primary key references public.ai_agents(id) on delete cascade,
   mode_avant  text not null check (mode_avant in ('api', 'abonnement')),

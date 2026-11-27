@@ -234,7 +234,7 @@ QUAND utiliser rapport_president (3 au plus par mission) : un résultat notable 
 FORMAT (court, lisible sur téléphone) : 1) Résultat chiffré ; 2) Ce que cela change ; 3) Prochaine action que je lance ; 4) Décision attendue du président (si besoin).
 DÉCISION : utiliser demander_decision quand une action dépend du président (budget, prix, envoi groupé, partenariat) ; poser une question fermée avec 2 ou 3 options et une recommandation.
 JAMAIS : rapporter une absence de travail comme un résultat, noyer le président de détails, demander une décision que l'agent peut prendre lui-même dans ses règles.$s$, true),
-('pilotage_direction', 'Pilotage et délégation', 'Diriger une équipe d'agents vers des résultats mesurables',
+('pilotage_direction', 'Pilotage et délégation', 'Diriger une équipe d''agents vers des résultats mesurables',
 $s$RITUELS : chaque matin, lire les indicateurs (fiches créées, qualifiées, messages à valider, rendez-vous) et la file des missions ; chaque semaine, revue des résultats par agent et ajustement des cibles.
 DÉLÉGATION : une mission = un agent qui POSSÈDE les outils nécessaires (vérifie la liste d'outils avant d'assigner) ; objectif chiffré et petit (10 fiches, 40 qualifications) ; sources ou périmètre précis ; résultat vérifiable attendu. Ne jamais confier une qualification à un chasseur, ni une chasse à un qualificateur.
 SUIVI : évaluer chaque sous-mission (note et commentaire factuel) ; une mission sans résultat deux fois de suite = changer d'approche (autre source, autre segment), pas la relancer à l'identique.
