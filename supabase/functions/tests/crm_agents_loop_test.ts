@@ -87,7 +87,14 @@ T("L1 · boucle réelle : prospect du CRM → qualification → rendez-vous → 
   eq(await val("select stage from ai_prospects where id = $1", [p.id]), "rdv_confirme", "étape « rendez-vous confirmé »");
 
   // 3. garde-fous de l'outil : pas de compte rendu avant le rendez-vous
-  const ctx = (): CrmCtx => ({ agentLabel: "test", agentId: null, scope: new Set([p.id]), createCap: 0, created: 0, source: "test" });
+  const ctx = (): CrmCtx => ({ agentLabel: "test", agentId: null, scope: new Set([p.id]), createCap: 0, created: 0, source: "test", verifiedSourceUrls: new Set() });
+  let refusCreation = "";
+  try {
+    await runCrmTool(ctx(), "create_prospect", { entreprise: "Société non vérifiée", secteur: "Distribution", ville: "Abidjan",
+      commune: null, telephone: null, email: null, site_web: null, decideur: null, decideur_fonction: null,
+      source_url: "https://exemple.ci", besoins_detectes: [], produit_recommande: "immosuite" });
+  } catch (e) { refusCreation = (e as Error).message; }
+  assert(refusCreation.includes("pas été lue avec Firecrawl"), `création sans lecture Firecrawl refusée (${refusCreation})`);
   let refus = "";
   try { await runCrmTool(ctx(), "record_appointment_report", { prospect_id: p.id, appointment_id: ap.id, statut: "realise", compte_rendu: "Compte rendu rédigé trop tôt par erreur de l'agent.", prochaine_etape: null }); } catch (e) { refus = (e as Error).message; }
   assert(refus.includes("pas encore commencé"), `compte rendu refusé avant le rendez-vous (${refus})`);

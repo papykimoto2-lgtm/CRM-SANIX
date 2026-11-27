@@ -14,26 +14,98 @@ export function initJarvis(A, stage) {
   const dock = document.createElement("div"); dock.id = "jarvis";
   dock.innerHTML = `<div id="jv-log" aria-live="polite"></div>
     <div class="jv-bar"><button type="button" id="jv-orb" class="orb" aria-label="Parler à Jarvis" title="Parler à Jarvis"><i></i></button>
-    <div class="jv-mid"><input id="jv-in" type="text" autocomplete="off" placeholder="Parlez ou écrivez…" title="Ex. : « où en est AutoGarage ? »" aria-label="Message à Jarvis"><small id="jv-st">Jarvis prêt${SR ? "" : " (micro non pris en charge : utilisez le clavier)"}</small></div>
-    <button type="button" id="jv-auto" class="jb" title="Mode autonome : Jarvis lance consignes, missions et rapports sans confirmation">⚡</button><button type="button" id="jv-ideas" class="jb" title="Propositions d'amélioration de Jarvis">💡<em id="jv-badge" hidden></em></button><button type="button" id="jv-send" class="jb" title="Envoyer">➤</button><button type="button" id="jv-voice" class="jb on" title="Voix de Jarvis">🔊</button><button type="button" id="jv-hands" class="jb" title="Mains libres : dites « Jarvis » pour m'appeler">🖐</button></div>`;
+    <div class="jv-mid"><input id="jv-in" type="text" autocomplete="off" placeholder="Parlez ou écrivez…" title="Ex. : « où en est AutoGarage ? »" aria-label="Message à Jarvis"><small id="jv-st">Jarvis prêt${SR ? "" : " (micro non pris en charge : utilisez le clavier)"}</small><span id="jv-mic-state" class="mic-state" data-state="${SR ? "idle" : "unsupported"}" role="status" aria-live="polite"><i></i><b>${SR ? "Micro prêt" : "Micro indisponible"}</b></span></div>
+    <button type="button" id="jv-auto" class="jb" title="Mode autonome : Jarvis lance consignes, missions et rapports sans confirmation">⚡</button><button type="button" id="jv-ideas" class="jb" title="Propositions d'amélioration de Jarvis">💡<em id="jv-badge" hidden></em></button><button type="button" id="jv-send" class="jb" title="Envoyer">➤</button><button type="button" id="jv-voice" class="jb on" title="Activer ou couper la voix">🔊</button><button type="button" id="jv-voice-style" class="jb" title="Changer la voix française de Jarvis">🎙</button><button type="button" id="jv-hands" class="jb" title="Mains libres : dites « Jarvis » pour m'appeler">🖐</button></div>`;
   stage.appendChild(dock);
-  const $ = (s) => dock.querySelector(s), logEl = $("#jv-log"), inEl = $("#jv-in"), st = $("#jv-st"), orb = $("#jv-orb");
+  const $ = (s) => dock.querySelector(s), logEl = $("#jv-log"), inEl = $("#jv-in"), st = $("#jv-st"), orb = $("#jv-orb"), micState = $("#jv-mic-state");
+  // Poignée dédiée : déplacer le dock sans gêner la saisie, les boutons ou le micro.
+  const drag = document.createElement("button");
+  drag.type = "button"; drag.id = "jv-drag"; drag.className = "jb jv-drag";
+  drag.textContent = "⠿"; drag.title = "Déplacer Jarvis"; drag.setAttribute("aria-label", "Déplacer la bulle Jarvis");
+  $(".jv-bar").prepend(drag);
+  const JARVIS_POS = "sanix_jarvis_dock_position_v1";
+  let dragState = null;
+  const clampDock = (left, top) => {
+    const bounds = stage.getBoundingClientRect(), box = dock.getBoundingClientRect();
+    return { left: Math.max(4, Math.min(left, bounds.width - box.width - 4)), top: Math.max(4, Math.min(top, bounds.height - box.height - 4)) };
+  };
+  const placeDock = (left, top, save = true) => {
+    const p = clampDock(left, top);
+    dock.style.left = p.left + "px"; dock.style.top = p.top + "px";
+    dock.style.right = "auto"; dock.style.bottom = "auto"; dock.style.transform = "none";
+    if (save) try { localStorage.setItem(JARVIS_POS, JSON.stringify({ left: p.left / Math.max(1, stage.clientWidth), top: p.top / Math.max(1, stage.clientHeight) })); } catch { /* stockage indisponible */ }
+  };
+  try {
+    const saved = JSON.parse(localStorage.getItem(JARVIS_POS) || "null");
+    if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) requestAnimationFrame(() => placeDock(saved.left * stage.clientWidth, saved.top * stage.clientHeight, false));
+  } catch { /* position par défaut */ }
+  drag.addEventListener("pointerdown", (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    const r = dock.getBoundingClientRect(), s = stage.getBoundingClientRect();
+    dragState = { id: e.pointerId, x: e.clientX, y: e.clientY, left: r.left - s.left, top: r.top - s.top };
+    drag.setPointerCapture?.(e.pointerId); drag.classList.add("dragging"); e.preventDefault();
+  });
+  drag.addEventListener("pointermove", (e) => {
+    if (!dragState || dragState.id !== e.pointerId) return;
+    placeDock(dragState.left + e.clientX - dragState.x, dragState.top + e.clientY - dragState.y);
+  });
+  const endDrag = (e) => { if (dragState && (e.pointerId === undefined || dragState.id === e.pointerId)) { dragState = null; drag.classList.remove("dragging"); } };
+  drag.addEventListener("pointerup", endDrag); drag.addEventListener("pointercancel", endDrag);
+  window.addEventListener("resize", () => {
+    if (dock.style.left && dock.style.top) { const r = dock.getBoundingClientRect(), s = stage.getBoundingClientRect(); placeDock(r.left - s.left, r.top - s.top, false); }
+  });
   let guard = null, voiceOn = true, hands = false, listening = false, speaking = false, rec = null, pending = null, convo = false, gotResult = false, llmDown = 0, hist = [], awakeUntil = 0, lastSpeechEnd = 0, poll = null;
-  const lines = []; const setSt = (t) => { st.textContent = t; }; const setOrb = (c) => { orb.className = "orb " + c; };
+  let micError = false; const lines = []; const setSt = (t) => { st.textContent = t; }; const setOrb = (c) => { orb.className = "orb " + c; }; const setMicState = (state, label) => { micError = state === "error"; micState.dataset.state = state; micState.querySelector("b").textContent = label; orb.dataset.micState = state; orb.setAttribute("aria-label", label); orb.title = label; };
 
   function addLine(who, text) { lines.push({ who, text }); if (lines.length > 40) lines.shift();
     const d = document.createElement("div"); d.className = "ln " + who; d.innerHTML = `<b>${who === "me" ? "Vous" : who === "dg" ? "Directeur général" : "Jarvis"}</b> ${esc(text)}`; logEl.appendChild(d); setTimeout(() => d.remove(), 16000); while (logEl.children.length > 3) logEl.firstChild.remove(); logEl.scrollTop = 1e6; }
-  function voiceFr() { const v = window.speechSynthesis.getVoices(); return v.find((x) => /^fr(-|_)/i.test(x.lang) && /thomas|paul|henri|male|homme|google fran/i.test(x.name)) || v.find((x) => /^fr(-|_)/i.test(x.lang)) || null; }
+  const VOICE_KEY = "sanix_jarvis_voice_fr";
+  let speechRun = 0;
+  function frenchVoices() { return (window.speechSynthesis?.getVoices() ?? []).filter((v) => /^fr([_-]|$)/i.test(v.lang)).sort((a, b) => a.name.localeCompare(b.name)); }
+  function voiceFr() {
+    const voices = frenchVoices(); let preferred = "";
+    try { preferred = localStorage.getItem(VOICE_KEY) || ""; } catch { /* stockage indisponible */ }
+    return voices.find((v) => v.name === preferred) || voices.find((v) => /fr-FR/i.test(v.lang) && /google|natural|enhanced/i.test(v.name)) || voices.find((v) => /fr-FR/i.test(v.lang)) || voices[0] || null;
+  }
+  function cycleVoice() {
+    const voices = frenchVoices(); if (!voices.length) { setSt("Aucune voix française installée sur cet appareil."); return; }
+    const current = voiceFr(), next = voices[(Math.max(0, voices.findIndex((v) => v.name === current?.name)) + 1) % voices.length];
+    try { localStorage.setItem(VOICE_KEY, next.name); } catch { /* préférence non persistée */ }
+    $("#jv-voice-style").title = "Voix : " + next.name + " — toucher pour changer";
+    setSt("Voix sélectionnée : " + next.name);
+    say("Bonjour. Je suis Jarvis. Comment puis-je vous aider ?", "jarvis");
+  }
+  window.speechSynthesis?.addEventListener?.("voiceschanged", () => {
+    const v = voiceFr(); if (v) $("#jv-voice-style").title = "Voix : " + v.name + " — toucher pour changer";
+  });
   const clean = (t) => String(t).replace(/[*_`#>]/g, "").replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "").replace(/\s+/g, " ").trim();
   function say(text, who = "jarvis") {
     addLine(who, text); if (!voiceOn || !TTS || !text) { setTimeout(afterReply, 200); return; }
-    clearTimeout(guard); guard = setTimeout(() => { if (speaking) { speaking = false; lastSpeechEnd = Date.now(); A.view?.speaking(false); setOrb(listening ? "listen" : ""); afterReply(); } }, clean(text).length * 90 + 2500);
-    try { window.speechSynthesis.cancel(); const parts = clean(text).match(/[^.!?]+[.!?]?/g) ?? [clean(text)];
-      parts.slice(0, 8).forEach((p, i, arr) => { const u = new SpeechSynthesisUtterance(p.trim()); u.lang = "fr-FR"; u.rate = 1; u.pitch = .9; const v = voiceFr(); if (v) u.voice = v;
-        if (i === 0) u.onstart = () => { speaking = true; A.view?.speaking(true); setOrb("speak"); setSt("Jarvis parle…"); };
-        if (i === arr.length - 1) { u.onend = u.onerror = () => { speaking = false; lastSpeechEnd = Date.now(); A.view?.speaking(false); setOrb(listening ? "listen" : ""); setSt(hands ? "Mains libres : dites « Jarvis »" : "Jarvis prêt"); afterReply(); }; }
-        window.speechSynthesis.speak(u); }); } catch { /* voix indisponible : la réponse reste affichée */ }
+    const runId = ++speechRun, synth = window.speechSynthesis;
+    clearTimeout(guard); synth.cancel();
+    const plain = clean(text), parts = (plain.match(/[^.!?;:]+[.!?;:]?/g) ?? [plain]).map((p) => p.trim()).filter(Boolean).slice(0, 10);
+    let index = 0;
+    const finish = () => {
+      if (runId !== speechRun) return;
+      clearTimeout(guard); speaking = false; lastSpeechEnd = Date.now(); A.view?.speaking(false);
+      setOrb(listening ? "listen" : ""); setSt(hands ? "Mains libres : dites « Jarvis »" : "Jarvis prêt"); afterReply();
+    };
+    const next = () => {
+      if (runId !== speechRun) return;
+      if (index >= parts.length) { finish(); return; }
+      const p = parts[index++], u = new SpeechSynthesisUtterance(p);
+      u.lang = "fr-FR"; u.rate = 0.96; u.pitch = 1.02; u.volume = 1;
+      const v = voiceFr(); if (v) u.voice = v;
+      u.onstart = () => { if (runId !== speechRun) return; speaking = true; A.view?.speaking(true); setOrb("speak"); setSt("Jarvis parle…"); };
+      u.onend = () => { if (runId === speechRun) setTimeout(next, /[.!?]$/.test(p) ? 150 : 90); };
+      u.onerror = () => { if (runId === speechRun) setTimeout(next, 100); };
+      synth.speak(u);
+    };
+    guard = setTimeout(finish, Math.max(9000, plain.length * 115 + parts.length * 700));
+    try { next(); } catch { finish(); }
   }
+
+  function stopSpeech() { speechRun++; clearTimeout(guard); window.speechSynthesis?.cancel(); speaking = false; lastSpeechEnd = Date.now(); A.view?.speaking(false); setOrb(listening ? "listen" : ""); }
 
   // ───────── Réponses locales (données réelles) ─────────
   const run = () => D.agents.filter((a) => A.agentState(a) === "run");
@@ -49,9 +121,99 @@ export function initJarvis(A, stage) {
   function agentReply(a) { const cur = D.tasks.find((t) => t.agent_id === a.id && t.statut === "en_cours") ?? D.tasks.find((t) => t.agent_id === a.id && A.OPENS.includes(t.statut)); const [lab] = A.STATES[A.agentState(a)];
     return cur ? `${a.nom} : ${lab.toLowerCase()}. Mission : ${clip(cur.titre, 110)}.` : `${a.nom} : ${lab.toLowerCase()}, aucune mission ouverte.`; }
   const view = () => A.view;
+  function relationExplanation(r = D.relationSel) {
+    if (!r?.agent || !r?.prospect) return "Aucune relation agent prospect n'est sélectionnée. Cliquez sur un lien du réseau, puis demandez-moi son analyse.";
+    const ag=r.agent,p=r.prospect,aid=String(ag.id),pid=String(p.id);
+    const acts=(D.relationRows||[]).filter(x=>String(x.agent_id||"")===aid&&String(x.prospect_id||"")===pid).sort((a,b)=>Date.parse(b.at||0)-Date.parse(a.at||0));
+    const tasks=(D.tasks||[]).filter(x=>String(x.agent_id||"")===aid&&String(x.prospect_id||"")===pid);
+    const open=tasks.filter(x=>A.OPENS.includes(x.statut)),blocked=tasks.filter(x=>["bloquee","echouee"].includes(x.statut)),done=tasks.filter(x=>x.statut==="terminee");
+    const latest=acts[0],stage=String(p.stage||"non renseigné").replace(/_/g," ");
+    const kind=r.kind==="activity"?"une interaction réelle":r.kind==="mission"?"une mission affectée":"une affectation";
+    let out=`La relation entre ${ag.nom||"cet agent"} et ${p.entreprise||"ce prospect"} repose sur ${kind}. Le prospect est à l'étape ${stage}. ${acts.length} interaction(s) identifiée(s) et ${tasks.length} mission(s) associée(s), dont ${open.length} ouverte(s), ${done.length} terminée(s) et ${blocked.length} bloquée(s).`;
+    if(latest) out+=` La dernière interaction connue est « ${latest.action||"événement"} », ${latest.at?new Date(latest.at).toLocaleString("fr-FR",{timeZone:"Africa/Abidjan"}):"à une date inconnue"}.`;
+    if(open.length) out+=` La mission ouverte prioritaire est « ${clip(open.sort((a,b)=>(Number(a.priorite)||99)-(Number(b.priorite)||99))[0].titre,90)} ».`;
+    if(blocked.length) out+=` Attention, ${blocked.length} mission(s) est/sont bloquée(s) ou en échec : une intervention est nécessaire.`;
+    if(p.next_action_at) out+=` Prochaine action prévue : ${new Date(p.next_action_at).toLocaleString("fr-FR",{timeZone:"Africa/Abidjan"})}.`;
+    else out+=" Aucune prochaine action n'est planifiée dans la fiche.";
+    if(!acts.length&&r.kind!=="activity") out+=" Je ne vois pas d'interaction historisée attribuée à cet agent pour ce prospect ; le lien visible correspond à une mission ou une affectation, pas à une preuve de contact.";
+    out+=" Mon conseil : vérifier la prochaine étape commerciale et consigner chaque échange avec son agent responsable.";
+    return out;
+  }
+  function prospectExplanation(p, history = [], tasks = [], meta = {}) {
+    if (!p?.id) return "Aucun prospect sélectionné.";
+    const rows = Array.isArray(history) ? history : [], ts = Array.isArray(tasks) ? tasks : [];
+    const now = Date.now(), dateOf = x => Date.parse(x?.at || x?.created_at || "") || 0;
+    const recent = rows.filter(x => dateOf(x) > 0).sort((a,b) => dateOf(b)-dateOf(a));
+    const open = ts.filter(x => A.OPENS.includes(x.statut)), done = ts.filter(x => x.statut === "terminee");
+    const blocked = ts.filter(x => ["bloquee","echouee"].includes(x.statut));
+    const stage = String(p.stage || "non renseigné").replace(/_/g," ");
+    const fmt = x => x ? new Date(x).toLocaleDateString("fr-FR",{timeZone:"Africa/Abidjan"}) : "non renseignée";
+    const money = x => x != null && x !== "" && Number.isFinite(Number(x)) ? Number(x).toLocaleString("fr-FR")+" FCFA" : "non renseigné";
+    const days = recent[0] ? Math.max(0,Math.floor((now-dateOf(recent[0]))/864e5)) : null;
+    const missing = [["décideur",p.decideur],["téléphone",p.telephone],["e-mail",p.email],["besoin",p.crit_besoin || p.besoins],["budget",p.budget_estime]].filter(([,v]) => v == null || v === "" || (Array.isArray(v) && !v.length)).map(([k])=>k);
+    const signals = [];
+    if (blocked.length) signals.push(blocked.length+" mission(s) bloquée(s) ou en échec");
+    if (days !== null && days >= 14) signals.push("aucune interaction récente depuis "+days+" jours");
+    if (!recent.length) signals.push("aucune interaction historisée dans les événements chargés");
+    if (!p.next_action_at) signals.push("aucune prochaine action programmée");
+    if (missing.length) signals.push("qualification incomplète : "+missing.join(", "));
+    let out = "Analyse commerciale de "+(p.entreprise || "ce prospect")+". Étape : "+stage+". Score : "+(p.score ?? "non renseigné")+"/100. Potentiel : "+money(p.potentiel_fcfa)+". Budget estimé : "+money(p.budget_estime)+". ";
+    out += rows.length+" interaction(s) visible(s)"+(meta.historyHasMore ? " parmi un historique encore à charger" : "")+". ";
+    if (recent[0]) out += "Dernière interaction : "+String(recent[0].action || "événement").replace(/_/g," ")+" le "+fmt(recent[0].at)+". ";
+    out += ts.length+" mission(s) liée(s) : "+open.length+" ouverte(s), "+done.length+" terminée(s), "+blocked.length+" bloquée(s). ";
+    if (p.next_action_at) out += "Prochaine action prévue le "+fmt(p.next_action_at)+". ";
+    out += signals.length ? "Points de vigilance : "+signals.join("; ")+". " : "Aucun signal d'alerte détecté dans les données chargées. ";
+    if (blocked.length) out += "Priorité : traiter les missions bloquées avec leur agent responsable. ";
+    else if (!p.next_action_at || (days !== null && days >= 7)) out += "Priorité : programmer une relance datée et consigner son résultat. ";
+    else if (missing.length) out += "Priorité : compléter la qualification avant de faire progresser le prospect. ";
+    else out += "Priorité : faire avancer le prospect vers la prochaine étape commerciale et vérifier le résultat attendu. ";
+    out += "Cette analyse s'appuie uniquement sur les données actuellement chargées ; elle ne prouve pas un échange non enregistré et n'envoie aucune communication.";
+    return out;
+  }
+  function followupPriorities(limit = 7) {
+    const rows = Array.isArray(D.salesRows) ? D.salesRows : [];
+    if (!rows.length) return "Je ne peux pas établir le classement : les données du pipeline commercial ne sont pas disponibles.";
+    const now = Date.now(), day = 864e5;
+    const closed = new Set(["perdu","en_veille","marche_gagne","client_fidelise"]);
+    const lastByProspect = new Map(), blockedByProspect = new Map();
+    for (const a of D.relationRows || []) {
+      const id = String(a.prospect_id || ""), at = Date.parse(a.at || "");
+      if (id && Number.isFinite(at) && at > (lastByProspect.get(id) || 0)) lastByProspect.set(id, at);
+    }
+    for (const t of D.tasks || []) if (["bloquee","echouee"].includes(t.statut) && t.prospect_id) {
+      const id = String(t.prospect_id); blockedByProspect.set(id, (blockedByProspect.get(id) || 0) + 1);
+    }
+    const scored = rows.filter(p => !closed.has(String(p.stage || ""))).map(p => {
+      const id = String(p.id), due = Date.parse(p.next_action_at || "");
+      const hasDue = Number.isFinite(due), last = Math.max(lastByProspect.get(id) || 0, Date.parse(p.updated_at || "") || 0, Date.parse(p.created_at || "") || 0);
+      const inactiveDays = last ? Math.max(0, Math.floor((now-last)/day)) : null;
+      const lateDays = hasDue && due < now ? Math.floor((now-due)/day) : 0;
+      const blocked = blockedByProspect.get(id) || 0;
+      const potential = Math.max(0, Number(p.potentiel_fcfa) || 0);
+      const urgency = Math.min(45, lateDays ? 25 + Math.min(20, lateDays) : 0)
+        + (!hasDue ? 18 : 0)
+        + (inactiveDays === null ? 10 : Math.min(25, Math.floor(inactiveDays/2)))
+        + Math.min(15, blocked * 5)
+        + Math.min(12, Math.round(Math.log10(1 + potential) * 1.5));
+      const reasons = [];
+      if (lateDays) reasons.push("relance en retard de "+lateDays+" j");
+      else if (!p.next_action_at) reasons.push("aucune relance programmée");
+      if (inactiveDays !== null && inactiveDays >= 14) reasons.push(inactiveDays+" j sans activité récente connue");
+      if (blocked) reasons.push(blocked+" mission(s) bloquée(s)");
+      if (potential > 0) reasons.push("potentiel "+potential.toLocaleString("fr-FR")+" FCFA");
+      return { p, score: Math.round(urgency), reasons, lateDays, inactiveDays, potential };
+    }).sort((a,b) => b.score-a.score || b.potential-a.potential || String(a.p.entreprise||"").localeCompare(String(b.p.entreprise||""),"fr"));
+    if (!scored.length) return "Aucun prospect actif à relancer dans le pipeline chargé.";
+    const top = scored.slice(0, limit);
+    const lines = top.map((x,i) => (i+1)+". "+(x.p.entreprise || "Prospect sans nom")+" — "+String(x.p.stage || "étape inconnue").replace(/_/g," ")+" — priorité "+x.score+"/100. "+(x.reasons.join(", ") || "à examiner selon son étape commerciale")+".");
+    return "Classement de "+scored.length+" prospects actifs, sur les données actuellement chargées. Les priorités sont classées selon le retard, l'absence de relance, l'inactivité connue, les missions bloquées et le potentiel déclaré. "+lines.join(" ")+" Ce score est un indicateur opérationnel, pas une probabilité de signature. L'historique d'activité est limité aux événements chargés ; vérifiez chaque fiche avant toute action. Je n'envoie aucune relance.";
+  }
   const HELP = "Je peux : donner la situation, le nombre de fiches, qui travaille, les blocages, l'avancement d'un logiciel (par exemple AutoGarage), ce que fait un agent, piloter la caméra (zoom, vue d'ensemble, montre tel agent, rotation, plein cadre) et transmettre une demande au directeur général après votre confirmation.";
 
-  let autoMode = false;
+  const JARVIS_AUTO_KEY = "sanix_jarvis_autonomous_mode_v2";
+  const JARVIS_AUTO_RUN_KEY = "sanix_jarvis_autonomous_last_run_v2";
+  const readAutoMode = () => { try { return localStorage.getItem(JARVIS_AUTO_KEY) === "1"; } catch { return false; } };
+  let autoMode = readAutoMode(), autoCycleBusy = false;
   // ───────── CRM en lecture seule : prospects, clients et leur situation (cache 2 min) ─────────
   let crmC = { at: 0, rows: [] };
   async function loadCrm() {
@@ -142,8 +304,8 @@ export function initJarvis(A, stage) {
   function insights() {
     const out = [], h = A.health(), now = Date.now(), day = 864e5, I = (gravite, constat, piste, texte) => out.push({ gravite, constat, piste, action: texte ? { kind: "instruction", texte } : null });
     const blocked = D.tasks.filter((t) => ["bloquee", "echouee"].includes(t.statut) && now - Date.parse(t.updated_at) < day);
-    if (blocked.length) I(blocked.length >= 3 ? "haute" : "moyenne", `${plural(blocked.length, "mission bloquée", "missions bloquées")} sur 24 heures : ${blocked.slice(0, 2).map((t) => clip(t.titre, 50)).join(" ; ")}`, "analyser les causes et relancer autrement", `Analyse les ${blocked.length} missions bloquées ou échouées des dernières 24 heures (${blocked.slice(0, 3).map((t) => t.titre).join(" ; ")}), identifie la cause de chaque blocage et propose-moi un plan de reprise.`);
-    if (h.stale) I("haute", `${plural(h.stale, "mission figée", "missions figées")} depuis plus de 90 minutes`, "vérifier et débloquer les agents concernés", "Vérifie les missions en cours depuis plus de 90 minutes sans progression, débloque-les ou reprogramme-les, et dis-moi la cause.");
+    if (blocked.length) I(blocked.length >= 3 ? "haute" : "moyenne", `${plural(blocked.length, "mission bloquée", "missions bloquées")} sur 24 heures : ${blocked.slice(0, 2).map((t) => clip(t.titre, 50)).join(" ; ")}`, "analyser les causes et préparer un plan de reprise", `Analyse les ${blocked.length} missions bloquées ou échouées des dernières 24 heures (${blocked.slice(0, 3).map((t) => t.titre).join(" ; ")}), identifie les causes et prépare un plan de reprise à soumettre à la direction. Ne relance aucune mission et ne contacte aucun prospect.`);
+    if (h.stale) I("haute", `${plural(h.stale, "mission figée", "missions figées")} depuis plus de 90 minutes`, "diagnostiquer le blocage et préparer un plan de reprise", "Analyse les missions en cours depuis plus de 90 minutes sans progression. Identifie les causes et prépare un plan de reprise à soumettre à la direction. Ne relance, ne réassigne et ne modifie aucune mission.");
     const prosp = D.tasks.filter((t) => t.produit && /prospect/i.test(t.titre) && ["terminee", "bloquee", "echouee"].includes(t.statut) && now - Date.parse(t.updated_at) < 2 * day), byP = {};
     for (const t of prosp) { const b = (byP[t.produit] ??= { c: 0, g: 0 }); b.c += D.created[t.id] ?? 0; b.g += A.targetOf(t) || 20; }
     for (const [pid, b] of Object.entries(byP)) if (b.c < b.g * .25) { const lab = PRODUCTS[pid]?.[1] ?? pid; I("haute", `Prospection ${lab} : ${b.c} fiches créées pour ${b.g} visées`, "changer de sources (sites propres, annuaires professionnels, réseaux)", `La prospection ${lab} sous-performe (${b.c} fiches pour ${b.g} visées). Propose une stratégie de recherche différente (sources avec coordonnées publiques) et relance les chasseurs concernés.`); }
@@ -196,7 +358,7 @@ export function initJarvis(A, stage) {
         else if (a.type === "propose_report" && a.agent_id) props.push({ kind: "report", agent_id: a.agent_id, jours: a.jours || 7 });
         else if (a.type === "propose_report_now" && a.rapport) props.push({ kind: "report_now", type: a.rapport });
       }
-      if (autoMode && props.length) { const risky = props.filter((x) => x.kind === "fin" || (x.kind === "crm" && x.a.type === "crm_delete")), safe = props.filter((x) => !risky.includes(x)); pending = risky.length > 1 ? { kind: "multi", items: risky } : risky[0] ?? null; setOrb(listening ? "listen" : ""); say(reply + (risky.length ? " Cette action demande votre confirmation : dites oui." : "")); for (const it of safe) await sendPending(it); return reply; }   // mode autonome : exécution immédiate (actions internes uniquement)
+      if (autoMode && props.length) { const nCrm = props.filter((x) => x.kind === "crm").reduce((n, x) => n + (x.a.rids?.length || 1), 0), risky = props.filter((x) => x.kind === "fin" || (x.kind === "crm" && (x.a.type === "crm_delete" || nCrm > 5))), safe = props.filter((x) => !risky.includes(x)); pending = risky.length > 1 ? { kind: "multi", items: risky } : risky[0] ?? null; setOrb(listening ? "listen" : ""); say(reply + (risky.length ? " Cette action demande votre confirmation : dites oui." : "")); for (const it of safe) await sendPending(it); return reply; }   // mode autonome : exécution immédiate (actions internes uniquement)
       pending = props.length > 1 ? { kind: "multi", items: props } : props[0] ?? null;
       if (pending && !/\?/.test(reply)) reply += pending.kind === "multi" ? " Laquelle dois-je lancer ? Dites un, deux, trois ou toutes." : " Dois-je le transmettre ? Dites oui pour confirmer.";
       setOrb(listening ? "listen" : ""); say(reply); return reply;
@@ -234,6 +396,8 @@ export function initJarvis(A, stage) {
   async function handle(raw) {
     let t = norm(raw).replace(/^(ok |hey |dis |salut |bonjour )?(jarvis|jarvi|jarvice|jarviss|jarvys|gervais|gervaise|charvis|djarvis|sanix|assistant)( |$)/, "").trim(); if (!t) { say("À vos ordres."); return "À vos ordres."; }
     addLine("me", raw); const reply = (s) => { say(s); return s; };
+    if (/(prioris|priorite|priorites|classe|classement|compare|comparaison).*(relance|prospect|pipeline)|quels? prospects? relancer|prospects? a relancer|relances? en retard|qui relancer/.test(t)) return reply(followupPriorities());
+    if (/(explique|analyse|etat|situation|bilan|resume).*(relation|lien|selection)|relation.*(selection|actuelle)/.test(t)) return reply(relationExplanation());
     if (pending) {
       const yes = /^(oui|ok|confirme|vas y|transmets|envoie|d accord|affirmatif|lance)\b/.test(t), no = /^(non|annule|laisse tomber|stop|negatif)\b/.test(t);
       if (pending.kind === "multi") {
@@ -279,32 +443,94 @@ export function initJarvis(A, stage) {
     pending = { kind: "instruction", texte: raw.trim() }; return reply(`Je n'ai pas de réponse directe à cela. Voulez-vous que je le transmette au directeur général : « ${clip(raw.trim(), 140)} » ? Dites oui pour confirmer, non pour annuler.`);
   }
 
-  // ───────── Micro ─────────
+  // ───────── Micro : demande explicite d'autorisation depuis Jarvis ─────────
+  let micGranted = false, micRequesting = false;
+  async function activateMicAndStart() {
+    if (!SR) { setMicState("unsupported", "Micro indisponible"); setSt("La reconnaissance vocale n'est pas prise en charge par ce navigateur. Utilisez le clavier ou ouvrez Jarvis dans Chrome."); return; }
+    if (micRequesting) return;
+    if (!window.isSecureContext) { setMicState("error", "HTTPS requis"); setSt("Le microphone exige une connexion sécurisée HTTPS. Ouvrez l'application avec son adresse HTTPS."); return; }
+    if (!micGranted && navigator.mediaDevices?.getUserMedia) {
+      micRequesting = true; setMicState("requesting", "Autorisation…"); setSt("Demande d'autorisation du microphone…");
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+        micGranted = true; setMicState("idle", "Micro autorisé");
+      } catch (e) {
+        const messages = { NotAllowedError: "Accès micro refusé. Autorisez le microphone dans les permissions du site puis réessayez.", PermissionDeniedError: "Accès micro refusé. Autorisez le microphone dans les permissions du site puis réessayez.", NotFoundError: "Aucun microphone détecté sur cet appareil.", NotReadableError: "Le microphone est déjà utilisé ou indisponible." };
+        setMicState("error", "Accès refusé"); setSt(messages[e.name] || "Impossible d'activer le microphone : " + (e.message || e.name));
+        micRequesting = false; return;
+      } finally { micRequesting = false; }
+    }
+    startRec();
+  }
   function startRec() {
     if (!SR) { setSt("Micro non pris en charge : utilisez le clavier."); return; }
     if (!rec) { rec = new SR(); rec.lang = "fr-FR"; rec.interimResults = true; rec.maxAlternatives = 1;
-      rec.onstart = () => { listening = true; setOrb(speaking ? "speak" : "listen"); setSt(hands ? "Mains libres : dites « Jarvis »" : "Je vous écoute…"); };
+      rec.onstart = () => { listening = true; setMicState("listening", "Écoute active"); setOrb(speaking ? "speak" : "listen"); setSt(hands ? "Mains libres : dites « Jarvis »" : "Je vous écoute…"); };
       rec.onresult = (ev) => { if ((speaking && window.speechSynthesis?.speaking) || Date.now() - lastSpeechEnd < 700) return; let fin = "", itm = ""; for (let i = ev.resultIndex; i < ev.results.length; i++) { const r = ev.results[i]; (r.isFinal ? (fin += r[0].transcript) : (itm += r[0].transcript)); }
         if (itm) setSt("… " + itm); if (!fin.trim()) return; const txt = fin.trim();
         const nt = norm(txt); setSt("Entendu : « " + clip(txt, 60) + " »");
         if (hands && !WAKE.test(nt) && Date.now() > awakeUntil) { setSt("Entendu : « " + clip(txt, 40) + " » — dites d'abord « Jarvis »"); return; }   // mains libres : seul « Jarvis » réveille
         if (hands && WAKE.test(nt) && nt.replace(WAKE, "").replace(/\b(ok|hey|dis|salut)\b/g, "").trim() === "") { awakeUntil = Date.now() + 9000; say("À vos ordres."); return; }
-        gotResult = true; convo = !hands; window.speechSynthesis?.cancel(); awakeUntil = Date.now() + 9000; handle(txt); };
-      rec.onerror = (e) => { const msg = { "not-allowed": "Autorisez le microphone dans le navigateur.", "no-speech": "Aucune parole détectée.", "audio-capture": "Microphone introuvable." }[e.error]; setSt(msg ?? "Micro : " + e.error); if (e.error === "not-allowed") hands = false; };
-      rec.onend = () => { listening = false; setOrb(""); if (convoNext && !gotResult) { convoNext = false; convo = false; } if (hands) { try { rec.start(); } catch { /* déjà actif */ } } else setSt("Jarvis prêt"); }; }
+        gotResult = true; convo = !hands; stopSpeech(); awakeUntil = Date.now() + 9000; handle(txt); };
+      rec.onerror = (e) => { const msg = { "not-allowed": "Autorisez le microphone dans le navigateur.", "no-speech": "Aucune parole détectée.", "audio-capture": "Microphone introuvable." }[e.error]; setMicState(e.error === "no-speech" ? "idle" : "error", e.error === "no-speech" ? "En attente" : "Erreur micro"); setSt(msg ?? "Micro : " + e.error); if (e.error === "not-allowed") { hands = false; $("#jv-hands").classList.remove("on"); } };
+      rec.onend = () => { listening = false; setOrb(""); if (convoNext && !gotResult) { convoNext = false; convo = false; } if (hands) { setMicState("listening", "Reconnexion…"); try { rec.start(); } catch { /* déjà actif */ } } else { if (!micError) setMicState("idle", micGranted ? "Micro autorisé" : "Micro prêt"); setSt(micError ? "Vérifiez l'autorisation du microphone puis réessayez." : "Jarvis prêt"); } }; }
     rec.continuous = hands; try { rec.start(); } catch { /* déjà actif */ }
   }
-  orb.addEventListener("click", () => { if (listening && !hands) { rec?.stop(); return; } if (speaking) { window.speechSynthesis?.cancel(); return; } startRec(); });
+  orb.addEventListener("click", () => { if (listening && !hands) { setMicState("idle", "Micro en pause"); rec?.stop(); return; } if (speaking) { stopSpeech(); return; } activateMicAndStart(); });
   const sendTxt = () => { const v = inEl.value.trim(); if (!v) return; inEl.value = ""; handle(v); };
-  const setAuto = (on) => { autoMode = !!on; $("#jv-auto").classList.toggle("on", autoMode); $("#jv-auto").classList.toggle("warn", autoMode); };
+  const setAuto = (on) => {
+    autoMode = !!on;
+    try { localStorage.setItem(JARVIS_AUTO_KEY, autoMode ? "1" : "0"); } catch { /* stockage indisponible : mode valable pour cette session */ }
+    $("#jv-auto").classList.toggle("on", autoMode);
+    $("#jv-auto").classList.toggle("warn", autoMode);
+    $("#jv-auto").setAttribute("aria-pressed", String(autoMode));
+    $("#jv-auto").title = autoMode
+      ? "Mode autonome actif : supervision toutes les minutes ; seules les consignes internes sûres sont transmises automatiquement."
+      : "Mode prudent : Jarvis demande votre confirmation avant les actions.";
+    setSt(autoMode ? "Mode autonome · supervision active" : "Mode prudent · confirmation requise");
+    if (autoMode) setTimeout(() => runAutoCycle().catch((e) => addLine("jarvis", "Supervision suspendue : " + clip(e.message, 140))), 8000);
+  };
   $("#jv-auto").addEventListener("click", () => handle(autoMode ? "mode prudent" : "mode autonome"));
   $("#jv-ideas").addEventListener("click", () => handle("Jarvis, quelles améliorations me proposes-tu ?"));
   let announced = false;
   const refreshIdeas = () => { try { const n = insights().length, b = $("#jv-badge"); b.hidden = !n; b.textContent = n; if (n && !announced && D.agents.length) { announced = true; addLine("jarvis", `J'ai ${plural(n, "proposition d'amélioration", "propositions d'amélioration")}. Touchez 💡 ou dites « propositions ».`); } } catch { /* données pas encore chargées */ } };
+  // Supervision proactive : une seule consigne interne à la fois, dédupliquée pendant 6 h.
+  // Aucun envoi WhatsApp/e-mail, aucune action financière, aucune suppression ni redémarrage de mission.
+  async function runAutoCycle() {
+    if (!autoMode || autoCycleBusy || pending_busy || pending || document.hidden) return { skipped: true };
+    let last = null;
+    try { last = JSON.parse(localStorage.getItem(JARVIS_AUTO_RUN_KEY) || "null"); } catch { /* stockage absent */ }
+    const candidate = insights().find((x) => x.action?.texte && x.constat);
+    if (!candidate) return { idle: true };
+    const signature = norm(candidate.constat + "|" + candidate.action.texte).slice(0, 500);
+    if (last?.signature === signature && Date.now() - Number(last.at || 0) < 6 * 3600000) return { duplicate: true };
+    autoCycleBusy = true;
+    try {
+      const result = await sendPending({ kind: "instruction", texte:
+        "REMONTEE DE JARVIS AU DIRECTEUR GENERAL — chef de cabinet opérationnel. " +
+        "Constat observé dans la Salle de contrôle : " + candidate.constat +
+        ". Piste de diagnostic : " + candidate.piste +
+        ". Demande au DG : vérifie ce constat avec consulter_indicateurs, consulter_taches et consulter_performance selon le sujet ; identifie la cause racine ; décide si une action est nécessaire ; si oui, délègue au directeur compétent avec livrable, responsable, échéance, indicateur et dépendances ; contrôle ensuite le résultat et rends compte au Président via repondre_president. " +
+        "Jarvis ne donne pas d'ordre aux équipes et cette remontée ne vaut pas validation du Président. " +
+        "Garde-fous : aucune communication externe, aucun WhatsApp/e-mail, aucun engagement financier ou contractuel, aucune suppression, aucun changement de budget ou redémarrage/réaffectation de mission sans autorisation appropriée."
+      });
+      if (result === "transmis") {
+        try { localStorage.setItem(JARVIS_AUTO_RUN_KEY, JSON.stringify({ signature, at: Date.now(), constat: candidate.constat })); } catch { /* le cycle reste valide pour la session */ }
+        addLine("jarvis", "Supervision autonome : une consigne interne a été transmise au directeur général. Les actions externes et sensibles restent soumises à validation.");
+        return { sent: true, constat: candidate.constat };
+      }
+      return { sent: false };
+    } finally { autoCycleBusy = false; }
+  }
+  setAuto(autoMode);
   setInterval(refreshIdeas, 15000); setTimeout(refreshIdeas, 3500);
+  setInterval(() => { runAutoCycle().catch((e) => addLine("jarvis", "Supervision suspendue : " + clip(e.message, 140))); }, 60000);
+  setTimeout(() => { if (autoMode) runAutoCycle().catch(() => {}); }, 12000);
   $("#jv-send").addEventListener("click", sendTxt); inEl.addEventListener("keydown", (e) => { if (e.key === "Enter") sendTxt(); e.stopPropagation(); });
-  $("#jv-voice").addEventListener("click", (e) => { voiceOn = !voiceOn; e.currentTarget.classList.toggle("on", voiceOn); e.currentTarget.textContent = voiceOn ? "🔊" : "🔇"; if (!voiceOn) window.speechSynthesis?.cancel(); setSt(voiceOn ? "Voix activée" : "Voix désactivée"); });
-  $("#jv-hands").addEventListener("click", (e) => { hands = !hands; e.currentTarget.classList.toggle("on", hands); if (hands) { if (!SR) { hands = false; e.currentTarget.classList.remove("on"); setSt("Mains libres indisponible : micro non pris en charge."); return; } if (listening) rec.stop(); setTimeout(startRec, 150); setSt("Mains libres : dites « Jarvis »"); } else { rec?.stop(); setSt("Jarvis prêt"); } });
+  $("#jv-voice").addEventListener("click", (e) => { voiceOn = !voiceOn; e.currentTarget.classList.toggle("on", voiceOn); e.currentTarget.textContent = voiceOn ? "🔊" : "🔇"; if (!voiceOn) stopSpeech(); setSt(voiceOn ? "Voix activée" : "Voix désactivée"); });
+  $("#jv-voice-style").addEventListener("click", cycleVoice);
+  $("#jv-hands").addEventListener("click", (e) => { hands = !hands; e.currentTarget.classList.toggle("on", hands); if (hands) { if (!SR) { setMicState("unsupported", "Micro indisponible"); hands = false; e.currentTarget.classList.remove("on"); setSt("Mains libres indisponible : micro non pris en charge."); return; } if (listening) rec.stop(); setTimeout(activateMicAndStart, 150); setSt("Activation du microphone…"); } else { setMicState("idle", "Micro en pause"); rec?.stop(); setSt("Jarvis prêt"); } });
   addLine("jarvis", "Salle de contrôle en ligne. Dites « Jarvis, situation » ou écrivez votre demande.");
-  window.__jarvis = { crm: () => crmContext(""), crmRows: () => crmC.rows.slice(), insights, auto: () => autoMode, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say };
+  window.__jarvis = { crm: () => crmContext(""), crmRows: () => crmC.rows.slice(), insights, auto: () => autoMode, runAutoCycle, setLLM: (on) => { llmDown = on ? 0 : Infinity; }, history: () => hist.slice(), ask: (t) => handle(t), lines: () => lines.slice(), pending: () => pending, say, explainRelation: (r) => say(relationExplanation(r)), explainProspect: (p, history, tasks, meta) => say(prospectExplanation(p, history, tasks, meta)) };
 }

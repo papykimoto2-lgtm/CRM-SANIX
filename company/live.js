@@ -4,6 +4,7 @@
 // pour éviter que deux fenêtres renouvellent le même jeton.
 import { SUPABASE_DEFAULT } from "./config.js";
 import { initJarvis } from "./live_voice.js";
+import { createProspectRelations } from "./live_relations.js";
 
 const $ = (s) => document.querySelector(s);
 const LS = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
@@ -16,7 +17,7 @@ const ORIGIN = location.origin;
 const STATES = { run: ["Au travail", "#22D3EE"], wait: ["Coordonne ses équipes", "#A855F7"], valid: ["Attend une validation", "#F59E0B"], bad: ["Mission bloquée", "#EF4444"], queue: ["Mission en attente", "#64748B"], idle: ["Disponible", "#3B5A94"], off: ["Suspendu", "#475569"] };
 const TASK_C = { en_cours: "#22D3EE", attente_sous_taches: "#A855F7", attente_validation: "#F59E0B", a_faire: "#64748B", bloquee: "#EF4444", echouee: "#EF4444", terminee: "#22C55E" };
 const TASK_L = { en_cours: "En cours", attente_sous_taches: "Attend ses équipes", attente_validation: "À valider", a_faire: "À faire", bloquee: "Bloquée", echouee: "Échouée", terminee: "Terminée", annulee: "Annulée" };
-const D = { agents: [], depts: [], tasks: [], tasks90: null, orderRows: null, execRows: null, execConfig: null, products: null, productAliases: null, actions: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, costCenter90: null, salesRows: null, offerRows: null, whatsapp: null, gov: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0 };
+const D = { agents: [], depts: [], tasks: [], tasks90: null, orderRows: null, execRows: null, execConfig: null, products: null, productAliases: null, actions: [], relationRows: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, costCenter90: null, salesRows: null, offerRows: null, whatsapp: null, gov: null, prospectHistory: null, prospectNetworkOrigin: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0, journalAgent: "", journalKind: "" };
 let sb = null;
 
 // ───────── Configuration et session ─────────
@@ -40,8 +41,8 @@ async function pull() {
   safe.err = null;
   const [ag, tk, ac, cr, nT, nA, rc, td, ap, bu, gv, sales, offers, costs, waStatus, waOut, waIn, waOpt, orders, tasks90, costs90, execRows, execConfig, products, productAliases] = await Promise.all([
     safe(sb.from("ai_agents").select("id,code,nom,fonction,niveau,manager_id,departement_id,etat,activite"), null),
-    safe(sb.from("ai_agent_tasks").select("id,agent_id,donneur_agent_id,parent_id,type,titre,objectifs,statut,priorite,produit,started_at,updated_at,created_at,executions").gte("updated_at", since(7)).order("updated_at", { ascending: false }).limit(600), null),
-    safe(sb.from("ai_actions").select("id,action,agent_id,task_id,payload,ok,at").order("at", { ascending: false }).limit(60), null),
+    safe(sb.from("ai_agent_tasks").select("id,agent_id,donneur_agent_id,parent_id,prospect_id,type,titre,objectifs,statut,priorite,produit,started_at,updated_at,created_at,executions,echeance,progression,rapport").gte("updated_at", since(7)).order("updated_at", { ascending: false }).limit(600), null),
+    safe(sb.from("ai_actions").select("id,action,agent_id,task_id,payload,ok,at").order("at", { ascending: false }).limit(150), null),
     safe(sb.from("ai_actions").select("task_id").eq("action", "abonnement_prospect_cree").gte("at", since(3)).limit(1500), null),
     safe(sb.from("ai_prospects").select("id", { count: "exact", head: true }).gte("created_at", day.toISOString()), null),
     safe(sb.from("ai_prospects").select("id", { count: "exact", head: true }), null),
@@ -50,7 +51,7 @@ async function pull() {
     safe(sb.from("ai_approvals").select("id", { count: "exact", head: true }).eq("statut", "en_attente"), null),
     safe(sb.rpc("ai_budget_status"), null),
     safe(sb.from("ai_governance").select("actif,communication_externe").eq("id", 1).maybeSingle(), null),
-    safe(sb.from("ai_prospects").select("id,entreprise,stage,potentiel_fcfa,score,next_action_at,opt_out,owner_id").limit(1500), null),
+    safe(sb.from("ai_prospects").select("*").limit(1500), null),
     safe(sb.from("ai_offers").select("id,total_ttc,statut,created_at").order("created_at", { ascending: false }).limit(500), null),
     safe(sb.rpc("ai_cost_center", { p_days: 30 }), null),
     safe(sb.functions.invoke("crm-whatsapp", { body: { action: "status" } }), null),
@@ -65,9 +66,16 @@ async function pull() {
     safe(sb.from("ai_products").select("id,nom,actif").eq("actif", true).order("nom"), null),
     safe(sb.from("ai_product_aliases").select("alias,product_id"), null),
   ]);
+  const [relationRows, approvalRows, communicationRows] = await Promise.all([
+    safe(sb.from("ai_actions").select("id,action,agent_id,task_id,prospect_id,payload,ok,at").not("prospect_id", "is", null).order("at", { ascending: false }).limit(500), null),
+    safe(sb.from("ai_approvals").select("id,type,motif,payload,statut,created_at,agent_id,task_id,commentaire").eq("statut", "en_attente").order("created_at", { ascending: false }).limit(20), null),
+    safe(sb.from("ai_agent_communications").select("id,type,objet,contenu,created_at,de_agent_id,vers_agent_id,task_id").order("created_at", { ascending: false }).limit(120), null),
+  ]);
   if (!ag?.data || !tk?.data) throw safe.err ?? new Error("Données indisponibles");
   if (!D.depts.length) { const dp = await safe(sb.from("ai_departments").select("id,nom,couleur"), null); D.depts = dp?.data ?? []; }
-  D.agents = ag.data; D.tasks = tk.data; D.actions = ac?.data ?? D.actions;
+  D.agents = ag.data; D.tasks = tk.data; D.actions = ac?.data ?? D.actions; D.relationRows = relationRows?.data ?? D.relationRows;
+  D.pendingApprovals = approvalRows?.data ?? [];
+  D.communications = communicationRows?.data ?? [];
   if (cr?.data) { D.created = {}; for (const r of cr.data) if (r.task_id) D.created[r.task_id] = (D.created[r.task_id] ?? 0) + 1; }
   D.nToday = nT?.count ?? D.nToday; D.nTotal = nA?.count ?? D.nTotal; D.recent = rc?.data ?? D.recent; D.todayRows = td?.data ?? D.todayRows;
   D.approvals = ap?.count ?? D.approvals; D.budget = bu?.data ?? D.budget; D.gov = gv?.data ?? D.gov;
@@ -98,6 +106,13 @@ function agentState(a) {
   return mine.some((t) => t.statut === "a_faire") ? "queue" : "idle";
 }
 const targetOf = (t) => { const m = /(\d+)\s*(?:nouvelles?\s+)?fiches/i.exec(`${t.titre} ${Array.isArray(t.objectifs) ? t.objectifs.join(" ") : ""}`); return m ? Number(m[1]) : 0; };
+function scheduleLabel(t) {
+  if (t.statut !== "a_faire" || !t.echeance) return "";
+  const due = Date.parse(t.echeance);
+  if (!Number.isFinite(due)) return "";
+  const when = new Intl.DateTimeFormat("fr-FR", { timeZone: "Africa/Abidjan", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(due);
+  return due < Date.now() && Number(t.executions ?? 0) === 0 ? "Échéance dépassée · non démarrée (" + when + ")" : "Programmée · " + when;
+}
 function health() {
   const week = D.tasks.filter((t) => ["terminee", "bloquee", "echouee"].includes(t.statut));
   const ok = week.filter((t) => t.statut === "terminee").length, rate = week.length >= 3 ? Math.round(100 * ok / week.length) : null;
@@ -120,7 +135,7 @@ function renderKpis() {
   const enc = D.tasks.filter((t) => t.statut === "en_cours").length, att = D.tasks.filter((t) => ["a_faire", "attente_sous_taches"].includes(t.statut)).length;
   const b = D.budget, usd = (v) => `${Number(v ?? 0).toFixed(2)} $`;
   const valid = D.tasks.filter((t) => t.statut === "attente_validation").length, blocked = D.tasks.filter((t) => ["bloquee", "echouee"].includes(t.statut)).length;
-  const tiles = [["k-run", "Agents au travail", `/ ${act.length} actifs`, "#22D3EE", run], ["k-mis", "Missions en cours", `${att} en attente · ${valid} à valider · ${blocked} bloquées`, "#A855F7", enc], ["k-today", "Fiches créées aujourd'hui", "prospects trouvés", "#22C55E", D.nToday], ["k-tot", "Prospects en base", "tous logiciels", "#FACC15", D.nTotal], ["k-val", "À valider", "décisions du président", "#F59E0B", D.approvals]];
+  const tiles = [["k-run", "Agents au travail", `/ ${act.length} actifs`, "#22D3EE", run], ["k-mis", "Missions en cours", `${att} en attente · ${valid} à valider · ${blocked} bloquées (7 j)`, "#A855F7", enc], ["k-today", "Fiches créées aujourd'hui", "prospects trouvés", "#22C55E", D.nToday], ["k-tot", "Prospects en base", "tous logiciels", "#FACC15", D.nTotal], ["k-val", "À valider", "décisions du président", "#F59E0B", D.approvals]];
   if (!$("#kpis").children.length) $("#kpis").innerHTML = tiles.map(([id, l, e, c]) => `<div class="kpi" style="--c:${c}"><small>${esc(l)}</small><b id="${id}">0</b><em id="${id}-e">${esc(e)}</em></div>`).join("") + `<div class="kpi" style="--c:#22D3EE"><small>Coût IA du jour</small><b id="k-usd">–</b><em id="k-usd-e"></em></div>`;
   tiles.forEach(([id, , e, , v]) => { tween($("#" + id), v); $("#" + id + "-e").textContent = e; });
   $("#k-usd").textContent = b ? `${Number(b.jour_usd ?? 0).toFixed(2)} $` : "–";
@@ -161,7 +176,7 @@ function renderMissions() {
     blocked: open.filter((t) => ["bloquee", "echouee"].includes(t.statut)).length,
   };
   const summary = $("#mission-summary");
-  if (summary) summary.textContent = `${open.length} ouvertes · ${counts.run} en cours · ${counts.waiting} en attente · ${counts.valid} à valider · ${counts.blocked} bloquées`;
+  if (summary) summary.textContent = `${open.length} ouvertes · ${counts.run} en cours · ${counts.waiting} en attente · ${counts.valid} à valider · ${counts.blocked} bloquées (24 h)`;
   document.querySelectorAll("#mission-filters [data-filter]").forEach((b) => {
     const active = b.dataset.filter === D.taskFilter;
     b.classList.toggle("on", active); b.setAttribute("aria-pressed", String(active));
@@ -175,7 +190,7 @@ function renderMissions() {
     const c = TASK_C[t.statut], tg = targetOf(t), n = D.created[t.id] ?? 0, pct = tg ? Math.min(100, Math.round(100 * n / tg)) : 0;
     return `<button type="button" class="mis mission-item ${t.statut === "en_cours" ? "run" : ""}" style="--c:${c}" data-agent="${esc(t.agent_id)}" aria-label="Afficher l'agent ${esc(nameOf(t.agent_id))} et sa mission ${esc(t.titre)}">
       <b>${esc(clip(t.titre, 90))}</b><small>${esc(nameOf(t.agent_id))}</small>
-      <div><span class="tag" style="--c:${c}">${esc(TASK_L[t.statut])}</span><span class="tag">P${esc(t.priorite)}</span>${t.produit ? `<span class="tag">${esc(t.produit)}</span>` : ""}${t.statut === "en_cours" && t.started_at ? `<small data-start="${esc(t.started_at)}">${dur(Date.now() - Date.parse(t.started_at))}</small>` : ""}</div>
+      <div><span class="tag" style="--c:${c}">${esc(TASK_L[t.statut])}</span><span class="tag">P${esc(t.priorite)}</span>${t.produit ? `<span class="tag">${esc(t.produit)}</span>` : ""}${t.statut === "en_cours" && t.started_at ? `<small data-start="${esc(t.started_at)}">${dur(Date.now() - Date.parse(t.started_at))}</small>` : ""}${scheduleLabel(t) ? `<small class="schedule-note">${esc(scheduleLabel(t))}</small>` : ""}${t.statut === "a_faire" && t.echeance ? `<small>${Number(t.executions ?? 0)} exécution(s)</small>` : ""}</div>
       ${tg ? `<div class="bar"><i style="width:${pct}%"></i></div><small>${n} / ${tg} fiches créées</small>` : ""}
     </button>`;
   }).join("") || `<div class="muted empty-missions">Aucune mission dans ce filtre.</div>`;
@@ -193,6 +208,67 @@ function renderFeed(markNew) {
   $("#feed").innerHTML = D.actions.slice(0, 40).map((a) => { const [ic, tx] = actView(a); return `<div class="it ${markNew && a.id > D.lastId ? "new" : ""}"><span class="ic">${ic}</span><div><b>${esc(nameOf(a.agent_id))}</b> ${tx.replace(/</g, "&lt;")}<small>${ago(a.at)}</small></div></div>`; }).join("") || `<div class="muted">Aucune action récente.</div>`;
   if (markNew) for (const a of fresh.slice(0, 6).reverse()) (view3d ? view3d.fx(a) : fx(a)); if (D.actions.length) D.lastId = Math.max(D.lastId, ...D.actions.map((a) => a.id));
 }
+function renderWorkfloor() {
+  const taskEl = $("#workfloor-tasks"), eventEl = $("#workfloor-events"), meta = $("#workfloor-meta");
+  if (!taskEl || !eventEl) return;
+  const active = D.tasks.filter(t => ["en_cours","attente_sous_taches","attente_validation"].includes(t.statut))
+    .sort((a,b) => (a.statut === "en_cours" ? 0 : 1) - (b.statut === "en_cours" ? 0 : 1) || Date.parse(b.updated_at || 0) - Date.parse(a.updated_at || 0)).slice(0,5);
+  taskEl.innerHTML = active.map(t => {
+    const progress = Number(t.progression);
+    const hasProgress = Number.isFinite(progress) && progress >= 0 && progress <= 100;
+    const status = TASK_L[t.statut] || t.statut;
+    return '<article class="workfloor-task" style="--task-color:' + (TASK_C[t.statut] || "#22D3EE") + '">' +
+      '<b>' + esc(clip(t.titre || "Mission sans titre", 58)) + '</b>' +
+      '<small>' + esc(nameOf(t.agent_id)) + ' · <span class="wf-state">' + esc(status) + '</span></small>' +
+      '<small>' + (t.started_at ? 'Depuis ' + esc(dur(Date.now() - Date.parse(t.started_at))) : 'Mise à jour ' + esc(ago(t.updated_at))) +
+      (hasProgress ? ' · ' + Math.round(progress) + '% déclaré' : '') + '</small></article>';
+  }).join("") || '<div class="workfloor-empty">Aucune mission en exécution ou coordination actuellement.</div>';
+  const comms = (D.communications || []).slice(0,6);
+  const delegations = D.tasks.filter(t => t.parent_id || t.donneur_agent_id).slice(0,6);
+  const exchangeRows = comms.map(c => {
+    const from = nameOf(c.de_agent_id), to = nameOf(c.vers_agent_id);
+    return '<div class="workfloor-event"><em>' + esc(from) + '</em> → <em>' + esc(to) + '</em> ' + esc(clip(c.objet || c.type || "Échange",48)) + '<small>' + esc(ago(c.created_at)) + '</small></div>';
+  });
+  delegations.forEach(t => exchangeRows.push('<div class="workfloor-event"><em>' + esc(nameOf(t.donneur_agent_id)) + '</em> → <em>' + esc(nameOf(t.agent_id)) + '</em> délégation : ' + esc(clip(t.titre,38)) + '<small>' + esc(ago(t.created_at)) + '</small></div>'));
+  eventEl.innerHTML = exchangeRows.slice(0,6).join("") || '<div class="workfloor-empty">Aucun échange ou transfert enregistré récemment.</div>';
+  const resultsEl = $("#workfloor-results");
+  const delivered = D.tasks.filter(t => t.statut === "terminee").sort((a,b) => Date.parse(b.updated_at || 0)-Date.parse(a.updated_at || 0)).slice(0,5);
+  if (resultsEl) resultsEl.innerHTML = delivered.map(t => '<article class="wf-result"><b>✓ ' + esc(clip(t.titre,48)) + '</b><small>' + esc(nameOf(t.agent_id)) + ' · ' + esc(ago(t.updated_at)) + '</small>' + (t.rapport ? '<p>' + esc(clip(String(t.rapport),105)) + '</p>' : '') + '</article>').join("") || '<div class="workfloor-empty">Aucun livrable terminé dans la période chargée.</div>';
+  if (meta) meta.textContent = active.length + ' missions actives · ' + comms.length + ' échanges chargés · actualisation ' + new Date().toLocaleTimeString("fr-FR",{timeZone:"Africa/Abidjan"});
+}
+
+
+function journalEvents() {
+  const events = [];
+  for (const a of D.actions || []) {
+    const [ic, label] = actView(a);
+    events.push({ at: a.at, kind: a.ok === false ? "error" : "action", agent: a.agent_id || "", icon: a.ok === false ? "⚠" : ic, title: label, detail: a.task_id ? "Mission liée" : "", source: "Action enregistrée" });
+  }
+  for (const c of D.communications || []) {
+    events.push({ at: c.created_at, kind: "communication", agent: c.de_agent_id || c.vers_agent_id || "", icon: c.type === "alerte" ? "⚠" : "↔", title: c.objet || c.type || "Échange entre agents", detail: clip(String(c.contenu || ""), 230), source: (c.de_agent_id ? nameOf(c.de_agent_id) : "Direction") + " → " + (c.vers_agent_id ? nameOf(c.vers_agent_id) : "Direction") });
+  }
+  for (const t of D.tasks || []) {
+    events.push({ at: t.created_at, kind: "mission", agent: t.agent_id || "", icon: "▣", title: t.titre || "Mission sans titre", detail: "Mission enregistrée · état actuel : " + (TASK_L[t.statut] || t.statut), source: nameOf(t.agent_id) });
+    const progressText = typeof t.progression === "string" && /erreur|bloqu|échec|failed|error/i.test(t.progression) ? t.progression : "";
+    if (progressText) events.push({ at: t.updated_at, kind: "error", agent: t.agent_id || "", icon: "⚠", title: "Incident signalé sur : " + (t.titre || "mission"), detail: clip(progressText, 230), source: nameOf(t.agent_id) });
+  }
+  return events.filter(e => e.at && Number.isFinite(Date.parse(e.at))).sort((a,b) => Date.parse(b.at)-Date.parse(a.at));
+}
+function renderJournal() {
+  const list = $("#wf-journal-list"), meta = $("#wf-journal-meta"), agentSelect = $("#wf-journal-agent");
+  if (!list || !agentSelect) return;
+  const current = D.journalAgent || "";
+  agentSelect.innerHTML = '<option value="">Tous les agents</option>' + D.agents.slice().sort((a,b) => String(a.nom).localeCompare(String(b.nom),"fr")).map(a => '<option value="' + esc(a.id) + '">' + esc(a.nom || a.code || "Agent") + '</option>').join("");
+  agentSelect.value = current;
+  const all = journalEvents();
+  const filtered = all.filter(e => (!D.journalAgent || e.agent === D.journalAgent) && (!D.journalKind || e.kind === D.journalKind));
+  list.innerHTML = filtered.slice(0,100).map(e => {
+    const stamp = new Intl.DateTimeFormat("fr-FR",{timeZone:"Africa/Abidjan",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"}).format(new Date(e.at));
+    return '<article class="wf-journal-item kind-' + esc(e.kind) + '"><i>' + esc(e.icon) + '</i><div><b>' + esc(e.title) + '</b><small>' + esc(e.source) + ' · ' + esc(stamp) + ' · ' + esc(ago(e.at)) + '</small>' + (e.detail ? '<p>' + esc(e.detail) + '</p>' : '') + '</div></article>';
+  }).join("") || '<div class="workfloor-empty">Aucun événement correspondant dans l’historique chargé.</div>';
+  if (meta) meta.textContent = all.length + ' événements réels · ' + filtered.length + ' affichés · fenêtre des missions : 7 jours';
+}
+
 function renderBusiness() {
   const el = $("#business-panel"); if (!el) return;
   if (!Array.isArray(D.salesRows)) { el.innerHTML = '<h2>Pilotage commercial</h2><p class="panel-muted">Indicateurs commerciaux indisponibles avec les autorisations actuelles.</p>'; return; }
@@ -206,6 +282,27 @@ function renderBusiness() {
   const accepted = (D.offerRows || []).filter(o => o.statut === "acceptee");
   const acceptedAmount = accepted.reduce((s,o) => s + Math.max(0, Number(o.total_ttc) || 0), 0);
   const fmt = n => new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(n) + " FCFA";
+  const now = Date.now(), day = 86400000, today = new Date(); today.setHours(0,0,0,0);
+  const activityByProspect = new Map();
+  for (const a of D.relationRows || []) {
+    const key = String(a.prospect_id || "");
+    if (!key) continue;
+    const t = Date.parse(a.at || "");
+    if (Number.isFinite(t) && t > (activityByProspect.get(key) || 0)) activityByProspect.set(key,t);
+  }
+  const overdue = active.filter(p => p.next_action_at && Date.parse(p.next_action_at) < today.getTime()).sort((a,b)=>Date.parse(a.next_action_at)-Date.parse(b.next_action_at));
+  const upcoming = active.filter(p => p.next_action_at && Date.parse(p.next_action_at) >= today.getTime()).sort((a,b)=>Date.parse(a.next_action_at)-Date.parse(b.next_action_at));
+  const unscheduled = active.filter(p => !p.next_action_at);
+  const stale = active.filter(p => {
+    const last = Math.max(activityByProspect.get(String(p.id)) || 0, Date.parse(p.updated_at || p.created_at || "") || 0);
+    return last > 0 && now-last >= 14*day;
+  }).sort((a,b)=>(Date.parse(a.updated_at||a.created_at||"")||0)-(Date.parse(b.updated_at||b.created_at||"")||0));
+  const dateLabel = v => Number.isFinite(Date.parse(v||"")) ? new Date(v).toLocaleString("fr-FR",{timeZone:"Africa/Abidjan",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "Date non renseignée";
+  const prospectRows = (rows, empty, kind) => rows.slice(0,5).map(p => {
+    const when = p.next_action_at ? dateLabel(p.next_action_at) : "À planifier";
+    const meta = kind === "stale" ? "Inactif depuis au moins 14 jours" : when;
+    return `<div class="crm-followup-item"><button type="button" class="crm-followup-row" data-crm-prospect="${esc(p.id)}"><span><b>${esc(p.entreprise || "Prospect sans nom")}</b><small>${esc(p.ville || "Localisation inconnue")} · ${esc(p.stage || "nouveau")}</small></span><em>${esc(meta)}</em></button><button type="button" class="crm-followup-treat" data-crm-treat="${esc(p.id)}">Saisir le résultat</button></div>`;
+  }).join("") || `<p class="panel-muted">${empty}</p>`;
   el.innerHTML = `<div class="panel-head"><h2>Pilotage commercial</h2><span class="panel-source">CRM · données réelles</span></div>
     <div class="business-grid">
       <div><b>${active.length.toLocaleString("fr-FR")}</b><small>Prospects actifs</small></div>
@@ -215,7 +312,34 @@ function renderBusiness() {
     </div>
     <div class="business-foot"><span>Potentiel déclaré du pipeline</span><b>${fmt(potential)}</b></div>
     <div class="business-foot"><span>Montant TTC des offres acceptées (500 dernières max.)</span><b>${fmt(acceptedAmount)}</b></div>
+    <div class="crm-followup-summary">
+      <div><b class="late">${overdue.length}</b><small>Relances en retard</small></div>
+      <div><b>${upcoming.length}</b><small>À venir</small></div>
+      <div><b>${unscheduled.length}</b><small>Sans relance</small></div>
+      <div><b>${stale.length}</b><small>Inactifs ≥ 14 j</small></div>
+    </div>
+    <section class="crm-followup-group"><h3>Relances en retard</h3>${prospectRows(overdue,"Aucune relance en retard.","overdue")}</section>
+    <section class="crm-followup-group"><h3>Prochaines relances</h3>${prospectRows(upcoming,"Aucune relance programmée.","upcoming")}</section>
+    <section class="crm-followup-group"><h3>Prospects sans relance</h3>${prospectRows(unscheduled,"Tous les prospects actifs ont une relance renseignée.","unscheduled")}</section>
+    <section class="crm-followup-group"><h3>Dossiers inactifs (14 jours ou plus)</h3>${prospectRows(stale,"Aucun dossier inactif selon les données disponibles.","stale")}</section>
+    <p class="panel-note">L'inactivité est estimée à partir de la dernière activité CRM ou de la dernière mise à jour disponible. Les indicateurs sont calculés sur les prospects chargés (maximum 1 500) et les 500 dernières activités reliées.</p>
     <p class="panel-note">Le potentiel du pipeline n'est pas du chiffre d'affaires réalisé. Les offres acceptées ne valent pas preuve d'encaissement.</p>`;
+  const openProspect = (id, captureResult = false) => {
+    const p = D.salesRows.find(x => String(x.id) === String(id));
+    if (!p) return;
+    D.prospectSel = p; D.prospectNetworkOrigin = null; D.sel = null; renderDetail();
+    $("#detail")?.scrollIntoView?.({behavior:"smooth",block:"nearest"});
+    if (captureResult) {
+      const form = $("#prospect-note-form");
+      if (form) {
+        const type = form.querySelector('[name="type"]');
+        if (type) type.value = "appel";
+        form.querySelector('[name="note"]')?.focus({preventScroll:true});
+      }
+    }
+  };
+  el.querySelectorAll("[data-crm-prospect]").forEach(btn => btn.addEventListener("click", () => openProspect(btn.dataset.crmProspect)));
+  el.querySelectorAll("[data-crm-treat]").forEach(btn => btn.addEventListener("click", () => openProspect(btn.dataset.crmTreat, true)));
 }
 function renderFinance() {
   const el = $("#finance-panel"); if (!el) return;
@@ -241,40 +365,41 @@ function renderAgentPerformance() {
   if (!el) return;
   const active = D.agents.filter(a => !["suspendu", "archive"].includes(a.etat));
   const costs = new Map((D.costCenter?.agents || []).map(a => [String(a.nom || "").trim().toLocaleLowerCase(), Number(a.cout_usd) || 0]));
+  const stateRank = { bad: 0, run: 1, wait: 2, valid: 3, queue: 4, idle: 5, off: 6 };
   const rows = active.map(a => {
     const mine = D.tasks.filter(t => t.agent_id === a.id);
     const actions = D.actions.filter(x => x.agent_id === a.id);
     const evaluated = actions.filter(x => typeof x.ok === "boolean");
     const successes = evaluated.filter(x => x.ok === true).length;
+    const latest = actions.filter(x => Number.isFinite(Date.parse(x.at))).sort((x,y) => Date.parse(y.at)-Date.parse(x.at))[0] ?? null;
+    const state = agentState(a);
     return {
-      agent: a,
+      agent: a, state, stateLabel: STATES[state]?.[0] ?? state,
       done: mine.filter(t => t.statut === "terminee").length,
       open: mine.filter(t => OPENS.includes(t.statut)).length,
       blocked: mine.filter(t => ["bloquee", "echouee"].includes(t.statut)).length,
-      actions: actions.length,
-      evaluated: evaluated.length,
-      successes,
+      actions: actions.length, evaluated: evaluated.length, successes, latest,
       cost: costs.get(String(a.nom || "").trim().toLocaleLowerCase()) ?? null
     };
-  }).sort((a,b) => b.done-a.done || b.open-a.open || b.actions-a.actions);
-  const evaluated = D.actions.filter(x => typeof x.ok === "boolean");
-  const success = evaluated.filter(x => x.ok === true).length;
-  const rate = evaluated.length ? Math.round(success * 100 / evaluated.length) : null;
+  }).sort((a,b) => (stateRank[a.state] ?? 9)-(stateRank[b.state] ?? 9) || b.blocked-a.blocked || b.open-a.open || b.done-a.done);
+  const counts = Object.fromEntries(["run","wait","valid","queue","idle","bad"].map(k => [k, rows.filter(r => r.state === k).length]));
   const fmtCost = v => "$" + Number(v || 0).toFixed(2);
-  el.innerHTML = `<div class="panel-head"><h2>Performance des agents</h2><span class="panel-source">Activité · 7 jours</span></div>
+  const signalText = a => !a ? "aucun signal parmi les 60 derniers événements" : (a.ok === false ? "dernier événement en échec" : a.ok === true ? "dernier événement réussi" : "dernier événement sans résultat");
+  el.innerHTML = `<div class="panel-head"><h2>Diagnostic des agents</h2><span class="panel-source">État · 7 jours</span></div>
     <div class="performance-summary">
       <div><b>${active.length}</b><small>Agents actifs</small></div>
-      <div><b>${D.tasks.filter(t => t.statut === "terminee").length}</b><small>Missions terminées</small></div>
-      <div><b>${rate === null ? "n/d" : rate + " %"}</b><small>Actions réussies*</small></div>
+      <div><b>${counts.run}</b><small>Au travail</small></div>
+      <div><b>${counts.bad + counts.wait + counts.valid + counts.queue}</b><small>À examiner / en attente</small></div>
     </div>
-    <div class="performance-head"><span>Agent</span><span>Terminées</span><span>Ouvertes</span><span>Actions*</span><span>Coût 30 j</span></div>
-    <div class="performance-list">${rows.slice(0,10).map(r => `<button type="button" class="performance-row" data-performance-agent="${esc(r.agent.id)}" aria-label="Afficher les missions de ${esc(r.agent.nom)}">
-      <span class="performance-name"><b>${esc(r.agent.nom)}</b><small>${esc(r.agent.fonction || "Agent")}</small></span>
+    <div class="performance-state-summary"><span>${counts.bad} bloqué(s)</span><span>${counts.wait + counts.valid + counts.queue} en attente</span><span>${counts.idle} disponible(s)</span></div>
+    <div class="performance-head"><span>Agent / état / signal</span><span>Terminées</span><span>Ouvertes</span><span>Actions*</span><span>Coût 30 j</span></div>
+    <div class="performance-list">${rows.map(r => `<button type="button" class="performance-row" data-performance-agent="${esc(r.agent.id)}" aria-label="Examiner ${esc(r.agent.nom)} — ${esc(r.stateLabel)}" title="${esc(signalText(r.latest))}">
+      <span class="performance-name"><b>${esc(r.agent.nom)}</b><small class="performance-state ${esc(r.state)}">${esc(r.stateLabel)} · ${esc(r.latest ? dur(Date.now() - Date.parse(r.latest.at)) : "aucun signal récent")}</small></span>
       <b class="performance-done">${r.done}</b><b>${r.open}</b>
       <span class="performance-actions">${r.evaluated ? `${r.successes}/${r.evaluated}` : `${r.actions} · n/d`}</span>
       <b class="performance-cost">${r.cost === null ? "n/d" : fmtCost(r.cost)}</b>
     </button>`).join("")}</div>
-    <p class="panel-note">Missions : tâches actualisées sur 7 jours. * Actions : 60 événements les plus récents, uniquement ceux dont le résultat est renseigné. Coûts : fenêtre de 30 jours. Ce classement décrit l'activité observée, pas une note individuelle ni une comparaison corrigée de la difficulté des missions.</p>`;
+    <p class="panel-note">État déduit des statuts de missions chargées (7 jours) et de l'activité déclarée. Dernier signal : parmi les 60 événements les plus récents, pas un heartbeat réseau. * Actions évaluées uniquement si leur résultat est renseigné. Coûts : 30 jours. Les signaux orientent le contrôle humain, ils ne prouvent pas à eux seuls qu'un agent est déconnecté.</p>`;
 }
 function renderOperationsDirector() {
   const el = $("#ops-panel");
@@ -321,13 +446,122 @@ function renderOperationsDirector() {
   if (repeatedFailures.length) recs.push({level:"bad",title: `${repeatedFailures.length} séquence(s) d'échecs répétitifs`,detail:"Même agent et même type d'action en échec au moins deux fois sur les événements disponibles."});
   const recommendationHtml = recs.length ? recs.slice(0,5).map(r => `<div class="ops-recommendation ${r.level}"><i></i><span><b>${esc(r.title)}</b><small>${esc(r.detail)}</small></span></div>`).join("") : '<p class="panel-muted">Aucun signal de dysfonctionnement détecté dans les données chargées.</p>';
   const transferHtml = suggestions.length ? suggestions.slice(0,4).map(s => `<div class="ops-transfer"><span><b>${esc(clip(s.task.titre,48))}</b><small>${esc(s.reason)} · ${fmtAgent(s.owner)}</small></span><span class="ops-arrow">→</span><button type="button" data-ops-agent="${esc(s.target.id)}" title="Examiner l'agent proposé">${fmtAgent(s.target)}</button></div>`).join("") : '<p class="panel-muted">Aucune réaffectation candidate fiable : il faut un agent disponible du même département.</p>';
+  const childTasks = new Map();
+  for (const child of D.tasks) {
+    if (!child.parent_id) continue;
+    const list = childTasks.get(child.parent_id) || [];
+    list.push(child);
+    childTasks.set(child.parent_id, list);
+  }
+  const taskEvents = new Map();
+  for (const event of D.actions) {
+    if (!event.task_id || !Number.isFinite(Date.parse(event.at))) continue;
+    const prev = taskEvents.get(event.task_id);
+    if (!prev || Date.parse(event.at) > Date.parse(prev.at)) taskEvents.set(event.task_id, event);
+  }
+  const extractSignal = value => {
+    if (value == null) return "";
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return "";
+      try { return extractSignal(JSON.parse(trimmed)); } catch { return trimmed.slice(0, 220); }
+    }
+    if (Array.isArray(value)) return value.map(extractSignal).filter(Boolean).slice(0,2).join(" · ");
+    if (typeof value === "object") {
+      for (const key of ["error","erreur","message","details","reason","raison","failure","cause"]) {
+        if (value[key] != null) { const found = extractSignal(value[key]); if (found) return found; }
+      }
+      return "";
+    }
+    return String(value).slice(0,220);
+  };
+  const triageTasks = D.tasks.filter(t => {
+    const age = now - Date.parse(t.updated_at);
+    return ["bloquee","echouee"].includes(t.statut) ||
+      (t.statut === "en_cours" && Number.isFinite(age) && age > 90 * 60000) ||
+      (OPENS.includes(t.statut) && Number(t.executions) >= 3);
+  }).sort((a,b) => {
+    const rank = t => ["bloquee","echouee"].includes(t.statut) ? 0 : t.statut === "en_cours" ? 1 : 2;
+    return rank(a)-rank(b) || Date.parse(a.updated_at)-Date.parse(b.updated_at);
+  }).slice(0,8);
+  const triageHtml = triageTasks.length ? triageTasks.map(t => {
+    const ageMs = now - Date.parse(t.updated_at);
+    const event = taskEvents.get(t.id);
+    const eventError = event?.ok === false ? extractSignal(event.payload) : "";
+    const reportError = extractSignal(t.rapport);
+    const reason = eventError || reportError ||
+      (t.statut === "attente_sous_taches" ? "En attente de sous-tâches ; vérifier les tâches enfants visibles." :
+       t.statut === "en_cours" ? "Aucune progression récente observée ; vérifier l'exécution et les dépendances." :
+       t.statut === "a_faire" ? "Plusieurs exécutions déclarées ; vérifier le résultat et le critère de sortie." :
+       "Cause technique non renseignée dans les données chargées.");
+    const children = childTasks.get(t.id) || [];
+    const childOpen = children.filter(c => OPENS.includes(c.statut)).length;
+    const childFailed = children.filter(c => ["bloquee","echouee"].includes(c.statut)).length;
+    const dep = children.length ? `${children.length} sous-tâche(s) · ${childOpen} ouverte(s) · ${childFailed} en échec/blocage` :
+      t.statut === "attente_sous_taches" ? "Sous-tâches non visibles dans la fenêtre chargée" : "Aucune dépendance enfant observée";
+    const action = eventError ? "Examiner le dernier événement en erreur avant toute relance." :
+      childFailed ? "Traiter d'abord la sous-tâche en échec ou bloquée." :
+      childOpen ? "Vérifier l'achèvement des sous-tâches avant de reprendre le parent." :
+      t.statut === "en_cours" ? "Contrôler le dernier résultat et la disponibilité de l'agent." :
+      "Compléter le diagnostic de cause avant de décider d'une reprise.";
+    const owner = agentById(t.agent_id);
+    const severity = ["bloquee","echouee"].includes(t.statut) ? "bad" : "warn";
+    return `<div class="ops-triage ${severity}">
+      <div class="ops-triage-top"><b>${esc(clip(t.titre,64))}</b><span>${esc(TASK_L[t.statut] || t.statut)}</span></div>
+      <small>Agent : ${esc(owner?.nom || "non attribué")} · dernière mise à jour : ${Number.isFinite(ageMs) ? esc(dur(ageMs)) : "inconnue"} · ${Number(t.executions)||0} exécution(s)</small>
+      <p><b>Signal :</b> ${esc(clip(reason,190))}</p>
+      <p><b>Dépendances :</b> ${esc(dep)}</p>
+      <p><b>Action proposée :</b> ${esc(action)}</p>
+    </div>`;
+  }).join("") : '<p class="panel-muted">Aucune mission à trier dans les données chargées.</p>';
+  const incidentGroups = new Map();
+  const normalizeIncident = value => String(value || "action_inconnue")
+    .replace(/^abonnement_/, "").replace(/[_-]+/g, " ").trim().toLocaleLowerCase();
+  for (const event of D.actions) {
+    if (event.ok !== false || !Number.isFinite(Date.parse(event.at))) continue;
+    const age = now - Date.parse(event.at);
+    if (age < 0 || age > 7 * day) continue;
+    const key = normalizeIncident(event.action);
+    const group = incidentGroups.get(key) || { key, count:0, agents:new Set(), tasks:new Set(), latest:null, samples:[] };
+    group.count++;
+    if (event.agent_id) group.agents.add(event.agent_id);
+    if (event.task_id) group.tasks.add(event.task_id);
+    if (!group.latest || Date.parse(event.at) > Date.parse(group.latest.at)) group.latest = event;
+    if (group.samples.length < 3) group.samples.push(event);
+    incidentGroups.set(key, group);
+  }
+  const procedures = [
+    { match:/firecrawl|scrape|lecture page|url/, title:"Vérifier la lecture de la source", steps:"Contrôler l'URL canonique, l'accès HTTP, le résultat de lecture et les quotas du fournisseur. Ne créer aucune fiche si la page n'a pas été réellement lue." },
+    { match:/prospect|crm|create/, title:"Vérifier la création et les doublons", steps:"Contrôler les champs obligatoires, la source consultée, la recherche de doublons et les droits d'écriture. Vérifier si l'enregistrement existe déjà avant toute nouvelle tentative." },
+    { match:/supabase|database|query|sql/, title:"Vérifier l'accès aux données", steps:"Contrôler la session, les droits RLS, la disponibilité de Supabase et le message d'erreur exact. Ne pas élargir les permissions pour contourner l'erreur." },
+    { match:/anthropic|claude|llm|model|token/, title:"Vérifier le fournisseur IA", steps:"Contrôler la clé, le solde/crédit, les limites de débit, le modèle demandé et la taille de la requête. Ne pas répéter en boucle une requête refusée." },
+    { match:/whatsapp|message|webhook/, title:"Vérifier le canal de communication", steps:"Contrôler l'état du webhook, le numéro, le modèle de message, le consentement et le statut Meta. Aucun message externe ne doit être renvoyé sans validation." }
+  ];
+  const incidentRows = [...incidentGroups.values()].sort((a,b) => b.count-a.count || Date.parse(b.latest.at)-Date.parse(a.latest.at)).slice(0,6);
+  const incidentHtml = incidentRows.length ? incidentRows.map(g => {
+    const procedure = procedures.find(p => p.match.test(g.key)) || {
+      title:"Examiner le journal technique",
+      steps:"Ouvrir le payload de l'événement, identifier le code et le message d'erreur, vérifier les prérequis de l'action et reproduire en environnement sûr avant toute correction."
+    };
+    const when = dur(Math.max(0, now - Date.parse(g.latest.at)));
+    const agentNames = [...g.agents].map(id => agentById(id)?.nom || "Agent inconnu").slice(0,3);
+    return `<details class="ops-incident">
+      <summary><span><b>${esc(g.key)}</b><small>${g.count} échec(s) · ${g.agents.size} agent(s) · ${g.tasks.size} mission(s)</small></span><em>${esc(when)}</em></summary>
+      <p><b>Procédure :</b> ${esc(procedure.title)}</p>
+      <p>${esc(procedure.steps)}</p>
+      <small>Agents concernés : ${esc(agentNames.join(", ") || "non identifiés")} · Dernier événement : ${esc(g.latest.at)}</small>
+      <button type="button" class="ops-approve-request" data-incident-approval="1" data-incident-key="${esc(g.key)}" data-incident-recommendation="${esc(procedure.steps)}" data-incident-task="${esc(g.latest.task_id || "")}" data-incident-agent="${esc(g.latest.agent_id || "")}">Soumettre cette correction à validation</button>
+    </details>`;
+  }).join("") : '<p class="panel-muted">Aucun échec enregistré sur les événements disponibles des 7 derniers jours.</p>';
   const deptHtml = deptRows.length ? deptRows.slice(0,5).map(x => `<div class="ops-dept"><span><b>${esc(x.d.nom)}</b><small>${x.members} agent(s)</small></span><span><b>${x.load}</b><small>missions ouvertes</small></span><span class="${x.ratio >= 4 ? "ops-hot" : x.ratio >= 2 ? "ops-warn" : ""}"><b>${x.ratio.toFixed(1)}</b><small>missions / agent</small></span></div>`).join("") : '<p class="panel-muted">Répartition par département indisponible.</p>';
   el.innerHTML = `<div class="panel-head"><h2>Directeur opérationnel</h2><span class="panel-source">Analyse · lecture seule</span></div>
     <div class="ops-summary"><div><b>${alertCount}</b><small>Signaux à examiner</small></div><div><b>${overloaded.length}</b><small>Agents surchargés</small></div><div><b>${suggestions.length}</b><small>Réaffectations candidates</small></div></div>
     <div class="ops-section"><h3>Recommandations de pilotage</h3>${recommendationHtml}</div>
     <div class="ops-section"><h3>Réaffectations à examiner</h3>${transferHtml}</div>
     <div class="ops-section"><h3>Charge par département</h3>${deptHtml}</div>
-    <p class="panel-note">Analyse des missions actualisées sur 7 jours (maximum 600), des 60 derniers événements et des agents actifs. Seuils d'alerte indicatifs, non assimilables à une évaluation RH. Les réaffectations sont des propositions : aucune mission n'est modifiée. La rentabilité par département n'est pas calculable sans données fiables de revenus et de coûts analytiques rapprochées.</p>`;
+    <div class="ops-section"><h3>Diagnostic des missions prioritaires</h3><span class="panel-source">Cause observée · dépendances · action proposée</span>${triageHtml}</div>
+    <div class="ops-section"><h3>Centre de résolution des incidents</h3><span class="panel-source">Regroupement des erreurs · procédures proposées · 7 jours</span>${incidentHtml}</div>
+    <p class="panel-note">Analyse des missions actualisées sur 7 jours (maximum 600), des 60 derniers événements et des agents actifs. Les incidents sont regroupés par type d'action sur les 7 derniers jours à partir des événements chargés ; ils ne représentent pas nécessairement tous les incidents du système. Seuils d'alerte indicatifs, non assimilables à une évaluation RH. Les réaffectations et actions de triage sont des recommandations : aucune mission n'est modifiée. Les causes ne sont affichées que si elles existent dans les rapports ou événements chargés. La rentabilité par département n'est pas calculable sans données fiables de revenus et de coûts analytiques rapprochées.</p>`;
 }
 function renderBusinessIntelligence() {
   const el = $("#bi-panel");
@@ -479,12 +713,54 @@ function renderExecutiveCommandCenter() {
   const missing = D.orderRows === null || D.execRows === null || D.execConfig === null || D.products === null;
   const fmtPct = n => n === null ? "n/d" : n.toLocaleString("fr-FR")+" %";
   const alerts = [];
+  // Pilotage des agents et des directions : uniquement les agents et missions réellement chargés.
+  const agents = Array.isArray(D.agents) ? D.agents : [];
+  const tasks = Array.isArray(D.tasks) ? D.tasks : [];
+  const terminal = new Set(["terminee","annulee"]);
+  const openTasks = tasks.filter(t => !terminal.has(String(t.statut || "").toLowerCase()));
+  const overdueTasks = openTasks.filter(t => t.echeance && Date.parse(t.echeance) < now.getTime());
+  const blockedTasks = openTasks.filter(t => ["bloquee","echouee"].includes(String(t.statut || "").toLowerCase()));
+  const doneTasks = tasks.filter(t => String(t.statut || "").toLowerCase() === "terminee");
+  const activeAgents = agents.filter(a => a.etat === "actif");
+  const dg = agents.find(a => Number(a.niveau) === 1 || a.code === "sanix_ai_general_director");
+  const jarvis = agents.find(a => /jarvis/i.test([a.code,a.nom,a.fonction].join(" ")));
+  const approvals = Array.isArray(D.pendingApprovals) ? D.pendingApprovals : [];
+  const communications = Array.isArray(D.communications) ? D.communications : [];
+  const dgComms = dg ? communications.filter(m => m.de_agent_id === dg.id || m.vers_agent_id === dg.id) : [];
+  const decisions = dgComms.filter(m => m.type === "decision").slice(0,5);
+  const dgAlerts = dgComms.filter(m => m.type === "alerte").slice(0,5);
+  const dgReports = dgComms.filter(m => m.type === "rapport").slice(0,4);
+  const awaitingReview = tasks.filter(t => t.statut === "attente_validation");
+  const descendants = id => {
+    const found = new Set(), queue = [id];
+    while (queue.length) {
+      const parent = queue.shift();
+      for (const a of agents) if (a.manager_id === parent && !found.has(a.id)) { found.add(a.id); queue.push(a.id); }
+    }
+    return found;
+  };
+  const directors = agents.filter(a => Number(a.niveau) === 2 && a.etat !== "archive");
+  const directionRows = directors.map(dir => {
+    const scope = descendants(dir.id); scope.add(dir.id);
+    const ownTasks = tasks.filter(t => scope.has(t.agent_id));
+    const open = ownTasks.filter(t => !terminal.has(String(t.statut || "").toLowerCase()));
+    return { name: dir.nom, agents: scope.size, open: open.length,
+      overdue: open.filter(t => t.echeance && Date.parse(t.echeance) < now.getTime()).length,
+      blocked: open.filter(t => ["bloquee","echouee"].includes(String(t.statut || "").toLowerCase())).length,
+      done: ownTasks.filter(t => String(t.statut || "").toLowerCase() === "terminee").length };
+  }).sort((a,b) => (b.overdue+b.blocked)-(a.overdue+a.blocked) || b.open-a.open);
+  if (overdueTasks.length) alerts.push(overdueTasks.length+" mission(s) dépassent leur échéance dans le périmètre chargé.");
+  if (blockedTasks.length) alerts.push(blockedTasks.length+" mission(s) sont bloquées ou en échec dans le périmètre chargé.");
+  if (!dg) alerts.push("Directeur général IA non identifié dans les agents chargés.");
+  if (!jarvis) alerts.push("Jarvis est une interface vocale et n'est pas répertorié comme agent dans l'organigramme.");
+  if (approvals.length) alerts.push(approvals.length+" validation(s) du Président attendent une décision.");
+  if (awaitingReview.length) alerts.push(awaitingReview.length+" livrable(s) d'agent(s) attendent une évaluation.");
   if (goal === null || !(goal>0)) alerts.push("Objectif de chiffre d’affaires non renseigné pour ce mois.");
   else if (attainment !== null && attainment < Math.round(elapsed/days*100)) alerts.push("Le rythme de CA est inférieur à la progression calendaire de l’objectif.");
   if (D.execRows !== null && !expenses.length) alerts.push("Aucune dépense de gestion saisie pour le mois.");
   if (productRows.some(([id])=>id==="hors_perimetre")) alerts.push("Certaines commandes ne sont pas encore rattachées à un logiciel du catalogue.");
   const report = "RAPPORT DE DIRECTION SANIX — "+month+"\nCA signé HT : "+money(ca)+"\nObjectif : "+(goal>0?money(goal):"non défini")+"\nAtteinte : "+fmtPct(attainment)+"\nDépenses réelles saisies : "+(D.execRows===null?"indisponibles":money(expenseActual))+"\nDépenses retenues (réel sinon prévu) : "+(D.execRows===null?"indisponibles":money(expenseRetained))+"\nSolde après dépenses suivies (indicateur simplifié, pas un bénéfice) : "+(D.execRows===null?"non calculé":money(ca-expenseRetained));
-  el.innerHTML = `<div class="panel-head"><h2>Executive Command Center · V13</h2><span class="panel-source">Pilotage global · lecture seule</span></div>
+  el.innerHTML = `<div class="panel-head"><h2>Executive Command Center · V15</h2><span class="panel-source">Pilotage global · lecture seule</span></div>
     <div class="executive-grid">
       <div><b>${D.orderRows===null?"n/d":money(ca)}</b><small>CA signé HT · mois en cours</small></div>
       <div><b>${goal===null?"Non défini":money(goal)}</b><small>Objectif mensuel paramétré</small></div>
@@ -492,6 +768,38 @@ function renderExecutiveCommandCenter() {
       <div><b>${D.execRows===null?"n/d":money(expenseActual)}</b><small>Dépenses réelles saisies</small></div>
       <div><b>${D.execRows===null?"n/d":money(expenseRetained)}</b><small>Dépenses retenues · réel sinon prévu</small></div>
       <div><b>${D.execRows===null?"n/d":money(ca-expenseRetained)}</b><small>Solde après dépenses suivies · indicatif</small></div>
+    </div>
+    <div class="executive-section"><h3>Commandement IA · DG & Jarvis</h3>
+      <div class="executive-grid executive-command-grid">
+        <div><b>${dg ? esc(dg.nom) : "Non identifié"}</b><small>Directeur général IA · ${dg ? esc(dg.etat || "état inconnu") : "source agents"}</small></div>
+        <div><b>${jarvis ? esc(jarvis.nom) : "Non identifié"}</b><small>Jarvis · ${jarvis ? esc(jarvis.etat || "état inconnu") : "source agents"}</small></div>
+        <div><b>${agents.length ? activeAgents.length+" / "+agents.length : "n/d"}</b><small>Agents actifs / agents chargés</small></div>
+      </div>
+      <div class="executive-facts"><span>Missions ouvertes · période chargée</span><b>${openTasks.length}</b></div>
+      <div class="executive-facts"><span>Missions en retard</span><b>${overdueTasks.length}</b></div>
+      <div class="executive-facts"><span>Missions bloquées / en échec</span><b>${blockedTasks.length}</b></div>
+      <div class="executive-facts"><span>Missions terminées · période chargée</span><b>${doneTasks.length}</b></div>
+      <p class="panel-note">Périmètre : missions récentes chargées par la Salle de contrôle (7 jours). Les compteurs ne représentent pas l'historique complet. L'identification du DG et de Jarvis repose sur les agents présents dans Supabase.</p>
+    </div>
+    <div class="executive-section"><h3>Performance des directions · période chargée</h3>
+      ${directionRows.length ? directionRows.slice(0,8).map(d=>`<div class="executive-direction"><div><b>${esc(d.name)}</b><small>${d.agents} agent(s) dans sa ligne hiérarchique</small></div><span>${d.open} ouvertes · ${d.done} terminées</span><em>${d.overdue} retard · ${d.blocked} bloquées</em></div>`).join("") : '<p class="panel-muted">Aucune direction de niveau 2 identifiée dans les données chargées.</p>'}
+    </div>
+    <div class="executive-section executive-decisions">
+      <h3>Arbitrages du Président · validations en attente</h3>
+      <div class="executive-facts"><span>Demandes nécessitant ton accord</span><b>${approvals.length}</b></div>
+      ${approvals.length ? approvals.slice(0,6).map(a=>`<article class="executive-decision-card"><div><b>${esc(a.motif || a.type || "Demande de validation")}</b><small>${esc(a.type || "demande")} · ${ago(a.created_at)}</small></div><p>${esc(a.payload?.details || a.payload?.apercu || a.payload?.message || a.payload?.description || "Détails complémentaires à consulter dans l'onglet Validations.")}</p><small>Référence : ${esc(a.id.slice(0,8))}${a.task_id ? " · mission liée" : ""}</small></article>`).join("") : '<p class="panel-muted">Aucune validation en attente dans ai_approvals.</p>'}
+      <h3>Livrables à contrôler</h3>
+      <div class="executive-facts"><span>Missions en attente de validation</span><b>${awaitingReview.length}</b></div>
+      ${awaitingReview.length ? awaitingReview.slice(0,6).map(t=>`<article class="executive-decision-card"><div><b>${esc(t.titre)}</b><small>${esc(nameOf(t.agent_id))} · ${ago(t.updated_at)}</small></div><p>${esc(t.rapport || t.progression || t.resultat_attendu || "Rapport non renseigné : ouvrir la mission pour examiner les éléments disponibles.")}</p><small>${t.evaluation == null ? "Non évalué" : "Évaluation : "+t.evaluation+"/100"} · ${esc(t.id.slice(0,8))}</small></article>`).join("") : '<p class="panel-muted">Aucun livrable en attente de validation parmi les missions chargées.</p>'}
+    </div>
+    <div class="executive-section executive-decisions">
+      <h3>Journal des décisions du Directeur général</h3>
+      ${decisions.length ? decisions.map(m=>`<article class="executive-decision-card"><div><b>${esc(m.objet)}</b><small>${ago(m.created_at)} · ${m.vers_agent_id === dg?.id ? "Décision reçue par le DG" : "Décision émise par le DG"}</small></div><p>${esc(m.contenu)}</p>${m.task_id ? `<small>Mission liée : ${esc(m.task_id.slice(0,8))}</small>` : ""}</article>`).join("") : '<p class="panel-muted">Aucune décision du DG enregistrée dans le journal de communications sur les données récentes.</p>'}
+      <h3>Remontées et alertes vers la direction</h3>
+      ${dgAlerts.length ? dgAlerts.map(m=>`<article class="executive-decision-card is-alert"><div><b>${esc(m.objet)}</b><small>${ago(m.created_at)} · ${m.de_agent_id ? esc(nameOf(m.de_agent_id)) : "Système"}</small></div><p>${esc(m.contenu)}</p></article>`).join("") : '<p class="panel-muted">Aucune alerte récente adressée au DG dans le journal.</p>'}
+      <h3>Rapports reçus par la direction</h3>
+      ${dgReports.length ? dgReports.map(m=>`<article class="executive-decision-card"><div><b>${esc(m.objet)}</b><small>${ago(m.created_at)} · ${m.de_agent_id ? esc(nameOf(m.de_agent_id)) : "Système"}</small></div><p>${esc(m.contenu)}</p></article>`).join("") : '<p class="panel-muted">Aucun rapport récent adressé au DG dans le journal.</p>'}
+      <p class="panel-note">Le journal provient de ai_agent_communications. Jarvis n'étant pas un agent autonome dans l'organigramme, ses échanges vocaux ne sont pas présentés comme des remontées enregistrées tant qu'ils ne sont pas effectivement persistés.</p>
     </div>
     <div class="executive-section"><h3>Performance par logiciel · CA HT</h3>
       ${productRows.length ? productRows.slice(0,8).map(([id,value])=>`<div class="executive-product"><span>${esc(id==="hors_perimetre"?"Hors périmètre":productName.get(id)||id)}</span><b>${money(value)}</b></div>`).join("") : '<p class="panel-muted">Aucune vente exploitable sur le mois.</p>'}
@@ -541,6 +849,9 @@ function renderAlerts() {
   const now = Date.now(), day = 24 * 3600e3;
   const items = [];
   for (const t of D.tasks) {
+    if (t.statut === "a_faire" && t.echeance && Date.parse(t.echeance) < now && Number(t.executions ?? 0) === 0) {
+      items.push({ level: "warn", title: "Mission programmée non démarrée", detail: t.titre + " · échéance dépassée", agent: t.agent_id, at: Date.parse(t.echeance) || 0 });
+    }
     if (["bloquee", "echouee"].includes(t.statut) && now - Date.parse(t.updated_at) < day) {
       items.push({ level: "bad", title: t.statut === "echouee" ? "Mission échouée" : "Mission bloquée", detail: t.titre, agent: t.agent_id, at: Date.parse(t.updated_at) || 0 });
     } else if (t.statut === "en_cours" && t.started_at && now - Date.parse(t.started_at) > 90 * 60000) {
@@ -571,7 +882,7 @@ function renderHealth() {
       ${row("Fiches avec contact + source", h.qual === null ? "n/d" : `${h.qual} %`, h.qual === null ? "" : h.qual >= 80 ? "ok" : "warn")}
       ${row("Envoi externe", D.gov?.communication_externe === "validation" ? "sur validation" : esc(D.gov?.communication_externe ?? "n/d"), D.gov?.communication_externe === "validation" ? "ok" : "warn")}
       ${row("Budget IA du jour", pb === null ? "n/d" : `${pb} %`, pb === null ? "" : pb > 90 ? "bad" : pb > 70 ? "warn" : "ok")}</div>`;
-  $("#health").title = "Indice 0-100 : réussite des missions (40 %), absence de missions figées (25 %), blocages (15 %), qualité des fiches du jour (20 %).";
+  $("#health").title = "Indice 0-100 : réussite des missions actualisées sur 7 jours (40 %), absence de missions figées > 90 min (25 %), blocages actualisés sur 24 h (15 %), qualité des fiches créées aujourd’hui (20 %). Les composantes sans données suffisantes sont exclues du calcul.";
 }
 function renderTicker() {
   if (!D.recent.length) return;
@@ -580,7 +891,239 @@ function renderTicker() {
 }
 function renderLegend() { $("#legend").innerHTML = Object.entries(STATES).map(([, [l, c]]) => `<span><i style="background:${c};box-shadow:0 0 8px ${c}"></i>${l}</span>`).join(""); }
 function renderDetail() {
-  const el = $("#detail"), a = agentById(D.sel); if (!a) { el.hidden = true; return; }
+  const el = $("#detail"), a = agentById(D.sel);
+  if (D.relationSel) {
+    const r = D.relationSel, p = r.prospect, ag = r.agent;
+    const acts = D.relationRows.filter(x => String(x.agent_id) === String(ag.id) && String(x.prospect_id) === String(p.id));
+    const tasks = D.tasks.filter(x => String(x.agent_id) === String(ag.id) && String(x.prospect_id) === String(p.id));
+    const latest = acts[0], status = acts.length && tasks.length ? "Interaction + mission" : acts.length ? "Interaction réelle" : tasks.length ? "Mission affectée" : "Affectation commerciale";
+    const taskStates = tasks.reduce((acc,t) => { const k=TASK_L[t.statut] || t.statut || "Non renseigné"; acc[k]=(acc[k]||0)+1; return acc; }, {});
+    const taskStateText = Object.entries(taskStates).map(([k,n]) => k+" : "+n).join(" · ");
+    const recentActs = acts.slice(0,3).map(a => `<li><b>${esc(String(a.action||"activité").replace(/_/g," "))}</b><small>${esc(ago(a.at))} · ${a.ok===false?"Échec signalé":"Enregistré"}</small></li>`).join("");
+    el.hidden = false;
+    el.innerHTML = `<h2>Relation sélectionnée <span class="tag">${esc(status)}</span></h2>
+      <div class="mis"><b>${esc(ag.nom || "Agent")}</b><small>Agent commercial</small></div>
+      <div class="muted" style="text-align:center;padding:4px">↕ relation avec</div>
+      <div class="mis"><b>${esc(p.entreprise || "Prospect")}</b><small>${esc(p.ville || "Localisation non renseignée")} · ${esc(p.stage || "nouveau")}</small></div>
+      <div class="muted" style="font-size:11px;margin-top:7px"><b>${acts.length}</b> interaction(s) chargée(s) · <b>${tasks.length}</b> mission(s) récentes · Score ${Number.isFinite(Number(p.score)) ? esc(p.score) : "n/d"} · Potentiel ${Number(p.potentiel_fcfa)>0 ? new Intl.NumberFormat("fr-FR").format(Number(p.potentiel_fcfa))+" FCFA" : "non renseigné"}</div>
+      ${latest ? `<div class="muted" style="font-size:11px;margin-top:5px">Dernière interaction : ${esc(latest.action || "événement")} · ${esc(ago(latest.at))}</div>` : '<div class="muted" style="font-size:11px;margin-top:5px">Aucune interaction chargée pour cette paire agent/prospect.</div>'}
+      ${recentActs ? `<div style="font-size:11px;margin-top:7px"><b>Dernières traces</b><ul class="prospect-history">${recentActs}</ul></div>` : ""}
+      ${tasks.length ? `<div class="muted" style="font-size:11px;margin-top:5px">Missions : ${tasks.slice(0,4).map(t=>esc(t.titre)+" ("+esc(TASK_L[t.statut]||t.statut)+")").join(" · ")}</div>` : ""}
+      ${taskStateText ? `<div class="muted" style="font-size:11px;margin-top:5px">Répartition des missions : ${esc(taskStateText)}</div>` : ""}
+      <div class="muted" style="font-size:10px;margin-top:7px">Périmètre : 500 dernières interactions CRM chargées au maximum ; missions mises à jour sur les 7 derniers jours. Les compteurs reflètent les données accessibles dans cette vue.</div>
+      <button type="button" class="btn" id="relation-open-prospect" style="margin-top:8px;width:100%">Ouvrir la fiche complète du prospect</button>
+      <button type="button" class="btn" id="relation-jarvis" style="margin-top:6px;width:100%">Faire analyser par Jarvis</button>`;
+    $("#relation-open-prospect")?.addEventListener("click", () => {
+      D.prospectNetworkOrigin = { relation: r }; D.relationSel = null; D.sel = null; D.prospectSel = p; D.prospectHistory = null;
+      renderDetail();
+      el.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    });
+    $("#relation-jarvis")?.addEventListener("click",()=>window.__jarvis?.explainRelation?.(r));
+    return;
+  }
+  if (D.prospectSel) {
+    const p = D.prospectSel, prospectTasks = D.tasks.filter((t) => String(t.prospect_id || "") === String(p.id)).sort((a,b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0));
+    const assigned = agentById(p.agent_id) || agentById(prospectTasks[0]?.agent_id);
+    const historyState = D.prospectHistory?.prospectId === String(p.id) ? D.prospectHistory : null;
+    const history = historyState?.rows ?? D.relationRows.filter((r) => String(r.prospect_id) === String(p.id)).slice(0, 20);
+    const historyLoading = !!historyState?.loading;
+    const historyHasMore = historyState ? historyState.hasMore : false;
+    const tasks = prospectTasks.slice(0, 8);
+    // Cartographie des intervenants à partir des traces réellement chargées.
+    const involvedAgents = new Map();
+    const addInvolved = (id, kind, at) => {
+      if (!id) return;
+      const key = String(id), row = involvedAgents.get(key) || { id:key, interactions:0, missions:0, delegations:0, latest:null };
+      if (kind === "interaction") row.interactions++;
+      if (kind === "mission") row.missions++;
+      if (kind === "delegation") row.delegations++;
+      if (at && (!row.latest || Date.parse(at) > Date.parse(row.latest))) row.latest = at;
+      involvedAgents.set(key,row);
+    };
+    addInvolved(p.agent_id,"responsable",p.updated_at);
+    history.forEach(r => addInvolved(r.agent_id,"interaction",r.at));
+    prospectTasks.forEach(t => { addInvolved(t.agent_id,"mission",t.updated_at || t.created_at); addInvolved(t.donneur_agent_id,"delegation",t.updated_at || t.created_at); });
+    const collaborationRows = [...involvedAgents.values()].map(row => {
+      const agent = agentById(row.id);
+      return `<div class="mis" style="margin-top:6px"><b>${esc(agent?.nom || "Agent non chargé")}</b><small>${row.interactions} interaction(s) · ${row.missions} mission(s) · ${row.delegations} délégation(s) · dernière trace : ${row.latest ? esc(ago(row.latest)) : "non datée"}</small></div>`;
+    }).join("");
+    const handoffRows = prospectTasks.filter(t => t.donneur_agent_id && t.agent_id && String(t.donneur_agent_id) !== String(t.agent_id)).slice(0,6).map(t => `<li><b>${esc(clip(t.titre || "Mission transmise",72))}</b><small>${esc(agentById(t.donneur_agent_id)?.nom || "Émetteur non chargé")} → ${esc(agentById(t.agent_id)?.nom || "Destinataire non chargé")} · ${esc(TASK_L[t.statut] || t.statut || "Statut inconnu")} · ${esc(ago(t.updated_at || t.created_at))}</small></li>`).join("");
+    const products = Array.isArray(p.produits_recommandes) ? p.produits_recommandes : (p.produits_recommandes ? [p.produits_recommandes] : []);
+    const contact = p.telephone ? `<a href="tel:${esc(p.telephone)}">Appeler ${esc(p.telephone)}</a>` : "";
+    const email = p.email ? `<a href="mailto:${esc(p.email)}">Écrire par e-mail</a>` : "";
+    const next = p.next_action_at ? new Date(p.next_action_at).toLocaleString("fr-FR", { timeZone: "Africa/Abidjan" }) : "Aucune relance programmée";
+    const fmtDate = (v) => v ? new Date(v).toLocaleString("fr-FR", { timeZone: "Africa/Abidjan" }) : "Non renseigné";
+    const fmtMoney = (v) => v != null && v !== "" && Number.isFinite(Number(v)) ? new Intl.NumberFormat("fr-FR").format(Number(v)) + " FCFA" : "Non renseigné";
+    const show = (v) => v == null || v === "" ? "Non renseigné" : Array.isArray(v) ? (v.length ? v.join(" · ") : "Non renseigné") : typeof v === "object" ? Object.entries(v).map(([k,x]) => k + " : " + x).join(" · ") : String(v);
+    const field = (name, v) => `<div class="prospect-data-field"><small>${esc(name)}</small><b>${esc(show(v))}</b></div>`;
+    const needs = Array.isArray(p.besoins) ? p.besoins : (p.besoins ? [p.besoins] : []);
+    const criteria = [["Produit",p.crit_produit],["Besoin",p.crit_besoin],["Financement",p.crit_finance],["Décideur",p.crit_decideur],["Court terme",p.crit_court_terme],["Disponibilité",p.crit_disponibilite]].filter(([,v]) => v != null);
+    const website = /^https?:\/\//i.test(String(p.site_web || "")) ? `<a href="${esc(p.site_web)}" target="_blank" rel="noopener">Site web ↗</a>` : esc(p.site_web || "");
+    const sourceUrl = /^https?:\/\//i.test(String(p.source_url || "")) ? `<a href="${esc(p.source_url)}" target="_blank" rel="noopener">Voir la source ↗</a>` : "";
+    const activityRows = history.length ? history.map((r) => {
+      const payload = r.payload && typeof r.payload === "object" ? (r.payload.note || r.payload.message || r.payload.resultat || r.payload.reason || r.payload.status || "") : "";
+      const summary = payload ? String(payload).slice(0, 150) : (r.ok === false ? "Action signalée en échec" : "Événement enregistré");
+      const who = agentById(r.agent_id)?.nom || (r.payload?.author_id ? "Équipe SANIX · " + String(r.payload.author_id).slice(0,8) : (r.agent_id ? "Agent non chargé" : "Agent non identifié"));
+      return `<li><b>${esc(String(r.action || "activité").replace(/_/g, " "))}</b><small>${esc(who)} · ${esc(ago(r.at))} · ${r.ok === false ? "Échec" : "Enregistré"}</small><span>${esc(summary)}</span></li>`;
+    }).join("") : "<li>Aucune activité reliée à ce prospect dans les 500 derniers événements chargés.</li>";
+    el.hidden = false;
+    el.innerHTML = `<div class="prospect-workbench-head"><div><h2>${esc(p.entreprise || "Prospect")} <span class="tag">Prospect</span></h2><div class="muted">${esc(p.ville || "Localisation non renseignée")} · ${esc(p.stage || "nouveau")}</div></div><div class="prospect-workbench-head-actions">${D.prospectNetworkOrigin ? '<button type="button" id="prospect-back-network" class="prospect-network-back">← Retour au réseau</button>' : ""}<button type="button" id="prospect-jarvis-analysis" class="prospect-assign-toggle">✦ Analyse commerciale Jarvis</button><button type="button" id="prospect-detail-close" aria-label="Fermer la fiche">×</button></div></div>
+      <div class="prospect-workbench-grid"><div><small>Agent responsable</small><b>${esc(assigned?.nom || "Non affecté")}</b></div><div><small>Score CRM</small><b>${p.score != null && Number.isFinite(Number(p.score)) ? esc(p.score) : "Non renseigné"}</b></div><div><small>Potentiel</small><b>${p.potentiel_fcfa != null && Number.isFinite(Number(p.potentiel_fcfa)) ? esc(Number(p.potentiel_fcfa).toLocaleString("fr-FR") + " FCFA") : "Non renseigné"}</b></div><div><small>Prochaine action</small><b>${esc(next)}</b></div></div>
+      <div class="prospect-workbench-contact">${contact}${email}</div>
+      <div class="prospect-workbench-products"><small>Logiciel(s)</small><b>${esc(products.filter(Boolean).join(" · ") || "Non renseigné")}</b></div>
+      <section class="prospect-workbench-section"><h3>Entreprise et localisation</h3><div class="prospect-data-grid">${field("Secteur d'activité",p.secteur)}${field("Adresse",p.adresse)}${field("Commune",p.commune)}${field("Ville",p.ville)}${field("Pays",p.pays)}${field("Site internet",p.site_web)}${field("Logiciel actuel",p.logiciel_actuel)}</div><div class="prospect-workbench-contact">${website}</div></section>
+      <section class="prospect-workbench-section"><h3>Décideur et coordonnées</h3><div class="prospect-data-grid">${field("Décideur",p.decideur)}${field("Fonction",p.decideur_fonction)}${field("Téléphone",p.telephone)}${field("WhatsApp",p.whatsapp)}${field("E-mail",p.email)}${field("Statut e-mail",p.email_statut)}${field("Vérifié le",fmtDate(p.email_verifie_at))}</div><div class="prospect-workbench-contact">${p.telephone ? `<a href="tel:${esc(p.telephone)}">☎ Appeler ${esc(p.telephone)}</a>` : ""}${p.whatsapp ? `<a href="https://wa.me/${esc(String(p.whatsapp).replace(/[^\d]/g,""))}" target="_blank" rel="noopener">WhatsApp</a>` : ""}${p.email ? `<a href="mailto:${esc(p.email)}">✉ Écrire</a>` : ""}</div></section>
+      <section class="prospect-workbench-section"><h3>Qualification et potentiel</h3><div class="prospect-data-grid">${field("Budget estimé",fmtMoney(p.budget_estime))}${field("Priorité",p.priorite)}${field("Besoins exprimés",needs)}${field("Segment",p.segment)}${field("Score / 100",p.score)}${field("Prochaine action",next)}${field("Relances sans réponse",p.relances_sans_reponse ?? 0)}</div>${p.score_justification ? `<div class="prospect-explanation"><small>Justification du score</small>${esc(p.score_justification)}</div>` : ""}${criteria.length ? `<div class="prospect-criteria">${criteria.map(([k,v])=>`<span>${esc(k)} : <b>${esc(v)}/5</b></span>`).join("")}</div>` : ""}</section>
+      <section class="prospect-workbench-section"><h3>Origine et suivi</h3><div class="prospect-data-grid">${field("Source",p.source)}${field("Créé le",fmtDate(p.created_at))}${field("Mis à jour le",fmtDate(p.updated_at))}${field("Dernier entrant",fmtDate(p.last_inbound_at))}${field("Dernier sortant",fmtDate(p.last_outbound_at))}${field("Opposition",p.opt_out ? "Oui" : "Non")}${field("Date opposition",fmtDate(p.opt_out_at))}</div>${sourceUrl}</section>
+      <section class="prospect-workbench-section"><h3>Historique commercial (${historyState ? history.length + (historyHasMore ? "+" : "") : "20 dernières activités chargées"})</h3><ul class="prospect-history">${activityRows}</ul>${historyLoading ? '<small class="muted">Chargement de l’historique…</small>' : historyHasMore ? '<button type="button" class="prospect-assign-toggle" id="prospect-history-more">Charger les 100 interactions précédentes</button>' : historyState ? '<small class="muted">Fin de l’historique disponible.</small>' : '<small class="muted">Historique complet en cours de chargement.</small>'}</section>
+      <section class="prospect-workbench-section"><h3>Ajouter une interaction</h3><form id="prospect-note-form" class="prospect-assign-form">
+        <label>Type d'interaction<select name="type"><option value="note">Note commerciale</option><option value="appel">Appel téléphonique</option><option value="rendez_vous">Rendez-vous</option><option value="email">E-mail</option><option value="whatsapp">WhatsApp</option><option value="visite">Visite terrain</option><option value="demo">Démonstration</option></select></label>
+        <label>Compte rendu<textarea name="note" maxlength="4000" minlength="3" rows="4" required placeholder="Résultat de l'échange, besoin exprimé, objections, prochaine étape…"></textarea></label>
+        <button type="submit" class="prospect-assign-submit">Enregistrer dans l'historique</button><small class="prospect-assign-status" id="prospect-note-status" aria-live="polite"></small>
+      </form><p class="prospect-workbench-note">L'interaction est horodatée et rattachée à l'utilisateur connecté. Aucun message n'est envoyé au prospect.</p></section>
+      <section class="prospect-workbench-section"><h3>Équipe impliquée et collaboration</h3>${collaborationRows || '<div class="muted">Aucun intervenant identifié dans les traces actuellement chargées.</div>'}<small class="muted">Synthèse calculée à partir des interactions chargées et des missions mises à jour sur les 7 derniers jours.</small>${handoffRows ? `<h4 style="margin:10px 0 5px">Transmissions de missions</h4><ul class="prospect-history">${handoffRows}</ul>` : ""}</section>
+      <section class="prospect-workbench-section"><h3>Missions liées à ce prospect</h3>${tasks.length ? tasks.map((t) => `<div class="mis" style="--c:${TASK_C[t.statut]};margin-top:6px"><b>${esc(clip(t.titre, 80))}</b><small>${esc(agentById(t.agent_id)?.nom || "Agent inconnu")} · ${esc(TASK_L[t.statut] || t.statut)} · P${esc(t.priorite)}</small></div>`).join("") : '<div class="muted">Aucune mission liée à ce prospect.</div>'}</section>
+      <section class="prospect-workbench-section"><button type="button" class="prospect-assign-toggle" id="prospect-edit-toggle">✎ Modifier la fiche et programmer une relance</button><form id="prospect-edit-form" class="prospect-assign-form" hidden>
+        <div class="prospect-edit-grid">
+          <label>Entreprise<input name="entreprise" maxlength="220" required value="${esc(p.entreprise || "")}"></label>
+          <label>Secteur<input name="secteur" maxlength="180" value="${esc(p.secteur || "")}"></label>
+          <label>Décideur<input name="decideur" maxlength="180" value="${esc(p.decideur || "")}"></label>
+          <label>Fonction du décideur<input name="decideur_fonction" maxlength="140" value="${esc(p.decideur_fonction || "")}"></label>
+          <label>Téléphone<input name="telephone" maxlength="60" value="${esc(p.telephone || "")}"></label>
+          <label>WhatsApp<input name="whatsapp" maxlength="60" value="${esc(p.whatsapp || "")}"></label>
+          <label>E-mail<input name="email" type="email" maxlength="220" value="${esc(p.email || "")}"></label>
+          <label>Site web<input name="site_web" type="url" maxlength="500" value="${esc(p.site_web || "")}" placeholder="https://"></label>
+          <label>Ville<input name="ville" maxlength="120" value="${esc(p.ville || "")}"></label>
+          <label>Adresse<input name="adresse" maxlength="300" value="${esc(p.adresse || "")}"></label>
+          <label>Logiciel actuel<input name="logiciel_actuel" maxlength="180" value="${esc(p.logiciel_actuel || "")}"></label>
+          <label>Étape commerciale<select name="stage">${[...new Set(["nouveau","premier_contact","conversation","qualifie","besoin_identifie","interesse","rdv_propose","rdv_confirme","demo_realisee","offre_transmise","negociation","offre_acceptee","contrat_transmis","client_fidelise","perdu","en_veille","marche_gagne",p.stage].filter(Boolean))].map(x=>`<option value="${esc(x)}" ${p.stage===x?"selected":""}>${esc(x.replace(/_/g," "))}</option>`).join("")}</select></label>
+          <label>Budget estimé (FCFA)<input name="budget_estime" type="number" min="0" step="1" value="${p.budget_estime ?? ""}"></label>
+          <label>Potentiel commercial (FCFA)<input name="potentiel_fcfa" type="number" min="0" step="1" value="${p.potentiel_fcfa ?? ""}"></label>
+          <label class="prospect-edit-full">Prochaine relance<input name="next_action_at" type="datetime-local" value="${p.next_action_at ? (()=>{const d=new Date(p.next_action_at);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-")+"T"+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")})() : ""}"></label>
+        </div>
+        <small class="muted">Laisser la date vide supprime la programmation de relance. Enregistrer ne déclenche aucun message.</small>
+        <button type="submit" class="prospect-assign-submit">Enregistrer les modifications</button><small class="prospect-assign-status" id="prospect-edit-status" aria-live="polite"></small>
+      </form></section>
+      <section class="prospect-workbench-section"><button type="button" class="prospect-assign-toggle" id="prospect-assign-toggle">＋ Créer une mission pour un agent</button><form id="prospect-assign-form" class="prospect-assign-form" hidden>
+        <label>Agent IA<select name="agent" required><option value="">Choisir un agent actif</option>${D.agents.filter(a => a.etat === "actif" && a.archived_at == null).sort((a,b) => String(a.nom).localeCompare(String(b.nom),"fr")).map(a => `<option value="${esc(a.id)}" ${assigned?.id === a.id ? "selected" : ""}>${esc(a.nom)} · ${esc(a.code || "")}</option>`).join("")}</select></label>
+        <label>Mission<input name="title" type="text" minlength="3" maxlength="200" required placeholder="Ex. Contacter le décideur et qualifier le besoin"></label>
+        <label>Consigne<textarea name="description" maxlength="7900" rows="3" placeholder="Contexte, objectif et résultat attendu"></textarea></label>
+        <div class="prospect-assign-row"><label>Priorité<select name="priority"><option value="3">Normale</option><option value="4">Haute</option><option value="5">Urgente</option><option value="2">Basse</option><option value="1">Très basse</option></select></label><label>Échéance<select name="deadline"><option value="">Sans échéance</option><option value="24">24 heures</option><option value="72">3 jours</option><option value="168">7 jours</option><option value="336">14 jours</option></select></label></div>
+        <button type="submit" class="prospect-assign-submit">Confier la mission</button><small class="prospect-assign-status" id="prospect-assign-status" aria-live="polite"></small>
+      </form></section>
+      <p class="prospect-workbench-note">La création passe par le contrôle d'accès de la direction. La mission est enregistrée dans le moteur SANIX AI ; aucune relance ou communication externe n'est envoyée automatiquement.</p>`;
+    $("#prospect-detail-close")?.addEventListener("click", () => { D.prospectSel = null; D.prospectHistory = null; D.prospectNetworkOrigin = null; el.hidden = true; });
+    $("#prospect-jarvis-analysis")?.addEventListener("click", () => window.__jarvis?.explainProspect?.(p, history, prospectTasks, { historyHasMore, historyLoading }));
+    $("#prospect-back-network")?.addEventListener("click", () => {
+      const origin = D.prospectNetworkOrigin;
+      D.prospectSel = null; D.prospectHistory = null; D.prospectNetworkOrigin = null;
+      if (origin?.relation) { D.relationSel = origin.relation; D.sel = origin.relation.agent?.id || null; renderDetail(); }
+      else { D.relationSel = null; D.sel = null; el.hidden = true; }
+      $("#relations-canvas")?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    });
+    if (!historyState) {
+      D.prospectHistory = { prospectId: String(p.id), rows: [], loading: true, hasMore: true };
+      sb.from("ai_actions").select("id,action,agent_id,task_id,prospect_id,payload,ok,at")
+        .eq("prospect_id", p.id).order("at", { ascending: false }).range(0, 99)
+        .then(({ data, error }) => {
+          if (String(D.prospectSel?.id || "") !== String(p.id)) return;
+          D.prospectHistory = error
+            ? { prospectId: String(p.id), rows: D.relationRows.filter(r => String(r.prospect_id) === String(p.id)).slice(0,20), loading: false, hasMore: false, error: true }
+            : { prospectId: String(p.id), rows: data || [], loading: false, hasMore: (data || []).length === 100 };
+          renderDetail();
+        });
+    }
+    $("#prospect-history-more")?.addEventListener("click", async (ev) => {
+      const btn = ev.currentTarget, state = D.prospectHistory;
+      if (!state || state.loading || !state.hasMore || state.prospectId !== String(p.id)) return;
+      state.loading = true; btn.disabled = true; btn.textContent = "Chargement…";
+      const start = state.rows.length;
+      const { data, error } = await sb.from("ai_actions").select("id,action,agent_id,task_id,prospect_id,payload,ok,at")
+        .eq("prospect_id", p.id).order("at", { ascending: false }).range(start, start + 99);
+      if (error) {
+        state.loading = false; btn.disabled = false; btn.textContent = "Réessayer le chargement";
+        conn("bad", "Chargement de l’historique impossible"); return;
+      }
+      state.rows = state.rows.concat(data || []);
+      state.loading = false; state.hasMore = (data || []).length === 100;
+      renderDetail();
+    });
+    $("#prospect-edit-toggle")?.addEventListener("click", () => { const form = $("#prospect-edit-form"); form.hidden = !form.hidden; });
+    $("#prospect-edit-form")?.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const form = ev.currentTarget, submit = form.querySelector('[type="submit"]'), status = $("#prospect-edit-status"), fd = new FormData(form);
+      const requiredName = String(fd.get("entreprise") || "").trim();
+      if (!requiredName) { status.textContent = "Le nom de l'entreprise est obligatoire."; return; }
+      const nullable = (key) => { const v = String(fd.get(key) ?? "").trim(); return v || null; };
+      const numeric = (key) => { const v = String(fd.get(key) ?? "").trim(); return v === "" ? null : Number(v); };
+      const rawDate = String(fd.get("next_action_at") || "").trim();
+      const patch = {
+        entreprise: requiredName, secteur: nullable("secteur"), decideur: nullable("decideur"), decideur_fonction: nullable("decideur_fonction"),
+        telephone: nullable("telephone"), whatsapp: nullable("whatsapp"), email: nullable("email"), site_web: nullable("site_web"),
+        ville: nullable("ville"), adresse: nullable("adresse"), logiciel_actuel: nullable("logiciel_actuel"), stage: String(fd.get("stage") || p.stage),
+        budget_estime: numeric("budget_estime"), potentiel_fcfa: numeric("potentiel_fcfa"),
+        next_action_at: rawDate ? new Date(rawDate).toISOString() : null
+      };
+      if ([patch.budget_estime,patch.potentiel_fcfa].some(v=>v!=null && (!Number.isFinite(v)||v<0))) { status.textContent = "Les montants doivent être des nombres positifs."; return; }
+      submit.disabled = true; submit.textContent = "Enregistrement…"; status.textContent = "";
+      try {
+        const { data, error } = await sb.from("ai_prospects").update(patch).eq("id",p.id).select("id").maybeSingle();
+        if (error) throw error;
+        if (!data) throw new Error("Modification non appliquée : droits insuffisants ou prospect inaccessible.");
+        conn("ok","Fiche prospect mise à jour");
+        await cycle();
+        D.prospectSel = (D.salesRows || []).find(x=>String(x.id)===String(p.id)) || D.prospectSel;
+        renderDetail();
+      } catch (err) {
+        submit.disabled = false; submit.textContent = "Enregistrer les modifications";
+        status.textContent = String(err?.message || err).slice(0,220);
+        conn("bad","Modification du prospect refusée");
+      }
+    });
+
+    $("#prospect-note-form")?.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const form = ev.currentTarget, submit = form.querySelector('[type="submit"]'), status = $("#prospect-note-status"), fd = new FormData(form);
+      const note = String(fd.get("note") || "").trim(), type = String(fd.get("type") || "note");
+      if (note.length < 3) { status.textContent = "Le compte rendu doit contenir au moins 3 caractères."; return; }
+      submit.disabled = true; submit.textContent = "Enregistrement…"; status.textContent = "";
+      try {
+        const { data, error } = await sb.rpc("crm_add_prospect_note", { p_prospect: p.id, p_type: type, p_note: note });
+        if (error) throw error;
+        if (!data?.ok) throw new Error("L'interaction n'a pas été enregistrée.");
+        conn("ok", "Interaction ajoutée à l'historique");
+        D.prospectHistory = null;
+        await cycle();
+        D.prospectSel = (D.salesRows || []).find(x => String(x.id) === String(p.id)) || D.prospectSel;
+        renderDetail();
+      } catch (err) {
+        submit.disabled = false; submit.textContent = "Enregistrer dans l'historique";
+        status.textContent = String(err?.message || err).slice(0,220);
+        conn("bad", "Enregistrement de l'interaction refusé");
+      }
+    });
+
+    $("#prospect-assign-toggle")?.addEventListener("click", () => { const form = $("#prospect-assign-form"); form.hidden = !form.hidden; });
+    $("#prospect-assign-form")?.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const form = ev.currentTarget, submit = form.querySelector('[type="submit"]'), status = $("#prospect-assign-status");
+      const fd = new FormData(form), agent = String(fd.get("agent") || ""), title = String(fd.get("title") || "").trim(), description = String(fd.get("description") || "").trim();
+      if (!agent || title.length < 3) { status.textContent = "Choisis un agent et renseigne un titre valide."; return; }
+      submit.disabled = true; submit.textContent = "Création en cours…"; status.textContent = "";
+      try {
+        const { data, error } = await sb.rpc("crm_assign_mission", { p_agent: agent, p_prospect: p.id, p_titre: title, p_description: description || title, p_priorite: Number(fd.get("priority") || 3), p_echeance_h: fd.get("deadline") ? Number(fd.get("deadline")) : null });
+        if (error) throw error;
+        conn("ok", "Mission confiée · actualisation du réseau");
+        await cycle();
+      } catch (err) {
+        submit.disabled = false; submit.textContent = "Confier la mission";
+        status.textContent = String(err?.message || err).slice(0, 220);
+        conn("bad", "Création de mission refusée");
+      }
+    });
+    return;
+  }
+  if (!a) { el.hidden = true; return; }
   const st = STATES[agentState(a)], mine = D.tasks.filter((t) => t.agent_id === a.id && OPENS.includes(t.statut)).slice(0, 4);
   el.hidden = false; el.innerHTML = `<h2>${esc(a.nom)} <span class="tag" style="--c:${st[1]}">${esc(st[0])}</span></h2><div class="muted" style="font-size:12px">${esc(a.fonction ?? "")}</div>${mine.map((t) => `<div class="mis" style="--c:${TASK_C[t.statut]};margin-top:6px"><b>${esc(clip(t.titre, 80))}</b><small>${esc(TASK_L[t.statut])} · P${esc(t.priorite)}</small></div>`).join("") || `<div class="muted" style="margin-top:6px">Aucune mission ouverte.</div>`}`;
 }
@@ -661,17 +1204,70 @@ cv.addEventListener("pointermove", (ev) => {
 });
 cv.addEventListener("pointerleave", () => { hover = null; tip.hidden = true; });
 cv.addEventListener("click", (ev) => { const { n } = pick(ev); D.sel = n && n.id !== D.sel ? n.id : null; renderDetail(); });
+document.addEventListener("click", async (ev) => {
+  const b = ev.target.closest("[data-incident-approval]");
+  if (!b || b.disabled) return;
+  b.disabled = true; b.textContent = "Envoi de la demande…";
+  try {
+    const { error } = await sb.rpc("ai_create_incident_approval", {
+      p_action: b.dataset.incidentKey || "incident",
+      p_recommendation: b.dataset.incidentRecommendation || "",
+      p_reason: "Demande de correction issue du centre Jarvis V2.5",
+      p_task_id: b.dataset.incidentTask || null,
+      p_agent_id: b.dataset.incidentAgent || null
+    });
+    if (error) throw error;
+    b.textContent = "Demande soumise · décision dans Validations";
+    b.classList.add("is-submitted");
+    conn("ok", "Correction soumise à validation de la direction");
+  } catch (e) {
+    b.disabled = false; b.textContent = "Soumettre cette correction à validation";
+    conn("bad", "Demande refusée : " + String(e.message || e).slice(0,100));
+  }
+});
 $("#alerts").addEventListener("click", (ev) => { const item = ev.target.closest("[data-alert-agent]"); if (!item) return; D.sel = item.dataset.alertAgent; view3d?.focus(D.sel); renderDetail(); });
 $("#mission-filters").addEventListener("click", (ev) => { const b = ev.target.closest("[data-filter]"); if (!b) return; D.taskFilter = b.dataset.filter; renderWorkflow(); renderMissions(); });
 $("#workflow-steps").addEventListener("click", (ev) => { const b = ev.target.closest("[data-workflow-filter]"); if (!b) return; D.taskFilter = b.dataset.workflowFilter; renderWorkflow(); renderMissions(); });
 $("#ops-panel").addEventListener("click", (ev) => { const b = ev.target.closest("[data-ops-agent]"); if (!b) return; D.sel = b.dataset.opsAgent; view3d?.focus(D.sel); renderDetail(); });
 $("#performance-panel").addEventListener("click", (ev) => { const b = ev.target.closest("[data-performance-agent]"); if (!b) return; D.sel = b.dataset.performanceAgent; view3d?.focus(D.sel); renderDetail(); });
 $("#missions").addEventListener("click", (ev) => { const m = ev.target.closest("[data-agent]"); if (m) { D.sel = m.dataset.agent; view3d?.focus(D.sel); renderDetail(); } });
+$("#wf-journal-toggle")?.addEventListener("click", () => { const panel = $("#wf-journal"), on = panel.hidden; panel.hidden = !on; $("#wf-journal-toggle").setAttribute("aria-expanded", String(on)); if (on) { renderJournal(); panel.scrollIntoView({behavior:"smooth",block:"nearest"}); } });
+$("#wf-journal-close")?.addEventListener("click", () => { $("#wf-journal").hidden = true; $("#wf-journal-toggle")?.setAttribute("aria-expanded","false"); });
+$("#wf-journal-agent")?.addEventListener("change", ev => { D.journalAgent = ev.target.value; renderJournal(); });
+$("#wf-journal-kind")?.addEventListener("change", ev => { D.journalKind = ev.target.value; renderJournal(); });
+
 
 // ───────── Vue 3D (repli 2D si WebGL indisponible ou ?2d) ─────────
-let view3d = null;
+let view3d = null, relationsView = null, relationsMode = false;
+const relationFilters = { agent: "", product: "", prospect: "" };
+function renderRelationAgentOptions() {
+  const select = $("#relations-agent"), current = relationFilters.agent;
+  const agents = D.agents.filter(a => a.etat !== "archive").slice().sort((a,b) => String(a.nom || a.code).localeCompare(String(b.nom || b.code), "fr"));
+  select.innerHTML = '<option value="">Tous les agents</option>' + agents.map(a => '<option value="' + esc(a.id) + '">' + esc(a.nom || a.code || "Agent") + '</option>').join("");
+  select.value = agents.some(a => String(a.id) === current) ? current : "";
+  if (select.value !== current) relationFilters.agent = select.value;
+}
+function renderRelationProductOptions() {
+  const select = $("#relations-product"), current = relationFilters.product || select.value;
+  const products = (D.products || []).filter(p => p.actif !== false).slice().sort((a,b) => String(a.nom).localeCompare(String(b.nom), "fr"));
+  select.innerHTML = '<option value="">Tous les logiciels</option>' + products.map(p => `<option value="${esc(p.id)}">${esc(p.nom)}</option>`).join("");
+  select.value = products.some(p => String(p.id) === String(current)) ? String(current) : "";
+  relationFilters.product = select.value;
+}
+function updateRelationFilters() {
+  relationFilters.agent = $("#relations-agent").value;
+  relationFilters.product = $("#relations-product").value;
+  relationFilters.prospect = $("#relations-prospect").value.trim();
+  relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.tasks || [], products: D.products || [], aliases: D.productAliases || [], filters: relationFilters });
+}
+const relationsCanvas = $("#relations-canvas");
 const api3d = {
   get D() { return D; }, STATES, clip, agentState, deptColor, onSelect: (id) => { D.sel = id; renderDetail(); },
+  onProspect: (p) => { D.relationSel = null; D.sel = null; D.prospectNetworkOrigin = { relation: null }; D.prospectSel = p; D.prospectHistory = null; renderDetail(); $("#detail")?.scrollIntoView?.({ behavior: "smooth", block: "nearest" }); },
+  onAgent: (a) => { D.relationSel = null; D.prospectSel = null; D.sel = a.id; renderDetail(); },
+  onRelation: (r) => { D.relationSel = r; if (r) { D.sel = r.agent.id; D.prospectNetworkOrigin = { relation: r }; D.prospectSel = r.prospect; renderDetail(); window.__jarvis?.explainRelation?.(r); } else { D.relationSel = null; } },
+  onClearSelection: () => { D.relationSel = null; D.prospectSel = null; D.prospectNetworkOrigin = null; D.sel = null; $("#detail").hidden = true; renderDetail(); },
+  onLegend: (items) => { const el=$("#relations-legend"); if(!el)return; el.innerHTML=items.map(item=>`<span class="relations-legend-item"><i class="relations-legend-dot ${esc(item.type)}" style="--legend-color:${esc(item.color)}"></i><b>${esc(item.label)}</b>${item.count!=null?`<small>${item.count}</small>`:""}</span>`).join(""); },
   onHover: (h) => { if (!h) { tip.hidden = true; return; } const n = h.n, cur = D.tasks.find((t) => t.agent_id === n.id && t.statut === "en_cours") ?? D.tasks.find((t) => t.agent_id === n.id && OPENS.includes(t.statut));
     tip.innerHTML = `<b>${esc(n.a.nom)}</b><span class="muted">${esc(n.a.fonction ?? "")}</span><br><span class="tag" style="--c:${STATES[n.st][1]}">${esc(STATES[n.st][0])}</span>${cur ? `<br>${esc(clip(cur.titre, 90))}` : ""}`; tip.hidden = false; tip.style.left = Math.min(W - 290, h.x + 14) + "px"; tip.style.top = Math.max(6, h.y - 10) + "px"; },
 };
@@ -681,9 +1277,39 @@ async function init3d() {
   catch (e) { console.warn("Vue 3D indisponible, repli sur la vue 2D :", e.message); view3d = null; $("#ctl").hidden = true; $("#hint").hidden = true; }
 }
 function initControls() {
-  $("#ctl").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-c]"); if (!b || !view3d) return; const c = b.dataset.c;
+  $("#relations-agent").addEventListener("change", updateRelationFilters);
+  $("#relations-product").addEventListener("change", updateRelationFilters);
+  $("#relations-prospect").addEventListener("input", updateRelationFilters);
+  $("#relations-reset").addEventListener("click", () => {
+    relationFilters.agent = ""; relationFilters.product = ""; relationFilters.prospect = "";
+    $("#relations-agent").value = ""; $("#relations-product").value = ""; $("#relations-prospect").value = "";
+    updateRelationFilters(); relationsView?.reset(); relationsView?.clearSelection();
+  });
+  $("#relations-filters").addEventListener("click", (ev) => { const b=ev.target.closest("[data-rel-camera]");if(!b||!relationsView)return;const action=b.dataset.relCamera;if(action==="in")relationsView.zoom(1.22);else if(action==="out")relationsView.zoom(.82);else if(action==="reset")relationsView.reset(); });
+  $("#ctl").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-c]"); if (!b) return; const c = b.dataset.c;
+    if (c === "relations") {
+      relationsMode = !relationsMode; b.classList.toggle("on", relationsMode);
+      $("#stage3d").hidden = relationsMode; cv.hidden = relationsMode || !!view3d; relationsCanvas.hidden = !relationsMode; $("#relations-filters").hidden = !relationsMode; $("#relations-legend").hidden = !relationsMode;
+      if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView ??= createProspectRelations(relationsCanvas, { ...api3d, onFilterCount: (n, total) => { $("#relations-filter-count").textContent = n + " / " + total + " prospects"; } }); relationsView.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.tasks || [], products: D.products || [], aliases: D.productAliases || [], filters: relationFilters }); relationsView.resize(); }
+      else view3d?.resize();
+      return;
+    }
+    if (!view3d) return;
     if (c === "in") view3d.zoom(.72); else if (c === "out") view3d.zoom(1.4); else if (c === "reset") view3d.reset(); else if (c === "auto") b.classList.toggle("on", view3d.toggleAuto()); else if (c === "dyn") b.classList.toggle("on", view3d.toggleDynamic());
     else if (c === "focus") { document.body.classList.toggle("focus"); setTimeout(() => view3d.resize(), 60); } });
+  // Scène épurée : un seul panneau (Workflow ou Opérations) ouvert à la demande, légende à part ; panneaux de droite repliés (accordéon mémorisé).
+  { const stage = $(".stage"), bar = $("#ov-bar");
+    bar?.addEventListener("click", (ev) => { const b = ev.target.closest("button[data-ov]"); if (!b) return; const k = b.dataset.ov;
+      if (k === "legend") stage.classList.toggle("legend-on"); else stage.dataset.ov = stage.dataset.ov === k ? "" : k;
+      bar.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.ov === "legend" ? stage.classList.contains("legend-on") : stage.dataset.ov === x.dataset.ov))); setTimeout(() => (relationsMode ? null : view3d?.resize()), 40); });
+    document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && stage.dataset.ov) { stage.dataset.ov = ""; bar.querySelectorAll("button[data-ov]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.ov === "legend" && stage.classList.contains("legend-on")))); } });
+    const rf = $("#relations-filters"); if (rf && window.ResizeObserver) new ResizeObserver(() => { if (!rf.hidden) stage.style.setProperty("--rel-top", Math.ceil(rf.offsetTop + rf.offsetHeight + 8) + "px"); }).observe(rf);   // les filtres peuvent passer sur deux lignes : la scène démarre toujours dessous
+    const KEY = "sanix_live_acc", IDS = ["business-panel", "finance-panel", "whatsapp-panel", "performance-panel", "ops-panel", "bi-panel", "forecast-panel", "executive-panel"];
+    let open = new Set(); try { open = new Set(JSON.parse(localStorage.getItem(KEY) || "[]")); } catch { /* aucune préférence */ }
+    for (const id of IDS) { const el = document.getElementById(id); if (el) { el.classList.add("acc"); el.classList.toggle("collapsed", !open.has(id)); } }
+    $(".col.right")?.addEventListener("click", (ev) => { const head = ev.target.closest(".panel-head,.acc>h2"); const card = head?.closest(".acc"); if (!card || ev.target.closest("a,button,select,input")) return;
+      card.classList.toggle("collapsed"); const now = new Set(IDS.filter((id) => document.getElementById(id) && !document.getElementById(id).classList.contains("collapsed"))); try { localStorage.setItem(KEY, JSON.stringify([...now])); } catch { /* mémoire indisponible */ } });
+  }
   setTimeout(() => $("#hint")?.classList.add("off"), 9000);
 }
 
@@ -695,7 +1321,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.tasks || [], filters: relationFilters }); } renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderWorkfloor(); if (!$("#wf-journal")?.hidden) renderJournal(); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
@@ -705,6 +1331,14 @@ async function boot() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { gate("Session absente : ouvrez cette fenêtre depuis le Bureau SANIX AI (bouton « Salle de contrôle »)."); return; }
   $("#gate").hidden = true; $("#live").hidden = false; renderLegend(); resize(); new ResizeObserver(resize).observe(cv.parentElement);
+  const execToggle = $("#exec-view-toggle");
+  const setExecutiveView = (on) => {
+    document.body.classList.toggle("exec-view", on);
+    if (execToggle) { execToggle.setAttribute("aria-pressed", String(on)); execToggle.textContent = on ? "← Retour salle" : "▦ Pilotage DG"; execToggle.title = on ? "Revenir à la salle de contrôle" : "Ouvrir le tableau de pilotage du Directeur général"; }
+    if (on) $("#executive-panel")?.scrollIntoView?.({behavior:"smooth",block:"start"});
+  };
+  execToggle?.addEventListener("click", () => setExecutiveView(!document.body.classList.contains("exec-view")));
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && document.body.classList.contains("exec-view")) setExecutiveView(false); });
   $("#fs").addEventListener("click", () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.()));
   requestAnimationFrame(draw); tick(); setInterval(tick, 1000); askSession(); setInterval(askSession, 20 * 60000);
   await init3d(); initControls();

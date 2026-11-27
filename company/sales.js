@@ -1,23 +1,34 @@
 // SANIX AI SALES — interface commerciale reliée aux tables commerciales du même projet Supabase que CRM.
-import { $, ago, closeModal, fmtDT, html, num, openModal, pill, raw, toast, usd } from "./ui.js";
+import { $, ago, closeModal, esc, fmtDT, html, num, openModal, pill, raw, toast, usd } from "./ui.js";
 import { q, S } from "./state.js";
 
 const STAGES = [
   ["identifie","Identifié"],["enregistre","Enregistré"],["qualifie","Qualifié"],
   ["premier_contact","Premier contact"],["conversation","Conversation"],
   ["besoin_identifie","Besoin identifié"],["interesse","Intéressé"],
-  ["rdv_propose","RDV proposé"],["rdv_confirme","RDV confirmé"],
-  ["demo_realisee","Démo réalisée"],["offre_transmise","Offre transmise"],
-  ["negociation","Négociation"],["offre_acceptee","Offre acceptée"],
-  ["contrat_transmis","Contrat transmis"],["perdu","Perdu"],["en_veille","En veille"],
+  ["rdv_propose","RDV proposé"],["rdv_confirme","RDV confirmé"],["demo_realisee","Démo réalisée"],
+  ["offre_transmise","Offre transmise"],["negociation","Négociation"],["offre_acceptee","Offre acceptée"],
+  ["contrat_transmis","Contrat transmis"],["contrat_signe","Contrat signé"],
+  ["paiement_attendu","Paiement attendu"],["paiement_confirme","Paiement confirmé"],
+  ["marche_gagne","Marché gagné"],["deploiement","Déploiement"],["client_fidelise","Client fidélisé"],
+  ["perdu","Perdu"],["en_veille","En veille"],
+];
+const PHASES = [
+  ["exploration","Exploration",["identifie","enregistre","qualifie","premier_contact","conversation","besoin_identifie","interesse","rdv_propose","rdv_confirme"]],
+  ["proposition","Proposition",["demo_realisee","offre_transmise"]],
+  ["negociation","Négociation",["negociation","offre_acceptee"]],
+  ["closing","Closing",["contrat_transmis","contrat_signe","paiement_attendu","paiement_confirme","marche_gagne","deploiement","client_fidelise"]],
 ];
 const LABEL = Object.fromEntries(STAGES);
 const money = n => `${num(n)} FCFA`;
 const PAGE=50, MAX_ROWS=1000;   // affichage par pages de 50 ; la base est lue jusqu'à 1 000 prospects
-let prospects=[], products=[], offers=[], messages=[], mails=[], mailsErreur="", lectureReponses=null, selected=null, filter={q:"",stage:"",owner:"",canal:"",offre:"",relance:""}, shown=PAGE, vue="prospects";
-const VUES=[["pipeline","🧭 Pipeline"],["prospects","👥 Prospects"],["rdv","📅 Rendez-vous"],["offres","📄 Offres"],["conversations","💬 Conversations"],["relances","🔔 Relances"]];
+let prospects=[], products=[], offers=[], messages=[], mails=[], mailsErreur="", lectureReponses=null, operators=[], crmOrders=[], crmConfig=null, crmOrdersError="", selected=null, filter={q:"",stage:"",owner:"",canal:"",offre:"",relance:""}, shown=PAGE, vue="prospects";
+const VUES=[["pilotage","📊 Pilotage"],["pipeline","🧭 Pipeline"],["prospects","👥 Prospects"],["rdv","📅 Rendez-vous"],["offres","📄 Offres"],["conversations","💬 Conversations"],["relances","🔔 Relances"]];
 const RDV_STAGES=["rdv_propose","rdv_confirme","demo_realisee"];
-const CLOSED=["perdu","en_veille","marche_gagne","client_fidelise"];
+const CLOSED=["perdu","en_veille","marche_gagne","deploiement","client_fidelise"];
+// Pondérations identiques au tableau de bord financier serveur SANIX AI.
+// Pondérations reprises à l'identique du calcul de prévision de company/live.js.
+const STAGE_PROBABILITY={identifie:.03,enregistre:.05,qualifie:.1,premier_contact:.12,conversation:.18,besoin_identifie:.25,interesse:.3,rdv_propose:.35,rdv_confirme:.4,demo_realisee:.45,offre_transmise:.55,negociation:.65,offre_acceptee:.8,contrat_transmis:.9,paiement_attendu:.95};
 const OFFRE_ST={brouillon:["Brouillon","#64748b"],a_valider:["À valider","#F59E0B"],validee:["Validée","#0ea5e9"],envoyee:["Envoyée","#6366f1"],acceptee:["Acceptée","#22C55E"],refusee:["Refusée","#EF4444"],expiree:["Expirée","#94a3b8"]};
 const ADRESSE_ST={invalide:["⛔ adresse invalide","var(--bad)"],a_confirmer:["⚠ adresse à confirmer","var(--warn)"],verifiee:["✓ adresse confirmée","var(--ok)"]};
 const adresseBadge=p=>{ const a=p.email?ADRESSE_ST[p.email_statut]:null; return a?html` <span class="small" style="color:${a[1]};font-weight:600">${a[0]}</span>`:""; };
@@ -25,12 +36,26 @@ const CANAUX=["whatsapp","email","telephone","sms","visio","note"];
 const nomDe=id=>prospects.find(p=>p.id===id)?.entreprise??"Prospect inconnu";
 
 export async function loadSales() {
-  const [p, pr, o] = await Promise.all([
+  const [p, pr, o, ops] = await Promise.all([
     q(S.sb.from("ai_prospects").select("id,crm_client_id,crm_rid,relances_sans_reponse,entreprise,secteur,ville,pays,decideur,telephone,whatsapp,email,stage,score,priorite,potentiel_fcfa,produits_recommandes,owner_id,opt_out,next_action_at,last_outbound_at,last_inbound_at,created_at,resume_ia,email_statut").order("updated_at",{ascending:false}).limit(MAX_ROWS)),
     q(S.sb.from("ai_products").select("id,nom,marche_cible,actif").eq("actif",true).order("nom")),
     q(S.sb.from("ai_offers").select("id,reference,prospect_id,product_id,total_ht,total_ttc,statut,created_at").order("created_at",{ascending:false}).limit(100)),
+    q(S.sb.from("ai_operators").select("user_id,nom,role").eq("actif",true).order("nom")),
   ]);
-  prospects=p??[]; products=pr??[]; offers=o??[];
+  prospects=p??[]; products=pr??[]; offers=o??[]; operators=ops??[];
+  // Les commandes sont la source CRM des encaissements ; les paramètres de pilotage viennent de la configuration CRM.
+  crmOrdersError="";
+  try {
+    const [orders,config]=await Promise.all([
+      q(S.sb.from("crm_records").select("rid,data,updated_at").eq("entity","commandes").is("deleted_at",null).order("updated_at",{ascending:false}).limit(3000)),
+      q(S.sb.from("crm_records").select("data").eq("entity","config").is("deleted_at",null).limit(1)),
+    ]);
+    crmOrders=orders??[];
+    crmConfig=config?.[0]?.data??null;
+  } catch(e) {
+    crmOrders=[]; crmConfig=null; crmOrdersError=e.message;
+    console.warn("Pilotage commercial : données CRM indisponibles",e.message);
+  }
 }
 /** E-mails envoyés depuis le CRM (Gmail) : base du suivi des relances. */
 export async function loadRelances() {
@@ -45,46 +70,100 @@ export async function loadMessages() {
 }
 const stageOptions = (v) => STAGES.map(([k,l])=>html`<option value="${k}" ${v===k?"selected":""}>${l}</option>`);
 const productName = id => products.find(p=>p.id===id)?.nom ?? id ?? "—";
+const operatorName = id => operators.find(o=>o.user_id===id)?.nom ?? (id?"Commercial inconnu":"Non attribué");
+const canAssign = () => ["direction","admin"].includes(S.op?.role);
+const ownerOptions = id => html`<option value="">Non attribué</option>${operators.map(o=>html`<option value="${o.user_id}" ${id===o.user_id?"selected":""}>${o.nom}</option>`)}`;
+const ownerFilter = () => html`<select id="sales-owner" aria-label="Filtrer par commercial"><option value="">Toute l'équipe</option><option value="__none__" ${filter.owner==="__none__"?"selected":""}>Non attribués</option>${operators.map(o=>html`<option value="${o.user_id}" ${filter.owner===o.user_id?"selected":""}>${o.nom}</option>`)}</select>`;
+const matchesOwner = p => !filter.owner || (filter.owner==="__none__"?!p.owner_id:p.owner_id===filter.owner);
+const ownerControl = p => canAssign()
+  ? html`<select data-sales-owner data-id="${p.id}" aria-label="Responsable de ${p.entreprise}" style="width:100%;margin-top:5px">${ownerOptions(p.owner_id)}</select>`
+  : html`<div class="small muted">Resp. : ${operatorName(p.owner_id)}</div>`;
+const isOverdue = p => !!p.next_action_at && new Date(p.next_action_at).getTime()<Date.now() && !CLOSED.includes(p.stage);
 
 const matchQ=p=>{ const t=filter.q.toLowerCase(); return !t||[p.entreprise,p.secteur,p.ville,p.decideur,p.email,p.telephone].some(v=>String(v??"").toLowerCase().includes(t)); };
 const restoreQ=()=>{const el=$("#sales-q");if(el){el.focus();el.setSelectionRange(filter.q.length,filter.q.length);}};
 
 function vueProspects(){
-  const rows=prospects.filter(p=>(!filter.stage||p.stage===filter.stage)&&matchQ(p));
+  const rows=prospects.filter(p=>(!filter.stage||p.stage===filter.stage)&&matchesOwner(p)&&matchQ(p));
   return html`<div class="filters">
       <input id="sales-q" type="search" placeholder="Entreprise, secteur, ville, contact…" value="${filter.q}" aria-label="Rechercher un prospect">
       <select id="sales-stage" aria-label="Filtrer par étape"><option value="">Toutes les étapes</option>${stageOptions(filter.stage)}</select>
+      ${ownerFilter()}
     </div>
-    <div class="scroll"><table class="tbl"><thead><tr><th>Entreprise / Contact</th><th>Produit</th><th>Étape</th><th>Score</th><th>Potentiel</th><th>Prochaine action</th><th></th></tr></thead><tbody>
+    <div class="scroll"><table class="tbl"><thead><tr><th>Entreprise / Contact</th><th>Produit</th><th>Étape</th><th>Score</th><th>Potentiel</th><th>Responsable</th><th>Prochaine action</th><th></th></tr></thead><tbody>
     ${raw(rows.slice(0,shown).map(p=>html`<tr>
       <td><b>${p.entreprise}</b><div class="small muted">${[p.secteur,p.ville].filter(Boolean).join(" · ")||"—"} · ${p.decideur||"Contact non renseigné"}</div><div class="small muted">${p.email||p.whatsapp||p.telephone||""}${adresseBadge(p)}${p.crm_client_id?html` · CRM #${p.crm_client_id}`:""}</div></td>
       <td class="small">${(p.produits_recommandes??[]).map(productName).join(", ")||"À déterminer"}</td>
       <td><select data-sales-stage data-id="${p.id}" aria-label="Étape de ${p.entreprise}">${stageOptions(p.stage)}</select></td>
       <td><b>${p.score??0}/100</b><div class="small muted">${p.priorite??""}</div></td>
       <td class="num">${money(p.potentiel_fcfa)}</td>
-      <td class="small">${p.next_action_at?fmtDT(p.next_action_at):"À planifier"}</td>
+      <td>${ownerControl(p)}</td>
+      <td class="small">${p.next_action_at?fmtDT(p.next_action_at):"À planifier"}${isOverdue(p)?html` <span class="pill" style="--c:#EF4444"><i></i>retard</span>`:""}</td>
       <td><button class="btn sm" type="button" data-act="sales-open" data-id="${p.id}">Ouvrir</button></td>
-    </tr>`).join("")||html`<tr><td colspan="7" class="muted">Aucun prospect correspondant.</td></tr>`.s)}
+    </tr>`).join("")||html`<tr><td colspan="8" class="muted">Aucun prospect correspondant.</td></tr>`.s)}
     </tbody></table></div>
     ${rows.length>shown?html`<p style="text-align:center;margin:10px 0"><button class="btn" type="button" data-act="sales-more">Afficher plus (${rows.length-shown} restants)</button></p>`:""}`;
 }
 
-/** Pipeline : une colonne par étape ; l'étape d'un prospect se change depuis sa carte (mêmes règles que la liste). */
+/** Pipeline commercial par grandes phases, avec sous-étapes réelles et responsables visibles. */
 function vuePipeline(){
-  const rows=prospects.filter(matchQ), CAP=15;
-  return html`<div class="filters"><input id="sales-q" type="search" placeholder="Filtrer les cartes : entreprise, secteur, ville…" value="${filter.q}" aria-label="Filtrer le pipeline"></div>
-    <div class="scroll" style="overflow-x:auto"><div class="pipe" style="display:flex;gap:10px;align-items:flex-start;min-width:max-content;padding-bottom:8px">
-    ${raw(STAGES.map(([k,l])=>{
-      const col=rows.filter(p=>p.stage===k).sort((a,b)=>(b.score??0)-(a.score??0)), pot=col.reduce((t,p)=>t+Number(p.potentiel_fcfa||0),0);
-      return html`<div class="card pipe-col" data-stage="${k}" style="width:230px;flex:none;padding:8px">
-        <div style="display:flex;justify-content:space-between;gap:6px"><b>${l}</b><span class="pill" style="--c:${CLOSED.includes(k)?"#94a3b8":"#0ea5e9"}"><i></i>${col.length}</span></div>
-        <div class="small muted" style="margin:2px 0 6px">${col.length?money(pot):"—"}</div>
-        ${raw(col.slice(0,CAP).map(p=>html`<div class="card pipe-card" style="margin:6px 0;padding:8px">
-          <b>${p.entreprise}</b><div class="small muted">${[p.secteur,p.ville].filter(Boolean).join(" · ")||"—"}</div>
-          <div class="small">Score <b>${p.score??0}</b> · ${money(p.potentiel_fcfa)}</div>
-          <div style="display:flex;gap:6px;margin-top:6px"><select data-sales-stage data-id="${p.id}" aria-label="Étape de ${p.entreprise}" style="flex:1;min-width:0">${stageOptions(p.stage)}</select><button class="btn sm" type="button" data-act="sales-open" data-id="${p.id}">Ouvrir</button></div></div>`).join("")||html`<div class="small muted">Aucun prospect</div>`.s)}
-        ${col.length>CAP?html`<div class="small muted">+ ${col.length-CAP} autre(s) : voir « Prospects »</div>`:""}</div>`.s;}).join(""))}
-    </div></div>`;
+  const rows=prospects.filter(p=>matchesOwner(p)&&matchQ(p));
+  const activeRows=rows.filter(p=>!CLOSED.includes(p.stage));
+  const won=rows.filter(p=>["marche_gagne","deploiement","client_fidelise"].includes(p.stage));
+  const lost=rows.filter(p=>p.stage==="perdu");
+  const closed=won.length+lost.length;
+  const total=activeRows.reduce((s,p)=>s+Number(p.potentiel_fcfa||0),0);
+  const weighted=activeRows.reduce((s,p)=>s+Math.max(0,Number(p.potentiel_fcfa)||0)*(STAGE_PROBABILITY[p.stage]||0),0);
+  const conversion=closed?Math.round(won.length/closed*100):0;
+  return html`<div class="filters">
+      <input id="sales-q" type="search" placeholder="Rechercher une entreprise, un secteur, une ville…" value="${filter.q}" aria-label="Rechercher dans le pipeline">
+      ${ownerFilter()}
+      <button class="btn sm" type="button" data-act="sales-vue" data-vue="prospects">☷ Liste</button>
+      <button class="btn sm pri" type="button" data-act="sales-vue" data-vue="pipeline">▥ Kanban</button>
+    </div>
+    <div class="pipe-layout">
+      <aside class="pipe-kpis">
+        <div class="card kpi" style="border-left:4px solid #10b981"><span>Pipeline total actif</span><b style="font-size:23px">${money(total)}</b><span>${activeRows.length} opportunités actives</span></div>
+        <div class="card kpi"><span>Opportunités gagnées</span><b style="font-size:25px">${won.length}</b><span>${money(won.reduce((s,p)=>s+Number(p.potentiel_fcfa||0),0))}</span></div>
+        <div class="card kpi"><span>Opportunités perdues</span><b style="font-size:25px">${lost.length}</b><span>${money(lost.reduce((s,p)=>s+Number(p.potentiel_fcfa||0),0))}</span></div>
+        <div class="card kpi"><span>Taux de conversion</span><b style="font-size:25px">${conversion}%</b><span>${won.length} gagnées sur ${closed} clôturées</span></div>
+        <div class="card kpi"><span>Prévision pondérée</span><b style="font-size:18px">${money(weighted)}</b><span>Selon l'étape commerciale</span></div>
+        <div class="card kpi"><span>Actions en retard</span><b style="font-size:23px">${rows.filter(isOverdue).length}</b><span>${rows.filter(p=>!p.owner_id&&!CLOSED.includes(p.stage)).length} non attribuées</span></div>
+      </aside>
+      <div class="scroll pipe-scroll"><div class="pipe">
+      ${raw(PHASES.map(([key,label,stages])=>{
+        const col=rows.filter(p=>stages.includes(p.stage)).sort((a,b)=>(b.score??0)-(a.score??0));
+        const pot=col.reduce((t,p)=>t+Number(p.potentiel_fcfa||0),0);
+        return html`<div class="card pipe-col" data-phase="${key}">
+          <div style="display:flex;justify-content:space-between;gap:6px;align-items:center"><b>${label}</b><span class="pill"><i></i>${col.length}</span></div>
+          <div class="small muted" style="margin:2px 0 6px">${money(pot)}</div>
+          ${raw(col.slice(0,30).map(p=>html`<div class="card pipe-card" style="margin:6px 0;padding:9px">
+            <b>${p.entreprise}</b><div class="small muted">${[p.secteur,p.ville].filter(Boolean).join(" · ")||"—"}</div>
+            <div class="small">Contact : ${p.decideur||"Non renseigné"}</div>
+            <div class="small">Commercial : <b>${operatorName(p.owner_id)}</b></div>
+            <div class="small">Étape : <b>${LABEL[p.stage]??p.stage}</b></div>
+            <div style="display:flex;justify-content:space-between;gap:6px;margin-top:5px"><b>${money(p.potentiel_fcfa)}</b><span class="small">${p.next_action_at?fmtDT(p.next_action_at):"Sans échéance"}</span></div>
+            <div class="small ${isOverdue(p)?"":"muted"}">${isOverdue(p)?"⚠ Action en retard":p.score!=null?"Score "+p.score+"/100":""}</div>
+            ${ownerControl(p)}
+            <div style="display:flex;gap:5px;margin-top:7px"><select data-sales-stage data-id="${p.id}" aria-label="Étape de ${p.entreprise}" style="flex:1;min-width:0">${stageOptions(p.stage)}</select><button class="btn sm" type="button" data-act="sales-open" data-id="${p.id}">Ouvrir</button></div>
+          </div>`.s).join("")||html`<div class="small muted" style="padding:12px">Aucune opportunité</div>`.s)}
+          ${col.length>30?html`<div class="small muted">+ ${col.length-30} autres opportunités</div>`:""}
+        </div>`.s;
+      }).join(""))}
+      </div></div>
+    </div>
+    <section style="margin-top:14px">
+      <h3>Résultats clôturés</h3>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+        <div class="card" style="padding:10px"><b>Gagnées et en déploiement</b>
+          ${raw(won.map(p=>html`<div class="small" style="padding:5px 0;border-bottom:1px solid var(--line)"><b>${p.entreprise}</b> · ${LABEL[p.stage]??p.stage}<div class="muted">${operatorName(p.owner_id)} · ${money(p.potentiel_fcfa)}</div></div>`.s).join("")||html`<p class="small muted">Aucune vente gagnée</p>`.s)}
+        </div>
+        <div class="card" style="padding:10px"><b>Perdues / en veille</b>
+          ${raw(rows.filter(p=>["perdu","en_veille"].includes(p.stage)).map(p=>html`<div class="small" style="padding:5px 0;border-bottom:1px solid var(--line)"><b>${p.entreprise}</b> · ${LABEL[p.stage]??p.stage}<div class="muted">${operatorName(p.owner_id)} · ${money(p.potentiel_fcfa)}</div></div>`.s).join("")||html`<p class="small muted">Aucun dossier clôturé ou en veille</p>`.s)}
+        </div>
+      </div>
+    </section>
+    <p class="small muted" style="margin-top:8px">Les montants gagnés/perdus sont calculés à partir du potentiel renseigné sur les prospects. Les encaissements réels restent à rapprocher des factures et paiements du CRM.</p>`;
 }
 
 /** Rendez-vous : prospects aux étapes RDV proposé / confirmé / démo réalisée, du plus proche au plus lointain. */
@@ -176,12 +255,96 @@ function vueRelances(){
     <p class="small muted" style="margin-top:8px">Règle : un e-mail sans réponse est à relancer au bout du délai choisi à l'envoi (4 jours par défaut), jusqu'à 45 jours. Les relances sont proposées ici ; rien n'est envoyé automatiquement.</p>`;
 }
 
+
+/** Dates des paiements CRM : ISO ou JJ/MM/AAAA. */
+function salesDate(v){
+  if(!v)return null;
+  const s=String(v);let d;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s))d=new Date(s+"T12:00:00");
+  else if(/^\d{2}\/\d{2}\/\d{4}$/.test(s)){const a=s.split("/");d=new Date(Number(a[2]),Number(a[1])-1,Number(a[0]),12);}
+  else d=new Date(s);
+  return Number.isFinite(d.getTime())?d:null;
+}
+function vuePilotage(){
+  const orders=crmOrders.map(r=>Object.assign({rid:r.rid},r.data||{})),payments=[];
+  const commissionRate=Math.max(0,Math.min(100,Number(crmConfig?.commissionDefaut)||0));
+  const objective=Math.max(0,Number(crmConfig?.objectifDefaut)||0);
+  for(const o of orders){
+    const list=Array.isArray(o.paiements)?o.paiements:[];
+    if(list.length){
+      for(const p of list){
+        const amount=Math.max(0,Number(p.montant)||0);
+        if(amount)payments.push({amount,date:salesDate(p.date),software:o.logiciel||"Non renseigné",commercial:o.commercial||"Non attribué"});
+      }
+    } else if(Number(o.acompte)>0) {
+      // Anciennes commandes sans détail de versements : l'acompte est compté une seule fois, sans date.
+      payments.push({amount:Math.max(0,Number(o.acompte)||0),date:null,software:o.logiciel||"Non renseigné",commercial:o.commercial||"Non attribué"});
+    }
+  }
+  const paid=payments.reduce((s,p)=>s+p.amount,0);
+  const attributed=payments.filter(p=>p.commercial!=="Non attribué");
+  const commissionBase=attributed.reduce((s,p)=>s+p.amount,0);
+  const commissionEstimate=commissionBase*commissionRate/100;
+  const orderTotal=orders.reduce((s,o)=>s+Math.max(0,Number(o.ttc)||0),0);
+  const balance=orders.reduce((s,o)=>{
+    const received=Array.isArray(o.paiements)&&o.paiements.length
+      ?o.paiements.reduce((a,p)=>a+Math.max(0,Number(p.montant)||0),0)
+      :Math.max(0,Number(o.acompte)||0);
+    return s+Math.max(0,(Number(o.ttc)||0)-received);
+  },0);
+  const now=new Date(),monthStart=new Date(now.getFullYear(),now.getMonth(),1);
+  const monthPayments=payments.filter(p=>p.date&&p.date>=monthStart&&p.date<=now);
+  const monthPaid=monthPayments.reduce((s,p)=>s+p.amount,0);
+  const targetPct=objective?Math.min(100,monthPaid/objective*100):0;
+  const months=[];for(let i=5;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);months.push({key:d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"),label:d.toLocaleDateString("fr-FR",{month:"short",year:"2-digit"}),amount:0});}
+  for(const p of payments){if(!p.date)continue;const k=p.date.getFullYear()+"-"+String(p.date.getMonth()+1).padStart(2,"0"),m=months.find(x=>x.key===k);if(m)m.amount+=p.amount;}
+  const maxMonth=Math.max(1,...months.map(x=>x.amount));
+  const group=key=>{const m=new Map();for(const p of payments){const k=p[key]||"Non attribué";m.set(k,(m.get(k)||0)+p.amount);}return [...m].map(([name,amount])=>({name,amount})).sort((a,b)=>b.amount-a.amount).slice(0,8);};
+  const bySoftware=group("software"),byCommercial=group("commercial");
+  // Portefeuille IA par responsable : indicateurs distincts des encaissements.
+  const prospectByOwner=operators.map(op=>{
+    const rows=prospects.filter(p=>p.owner_id===op.user_id&&!CLOSED.includes(p.stage));
+    return {name:op.nom,count:rows.length,potential:rows.reduce((s,p)=>s+Math.max(0,Number(p.potentiel_fcfa)||0),0),overdue:rows.filter(isOverdue).length};
+  }).filter(x=>x.count||x.potential||x.overdue).sort((a,b)=>b.potential-a.potential);
+  const unassignedProspects=prospects.filter(p=>!p.owner_id&&!CLOSED.includes(p.stage));
+
+  const latest=orders.slice().sort((a,b)=>(salesDate(b.date)?.getTime()||0)-(salesDate(a.date)?.getTime()||0)).slice(0,15);
+  let out='<div class="grid g4" style="margin-bottom:12px">';
+  const tiles=[["Encaissements enregistrés · cumul",paid],["Encaissé ce mois · dates connues",monthPaid],["Solde restant estimé",balance],["Commandes CRM · total TTC",orderTotal]];
+  for(const t of tiles)out+='<div class="card kpi"><b>'+esc(money(t[1]))+'</b><span>'+esc(t[0])+'</span></div>';
+  out+='</div>';
+  if(crmOrdersError)out+='<div class="card" style="border-left:4px solid #ef4444;margin-bottom:12px"><b>Données CRM indisponibles</b><p class="small">'+esc(crmOrdersError)+'</p>Les montants affichés ci-dessous ne doivent pas être interprétés comme des zéros fiables.</div>';
+  out+='<div class="grid g2" style="align-items:start">';
+  out+='<div class="card" style="padding:12px"><h3>Objectif mensuel</h3><div style="display:flex;justify-content:space-between;gap:8px"><b>'+esc(money(monthPaid))+'</b><span class="small muted">sur '+esc(objective?money(objective):"non défini")+'</span></div><div style="height:12px;background:var(--line);border-radius:8px;overflow:hidden;margin:10px 0"><div style="height:100%;width:'+targetPct.toFixed(1)+'%;background:var(--accent,#0ea5e9)"></div></div><p class="small muted">'+(objective?targetPct.toFixed(1)+' % de l’objectif par défaut configuré':'Aucun objectif mensuel configuré')+' · calculé uniquement sur les paiements datés du mois.</p></div>';
+  out+='<div class="card" style="padding:12px"><h3>Commissions indicatives</h3><b style="font-size:22px">'+esc(money(commissionEstimate))+'</b><p class="small muted">Taux de référence : '+commissionRate+' % · base attribuée : '+esc(money(commissionBase))+'</p><p class="small muted">Estimation théorique sur les paiements associés à un commercial ; ce n’est ni une commission validée ni un montant à payer.</p></div>';
+  out+='<div class="card" style="padding:12px"><h3>Encaissements · 6 derniers mois</h3>';
+  for(const m of months)out+='<div style="display:grid;grid-template-columns:55px 1fr 120px;gap:8px;align-items:center;margin:10px 0"><span class="small muted">'+esc(m.label)+'</span><div style="height:10px;background:var(--line);border-radius:8px;overflow:hidden"><div style="height:100%;width:'+Math.round(m.amount/maxMonth*100)+'%;background:var(--accent,#0ea5e9);border-radius:8px"></div></div><b class="small" style="text-align:right">'+esc(money(m.amount))+'</b></div>';
+  out+='<p class="small muted">Les paiements sans date exploitable sont inclus dans le cumul, mais exclus des séries mensuelles.</p></div>';
+  out+='<div class="card" style="padding:12px"><h3>Performance par logiciel</h3>';
+  for(const x of bySoftware)out+='<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)"><span>'+esc(x.name)+'</span><b>'+esc(money(x.amount))+'</b></div>';
+  if(!bySoftware.length)out+='<p class="muted">Aucun encaissement enregistré.</p>';
+  out+='</div><div class="card" style="padding:12px"><h3>Portefeuille actif par responsable</h3>';
+  for(const x of prospectByOwner)out+='<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:8px"><b>'+esc(x.name)+'</b><b>'+x.count+' prospect(s)</b></div><div class="small muted">Potentiel actif : '+esc(money(x.potential))+' · Actions en retard : '+x.overdue+'</div></div>';
+  if(!prospectByOwner.length)out+='<p class="small muted">Aucun prospect actif attribué à un commercial actif.</p>';
+  out+='<p class="small muted">'+unassignedProspects.length+' prospect(s) actif(s) non attribué(s). Le potentiel est distinct des encaissements.</p></div>';
+  out+='<div class="card" style="padding:12px"><h3>Performance par commercial</h3>';
+  for(const x of byCommercial)out+='<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)"><span>'+esc(x.name)+'</span><b>'+esc(money(x.amount))+'</b></div>';
+  if(!byCommercial.length)out+='<p class="muted">Aucun encaissement enregistré.</p>';
+  out+='<p class="small muted">Attribution issue du champ « commercial » des commandes CRM ; les champs vides restent « Non attribué ».</p></div>';
+  out+='<div class="card" style="padding:12px"><h3>Indicateurs de pilotage</h3><p><b>Objectif</b><br><span class="small muted">Valeur de référence lue dans la configuration CRM ; à décliner par commercial pour un suivi individuel.</span></p><p><b>Commissions</b><br><span class="small muted">Taux configuré appliqué aux encaissements attribués, à valider avant toute rémunération.</span></p><p><b>Prévisions</b><br><span class="small muted">Consulter le pipeline : les potentiels ne sont pas des encaissements.</span></p></div></div>';
+  out+='<h3 style="margin:16px 0 8px">Dernières commandes</h3><div class="scroll"><table class="tbl"><thead><tr><th>Référence</th><th>Client</th><th>Logiciel</th><th>Commercial</th><th class="num">TTC</th><th class="num">Encaissé</th><th class="num">Solde</th><th>Statut</th></tr></thead><tbody>';
+  for(const o of latest){const n=Array.isArray(o.paiements)&&o.paiements.length?o.paiements.reduce((s,p)=>s+Math.max(0,Number(p.montant)||0),0):Math.max(0,Number(o.acompte)||0);out+='<tr><td>'+esc(o.ref||o.rid)+'</td><td>'+esc(o.client||"—")+'</td><td>'+esc(o.logiciel||"—")+'</td><td>'+esc(o.commercial||"Non attribué")+'</td><td class="num">'+esc(money(o.ttc))+'</td><td class="num">'+esc(money(n))+'</td><td class="num">'+esc(money(Math.max(0,(Number(o.ttc)||0)-n)))+'</td><td>'+esc(o.statut||"—")+'</td></tr>';}
+  if(!latest.length)out+='<tr><td colspan="8" class="muted">Aucune commande CRM disponible.</td></tr>';
+  out+='</tbody></table></div><p class="small muted">Source : commandes et paiements enregistrés dans SANIX CRM. Les acomptes historiques sans détail de versement sont comptés une seule fois, sans date. Le cumul est un indicateur de gestion à rapprocher de la comptabilité et des relevés bancaires.</p>';
+  return raw(out);
+}
+
 export function renderSales(main) {
   const total=prospects.length, capped=total>=MAX_ROWS, qualified=prospects.filter(p=>(p.score??0)>=60).length;
   const active=prospects.filter(p=>!CLOSED.includes(p.stage)).length;
   const potential=prospects.reduce((s,p)=>s+Number(p.potentiel_fcfa||0),0);
-  const compte={pipeline:active,prospects:total,rdv:prospects.filter(p=>RDV_STAGES.includes(p.stage)).length,offres:offers.length,conversations:null,relances:null};
-  const corps={pipeline:vuePipeline,prospects:vueProspects,rdv:vueRdv,offres:vueOffres,conversations:vueConversations,relances:vueRelances}[vue]();
+  const compte={pilotage:null,pipeline:active,prospects:total,rdv:prospects.filter(p=>RDV_STAGES.includes(p.stage)).length,offres:offers.length,conversations:null,relances:null};
+  const corps={pilotage:vuePilotage,pipeline:vuePipeline,prospects:vueProspects,rdv:vueRdv,offres:vueOffres,conversations:vueConversations,relances:vueRelances}[vue]();
   main.innerHTML=html`<section class="panel">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
       <div><h2>Direction commerciale</h2><p class="sub">Prospects, pipeline, qualification IA, historique et rattachement aux fiches clients SANIX CRM.</p></div>
@@ -203,6 +366,7 @@ export function renderSales(main) {
   const so=$("#sales-offre"); if(so) so.onchange=e=>{filter.offre=e.target.value;renderSales(main);};
   const sr=$("#sales-relance"); if(sr) sr.onchange=e=>{filter.relance=e.target.value;renderSales(main);};
   const sc=$("#sales-canal"); if(sc) sc.onchange=e=>{filter.canal=e.target.value;renderSales(main);};
+  const ownerSel=$("#sales-owner"); if(ownerSel) ownerSel.onchange=e=>{filter.owner=e.target.value;shown=PAGE;renderSales(main);};
 }
 
 function newProspectForm() {
@@ -232,26 +396,70 @@ function newProspectForm() {
 }
 
 async function openProspect(id) {
-  const [p,msgs,os]=await Promise.all([
-    q(S.sb.from("ai_prospects").select("*").eq("id",id).single()),
+  const p = await q(S.sb.from("ai_prospects").select("*").eq("id",id).single());
+  const mailByRidQuery = p.crm_rid ? S.sb.from("crm_mails").select("id,subject,body,status,sent_at,sent_by").eq("client_rid",p.crm_rid).order("sent_at",{ascending:false}).limit(30) : null;
+  const mailByEmailQuery = p.email ? S.sb.from("crm_mails").select("id,subject,body,status,sent_at,sent_by").ilike("to_email",String(p.email).trim().replace(/[\\%_]/g,(c)=>"\\"+c)).order("sent_at",{ascending:false}).limit(30) : null;
+  const waOutByRidQuery = p.crm_rid ? S.sb.from("crm_wa_messages").select("id,body,status,sent_at,sent_by,kind,template").eq("client_rid",p.crm_rid).order("sent_at",{ascending:false}).limit(30) : null;
+  const waOutByPhoneQuery = p.phone_norm ? S.sb.from("crm_wa_messages").select("id,body,status,sent_at,sent_by,kind,template").eq("to_phone",p.phone_norm).order("sent_at",{ascending:false}).limit(30) : null;
+  const waInByRidQuery = p.crm_rid ? S.sb.from("crm_wa_inbound").select("id,body,received_at,kind").eq("client_rid",p.crm_rid).order("received_at",{ascending:false}).limit(30) : null;
+  const waInByPhoneQuery = p.phone_norm ? S.sb.from("crm_wa_inbound").select("id,body,received_at,kind").eq("from_phone",p.phone_norm).order("received_at",{ascending:false}).limit(30) : null;
+  const [msgs,os,hist,mailByRid,mailByEmail,waOutByRid,waOutByPhone,waInByRid,waInByPhone]=await Promise.all([
     q(S.sb.from("ai_messages").select("canal,sens,auteur,contenu,statut,created_at").eq("prospect_id",id).order("created_at",{ascending:false}).limit(30)),
     q(S.sb.from("ai_offers").select("*").eq("prospect_id",id).order("created_at",{ascending:false}).limit(20)),
+    q(S.sb.from("ai_stage_history").select("de,vers,par,at").eq("prospect_id",id).order("at",{ascending:false}).limit(30)),
+    mailByRidQuery ? q(mailByRidQuery).catch(()=>[]) : Promise.resolve([]),
+    mailByEmailQuery ? q(mailByEmailQuery).catch(()=>[]) : Promise.resolve([]),
+    waOutByRidQuery ? q(waOutByRidQuery).catch(()=>[]) : Promise.resolve([]),
+    waOutByPhoneQuery ? q(waOutByPhoneQuery).catch(()=>[]) : Promise.resolve([]),
+    waInByRidQuery ? q(waInByRidQuery).catch(()=>[]) : Promise.resolve([]),
+    waInByPhoneQuery ? q(waInByPhoneQuery).catch(()=>[]) : Promise.resolve([]),
   ]);
+  const uniqueRows = (...groups) => [...new Map(groups.flat().map(m=>[m.id,m])).values()];
+  const mails = uniqueRows(mailByRid,mailByEmail);
+  const waOut = uniqueRows(waOutByRid,waOutByPhone);
+  const waIn = uniqueRows(waInByRid,waInByPhone);
+  const replies = mails.length
+    ? await q(S.sb.from("crm_mail_replies").select("mail_id,from_email,received_at,body").in("mail_id",mails.map(m=>m.id)).order("received_at",{ascending:false}).limit(60)).catch(()=>[])
+    : [];
+  const exchanges = [
+    ...msgs.map(m=>({channel:m.canal,sens:m.sens==="entrant"?"Reçu":"Envoyé",author:m.auteur,at:m.created_at,body:m.contenu,status:m.statut})),
+    ...mails.map(m=>({channel:"E-mail",sens:"Envoyé",author:m.sent_by||"CRM",at:m.sent_at,body:m.body,status:m.status,subject:m.subject})),
+    ...replies.map(m=>({channel:"E-mail",sens:"Reçu",author:m.from_email||"Prospect",at:m.received_at,body:m.body,status:"réponse"})),
+    ...waOut.map(m=>({channel:"WhatsApp",sens:"Envoyé",author:m.sent_by||"CRM",at:m.sent_at,body:m.body,status:m.status,subject:m.template||null})),
+    ...waIn.map(m=>({channel:"WhatsApp",sens:"Reçu",author:"Prospect",at:m.received_at,body:m.body,status:"reçu"})),
+  ].filter(m=>m.at).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at)).slice(0,60);
   selected=p;
   openModal(html`<h3>${p.entreprise}</h3><p class="small muted">${p.secteur||"Secteur non renseigné"} · ${p.ville||"Ville non renseignée"} · créé ${fmtDT(p.created_at)}</p>
     <div class="grid g2">
       <div class="card"><b>Contact</b><p>${p.decideur||"—"}<br>${p.telephone||"—"}<br>${p.email||"—"}</p></div>
-      <div class="card"><b>Qualification</b><p><b>${p.score}/100</b> · ${p.priorite}<br>Potentiel : ${money(p.potentiel_fcfa)}<br>Opt-out : ${p.opt_out?"Oui":"Non"}</p></div>
+      <div class="card"><b>Qualification</b><p><b>${p.score}/100</b> · ${p.priorite}<br>Étape : <b>${LABEL[p.stage]??p.stage??"Non renseignée"}</b><br>Potentiel : ${money(p.potentiel_fcfa)}<br>Dernier envoi : ${p.last_outbound_at?fmtDT(p.last_outbound_at):"Aucun"}<br>Dernière réponse : ${p.last_inbound_at?fmtDT(p.last_inbound_at):"Aucune"}<br>Opt-out : ${p.opt_out?"Oui":"Non"}</p></div>
     </div>
     <div class="card" style="margin:10px 0"><b>Rattachement SANIX CRM</b><form id="sales-link-form" class="form"><label class="f">Identifiant client CRM<input name="crm_client_id" type="number" min="1" step="1" value="${p.crm_client_id??""}" placeholder="ID numérique du client"></label><button class="btn sm" type="submit">Enregistrer le lien</button></form></div>
+    <h4>Responsable & prochaine action</h4>
+    <div class="card" style="margin:8px 0"><p class="small muted">Responsable commercial : <b>${operatorName(p.owner_id)}</b></p>
+      <form id="sales-next-form" class="form">
+        <label class="f">Prochaine action / échéance
+          <input name="next_action_at" type="datetime-local" value="${p.next_action_at?new Date(new Date(p.next_action_at).getTime()-new Date(p.next_action_at).getTimezoneOffset()*60000).toISOString().slice(0,16):""}">
+        </label>
+        <div class="actions"><button class="btn sm pri" type="submit">Enregistrer l'échéance</button></div>
+      </form>
+    </div>
     <h4>Actions commerciales</h4><div class="actions">
       <button class="btn" type="button" data-act="sales-qualify" data-id="${p.id}">Qualifier par IA</button>
       <button class="btn pri" type="button" data-act="sales-contact" data-id="${p.id}" ${p.opt_out?"disabled":""}>Préparer / lancer le premier contact</button>
     </div>
+    <h4>Historique du pipeline</h4>
+    ${hist.length?raw(hist.map(h=>html`<div class="small" style="padding:5px 0;border-bottom:1px solid var(--line)"><b>${LABEL[h.vers]??h.vers}</b> <span class="muted">· ${h.de?LABEL[h.de]??h.de:"Création"} · ${fmtDT(h.at)} · ${h.par==="agent"?"Agent IA":h.par}</span></div>`.s).join("")):html`<p class="small muted">Aucune transition historisée pour ce dossier.</p>`}
     <h4>Produits recommandés</h4><p>${(p.produits_recommandes??[]).map(productName).join(", ")||"Non déterminés"}</p>
     <h4>Résumé IA</h4><div class="pv">${p.resume_ia||"Aucun résumé disponible."}</div>
     <h4>Offres</h4>${os.length?html`<div class="scroll"><table class="tbl"><thead><tr><th>Référence</th><th>Montant TTC</th><th>Statut</th></tr></thead><tbody>${os.map(o=>html`<tr><td>${o.reference}</td><td>${money(o.total_ttc)}</td><td>${o.statut}</td></tr>`)}</tbody></table></div>`:html`<p class="muted">Aucune offre créée.</p>`}
-    <h4>Historique des échanges</h4>${msgs.length?msgs.map(m=>html`<div class="card" style="margin:6px 0"><div class="small muted">${m.canal} · ${m.sens} · ${m.auteur} · ${fmtDT(m.created_at)}</div><div class="pv">${m.contenu}</div></div>`):html`<p class="muted">Aucun échange enregistré.</p>`}`);
+    <h4>Historique des échanges · Gmail, WhatsApp et agents IA</h4>${exchanges.length?exchanges.map(m=>html`<div class="card" style="margin:6px 0"><div class="small muted">${m.channel} · ${m.sens} · ${m.author||"—"} · ${fmtDT(m.at)} · ${m.status||"—"}</div>${m.subject?html`<b>${m.subject}</b>`:""}<div class="pv">${String(m.body??"Contenu non disponible").slice(0,4000)}</div></div>`):html`<p class="muted">Aucun échange enregistré.</p>`}`);
+  $("#sales-next-form").onsubmit=async e=>{
+    e.preventDefault();const rawValue=new FormData(e.currentTarget).get("next_action_at");
+    const next_action_at=rawValue?new Date(rawValue).toISOString():null;
+    try{await q(S.sb.from("ai_prospects").update({next_action_at}).eq("id",p.id));toast("Prochaine action enregistrée","ok");await loadSales();await openProspect(p.id);}
+    catch(err){toast(err.message,"bad");}
+  };
   $("#sales-link-form").onsubmit=async e=>{
     e.preventDefault();const v=new FormData(e.currentTarget).get("crm_client_id");
     try{await q(S.sb.from("ai_prospects").update({crm_client_id:v?Number(v):null}).eq("id",p.id));toast("Lien CRM enregistré","ok");await openProspect(p.id);}
@@ -310,10 +518,21 @@ export async function salesAction(el) {
   }
 }
 
+export async function changeSalesOwner(el) {
+  const p=prospects.find(x=>x.id===el.dataset.id);if(!p)return;
+  if(!canAssign()){toast("Seule la direction peut réaffecter un prospect.","bad");el.value=p.owner_id??"";return;}
+  const owner_id=el.value||null;
+  try{
+    const {error}=await S.sb.from("ai_prospects").update({owner_id}).eq("id",p.id);
+    if(error)throw error;
+    toast("Responsable commercial mis à jour","ok");await loadSales();renderSales($("#main"));
+  }catch(err){toast(err.message,"bad");el.value=p.owner_id??"";}
+}
+
 export async function changeSalesStage(el) {
   const p=prospects.find(x=>x.id===el.dataset.id);if(!p)return;
   const stage=el.value;
-  if(["contrat_signe","paiement_attendu","paiement_confirme","marche_gagne","deploiement","client_fidelise"].includes(stage)){toast("Cette étape doit être confirmée par la direction ou le processus contractuel.","bad");el.value=p.stage;return;}
+  if(["contrat_signe","paiement_attendu","paiement_confirme","marche_gagne","deploiement","client_fidelise"].includes(stage)&&!canAssign()){toast("Cette étape est réservée à la direction et au processus contractuel.","bad");el.value=p.stage;return;}
   try{
     const {error}=await S.sb.from("ai_prospects").update({stage}).eq("id",p.id);
     if(error)throw error;

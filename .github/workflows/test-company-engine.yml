@@ -1,0 +1,95 @@
+name: Tester le moteur des agents SANIX
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "supabase/functions/_shared/**"
+      - "supabase/functions/tests/**"
+      - "supabase/migrations/**"
+      - ".github/workflows/test-company-engine.yml"
+  push:
+    branches:
+      - fix/parent-task-completion-guard
+    paths:
+      - "supabase/functions/_shared/**"
+      - "supabase/functions/tests/**"
+      - "supabase/migrations/**"
+      - ".github/workflows/test-company-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: company-engine-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine-integration:
+    name: PostgreSQL + tests d'intégration du moteur
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5499:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGPASSWORD: postgres
+      PGHOST: 127.0.0.1
+      PGPORT: 5499
+      PGUSER: postgres
+      TEST_PG_PORT: 5499
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Installer Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Installer PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Préparer le schéma Auth de test
+        run: |
+          psql -v ON_ERROR_STOP=1 -d postgres -f supabase/functions/tests/auth_stub.sql
+
+      - name: Appliquer toutes les migrations dans l'ordre
+        shell: bash
+        run: |
+          set -euo pipefail
+          createdb vc_tpl
+          psql -v ON_ERROR_STOP=1 -d vc_tpl -f supabase/functions/tests/auth_stub.sql
+          while IFS= read -r migration; do
+            echo "Applying $migration"
+            psql -v ON_ERROR_STOP=1 -d vc_tpl -f "$migration"
+          done < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+
+      - name: Vérifier la migration de garde-fou
+        run: |
+          psql -v ON_ERROR_STOP=1 -d vc_tpl -c "select pg_get_functiondef('public.ai_task_proof()'::regprocedure);"
+          psql -v ON_ERROR_STOP=1 -d vc_tpl -c "select pg_get_functiondef('public.ai_tasks_after()'::regprocedure);"
+
+      - name: Tests bloquants — garde-fou et précontrôle (T9 + T10)
+        run: deno test --no-check --allow-all --import-map=supabase/functions/tests/import_map.json --filter "T9|T10" supabase/functions/tests/engine_test.ts
+
+      - name: Suite historique — diagnostic non bloquant
+        continue-on-error: true
+        run: deno test --no-check --allow-all --import-map=supabase/functions/tests/import_map.json supabase/functions/tests/engine_test.ts

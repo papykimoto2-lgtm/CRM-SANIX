@@ -122,7 +122,10 @@ async function sendTemplate(d, op, i) {
     throw new WaError(r.status === 401 || r.status === 403 ? 409 : 502, "WhatsApp a refus\xE9 l'envoi : " + r.message);
   }
   const id = await d.store.insertMessage({ ...base, wa_message_id: r.wamid });
-  if (i.client_rid) await d.store.addInteraction(i.client_rid, { date: d.now().toISOString(), type: "Message WhatsApp", note: "Mod\xE8le \xAB " + template + " \xBB envoy\xE9", ico: "\u{1F4AC}", source: "whatsapp" }).catch(() => {
+  const sentAt = d.now().toISOString();
+  if (i.client_rid) await d.store.addInteraction(i.client_rid, { date: sentAt, type: "Message WhatsApp", note: "Mod\xE8le \xAB " + template + " \xBB envoy\xE9", ico: "\u{1F4AC}", source: "whatsapp" }).catch(() => {
+  });
+  await d.store.syncProspectOutbound?.(i.client_rid ?? null, to, sentAt).catch(() => {
   });
   return { id, wa_message_id: r.wamid };
 }
@@ -142,7 +145,10 @@ async function sendText(d, op, i) {
     throw new WaError(r.status === 401 || r.status === 403 ? 409 : 502, "WhatsApp a refus\xE9 l'envoi : " + r.message);
   }
   const id = await d.store.insertMessage({ ...base, wa_message_id: r.wamid });
-  if (i.client_rid) await d.store.addInteraction(i.client_rid, { date: d.now().toISOString(), type: "Message WhatsApp", note: "R\xE9ponse envoy\xE9e", ico: "\u{1F4AC}", source: "whatsapp" }).catch(() => {
+  const sentAt = d.now().toISOString();
+  if (i.client_rid) await d.store.addInteraction(i.client_rid, { date: sentAt, type: "Message WhatsApp", note: "R\xE9ponse envoy\xE9e", ico: "\u{1F4AC}", source: "whatsapp" }).catch(() => {
+  });
+  await d.store.syncProspectOutbound?.(i.client_rid ?? null, to, sentAt).catch(() => {
   });
   return { id, wa_message_id: r.wamid };
 }
@@ -191,6 +197,34 @@ var store = {
   },
   async setOptOut(phone, source) {
     await db().from("crm_wa_optout").upsert({ phone, source, since: (/* @__PURE__ */ new Date()).toISOString() });
+  },
+  async syncProspectOutbound(clientRid, phone, at) {
+    let rows = [];
+    if (clientRid) {
+      const r = await db().from("ai_prospects").select("id,stage").eq("crm_rid", clientRid).limit(2);
+      rows = r.data ?? [];
+    }
+    if (rows.length === 0 && phone) {
+      const r = await db().from("ai_prospects").select("id,stage").eq("phone_norm", phone).limit(2);
+      rows = r.data ?? [];
+    }
+    if (rows.length !== 1) return;
+    const p = rows[0];
+    await db().from("ai_prospects").update({ last_outbound_at: at, ...["identifie", "enregistre", "qualifie"].includes(p.stage) ? { stage: "premier_contact" } : {} }).eq("id", p.id);
+  },
+  async syncProspectInbound(clientRid, phone, at, optOut = false) {
+    let rows = [];
+    if (clientRid) {
+      const r = await db().from("ai_prospects").select("id,stage").eq("crm_rid", clientRid).limit(2);
+      rows = r.data ?? [];
+    }
+    if (rows.length === 0 && phone) {
+      const r = await db().from("ai_prospects").select("id,stage").eq("phone_norm", phone).limit(2);
+      rows = r.data ?? [];
+    }
+    if (rows.length !== 1) return;
+    const p = rows[0];
+    await db().from("ai_prospects").update({ last_inbound_at: at, relances_sans_reponse: 0, ...optOut ? { opt_out: true, opt_out_at: at } : p.stage === "premier_contact" ? { stage: "conversation" } : {} }).eq("id", p.id);
   },
   async addInteraction(clientRid, interaction) {
     const { data } = await db().from("crm_records").select("rid").eq("entity", "clients").eq("rid", clientRid).is("deleted_at", null).maybeSingle();

@@ -192,8 +192,9 @@ const STATUS_FILTERS = [["", "Tous les états"], ["actif", "🟢 Actifs"], ["att
 function ensureSupMarkup() {
   const sup = $("#sup"); if (!sup || sup.dataset.ready) return;
   sup.dataset.ready = "1";
-  sup.innerHTML = html`<h2>Supervision en temps réel</h2><p class="sub" id="sup-count"></p>
-    <div class="sup-tools"><input type="search" data-input="sup-q" placeholder="Rechercher un collaborateur" aria-label="Rechercher un collaborateur" maxlength="60">
+  sup.innerHTML = html`<div class="sup-heading"><div><span class="eyebrow">SANIX AI · MONITORING</span><h2>Supervision des équipes</h2><p class="sub" id="sup-count"></p></div><span class="sup-live"><i></i> Temps réel</span></div>
+    <div class="sup-metrics" id="sup-metrics" aria-label="Résumé des statuts"></div>
+    <div class="sup-tools"><label class="sup-search"><span aria-hidden="true">⌕</span><input type="search" data-input="sup-q" placeholder="Rechercher un agent ou un métier" aria-label="Rechercher un collaborateur" maxlength="60"></label>
     <select data-change="sup-status" aria-label="Filtrer par statut">${STATUS_FILTERS.map(([v, l]) => html`<option value="${v}">${l}</option>`)}</select></div>
     <div class="scroll sup-scroll"><table class="tbl sup" data-paginate="off"><thead><tr><th>Agent</th><th>Activité</th><th>Statut</th></tr></thead><tbody id="sup-body"></tbody></table></div>
     <div class="actions" id="sup-more" hidden><button class="btn sm" type="button" data-act="sup-more">Afficher plus</button></div>
@@ -204,7 +205,10 @@ function renderSupervision() {
   const body = $("#sup-body"); if (!body) return;
   const tasks = currentTasks(), all = live(), counts = { actif: 0, attente: 0, difficulte: 0, suspendu: 0 };
   for (const a of all) { const k = statusOf(a).key; if (k === "suspendu") counts.suspendu++; else if (k === "attente") counts.attente++; else if (k === "difficulte") counts.difficulte++; else counts.actif++; }
-  $("#sup-count").textContent = `${all.length} collaborateurs · 🟢 ${counts.actif} actifs · 🟡 ${counts.attente} en attente · 🔴 ${counts.difficulte} en difficulté · ⚪ ${counts.suspendu} suspendus`;
+  $("#sup-count").textContent = `${all.length} agents suivis · ${counts.difficulte + counts.attente} nécessitent une attention`;
+  const metrics = $("#sup-metrics");
+  if (metrics) metrics.innerHTML = [["", all.length, "Tous", "all"], ["actif", counts.actif, "Actifs", "ok"], ["attente", counts.attente, "En attente", "wait"], ["difficulte", counts.difficulte, "En difficulté", "bad"], ["suspendu", counts.suspendu, "Suspendus", "off"]].map(([key, n, label, tone]) => html`<button type="button" class="sup-metric ${tone}${P.supSt === key ? " selected" : ""}" data-act="sup-filter" data-filter="${key}" aria-pressed="${P.supSt === key}"><b>${n}</b><span>${label}</span></button>`.s).join("");
+  const statusSelect = $('[data-change="sup-status"]'); if (statusSelect && statusSelect.value !== P.supSt) statusSelect.value = P.supSt;
   const match = (a) => {
     const k = statusOf(a).key;
     if (P.supSt === "actif" && !["actif", "termine"].includes(k)) return false;
@@ -277,11 +281,11 @@ function renderSheet() {
   const ex = P.extras.get(a.id), st = statusOf(a), dept = S.depts.find((d) => d.id === a.departement_id)?.nom ?? a.departement_id;
   const canAct = isDir() && a.niveau > 1, active = a.etat === "actif";
   el.innerHTML = html`<div class="actions" style="margin:0 0 8px"><button class="btn sm" type="button" data-act="sheet-back">← Supervision</button>${narrow() ? html`<button class="btn sm" type="button" data-act="to-stage">↑ Bureau 3D</button>` : ""}</div>
-    <div style="display:flex;gap:10px;align-items:center"><span class="dot" style="--c:${deptColor(a.departement_id)};width:14px;height:14px"></span><div><h2 style="margin:0">${a.nom}</h2><div class="muted">${a.fonction}</div></div></div>
+    <div class="agent-identity"><span class="dot" style="--c:${deptColor(a.departement_id)};width:14px;height:14px"></span><div><h2>${a.nom}</h2><div class="muted">${a.fonction}</div></div></div>
     <div style="margin:10px 0" class="tags">${stPill(a)}<span class="tag">${LEVELS[a.niveau]}</span><span class="tag">${dept}</span>${a.temporaire ? html`<span class="tag">Temporaire · jusqu'au ${fmtD(a.expire_at)}</span>` : ""}</div>
-    <div class="card live" style="margin:8px 0"><div class="small muted">Activité en cours</div><b>${describeActivity(a, cur ? clipT(cur.titre, 70) : null)}</b>
+    <div class="card live agent-current"><div class="small muted">Activité en cours</div><b>${describeActivity(a, cur ? clipT(cur.titre, 70) : null)}</b>
       <div class="small muted">${st.emoji} ${st.label} · ${placeOf(a)} · depuis ${ago(a.activite_depuis)}</div></div>
-    <dl class="kv"><dt>Responsable</dt><dd>${mgr ? html`<a href="#" data-act="select-agent" data-id="${mgr.id}">${mgr.nom}</a>` : "Président"}</dd>
+    <dl class="kv agent-meta"><dt>Responsable</dt><dd>${mgr ? html`<a href="#" data-act="select-agent" data-id="${mgr.id}">${mgr.nom}</a>` : "Président"}</dd>
       <dt>Équipe</dt><dd>${subs.length ? subs.map((s, i) => html`${i ? ", " : ""}<a href="#" data-act="select-agent" data-id="${s.id}">${s.nom}</a>`) : "—"}</dd>
       <dt>Réflexion</dt><dd>${{ low: "rapide", medium: "standard", high: "approfondie" }[a.effort] ?? "—"}</dd><dt>Incidents consécutifs</dt><dd>${a.incidents_consecutifs ?? 0}</dd><dt>Cahier des charges</dt><dd>v${a.charte_version}</dd></dl>
     ${a.specialite ? html`<p class="small"><b>Spécialité :</b> ${a.specialite}</p>` : ""}
@@ -385,6 +389,7 @@ export const acts = {
   "select-agent": (el, ev) => { ev.preventDefault(); selectAgent(el.dataset.id, { focus: true }); if (S.tab !== "office") H.go("office"); },
   "open-agent": async (el) => { S.selected = el.dataset.id; await H.go("office"); selectAgent(el.dataset.id, { focus: true }); },
   "sup-row": (el) => selectAgent(el.dataset.id, { focus: true }),
+  "sup-filter": (el) => { P.supSt = el.dataset.filter ?? ""; P.supLimit = 60; renderSupervision(); },
   "sheet-back": () => selectAgent(null),
   "sup-more": () => { P.supLimit += 60; renderSupervision(); },
   "assign-mission": (el) => assignModal(el.dataset.id),

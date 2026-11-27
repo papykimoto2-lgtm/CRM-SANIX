@@ -27,6 +27,12 @@ Fenêtre d'affichage en direct de l'activité des agents, pour un second écran,
 - Caméra à la voix : « zoom avant / arrière », « vue d'ensemble », « montre le directeur commercial », « arrête / lance la rotation », « plein cadre ».
 - Toute autre demande : Jarvis propose de la transmettre au directeur général IA ; **rien n'est envoyé sans « oui »**. La réponse du directeur est ensuite lue à voix haute dès son arrivée.
 
+**Mode autonome Jarvis**
+- Le bouton ⚡ active/désactive le mode et mémorise le choix sur le navigateur (conservé après rechargement).
+- Lorsque le mode est actif et que la salle est ouverte avec une session valide, Jarvis examine les signaux de supervision toutes les minutes et peut transmettre au directeur général une consigne interne prioritaire, une à la fois ; un même signal est dédupliqué pendant 6 h.
+- Le mode autonome n'est pas un accès « sans limites » : aucune communication externe, action financière, suppression de fiche, relance/réaffectation de mission n'est lancée par la boucle proactive. Ces opérations restent soumises aux contrôles et validations existants.
+- La supervision proactive du navigateur s'arrête quand la salle est fermée ou masquée ; l'orchestration normale des agents continue côté serveur selon le planificateur de l'entreprise virtuelle.
+
 **Mode dynamique (mouvement perpétuel)** — activé par défaut, bouton ✺ ou voix (« mode calme » / « active le mode dynamique ») : les agents orbitent en permanence autour du directeur général (anneaux en sens alternés, vitesses différentes), les liens suivent, la caméra « respire » doucement et suit l'agent sélectionné. Le mode calme fige les agents.
 
 **Jarvis conversationnel** — la fonction Edge `ai-jarvis` (Haiku, budget IA appliqué, JWT direction) reçoit la demande, les 8 derniers échanges et un instantané en direct (agents, missions, indicateurs, activité) et répond en langage naturel, lu à voix haute. Elle peut commander l'interface (zoom, vue d'ensemble, focus sur un agent, mode calme/dynamique, panneaux) et **proposer** une consigne au directeur général ou une mission à un agent : rien n'est envoyé sans « oui ». Après une réponse vocale, le micro se rouvre seul pour la suite de la discussion. Sans serveur (budget, réseau, fonction non déployée), Jarvis retombe sur ses réponses locales.
@@ -41,3 +47,28 @@ Fenêtre d'affichage en direct de l'activité des agents, pour un second écran,
 - **Financement** : le modèle à 5 ans et ses hypothèses sont enregistrés dans le navigateur : non visibles ; Jarvis le dit.
 - **Levée de fonds** : financeurs par statut et type, contacts, brouillons à valider, financeurs cités dans la question. **Écriture possible, toujours après « oui », même en mode autonome** : statut d'un financeur, note ajoutée (jamais d'écrasement), validation ou abandon d'un brouillon. Jarvis ne peut jamais marquer un brouillon « envoyé » ni envoyer quoi que ce soit.
 - Jarvis ne modifie ni écritures, ni commissions, ni paiements, ni factures.
+
+
+## Gouvernance fonctionnelle : Directeur général IA ↔ Jarvis
+
+### Répartition des responsabilités
+- **Directeur général IA** : propriétaire des objectifs et des résultats collectifs ; stratégie, arbitrage, allocation des ressources, délégation hiérarchique, évaluation des livrables et compte rendu au Président.
+- **Jarvis** : chef de cabinet opérationnel ; interface vocale, observation de la salle, détection des signaux, transmission fidèle des demandes et restitution des décisions du DG. Jarvis ne devient pas un second directeur et ne contourne pas la hiérarchie.
+
+### Cycle de commandement
+1. Jarvis observe et formule un constat sourcé par les données disponibles.
+2. Jarvis transmet une remontée au DG, sans la transformer en ordre autonome.
+3. Le DG vérifie le constat par les indicateurs, les missions et les performances.
+4. Le DG décide, délègue au directeur compétent et fixe livrable, responsable, échéance, indicateur et dépendances.
+5. Le DG attend les sous-missions, vérifie les preuves et évalue les résultats.
+6. Le DG rend compte au Président ; Jarvis restitue le retour et signale explicitement tout retour manquant.
+
+### Compétences exécutives renforcées
+- Cadrage d'objectifs mesurables, stratégie multi-produits et priorisation limitée à trois axes.
+- Diagnostic des résultats, de la charge, des coûts, des retards et des dépendances.
+- Délégation par niveau hiérarchique, coordination inter-directions et arbitrage des ressources.
+- Contrôle qualité des livrables, évaluation des agents, correction et capitalisation.
+- Distinction stricte entre faits, hypothèses, risques et décisions soumises à validation.
+
+### Mode autonome
+Jarvis peut transmettre des alertes et demandes de diagnostic internes au DG. Le DG conserve l'autorité de décision et la responsabilité de déléguer. Les communications externes, dépenses, engagements contractuels, suppressions et changements sensibles restent soumis aux règles de gouvernance et aux validations requises.

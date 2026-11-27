@@ -9,6 +9,7 @@ import { commercialRules, charterToText, COMPANY_RULES, DG_RULES, MANAGER_METHOD
 import { CRM_TOOL_NAMES, type CrmCtx, uuidsIn } from "../crm_tools.ts";
 import { type AgentRow, loadGovernance, OPEN_STATES, Org, type TaskRow } from "./org.ts";
 import { type CoCtx, runCompanyTool, toolsFor } from "./tools.ts";
+import { diagnoseAgentDependencies } from "./dependency_preflight.ts";
 import { flushMoves, Presence, publishActivity } from "./presence.ts";
 
 export type RunOutcome = "terminee" | "bloquee" | "attente" | "reportee" | "echec" | "ignoree";
@@ -158,6 +159,23 @@ export async function runTask(taskId: string, opts: { deadline: number }): Promi
     const brief = await buildBrief(ctx);
     for (const id of uuidsIn(...brief.seeds)) crm.scope.add(id);
     const tools = toolsFor(agent, ctx.departments.map((d) => d.id));
+    // Précontrôle sans coût : outils requis et présence du secret Firecrawl.
+    // Une clé présente n'est pas réputée valide avant son premier usage réel.
+    const preflight = diagnoseAgentDependencies(agent);
+    await audit({
+      agent: `agent:${agent.code}`, action: "dependency_preflight", agent_id: agent.id, task_id: task.id,
+      ok: preflight.ready, payload: { status: preflight.ready ? "ready" : "blocked", checks: preflight.checks, blockers: preflight.blockers },
+    });
+    if (!preflight.ready) {
+      const note = `[Précontrôle dépendances] Mission bloquée sans pénalité pour l'agent : ${preflight.blockers.join(" ; ")}.`;
+      await db().from("ai_agent_tasks").update({
+        statut: "bloquee", progression: clip(`${task.progression ?? ""}\n${note}`, 8000),
+      }).eq("id", task.id);
+      await db().from("ai_agents").update({ activite: "disponible" }).eq("id", agent.id).not("activite", "eq", "en_reunion");
+      await incidentOnce("dependance_manquante", "attention", note, 6 * 3600e3);
+      await publishActivity(agent.id, "disponible", task.id);
+      return "bloquee";
+    }
     await ctx.presence!.activity("consultation_documents");   // lecture de la mission
     const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: brief.text }];
     let activiteMission = false, relances = 0;
@@ -225,10 +243,41 @@ async function finalize(ctx: CoCtx, r: Loop): Promise<RunOutcome> {
   if (r.kind === "fini" || r.kind === "texte") {
     // Fin par simple texte : acceptée seulement pour un échange avec le président (instruction), avec la mention honnête qu'aucune action n'a été exécutée ;
     // pour une mission, c'est un blocage (jamais « terminée » sans résultat structuré).
-    const f = r.kind === "fini" ? ctx.finish!
+    let f = r.kind === "fini" ? ctx.finish!
       : task.type === "instruction"
         ? { statut: "terminee" as const, rapport: r.text || "Réponse transmise.", resultats: ctx.acted ? [] as string[] : ["Réponse conversationnelle : aucune action n'a été exécutée"] }
         : { statut: "bloquee" as const, rapport: `Clôture sans résultat structuré : l'agent a répondu par texte sans appeler terminer_mission.\nDernière réponse : ${clip(r.text || "(vide)", 3000)}`, resultats: [] as string[] };
+
+    // Une mission mère ne peut pas être déclarée réussie tant qu'une sous-mission
+    // n'est ni terminée ni explicitement annulée. La vérification SQL (trigger)
+    // protège aussi les écritures qui ne passent pas par ce moteur.
+    if (f.statut === "terminee") {
+      const { data: enfants, error: enfantsError } = await db().from("ai_agent_tasks")
+        .select("id, titre, statut").eq("parent_id", task.id);
+      if (enfantsError) throw new Error(`Vérification des sous-missions impossible : ${enfantsError.message}`);
+      const incomplets = (enfants ?? []).filter((e) => !["terminee", "annulee"].includes(e.statut));
+      if (incomplets.length) {
+        const ouverts = incomplets.filter((e) => (OPEN_STATES as readonly string[]).includes(e.statut));
+        const resume = incomplets.slice(0, 8).map((e) => `${e.titre} [${e.statut}]`).join(" ; ");
+        if (ouverts.length) {
+          const note = `[Système] Clôture différée : ${ouverts.length} sous-mission(s) encore ouverte(s). Reprise après leur traitement. ${resume}`;
+          await db().from("ai_agent_tasks").update({
+            statut: "attente_sous_taches",
+            progression: await saveJournal(ctx, note),
+          }).eq("id", task.id);
+          await db().from("ai_agents").update({ activite: "en_mission" })
+            .eq("id", agent.id).not("activite", "eq", "en_reunion");
+          await publishActivity(agent.id, "attente", task.id);
+          return "attente";
+        }
+        f = {
+          statut: "bloquee",
+          rapport: clip(`${f.rapport}\n\n[Système] Clôture réussie refusée : une ou plusieurs sous-missions sont bloquées ou en échec. Le responsable doit les traiter ou signaler le blocage global. ${resume}`, 20000),
+          resultats: [],
+        };
+      }
+    }
+
     await db().from("ai_agent_tasks").update({
       statut: f.statut, rapport: f.rapport, resultats: f.resultats, progression: await saveJournal(ctx),
     }).eq("id", task.id);

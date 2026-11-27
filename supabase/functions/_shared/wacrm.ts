@@ -39,6 +39,8 @@ export type Store = {
   insertInbound(r: InboundRow): Promise<boolean>;
   setOptOut(phone: string, source: string): Promise<void>;
   addInteraction(clientRid: string, interaction: Record<string, unknown>): Promise<void>;
+  syncProspectOutbound?(clientRid: string | null, phone: string, at: string): Promise<void>;
+  syncProspectInbound?(clientRid: string | null, phone: string, at: string, optOut?: boolean): Promise<void>;
 };
 export type Deps = {
   fetch: (url: string, init?: any) => Promise<{ ok: boolean; status: number; json(): Promise<any>; text(): Promise<string> }>;
@@ -111,7 +113,9 @@ export async function sendTemplate(d: Deps, op: { user_id: string; nom: string }
     throw new WaError(r.status === 401 || r.status === 403 ? 409 : 502, "WhatsApp a refusé l'envoi : " + r.message);
   }
   const id = await d.store.insertMessage({ ...base, wa_message_id: r.wamid });
-  if (i.client_rid) await d.store.addInteraction(i.client_rid, { date: d.now().toISOString(), type: "Message WhatsApp", note: "Modèle « " + template + " » envoyé", ico: "💬", source: "whatsapp" }).catch(() => {});
+  const sentAt = d.now().toISOString();
+  if (i.client_rid) await d.store.addInteraction(i.client_rid, { date: sentAt, type: "Message WhatsApp", note: "Modèle « " + template + " » envoyé", ico: "💬", source: "whatsapp" }).catch(() => {});
+  await d.store.syncProspectOutbound?.(i.client_rid ?? null, to, sentAt).catch(() => {});
   return { id, wa_message_id: r.wamid };
 }
 
@@ -131,7 +135,9 @@ export async function sendText(d: Deps, op: { user_id: string; nom: string }, i:
     throw new WaError(r.status === 401 || r.status === 403 ? 409 : 502, "WhatsApp a refusé l'envoi : " + r.message);
   }
   const id = await d.store.insertMessage({ ...base, wa_message_id: r.wamid });
-  if (i.client_rid) await d.store.addInteraction(i.client_rid, { date: d.now().toISOString(), type: "Message WhatsApp", note: "Réponse envoyée", ico: "💬", source: "whatsapp" }).catch(() => {});
+  const sentAt = d.now().toISOString();
+  if (i.client_rid) await d.store.addInteraction(i.client_rid, { date: sentAt, type: "Message WhatsApp", note: "Réponse envoyée", ico: "💬", source: "whatsapp" }).catch(() => {});
+  await d.store.syncProspectOutbound?.(i.client_rid ?? null, to, sentAt).catch(() => {});
   return { id, wa_message_id: r.wamid };
 }
 
@@ -164,6 +170,7 @@ export async function routeInbound(d: Deps, m: any, profileName?: string): Promi
   if (!neuf) return true;                                   // déjà reçu : Meta réessaie
   const stop = estStop(texte);
   if (stop) await d.store.setOptOut(phone, "STOP par WhatsApp");
+  await d.store.syncProspectInbound?.(conv.client_rid, phone, iso(m.timestamp, d), stop).catch(() => {});
   if (conv.client_rid) {
     const nom = profileName ? profileName + " : " : "";
     await d.store.addInteraction(conv.client_rid, stop

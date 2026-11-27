@@ -17,6 +17,7 @@
     <div class="grow"></div>
     <div class="clock" id="clock" aria-live="off"></div>
     <div class="conn" id="conn"><i></i><span>Connexion…</span></div>
+    <button class="btn exec-view-toggle" id="exec-view-toggle" type="button" aria-pressed="false" title="Ouvrir le tableau de pilotage du Directeur général">▦ Pilotage DG</button>
     <button class="btn" id="fs" type="button" title="Plein écran">⛶</button>
   </header>
   <section class="kpis" id="kpis" aria-label="Indicateurs"></section>
@@ -26,16 +27,35 @@
       <div class="card grow mission-card"><div class="mission-head"><h2>Missions en direct</h2><span id="mission-summary" class="mission-summary" aria-live="polite">Chargement…</span></div><nav class="mission-filters" id="mission-filters" aria-label="Filtrer les missions"><button type="button" data-filter="all" class="on" aria-pressed="true">Toutes</button><button type="button" data-filter="en_cours" aria-pressed="false">En cours</button><button type="button" data-filter="waiting" aria-pressed="false">En attente</button><button type="button" data-filter="attente_validation" aria-pressed="false">À valider</button><button type="button" data-filter="blocked" aria-pressed="false">Bloquées</button></nav><div id="missions" class="list"></div></div>
     </aside>
     <section class="stage">
+      <div class="ov-bar" id="ov-bar" role="toolbar" aria-label="Panneaux de la scène">
+        <button type="button" data-ov="workflow" aria-pressed="false" title="Workflow des missions (7 jours)">⛓ Workflow</button>
+        <button type="button" data-ov="workfloor" aria-pressed="false" title="Missions en cours, échanges et résultats livrés">📡 Opérations</button>
+        <button type="button" data-ov="legend" aria-pressed="false" title="Légende des couleurs">ℹ Légende</button>
+      </div>
       <section class="workflow-panel" id="workflow-panel" aria-label="Cartographie des workflows">
-        <div class="workflow-top"><div><b>WORKFLOW ROUTING</b><small>Missions chargées sur 7 jours · actualisation automatique</small></div><div class="agent-health" id="agent-health"></div></div>
+        <div class="workflow-top"><div><b>WORKFLOW ROUTING</b><small>Missions actualisées sur 7 jours · compteurs du même périmètre</small></div><div class="agent-health" id="agent-health"></div></div>
         <div class="workflow-steps" id="workflow-steps" aria-live="polite"></div>
       </section>
+      <section class="workfloor-panel" id="workfloor-panel" aria-label="Activité opérationnelle réelle">
+        <div class="workfloor-head"><b><i></i> OPÉRATIONS EN DIRECT</b><span id="workfloor-meta">Données Supabase · actualisation 6 s</span><button type="button" class="wf-journal-toggle" id="wf-journal-toggle" aria-expanded="false">☷ Journal chronologique</button></div>
+        <div class="workfloor-grid workfloor-grid-v2"><section class="wf-column"><b class="wf-label">MISSIONS EN COURS</b><div class="workfloor-tasks" id="workfloor-tasks"></div></section><section class="wf-column"><b class="wf-label">ÉCHANGES & DÉLÉGATIONS</b><div class="workfloor-events" id="workfloor-events"></div></section><section class="wf-column"><b class="wf-label">RÉSULTATS LIVRÉS</b><div class="workfloor-results" id="workfloor-results"></div></section></div>
+      </section>
+      <section class="wf-journal" id="wf-journal" hidden aria-label="Journal chronologique des opérations"><div class="wf-journal-head"><div><b>JOURNAL DES OPÉRATIONS</b><small id="wf-journal-meta">Historique réel · données enregistrées dans Supabase</small></div><button type="button" id="wf-journal-close" aria-label="Fermer le journal">✕</button></div><div class="wf-journal-filters"><label>Agent<select id="wf-journal-agent"><option value="">Tous les agents</option></select></label><label>Nature<select id="wf-journal-kind"><option value="">Toutes les opérations</option><option value="action">Actions des agents</option><option value="communication">Échanges / décisions</option><option value="mission">Missions enregistrées</option><option value="error">Erreurs / blocages</option></select></label></div><div class="wf-journal-list" id="wf-journal-list"></div></section>
       <div id="stage3d"></div>
+      <div id="relations-filters" class="relations-filters" hidden aria-label="Filtres du réseau relationnel">
+        <label>Agent<select id="relations-agent"><option value="">Tous les agents</option></select></label>
+        <label>Logiciel<select id="relations-product"><option value="">Tous les logiciels</option></select></label>
+        <label>Prospect<input id="relations-prospect" type="search" placeholder="Rechercher un prospect…"></label>
+        <button id="relations-reset" type="button">Réinitialiser</button><div class="relations-camera" role="group" aria-label="Navigation du réseau"><button type="button" data-rel-camera="out" title="Zoom arrière">−</button><button type="button" data-rel-camera="in" title="Zoom avant">＋</button><button type="button" data-rel-camera="reset" title="Recentrer le réseau">⌂</button></div>
+        <small id="relations-filter-count" aria-live="polite"></small>
+      </div>
+      <canvas id="relations-canvas" aria-label="Relations vérifiées entre agents commerciaux et prospects" hidden></canvas>
+      <div id="relations-legend" class="relations-legend" hidden aria-label="Légende du réseau neuronal"></div>
       <canvas id="net" aria-label="Réseau des agents : un point lumineux par agent, animé quand il travaille"></canvas>
       <div class="ctl" id="ctl" role="toolbar" aria-label="Caméra">
         <button type="button" data-c="in" title="Zoom avant">＋</button><button type="button" data-c="out" title="Zoom arrière">－</button>
         <button type="button" data-c="reset" title="Vue d'ensemble">⌂</button><button type="button" data-c="auto" title="Rotation automatique" class="on">⟳</button><button type="button" data-c="dyn" title="Mode dynamique : mouvement perpétuel des agents" class="on">✺</button>
-        <button type="button" data-c="focus" title="Réduire les panneaux (plein cadre)">⤢</button>
+        <button type="button" data-c="focus" title="Réduire les panneaux (plein cadre)">⤢</button><button type="button" data-c="relations" title="Afficher les relations agents-prospects">◎</button>
       </div>
       <div class="hint" id="hint">Glisser : tourner · Molette / pincement : zoom · Double-clic : vue d'ensemble · Clic sur un agent : s'en approcher</div>
       <div class="legend" id="legend"></div>

@@ -6,7 +6,7 @@ const KEY = Buffer.alloc(32, 7).toString("base64");
   const ENV = { SUPABASE_URL: "https://proj.supabase.co", GOOGLE_CLIENT_ID: "cid", GOOGLE_CLIENT_SECRET: "csecret", GMAIL_TOKEN_KEY: KEY, APP_URL: "https://crm.exemple.app" };
   let T = Date.parse("2026-11-17T10:00:00Z");
   // — faux stockage —
-  const S = { account: null, mails: [], inter: [], replies: [], events: [], err: undefined };
+  const S = { account: null, mails: [], inter: [], replies: [], events: [], prospectOutbound: [], err: undefined };
   const store = {
     getAccount: async () => S.account, saveAccount: async (a) => { S.account = { ...a, status: "connecte" }; }, markAccountError: async (m) => { if (S.account) S.account.status = m ? "erreur" : "connecte"; S.err = m; },
     deleteAccount: async () => { S.account = null; }, insertMail: async (m) => { const id = "m" + (S.mails.length + 1); S.mails.push({ ...m, id, sent_at: new Date(T).toISOString() }); return id; },
@@ -14,6 +14,7 @@ const KEY = Buffer.alloc(32, 7).toString("base64");
     countSentSince: async () => S.mails.length, recentDuplicate: async (to, subj, since) => S.mails.some((m) => m.to_email === to && m.subject === subj && m.sent_at > since),
     recentBounce: async (to) => S.mails.some((m) => m.to_email === to && m.status === "echec" && /distribu/i.test(m.error || "")),
     addInteraction: async (rid, i) => { S.inter.push({ rid, ...i }); },
+    syncProspectOutbound: async (rid, email, at) => { S.prospectOutbound.push({ rid, email, at }); },
     countSentBy: async (by, since) => S.mails.filter((m) => m.sent_by === by && m.status !== "echec" && m.sent_at > since).length,
     onProspectReply: async (m, textes) => { S.events.push({ rid: m.client_rid, textes }); },
     saveReplies: async (mailId, rs) => { for (const r of rs) if (!S.replies.some((x) => x.gmail_message_id === r.gmail_message_id)) S.replies.push({ mail_id: mailId, ...r }); },
@@ -90,6 +91,7 @@ const KEY = Buffer.alloc(32, 7).toString("base64");
   ok(/^From: .*<sanix@gmail\.com>/.test(raw) && /\r\nTo: contact@promo\.ci\r\n/.test(raw), "expéditeur = Gmail connecté, destinataire = prospect");
   ok(S.mails[0].status === "envoye" && S.mails[0].relance_apres_jours === 3 && S.mails[0].sent_by === "Awa Koné", "journal : statut « envoyé », relance dans 3 jours, auteur");
   ok(S.inter.some((i) => i.rid === "c_1" && i.type === "E-mail envoyé"), "l'envoi est inscrit dans l'historique de la fiche");
+  ok(S.prospectOutbound.some((x) => x.rid === "c_1" && x.email === "contact@promo.ci"), "l'envoi confirmé synchronise la date de dernier contact sur la fiche de qualification");
   for (const [m, i] of [["adresse invalide", { to: "pas-une-adresse", subject: "a", body: "b" }], ["objet vide", { to: "a@b.ci", subject: " ", body: "b" }], ["message vide", { to: "a@b.ci", subject: "a", body: "  " }]]) {
     let e = null; try { await G.sendMail(D, op, i); } catch (x) { e = x; } ok(e && e.status === 400, m + " : refusé (400)");
   }

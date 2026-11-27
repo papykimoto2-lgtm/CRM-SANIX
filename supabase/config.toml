@@ -1,0 +1,20 @@
+# Réglages des fonctions Edge pour la CLI Supabase (supabase functions deploy).
+project_id = "izgpvhwhbrgeagjfhfli"
+
+# Verify JWT ACTIF : appelées par un opérateur connecté (JWT utilisateur). requireOperator reste exécuté (rôle, actif).
+[functions.ai-jarvis]
+verify_jwt = true
+[functions.crm-whatsapp]
+verify_jwt = true
+[functions.crm-vercel]
+verify_jwt = true
+
+# Verify JWT DÉSACTIVÉ : appelants sans JWT (planificateur x-cron-secret, signature HMAC Meta, retour OAuth Google).
+[functions.ai-company]
+verify_jwt = false
+[functions.ai-sales-director]
+verify_jwt = false
+[functions.whatsapp-webhook]
+verify_jwt = false
+[functions.crm-gmail]
+verify_jwt = false

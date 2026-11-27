@@ -1,5 +1,5 @@
 // Scénarios d'intégration : vrai PostgreSQL (triggers, contraintes, fonctions SQL) + faux Claude scripté.
-import { asPresident, assert, dropAll, eq, freshDb, mkAgent, mkTask, one, PRESIDENT, president, rows, val } from "./testkit.ts";
+import { asPresident, assert, dropAll, eq, freshDb, mkAgent, mkTask, one, PRESIDENT, president, rejects, rows, val } from "./testkit.ts";
 import { sql } from "./fake_supabase.ts";
 import { done, json, llm, reply, results, script, use, txt } from "./fake_anthropic.ts";
 import { flushOutbox } from "../_shared/outbox.ts";
@@ -7,6 +7,7 @@ import { runAgent } from "../_shared/agent.ts";
 import { runTask, createInstructionTask } from "../_shared/company/engine.ts";
 import { tickCompany } from "../_shared/company/tick.ts";
 import { cronSecret, resetCronSecretCache } from "../_shared/core.ts";
+import { diagnoseAgentDependencies } from "../_shared/company/dependency_preflight.ts";
 
 const CHARTE = {
   mission_principale: "Mission principale mesurable", missions_secondaires: ["Secondaire"], competences: ["Compétence"], donnees: ["Prospects CRM"],
@@ -26,6 +27,7 @@ const T = (name: string, fn: () => Promise<void>) => Deno.test({ name, fn, sanit
 
 T("T1 · instruction → organisation → exécution en chaîne → synthèse au président", async () => {
   await freshDb();
+  Deno.env.set("FIRECRAWL_API_KEY", "test-firecrawl-key");
   let respCode = "", hunterCode = "", qualifCode = "", hunterTask = "";
   script({
     "SANIX AI GENERAL DIRECTOR": [
@@ -41,7 +43,7 @@ T("T1 · instruction → organisation → exécution en chaîne → synthèse au
       (p) => {
         respCode = results(p)[0].data.agent_code;
         return reply([
-          use("creer_agent", agentDef("IA Prospect Hunter", "Chercheur de promoteurs", ["recherche_web", "create_prospect", "transmettre"], { manager_code: respCode })),
+          use("creer_agent", agentDef("IA Prospect Hunter", "Chercheur de promoteurs", ["recherche_web", "firecrawl_scrape", "create_prospect", "transmettre"], { manager_code: respCode })),
           use("creer_agent", agentDef("IA Lead Qualifier", "Qualification commerciale", ["lister_prospects", "update_prospect", "set_stage"], { manager_code: respCode })),
         ]);
       },
@@ -117,6 +119,7 @@ T("T1 · instruction → organisation → exécution en chaîne → synthèse au
   eq(Number(await val("select count(*) from ai_incidents")), 0, "aucun incident");
   const stats = await rows("select nom, attribuees, terminees from ai_agent_stats(now() - interval '1 day', now() + interval '1 minute') where terminees > 0 order by nom");
   assert(stats.length >= 4, "statistiques de performance disponibles");
+  Deno.env.delete("FIRECRAWL_API_KEY");
 });
 
 
@@ -431,6 +434,82 @@ T("T8 · secret du planificateur : lu dans le Vault (ai_cron_secret), repli sur 
     try { await cronSecret(); } catch (e) { msg = (e as Error).message; }
     assert(msg.includes("CRON_SECRET"), "ni Vault ni secret Edge : erreur explicite");
   } finally { Deno.env.set("CRON_SECRET", "secret"); resetCronSecretCache(); }
+});
+
+
+T("T9 · une mission mère ne se clôture pas avec des sous-missions ouvertes", async () => {
+  await freshDb();
+  await mkAgent("parent_guard", "Parent Guard", 2, "sanix_ai_general_director", ["assigner_mission", "attendre_sous_taches"]);
+  await mkAgent("child_guard", "Child Guard", 3, "parent_guard", []);
+  const parent = await mkTask("parent_guard", "Mission mère avec étapes");
+  const child = await mkTask("child_guard", "Étape enfant encore ouverte", { statut: "a_faire", parent, donneur: "parent_guard" });
+
+  const payload = {
+    statut: "terminee",
+    rapport: "Le travail principal semble terminé et le rapport est prêt à être transmis.",
+    resultats: ["Livrable principal préparé et contrôlé"],
+  };
+  script({ "Parent Guard": [() => reply([use("terminer_mission", payload)]), () => reply([use("terminer_mission", payload)])] });
+
+  eq(await runTask(parent, { deadline: Date.now() + 60000 }), "attente", "la clôture est différée");
+  eq(await val("select statut from ai_agent_tasks where id = $1", [parent]), "attente_sous_taches", "la mission mère reste en attente");
+  eq(await val("select statut from ai_agent_tasks where id = $1", [child]), "a_faire", "la sous-mission reste intacte");
+
+  await rejects(
+    () => sql("update ai_agent_tasks set statut = 'terminee', rapport = $2, resultats = $3::jsonb where id = $1",
+      [parent, payload.rapport, JSON.stringify(payload.resultats)]),
+    "sous-mission",
+    "le trigger SQL bloque aussi une clôture directe",
+  );
+
+  await sql("update ai_agent_tasks set statut = 'terminee', rapport = $2, resultats = $3::jsonb where id = $1",
+    [child, "Étape enfant terminée avec résultat vérifiable et rapport détaillé.", JSON.stringify(["Étape enfant réalisée"])]);
+  eq(await val("select statut from ai_agent_tasks where id = $1", [parent]), "a_faire", "le parent est relancé après la fin de l'enfant");
+  await sql("update ai_agent_tasks set statut = 'attente_sous_taches' where id = $1", [parent]);
+  eq(await val("select statut from ai_agent_tasks where id = $1", [parent]), "a_faire", "pas d'attente orpheline si les enfants sont déjà terminés");
+  await sql("update ai_agent_tasks set statut = 'en_cours', started_at = now(), executions = executions + 1 where id = $1", [parent]);
+  eq(await runTask(parent, { deadline: Date.now() + 60000 }), "terminee", "la mission mère peut se clôturer après ses sous-missions");
+  eq(await val("select statut from ai_agent_tasks where id = $1", [parent]), "terminee", "clôture finale enregistrée");
+});
+
+
+
+// ─── T10 · précontrôle des dépendances ──────────────────────────────
+T("T10 · précontrôle Firecrawl : mission de prospection bloquée proprement si dépendance absente", async () => {
+  await freshDb();
+  const previous = Deno.env.get("FIRECRAWL_API_KEY");
+  Deno.env.delete("FIRECRAWL_API_KEY");
+  try {
+    await mkAgent("hunter_preflight", "Hunter Preflight", 4, "sanix_ai_sales_director",
+      ["recherche_web", "firecrawl_scrape", "create_prospect"]);
+    const task = await mkTask("hunter_preflight", "Prospection avec sources vérifiées");
+    eq(await runTask(task, { deadline: Date.now() + 60000 }), "bloquee", "mission bloquée avant tout appel IA");
+    eq(await val("select statut from ai_agent_tasks where id = $1", [task]), "bloquee", "statut bloqué enregistré");
+    const progression = String(await val("select progression from ai_agent_tasks where id = $1", [task]));
+    assert(progression.includes("FIRECRAWL_API_KEY"), "cause exacte affichée dans la progression");
+    eq(Number(await val("select count(*) from ai_actions where action = 'llm_turn'")), 0, "aucun appel Claude facturable");
+    eq(Number(await val("select count(*) from ai_actions where action = 'dependency_preflight' and ok = false")), 1, "diagnostic bloquant journalisé");
+    eq(Number(await val("select incidents_consecutifs from ai_agents where code = 'hunter_preflight'")), 0, "aucune pénalité pour l'agent");
+    eq(Number(await val("select count(*) from ai_incidents where type = 'dependance_manquante'")), 1, "incident de dépendance enregistré");
+
+    const missingTool = diagnoseAgentDependencies(
+      { outils: ["recherche_web", "create_prospect"] },
+      () => "test-firecrawl-key",
+    );
+    eq(missingTool.ready, false, "un chasseur sans outil Firecrawl n'est pas prêt");
+    assert(missingTool.blockers.some((x) => x.includes("firecrawl_scrape")), "outil manquant clairement identifié");
+
+    const configured = diagnoseAgentDependencies(
+      { outils: ["recherche_web", "firecrawl_scrape", "create_prospect"] },
+      () => "test-firecrawl-key",
+    );
+    eq(configured.ready, true, "précontrôle prêt si outils et secret présents");
+    eq(configured.checks.find((x) => x.dependency === "FIRECRAWL_API_KEY")?.status,
+      "configured_unverified", "la présence du secret n'est pas confondue avec une clé validée");
+  } finally {
+    if (previous) Deno.env.set("FIRECRAWL_API_KEY", previous);
+    else Deno.env.delete("FIRECRAWL_API_KEY");
+  }
 });
 
 T("cleanup", async () => { await dropAll(); });
