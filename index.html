@@ -360,6 +360,13 @@ select.form-input{cursor:pointer}
 @keyframes spSlide{from{transform:translateX(48px);opacity:.3}to{transform:none;opacity:1}}
 .sp-close{position:absolute;top:18px;right:18px;z-index:6;width:34px;height:34px;background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.25);color:#fff}
 .sp-close:hover{background:#EF4444}
+.sp-expand{right:60px}
+.sp-expand:hover{background:var(--primary)}
+.sp-overlay.sp-full .smart-panel{width:100%;max-width:none;border-radius:0;animation:none}
+.sp-overlay.sp-full .sp-scroll>div[style*="padding:20px 24px"],.sp-overlay.sp-full #client-detail-body{max-width:1280px;margin-left:auto;margin-right:auto}
+.sp-overlay.sp-full .sp-footer{justify-content:center}
+.sp-overlay.sp-full .sp-footer .sp-act{max-width:160px}
+@media(max-width:700px){.sp-expand{display:none}}
 .sp-scroll{flex:1;overflow-y:auto;background:var(--surface)}
 .sp-header-prem{background:linear-gradient(135deg,var(--primary),var(--primary-d));padding:22px 24px 20px;color:#fff}
 .sp-avatar{width:56px;height:56px;border-radius:16px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-family:var(--font-h);font-weight:800;font-size:20px;flex-shrink:0}
@@ -4685,6 +4692,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
 <!-- ══ MODAL FICHE CLIENT DÉTAIL ══ -->
 <div id="modal-client-detail" class="modal-overlay hidden sp-overlay">
   <div class="smart-panel">
+    <div class="modal-close sp-close sp-expand" role="button" tabindex="0" title="Plein écran" aria-label="Afficher en plein écran" onclick="spToggleFull('modal-client-detail')">⛶</div>
     <div class="modal-close sp-close" onclick="document.getElementById('modal-client-detail').classList.add('hidden')">✕</div>
     <div id="sp-header"></div>
     <div class="sp-scroll">
@@ -4755,8 +4763,30 @@ Seriez-vous disponible pour une démonstration {rdv} ?
 <!-- ══ MODAL LOGICIEL CRÉER / MODIFIER ══ -->
 
 <!-- ══ MODAL DOSSIER DOCUMENTAIRE PRODUIT ══ -->
+<script>
+/* Fiches client et dossier : bascule plein écran (préférence mémorisée sur l'appareil ; Échap quitte le plein écran avant de fermer la fiche). */
+function spToggleFull(id, force){
+  const m=document.getElementById(id); if(!m) return;
+  const on = force===undefined ? !m.classList.contains('sp-full') : !!force;
+  m.classList.toggle('sp-full', on);
+  const b=m.querySelector('.sp-expand'); if(b){ b.textContent=on?'⤡':'⛶'; b.title=on?'Quitter le plein écran':'Plein écran'; b.setAttribute('aria-label',on?'Quitter le plein écran':'Afficher en plein écran'); }
+  try{ localStorage.setItem('sanix_sp_full', on?'1':'0'); }catch(e){}
+}
+(function(){
+  let pref=false; try{ pref = localStorage.getItem('sanix_sp_full')==='1'; }catch(e){}
+  const init=()=>{ if(pref) ['modal-client-detail','modal-dossier'].forEach(i=>spToggleFull(i,true)); };
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else init();
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='Escape') return;
+    const m=['modal-client-detail','modal-dossier'].map(i=>document.getElementById(i)).find(x=>x && !x.classList.contains('hidden') && x.classList.contains('sp-full'));
+    if(m){ e.stopImmediatePropagation(); e.preventDefault(); spToggleFull(m.id,false); }
+  },true);
+  document.querySelectorAll('.sp-expand').forEach(b=>b.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); b.click(); } }));
+})();
+</script>
 <div id="modal-dossier" class="modal-overlay hidden sp-overlay">
   <div class="smart-panel">
+    <div class="modal-close sp-close sp-expand" role="button" tabindex="0" title="Plein écran" aria-label="Afficher en plein écran" onclick="spToggleFull('modal-dossier')">⛶</div>
     <div class="modal-close sp-close" onclick="document.getElementById('modal-dossier').classList.add('hidden')">✕</div>
     <div id="doss-header"></div>
     <div class="sp-scroll" style="padding:0">
