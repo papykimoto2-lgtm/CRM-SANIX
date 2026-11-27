@@ -220,6 +220,13 @@ const visibleTabs = () => TABS.filter((t) => !t.dir || isDir());
 function renderTabs() {
   $("#tabs").innerHTML = visibleTabs().map((t) => `<button role="tab" type="button" data-act="tab" data-id="${t.id}" aria-selected="${t.id === S.tab}">${esc(t.label)}${t.id === "valid" && S.approvals.length + (S.waQueue?.length ?? 0) ? `<span class="badge">${S.approvals.length + (S.waQueue?.length ?? 0)}</span>` : ""}</button>`).join("");
 }
+function renderTabsSel() {
+  const sel = $("#tabs-sel"); if (!sel) return;
+  const n = S.approvals.length + (S.waQueue?.length ?? 0);
+  sel.innerHTML = visibleTabs().map((t) => `<option value="${t.id}"${t.id === S.tab ? " selected" : ""}>${esc(t.label)}${t.id === "valid" && n ? ` (${n})` : ""}</option>`).join("");
+}
+$("#tabs-sel")?.addEventListener("change", (e) => go(e.target.value));
+$("#menu-btn")?.addEventListener("click", (e) => { const o = $("#topmenu").classList.toggle("open"); e.currentTarget.setAttribute("aria-expanded", String(o)); });
 async function go(tab) {
   if (!visibleTabs().some((t) => t.id === tab)) tab = "office";
   if (tab !== S.tab) govDirty = false;
@@ -244,7 +251,7 @@ function renderChips() {
 let govDirty = false;   // limites saisies mais pas encore enregistrées : un rafraîchissement automatique ne doit pas les effacer
 function render(soft = false) {
   if (soft && S.tab === "gov" && govDirty) { renderChips(); return; }
-  renderTabs(); renderChips();
+  renderTabs(); renderTabsSel(); renderChips();
   const main = $("#main");
   if (main.dataset.tab !== S.tab) arreterLecture();
   main.dataset.tab = S.tab;

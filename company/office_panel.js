@@ -39,11 +39,14 @@ const stageHtml = () => html`<div class="stage" id="stage">
     <button class="btn sm" type="button" data-act="zoom" data-d="-1" aria-label="Zoom avant" title="Zoom avant">＋</button>
     <button class="btn sm" type="button" data-act="zoom" data-d="1" aria-label="Zoom arrière" title="Zoom arrière">－</button>
     <button class="btn sm" type="button" data-act="reset-view" aria-label="Vue d'ensemble" title="Vue d'ensemble">⟲</button>
+    <button class="btn sm more-btn" type="button" data-act="toggle-more" aria-expanded="false" aria-label="Plus d'options de vue">⚙ Vue</button>
+    <button class="btn sm more-btn" type="button" data-act="toggle-legend" aria-expanded="false" aria-label="Afficher la légende">Légende</button>
+    <div class="stage-more">
     <button class="btn sm" type="button" data-act="toggle-2d" id="b2d">Vue 2D</button>
     <select id="wall-sel" data-change="walls" aria-label="Murs"><option value="auto">Murs : auto</option><option value="bas">Murs abaissés</option><option value="verre">Murs transparents</option></select>
     <select id="lab-sel" data-change="labels" aria-label="Étiquettes des collaborateurs"><option value="auto">Étiquettes : auto</option><option value="responsables">Responsables</option><option value="toutes">Toutes</option><option value="aucune">Aucune</option></select>
     <button class="btn sm" type="button" data-act="save-view" aria-label="Retenir cette vue" title="Retenir cette vue : elle sera reprise à la prochaine ouverture">📌 Retenir</button>
-    <button class="btn sm" type="button" data-act="toggle-side" id="b-side" aria-label="Masquer le panneau de supervision" aria-pressed="false" title="Masquer / afficher le panneau de supervision">◧ Panneau</button></div>
+    <button class="btn sm" type="button" data-act="toggle-side" id="b-side" aria-label="Masquer le panneau de supervision" aria-pressed="false" title="Masquer / afficher le panneau de supervision">◧ Panneau</button></div></div>
   <div class="stage-right"><span class="chip sync" id="sync-chip" data-s="connecting" role="status"><i></i><span>Connexion…</span></span>
     <select id="q-sel" data-change="quality" aria-label="Qualité graphique"><option value="auto">Qualité : auto</option><option value="high">Élevée</option><option value="low">Réduite</option><option value="eco">Éco</option></select></div>
   <div class="imm-pad" id="imm-pad" hidden aria-label="Visite immersive : commandes">
@@ -385,6 +388,8 @@ export const acts = {
   "imm-exit": () => S.office?.exitVisit(),
   "save-view": () => { const v = S.office?.getView(); if (!v) return; camSave({ view: v }); toast("Vue retenue : elle sera reprise à la prochaine ouverture", "ok"); },
   "toggle-side": () => { try { localStorage.setItem(SIDE_KEY, lsGet(SIDE_KEY) === "off" ? "on" : "off"); } catch { /* sans stockage */ } applySideState(); },
+  "toggle-more": (el) => { const o = $("#stage").classList.toggle("show-more"); el.setAttribute("aria-expanded", String(o)); },
+  "toggle-legend": (el) => { const o = $("#stage").classList.toggle("show-legend"); el.setAttribute("aria-expanded", String(o)); },
   "toggle-2d": (el) => { S.force2d = !S.force2d; el.textContent = S.force2d ? "Vue 3D" : "Vue 2D"; render2D(); },
   "select-agent": (el, ev) => { ev.preventDefault(); selectAgent(el.dataset.id, { focus: true }); if (S.tab !== "office") H.go("office"); },
   "open-agent": async (el) => { S.selected = el.dataset.id; await H.go("office"); selectAgent(el.dataset.id, { focus: true }); },
