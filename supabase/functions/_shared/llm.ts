@@ -35,6 +35,8 @@ export class BudgetError extends Error {}
 export class TransientLlmError extends Error {}
 /** Compte fournisseur sans crédit ou facturation inactive : jamais une faute de l'agent. */
 export class ProviderBillingError extends Error {}
+/** Plafond d'utilisation du compte fournisseur : circuit breaker global jusqu'à la date de réinitialisation. */
+export class ProviderQuotaError extends Error {}
 /** Clé invalide ou accès fournisseur refusé : jamais une faute de l'agent. */
 export class ProviderConfigurationError extends Error {}
 /** Secret ANTHROPIC_API_KEY absent des fonctions Edge : configuration à compléter, jamais une faute de l'agent (mission reportée, essai rendu). */
@@ -87,6 +89,10 @@ export async function callClaude(o: CallOpts): Promise<CallResult> {
   // Échec fermé : sans contrôle de budget fiable, aucun appel payant.
   if (budgetError || !b) throw new BudgetError("Contrôle du budget IA indisponible");
   if (b.ok === false) throw new BudgetError(String(b.raison ?? "Budget IA atteint"));
+  const { data: providerState } = await db().from("ai_governance").select("provider_pause_until,provider_pause_reason").eq("id", 1).maybeSingle();
+  if (providerState?.provider_pause_until && new Date(providerState.provider_pause_until).getTime() > Date.now()) {
+    throw new ProviderQuotaError(providerState.provider_pause_reason || "Quota du fournisseur IA atteint ; appels suspendus jusqu'à réinitialisation.");
+  }
 
   const model = o.model ?? await modelForLevel(o.niveau);
   const params: Record<string, unknown> = {
@@ -114,6 +120,14 @@ export async function callClaude(o: CallOpts): Promise<CallResult> {
     const status = (e as { status?: number }).status;
     const message = errMsg(e);
     const normalized = message.toLowerCase();
+    if (status === 400 && /you have reached.*api usage limits|specified api usage limits|usage limit.*regain access/.test(normalized)) {
+      const resetMatch = message.match(/regain access on (\\d{4}-\\d{2}-\\d{2}) at (\\d{2}:\\d{2}) UTC/i);
+      const resetAt = resetMatch ? new Date(`${resetMatch[1]}T${resetMatch[2]}:00Z`) : new Date(Date.now() + 24 * 60 * 60 * 1000);
+      if (!Number.isFinite(resetAt.getTime()) || resetAt.getTime() <= Date.now()) resetAt.setTime(Date.now() + 24 * 60 * 60 * 1000);
+      const reason = `Plafond Anthropic atteint. Reprise automatique prévue le ${resetAt.toISOString()}. Les appels IA sont suspendus pour éviter les tentatives inutiles.`;
+      await db().from("ai_governance").update({ provider_pause_until: resetAt.toISOString(), provider_pause_reason: reason }).eq("id", 1);
+      throw new ProviderQuotaError(reason);
+    }
     // Anthropic renvoie parfois les erreurs de crédit en HTTP 400.
     if (/credit balance|insufficient credit|credit.*too low|billing.*(inactive|disabled|payment)|payment required|purchase credits/.test(normalized)) {
       throw new ProviderBillingError("Facturation Anthropic : crédits insuffisants ou facturation inactive. Vérifier le compte associé à ANTHROPIC_API_KEY.");
