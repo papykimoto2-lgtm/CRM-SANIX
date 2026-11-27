@@ -147,12 +147,12 @@ export async function resend(reportId: string): Promise<ReportResult> {
 }
 
 /** Appelé toutes les 5 minutes : rapports échus, instantané de performance, alertes critiques. */
-export async function reportTick(now = new Date()): Promise<{ generes: string[]; incidents: number }> {
+export async function reportTick(now = new Date()): Promise<{ generes: string[]; incidents: number; ignore?: string }> {
   await db().rpc("ai_compute_performance", { p_jour: jourAbidjan(now) });
   const { data: providerPause } = await db().from("ai_governance").select("provider_pause_until,provider_pause_reason").eq("id", 1).maybeSingle();
   if (providerPause?.provider_pause_until && new Date(providerPause.provider_pause_until).getTime() > now.getTime()) {
     const incidents = await flushIncidents(now);
-    return { generes: [], incidents };
+    return { generes: [], incidents, ignore: providerPause.provider_pause_reason || "Rapports IA suspendus jusqu'au rétablissement du quota fournisseur." };
   }
   const { data: settings } = await db().from("ai_report_settings").select("*");
   const generes: string[] = [];

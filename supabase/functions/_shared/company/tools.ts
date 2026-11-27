@@ -487,13 +487,19 @@ const IMPL: Record<string, (ctx: CoCtx, i: Record<string, any>) => Promise<unkno
       priorite: num(i.priorite, 1, 5, 3), echeance: heures ? new Date(Date.now() + heures * 3600e3).toISOString() : null,
     }).select("id").single();
     if (error) throw new Error(error.code === "23505" ? "Une mission identique est déjà ouverte pour cet agent : ne la recrée pas" : error.message);
+    // Lire l'agent effectivement retenu par le trigger de capacité.
+    const { data: actualTask, error: actualError } = await db()
+      .from("ai_agent_tasks").select("agent_id").eq("id", t.id).single();
+    if (actualError || !actualTask?.agent_id) throw new Error(actualError?.message ?? "Agent réellement affecté introuvable");
+    const actualAgent = ctx.org.byId(actualTask.agent_id);
     if (deps.length) {
       const { error: e2 } = await db().from("ai_task_dependencies").insert(deps.map((d) => ({ task_id: t.id, depend_de: d })));
       if (e2) { await db().from("ai_agent_tasks").update({ statut: "annulee" }).eq("id", t.id); throw new Error(e2.message); }
     }
-    (ctx.assigned ??= new Set()).add(target.id);
-    move(ctx, ctx.agent.id, `assign:${target.id}`, { lieu: "poste_agent", cible: target.id, ms: 12000, motif: "brief" });
-    return { task_id: t.id, agent: target.code, statut: "a_faire", depend_de: deps };
+    const assignedId = actualTask.agent_id;
+    (ctx.assigned ??= new Set()).add(assignedId);
+    move(ctx, ctx.agent.id, `assign:${assignedId}`, { lieu: "poste_agent", cible: assignedId, ms: 12000, motif: "brief" });
+    return { task_id: t.id, agent: actualAgent?.code ?? assignedId, agent_reaffecte: assignedId !== target.id, statut: "a_faire", depend_de: deps };
   },
 
   async attendre_sous_taches(ctx) {
