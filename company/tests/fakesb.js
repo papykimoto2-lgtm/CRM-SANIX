@@ -101,13 +101,18 @@
       return Promise.resolve({ data: { ok: true, results, cursor: 1 }, error: null });
     }
     if (name === "ai_competences_mesurees") return Promise.resolve({ data: T("ai_competences_fixture") ?? [], error: null });
+    if (name === "ai_memoire_chercher" && T("ai_agent_memory")) {
+      const w = String(args.p_q).toLowerCase().split(/\s+/).filter((x) => x.length > 3);
+      const rows = [...T("ai_agent_memory").map((m) => ({ origine: "agent", contenu: m.contenu, statut: m.statut, niveau_preuve: m.niveau_preuve ?? null, fiabilite: 50, source: m.source ?? null })), ...(T("ai_jarvis_memory") ?? []).map((m) => ({ origine: "president", contenu: m.contenu, statut: "valide", niveau_preuve: null, fiabilite: 100, source: null }))].filter((m) => w.some((x) => m.contenu.toLowerCase().includes(x)));
+      return Promise.resolve({ data: rows, error: null });
+    }
     if (name === "ai_memoire_metacognition" && T("ai_agent_memory")) return Promise.resolve({ data: T("ai_meta_fixture") ?? {}, error: null });
     // Centre mémoire (test memoire_test.js) : présent seulement si le jeu de données porte ai_agent_memory
     if (name.startsWith("ai_memoire_") && T("ai_agent_memory")) {
       const M = T("ai_agent_memory");
       if (name === "ai_memoire_centre") return Promise.resolve({ data: { souvenirs: M.length, partages: M.filter((m) => !m.agent_id).length, valides: M.filter((m) => m.statut === "valide").length, a_revalider: M.filter((m) => m.a_revalider).length, a_verifier: M.filter((m) => m.statut !== "valide" && !m.task_id).length, experiences: M.filter((m) => m.task_id).length, archives: 0, jarvis: (T("ai_jarvis_memory") ?? []).length, dossiers: 0, erreurs_repetees: M.filter((m) => (m.tags ?? []).includes("erreur_repetee")).length, par_agent: [{ agent_id: null, nom: "Partagée", n: M.filter((m) => !m.agent_id).length }, ...[...new Set(M.filter((m) => m.agent_id).map((m) => m.agent_id))].map((id) => ({ agent_id: id, nom: "Agent " + id, n: M.filter((m) => m.agent_id === id).length }))] }, error: null });
-      if (name === "ai_memoire_liste") return Promise.resolve({ data: M.filter((m) => (!args.p_agent || m.agent_id === args.p_agent) && (!args.p_partage || !m.agent_id) && (!args.p_statut || (args.p_statut === "a_revalider" ? m.a_revalider : args.p_statut === "valide" ? m.statut === "valide" : args.p_statut === "experience" ? m.task_id : m.statut !== "valide" && !m.task_id))).map((m) => ({ ...m, agent_nom: m.agent_id ? "Agent " + m.agent_id : "Partagée", experience: !!m.task_id, a_revalider: !!m.a_revalider })), error: null });
-      if (name === "ai_memoire_valider") { const i = M.findIndex((m) => m.id === args.p_id); if (i < 0) return Promise.resolve({ data: null, error: { message: "Souvenir introuvable" } }); if (args.p_ok) { M[i].statut = "valide"; M[i].task_id = null; M[i].a_revalider = false; } else M.splice(i, 1); return Promise.resolve({ data: { ok: true }, error: null }); }
+      if (name === "ai_memoire_liste") return Promise.resolve({ data: M.filter((m) => (!args.p_agent || m.agent_id === args.p_agent) && (!args.p_partage || !m.agent_id) && (!args.p_statut || (args.p_statut === "a_revalider" ? m.a_revalider : args.p_statut === "valide" ? m.statut === "valide" : args.p_statut === "experience" ? m.task_id : m.statut !== "valide" && !m.task_id))).map((m) => ({ ...m, agent_nom: m.agent_id ? "Agent " + m.agent_id : "Partagée", experience: !!m.task_id, a_revalider: !!m.a_revalider, fiabilite: m.statut === "valide" ? 85 : 35 })), error: null });
+      if (name === "ai_memoire_valider") { const i = M.findIndex((m) => m.id === args.p_id); if (i < 0) return Promise.resolve({ data: null, error: { message: "Souvenir introuvable" } }); if (args.p_ok) { M[i].statut = "valide"; M[i].task_id = null; M[i].a_revalider = false; if (args.p_niveau) M[i].niveau_preuve = args.p_niveau; } else M.splice(i, 1); return Promise.resolve({ data: { ok: true }, error: null }); }
     }
     // Mémoire de Jarvis (test memoire_test.js) : présente seulement si le jeu de données porte la table ai_jarvis_memory
     if (name.startsWith("ai_jarvis_") && T("ai_jarvis_memory")) {
