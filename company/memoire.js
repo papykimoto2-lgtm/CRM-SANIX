@@ -22,8 +22,8 @@ function draw(main) {
     <div class="card" style="margin-top:12px"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><label class="f">Agent<select id="mc-agent"><option value="">Tous</option><option value="partage" ${flt.agent === "partage" ? "selected" : ""}>Partagée</option>${(C.par_agent ?? []).filter((x) => x.agent_id).map((x) => html`<option value="${x.agent_id}" ${flt.agent === x.agent_id ? "selected" : ""}>${x.nom} (${x.n})</option>`)}</select></label>
       <label class="f">Statut<select id="mc-statut">${[["", "Tous"], ["valide", "Validés"], ["a_verifier", "À vérifier"], ["experience", "Expériences"], ["a_revalider", "À revalider (> 90 j)"]].map(([v, l]) => html`<option value="${v}" ${flt.statut === v ? "selected" : ""}>${l}</option>`)}</select></label></div>
       <div id="mc-list">${liste.length ? liste.map((r) => html`<div class="row" style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--line,#2a3140)" data-id="${r.id}"><span class="pill">${r.agent_nom}</span><span style="flex:1">${r.contenu}${r.source ? html` <span class="small muted">· ${r.source}</span>` : ""}</span>
-        <span class="small muted">${r.a_revalider ? "↻ à revalider" : r.statut === "valide" ? "✔ validé" : r.experience ? "mission" : "à vérifier"} · ${ago(r.created_at)}</span>
-        ${r.statut === "valide" && !r.a_revalider ? "" : html`<button class="btn sm ok" type="button" data-mc="ok" title="${r.a_revalider ? "Revalider" : "Valider"}">${r.a_revalider ? "↻" : "✔"}</button>`}<button class="btn sm bad" type="button" data-mc="ko" title="Invalider (archivé)">✕</button></div>`) : html`<p class="muted small">Aucun souvenir pour ce filtre.</p>`}</div></div>` : "";
+        <span class="pill" title="Indice indicatif de fiabilité (preuve + validation + fraîcheur), pas une probabilité de vérité">${r.fiabilite ?? 0}/100</span>${r.niveau_preuve ? html`<span class="pill" title="Niveau de preuve : 1 officiel … 6 forum">preuve ${r.niveau_preuve}</span>` : ""}<span class="small muted">${r.a_revalider ? "↻ à revalider" : r.statut === "valide" ? "✔ validé" : r.experience ? "mission" : "à vérifier"} · ${ago(r.created_at)}</span>
+        ${r.statut === "valide" && !r.a_revalider ? "" : html`<select class="mc-niv" title="Niveau de preuve" style="width:auto"><option value="">preuve ?</option>${[[1, "1 officiel"], [2, "2 éditeur"], [3, "3 étude"], [4, "4 média"], [5, "5 témoignage"], [6, "6 forum"]].map(([v, l]) => html`<option value="${v}" ${r.niveau_preuve === v ? "selected" : ""}>${l}</option>`)}</select><button class="btn sm ok" type="button" data-mc="ok" title="${r.a_revalider ? "Revalider" : "Valider"}">${r.a_revalider ? "↻" : "✔"}</button>`}<button class="btn sm bad" type="button" data-mc="ko" title="Invalider (archivé)">✕</button></div>`) : html`<p class="muted small">Aucun souvenir pour ce filtre.</p>`}</div></div>` : "";
   main.innerHTML = html`<section class="panel">${centreHtml}<h2 style="margin-top:18px">🧠 Mémoire de Jarvis</h2>
     <p class="sub">Ce que Jarvis retient de vous (préférences, décisions, consignes). Dites « Jarvis, retiens que… » ou ajoutez ici. Jamais de mot de passe ni de clé : ils sont refusés.</p>
     <form id="mem-form" class="card" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end"><label class="f" style="flex:1;min-width:220px">Nouveau souvenir<input id="mem-txt" maxlength="500" required placeholder="Ex. : je préfère les relances le matin"></label>
@@ -39,10 +39,12 @@ function draw(main) {
     $("#mc-statut").onchange = (e) => { flt.statut = e.target.value; refresh().catch((err) => toast(err.message, "bad")); };
     $("#mc-list").onclick = async (e) => {
       const b = e.target.closest("[data-mc]"); if (!b) return;
-      const id = Number(b.closest("[data-id]").dataset.id), ok = b.dataset.mc === "ok";
+      const row = b.closest("[data-id]"), id = Number(row.dataset.id), ok = b.dataset.mc === "ok";
       try {
-        let motif = null; if (!ok) { motif = prompt("Pourquoi invalider ce souvenir ? (facultatif)"); if (motif === null) return; }
-        await q(S.sb.rpc("ai_memoire_valider", { p_id: id, p_ok: ok, p_motif: motif || null })); toast(ok ? "Souvenir validé" : "Souvenir archivé", "ok"); await refresh();
+        let motif = null, type = null, niveau = null;
+        if (ok) { const v = row.querySelector(".mc-niv")?.value; niveau = v ? Number(v) : null; }
+        else { motif = prompt("Motif : obsolète, contredit, faux ou autre (+ précision facultative)"); if (motif === null) return; type = /^\s*obsol/i.test(motif) ? "obsolete" : /^\s*contredit/i.test(motif) ? "contredit" : /^\s*faux/i.test(motif) ? "faux" : "autre"; }
+        await q(S.sb.rpc("ai_memoire_valider", { p_id: id, p_ok: ok, p_motif: motif || null, p_niveau: niveau, p_motif_type: type })); toast(ok ? "Souvenir validé" : "Souvenir archivé", "ok"); await refresh();
       } catch (err) { toast(err.message, "bad"); }
     };
   }

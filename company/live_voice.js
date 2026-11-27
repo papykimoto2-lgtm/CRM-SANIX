@@ -443,6 +443,16 @@ export function initJarvis(A, stage) {
       else if (no) { pending = null; return reply("D'accord, j'annule."); }
       else pending = null;
     }
+    if (/\b(que sais tu|qu'? ?est ce que tu sais|as tu des preuves) (sur|de|du|des|d'|a propos de|au sujet de|pour)\b/.test(t) && !/\b(sur|de|a propos de|au sujet de) (moi|toi)\b/.test(t)) {
+      const topic = raw.replace(/^[\s\S]*?(?:que sais[- ]tu|qu['’ ]?est[- ]ce que tu sais|as[- ]tu des preuves)\s+(?:sur|de la|de l['’]|du|des|de|d['’]|à propos de|a propos de|au sujet de|pour)\s*/i, "").replace(/[?.!\s]+$/, "").trim();
+      if (topic.length < 3) return reply("Sur quel sujet ?");
+      try {
+        const r = await A.sb.rpc("ai_memoire_chercher", { p_q: topic, p_n: 6 }); if (r.error) throw new Error(r.error.message); const rows = r.data ?? [];
+        if (!rows.length) return reply(`Je ne dispose pas de preuves suffisantes sur « ${clip(topic, 60)} ». Aucun souvenir ne le mentionne.`);
+        const ok = rows.filter((x) => x.statut === "valide"), non = rows.filter((x) => x.statut !== "valide"), lab = (x) => clip(x.contenu, 110) + (x.origine === "president" ? " (votre consigne)" : x.niveau_preuve ? ` (validé, preuve niveau ${x.niveau_preuve})` : " (validé)");
+        return reply((ok.length ? `Ce que je sais avec validation : ` + ok.slice(0, 2).map(lab).join(" ; ") + ". " : "Rien de validé par vous sur ce sujet. ") + (non.length ? `${plural(non.length, "élément non vérifié", "éléments non vérifiés")} existe${non.length > 1 ? "nt" : ""} : à confirmer avant de s'y fier.` : ""));
+      } catch (e) { return reply("Je n'ai pas pu consulter ma mémoire : " + clip(e.message, 120)); }
+    }
     if (/(qu'? ?as tu appris|appris aujourd|sais tu faire de nouveau|nouvelles? competences? (acquises?|maitrisees?)|que dois tu (encore )?apprendre|ce que tu dois (encore )?apprendre|tes lacunes|que te manque t il)/.test(t)) {
       try {
         const r = await A.sb.rpc("ai_memoire_metacognition"); if (r.error) throw new Error(r.error.message); const m = r.data ?? {}, j = m.aujourdhui ?? {}, ap = m.a_apprendre ?? {};
