@@ -443,6 +443,14 @@ export function initJarvis(A, stage) {
       else if (no) { pending = null; return reply("D'accord, j'annule."); }
       else pending = null;
     }
+    if (/\b(objectifs?)\b/.test(t) && /(ou en|etat|point|avancement|situation|suivi|retard|atteint|bilan|sommes nous|en est)/.test(t) && !/(cree|creer|ajoute|supprime|abandonne)/.test(t)) {
+      try {
+        const r = await A.sb.rpc("ai_goals_etat"); if (r.error) throw new Error(r.error.message); const g = (r.data ?? []).filter((x) => x.statut === "actif");
+        if (!g.length) return reply("Aucun objectif actif. Créez-en dans l'onglet Objectifs.");
+        const lab = { en_bonne_voie: "en bonne voie", en_retard: "en retard", echeance_depassee: "échéance dépassée", atteint: "atteint" }, bad = g.filter((x) => x.etat === "en_retard" || x.etat === "echeance_depassee");
+        return reply(`${plural(g.length, "objectif actif", "objectifs actifs")}${bad.length ? `, dont ${bad.length} à risque` : ", tous en bonne voie"}. ` + g.slice(0, 4).map((x) => `${clip(x.titre, 50)} : ${x.fait} sur ${x.cible}, ${lab[x.etat] ?? x.etat}`).join(" ; ") + ".");
+      } catch (e) { return reply("Je n'ai pas pu consulter les objectifs : " + clip(e.message, 120)); }
+    }
     if (/\b(que sais tu|qu'? ?est ce que tu sais|as tu des preuves) (sur|de|du|des|d'|a propos de|au sujet de|pour)\b/.test(t) && !/\b(sur|de|a propos de|au sujet de) (moi|toi)\b/.test(t)) {
       const topic = raw.replace(/^[\s\S]*?(?:que sais[- ]tu|qu['’ ]?est[- ]ce que tu sais|as[- ]tu des preuves)\s+(?:sur|de la|de l['’]|du|des|de|d['’]|à propos de|a propos de|au sujet de|pour)\s*/i, "").replace(/[?.!\s]+$/, "").trim();
       if (topic.length < 3) return reply("Sur quel sujet ?");

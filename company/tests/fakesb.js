@@ -101,6 +101,16 @@
       return Promise.resolve({ data: { ok: true, results, cursor: 1 }, error: null });
     }
     if (name === "ai_competences_mesurees") return Promise.resolve({ data: T("ai_competences_fixture") ?? [], error: null });
+    // Goal Engine (test objectifs_test.js) : présent seulement si le jeu de données porte ai_goals_fixture
+    if (name.startsWith("ai_goal") && T("ai_goals_fixture")) {
+      const G = T("ai_goals_fixture");
+      if (name === "ai_goals_etat") return Promise.resolve({ data: JSON.parse(JSON.stringify(G)), error: null });
+      if (name === "ai_goal_creer") {
+        if (!args.p_titre || args.p_titre.length < 3) return Promise.resolve({ data: null, error: { message: "titre invalide" } });
+        G.unshift({ id: "g" + (G.length + 10), titre: args.p_titre, metrique: args.p_metrique, produit: args.p_produit, agent_id: args.p_agent, agent_nom: null, cible: args.p_cible, baseline: 0, actuel: 0, fait: 0, pct: 0, temps_pct: 0, etat: "en_bonne_voie", statut: "actif", debut: new Date().toISOString(), echeance: args.p_echeance }); return Promise.resolve({ data: { ok: true }, error: null });
+      }
+      if (name === "ai_goal_cloturer") { const g = G.find((x) => x.id === args.p_id); if (g) { g.statut = args.p_statut; g.etat = args.p_statut; } return Promise.resolve({ data: null, error: null }); }
+    }
     if (name === "ai_memoire_chercher" && T("ai_agent_memory")) {
       const w = String(args.p_q).toLowerCase().split(/\s+/).filter((x) => x.length > 3);
       const rows = [...T("ai_agent_memory").map((m) => ({ origine: "agent", contenu: m.contenu, statut: m.statut, niveau_preuve: m.niveau_preuve ?? null, fiabilite: 50, source: m.source ?? null })), ...(T("ai_jarvis_memory") ?? []).map((m) => ({ origine: "president", contenu: m.contenu, statut: "valide", niveau_preuve: null, fiabilite: 100, source: null }))].filter((m) => w.some((x) => m.contenu.toLowerCase().includes(x)));
