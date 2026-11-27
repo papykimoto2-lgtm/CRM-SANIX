@@ -17,12 +17,16 @@
     <div class="chips" id="status-chips" aria-live="polite"></div>
     <div class="grow"></div>
     <a class="btn sm" href="../" title="Retour à SANIX CRM">← SANIX CRM</a>
-    <button class="btn sm" id="open-live" type="button" title="Ouvrir la salle de contrôle dans une autre fenêtre">🖥 Salle de contrôle</button>
-    <button class="btn sm" id="txt-size" type="button" aria-label="Taille du texte">Aa</button>
-    <span class="chip" id="who"></span>
-    <button class="btn sm" id="logout" type="button">Déconnexion</button>
+    <button class="btn sm menu-btn" id="menu-btn" type="button" aria-expanded="false" aria-controls="topmenu" aria-label="Menu">⋯ Menu</button>
+    <div class="topmenu" id="topmenu">
+      <button class="btn sm" id="open-live" type="button" title="Ouvrir la salle de contrôle dans une autre fenêtre">🖥 Salle de contrôle</button>
+      <button class="btn sm" id="txt-size" type="button" aria-label="Taille du texte">Aa</button>
+      <span class="chip" id="who"></span>
+      <button class="btn sm" id="logout" type="button">Déconnexion</button>
+    </div>
   </header>
   <nav id="tabs" role="tablist" aria-label="Sections"></nav>
+  <div class="tabs-sel"><select id="tabs-sel" aria-label="Section"></select></div>
   <main id="main"></main>
 </div>
 
