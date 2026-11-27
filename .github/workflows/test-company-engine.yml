@@ -88,7 +88,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -d vc_tpl -c "select pg_get_functiondef('public.ai_tasks_after()'::regprocedure);"
 
       - name: Tests bloquants — garde-fou et précontrôle (T9 + T10)
-        run: deno test --no-check --allow-all --import-map=supabase/functions/tests/import_map.json --filter "T9|T10" supabase/functions/tests/engine_test.ts
+        run: deno test --no-check --allow-all --import-map=supabase/functions/tests/import_map.json --filter "/^T(9|10) /" supabase/functions/tests/engine_test.ts
 
       - name: Suite historique — diagnostic non bloquant
         continue-on-error: true
