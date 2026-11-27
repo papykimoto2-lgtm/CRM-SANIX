@@ -60,3 +60,10 @@ Chaque agent a une mémoire de travail, en mode API comme en mode abonnement (ta
 
 ## Connexion en masse (migration `20261217000000_abonnement_connecter_tous.sql`)
 Paramétrage → Agents → « Connecter tous les agents à l'abonnement Claude » : `ai_cfg_set_mode_execution_tous('abonnement')` (direction seule, journalisé, agents archivés exclus). « Tous en mode API » annule. `ai_abonnement_etat()` renvoie le nombre d'agents par mode, les missions en attente et la dernière activité de l'exécuteur. La tâche planifiée Claude Code (prompt : `docs/prompt_executeur_abonnement.txt`) reste indispensable : le CRM ne peut pas lancer Claude lui-même.
+
+## Assistant IA de la fiche prospect du CRM (migration `20261224050000_cockpit_abonnement.sql`)
+Les onglets Stratégie, Message WhatsApp, Objections, Relance et Closing de la fiche prospect n'appellent plus l'API Anthropic par défaut : chaque demande devient une mission « Cockpit CRM · <onglet> · <fiche> » confiée à un agent commercial en mode `abonnement` (`ia_nego_1`, ou `ia_wa_1` pour WhatsApp et relance).
+- `ai_cockpit_demander(rid, onglet, consigne)` crée la mission (opérateurs seulement, 20 demandes par heure, une seule mission ouverte par fiche et onglet) ; `ai_cockpit_etat(rid, onglet)` renvoie son état et le texte rédigé.
+- L'exécuteur réclame la mission comme les autres, rédige le texte et clôture avec `ai_abonnement_cloturer` : le `rapport` est le texte affiché dans la fiche.
+- Le texte n'est jamais envoyé automatiquement. Le résultat est différé (prochaine exécution de la routine) ; la fiche se met à jour toute seule et réaffiche un résultat de moins de 24 h.
+- Retour à l'API (instantané, payant) : bouton « Abonnement Claude » dans l'assistant, préférence mémorisée sur l'appareil.

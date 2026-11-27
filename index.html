@@ -4738,6 +4738,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
             <span id="ai-gen-ico">✨</span> <span id="ai-gen-lbl">Générer</span>
           </button>
           <button onclick="aiGenerate(true)" style="padding:5px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer" title="Régénérer">🔄</button>
+          <button id="ai-mode-btn" onclick="aiCockpitToggleMode()" style="padding:5px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;margin-left:auto" title="Changer de moteur"></button>
         </div>
         <!-- Output IA -->
         <div id="ai-output" style="min-height:120px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px;font-size:12px;line-height:1.7;color:var(--text2)">
@@ -9739,6 +9740,7 @@ function showClientDetail(id) {
   // Afficher cockpit IA si prospect
   const cockpit = document.getElementById('prospect-ai-cockpit');
   if(cockpit) cockpit.style.display = c.statut==='prospect' ? '' : 'none';
+  try{ aiCockpitBadge(); }catch(e){}
   // Score badge
   const sb = document.getElementById('ai-score-badge');
   if(sb) { sb.textContent=`Score: ${score}%`; sb.style.background=score>=70?'rgba(5,150,105,.3)':score>=40?'rgba(217,119,6,.3)':'rgba(220,38,38,.3)'; }
@@ -17311,6 +17313,64 @@ function aiLogInteraction(clientId, type, ico) {
   showClientDetail(clientId);
 }
 
+const AI_COCKPIT_MODE_KEY='sanix_cockpit_mode';
+let _aiPollToken=0;
+function aiCockpitMode(){ try{ return localStorage.getItem(AI_COCKPIT_MODE_KEY)==='api'?'api':'abonnement'; }catch(e){ return 'abonnement'; } }
+function aiCockpitBadge(){
+  const b=document.getElementById('ai-mode-btn'); if(!b) return;
+  const a=aiCockpitMode()==='abonnement';
+  b.textContent=a?'🟣 Abonnement Claude':'⚡ API Anthropic';
+  b.title=a?'Réponse rédigée par Claude via votre abonnement (différée, sans coût API). Cliquer pour passer à l\'API.':'Réponse instantanée via l\'API Anthropic (payante, plafond). Cliquer pour revenir à l\'abonnement.';
+}
+function aiCockpitToggleMode(){
+  const m=aiCockpitMode()==='api'?'abonnement':'api';
+  try{ localStorage.setItem(AI_COCKPIT_MODE_KEY,m); }catch(e){}
+  aiCockpitBadge();
+  showToast(m==='abonnement'?'🟣 Assistant IA : abonnement Claude (réponse différée, sans coût API)':'⚡ Assistant IA : API Anthropic (instantané, payant)');
+}
+function aiFormatText(text){
+  return '<div style="font-size:12px;line-height:1.8;white-space:pre-wrap;color:var(--text)">'+
+    String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
+      .replace(/^(\d+\.)/gm,'<br><strong>$1</strong>')
+      .replace(/^(OBJECTION|RÉPONSE|STRATÉGIE|ANALYSE|ACTION|SIGNAL|CALENDRIER|TECHNIQUE|SCRIPT|CONCESSION)(.*)$/gm,
+        '<div style="margin-top:10px"><span style="background:var(--primary-l);color:var(--primary);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:800">$1</span>$2</div>')
+    +'</div>';
+}
+const aiAgo=iso=>{ const m=Math.max(0,Math.round((Date.now()-Date.parse(iso))/60000)); return m<2?"à l'instant":m<60?'il y a '+m+' min':m<1440?'il y a '+Math.round(m/60)+' h':'il y a '+Math.round(m/1440)+' j'; };
+/** Assistant IA via l'abonnement Claude : la demande devient une mission pour un agent en mode abonnement ; l'exécuteur Claude Code la rédige et le texte s'affiche ici. */
+async function aiCockpitAbonnement(c, prompt, regen){
+  const rid=c._rid||('local-'+c.id), onglet=_aiCurrentTab, token=++_aiPollToken;
+  const outEl=document.getElementById('ai-output'), actEl=document.getElementById('ai-actions');
+  const genLbl=document.getElementById('ai-gen-lbl'), genIco=document.getElementById('ai-gen-ico');
+  const rpc=(fn,body)=>aisApi('/rest/v1/rpc/'+fn,{method:'POST',body:JSON.stringify(body),timeout:20000});
+  const encore=()=>token===_aiPollToken && _aiCurrentClientId===c.id && _aiCurrentTab===onglet && !document.getElementById('modal-client-detail').classList.contains('hidden');
+  const banner=(t)=>'<div style="background:#F3E8FF;color:#6B21A8;border-radius:8px;padding:8px 12px;font-size:11px;margin-bottom:10px">'+t+'</div>';
+  const fin=(e)=>{ _aiLastOutput=e.rapport; outEl.innerHTML=banner('🟣 Rédigé par Claude (abonnement) · '+aiAgo(e.termine_le))+aiFormatText(e.rapport); actEl.style.display='flex'; genLbl.textContent='Régénérer'; genIco.textContent='✨'; };
+  const attente=(e)=>{ outEl.innerHTML=banner('🟣 Demande transmise à Claude via votre abonnement · '+(e&&e.demande_le?aiAgo(e.demande_le):"à l'instant"))+
+    '<div style="display:flex;align-items:center;gap:10px;color:var(--primary);padding:10px 4px"><div style="width:18px;height:18px;border:2px solid var(--primary);border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite"></div><span style="font-size:12px">'+(e&&e.statut==='en_cours'?'Claude rédige le texte…':"En attente de l'exécuteur Claude (réponse à sa prochaine exécution). Cet onglet se met à jour tout seul.")+'</span></div>'; actEl.style.display='none'; genLbl.textContent='En attente'; genIco.textContent='⏳'; };
+  try{
+    let e=await rpc('ai_cockpit_etat',{p_rid:rid,p_onglet:onglet});
+    if(!regen && e.statut==='terminee' && e.termine_le && Date.now()-Date.parse(e.termine_le)<864e5){ fin(e); return; }
+    if(regen || !['a_faire','en_cours','attente_sous_taches','attente_validation'].includes(e.statut)){
+      const d=await rpc('ai_cockpit_demander',{p_rid:rid,p_onglet:onglet,p_prompt:prompt});
+      e=await rpc('ai_cockpit_etat',{p_rid:rid,p_onglet:onglet}); if(d&&d.deja===false) e.demande_le=e.demande_le||new Date().toISOString();
+    }
+    attente(e);
+    for(let i=0;i<80 && encore();i++){
+      await new Promise(r=>setTimeout(r,15000)); if(!encore()) return;
+      e=await rpc('ai_cockpit_etat',{p_rid:rid,p_onglet:onglet});
+      if(e.statut==='terminee' && e.rapport){ fin(e); return; }
+      if(e.statut==='bloquee'||e.statut==='echouee'){ outEl.innerHTML='<div style="color:var(--danger);font-size:12px;padding:12px">❌ La mission n\'a pas abouti'+(e.motif?' : '+String(e.motif).replace(/</g,'&lt;'):'')+'<br><small>Cliquez sur 🔄 pour relancer.</small></div>'; genLbl.textContent='Réessayer'; genIco.textContent='⚡'; return; }
+      attente(e);
+    }
+    if(encore()){ genLbl.textContent='Actualiser'; genIco.textContent='🔄'; }
+  }catch(err){
+    outEl.innerHTML='<div style="color:var(--danger);font-size:12px;padding:12px">❌ '+String(err.message||err).replace(/</g,'&lt;')+'<br><small>Vérifiez la session opérateur (agent IA connecté) ou passez en mode API.</small></div>';
+    genLbl.textContent='Réessayer'; genIco.textContent='⚡';
+  }
+}
+
 async function aiGenerate(regen=false) {
   const c = CLIENTS.find(x=>x.id===_aiCurrentClientId);
   if(!c) return;
@@ -17435,6 +17495,7 @@ Fournis :
 Style direct, percutant, adapté au marché ivoirien.`
   };
 
+  if(aiCockpitMode()==='abonnement'){ await aiCockpitAbonnement(c, prompts[_aiCurrentTab]||prompts.strategie, regen); return; }
   try {
     const data = await aisApi('/functions/v1/ai-sales-director', {
       method:'POST',
@@ -17443,14 +17504,7 @@ Style direct, percutant, adapté au marché ivoirien.`
     });
     const text = String(data?.text||'').trim() || 'Le service IA n’a retourné aucun contenu.';
     _aiLastOutput = text;
-    // Formatter la réponse
-    outEl.innerHTML = '<div style="font-size:12px;line-height:1.8;white-space:pre-wrap;color:var(--text)">'+
-      text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-          .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
-          .replace(/^(\d+\.)/gm,'<br><strong>$1</strong>')
-          .replace(/^(OBJECTION|RÉPONSE|STRATÉGIE|ANALYSE|ACTION|SIGNAL|CALENDRIER|TECHNIQUE|SCRIPT|CONCESSION)(.*)$/gm,
-            '<div style="margin-top:10px"><span style="background:var(--primary-l);color:var(--primary);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:800">$1</span>$2</div>')
-      +'</div>';
+    outEl.innerHTML = aiFormatText(text);
     actEl.style.display='flex';
     genLbl.textContent='Régénérer'; genIco.textContent='✨';
   } catch(err) {
