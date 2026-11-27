@@ -730,3 +730,16 @@ body.exec-view .executive-facts{padding:8px 0}
   .ov-bar button[data-ov]{display:none}
   .ov-bar.open button[data-ov]{display:inline-flex}
 }
+
+/* Téléphone : zone neuronale plus haute, filtres du réseau lisibles (grille au lieu de lignes superposées) */
+@media (max-width:640px){
+  .stage{min-height:80dvh}
+  .stage:has(#relations-canvas:not([hidden])){min-height:96dvh}
+  .relations-filters{top:44px;left:8px;right:52px;display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:7px}
+  .relations-filters label{flex-direction:column;align-items:stretch;gap:2px;min-width:0}
+  .relations-filters label:nth-of-type(3){grid-column:1/-1}
+  .relations-filters select,.relations-filters input{height:32px;min-width:0;width:100%;font-size:16px}
+  .relations-filters #relations-reset{grid-column:1;height:32px}
+  .relations-filters .relations-camera{grid-column:2;justify-content:flex-end}
+  .relations-filters small{grid-column:1/-1;width:auto;margin:0}
+}
