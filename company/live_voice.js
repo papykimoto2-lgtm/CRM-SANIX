@@ -5,6 +5,7 @@
 const norm = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9' ]+/g, " ").replace(/\s+/g, " ").trim();
 const clip = (s, n) => { s = String(s ?? ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const ago = (iso) => { const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return m < 2 ? "à l'instant" : m < 60 ? `il y a ${m} minutes` : m < 1440 ? `il y a ${Math.round(m / 60)} heures` : `il y a ${Math.round(m / 1440)} jours`; };
 const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
 const WAKE = /\b(jarvis|jarvi|jarvice|jarviss|jarvys|gervais|gervaise|charvis|djarvis|sanix)\b/;
 const PRODUCTS = { autogarage: [/auto ?garage|garage/, "AutoGarage Pro"], angels: [/angel|livraison/, "Angel's Livraison"], immosuite: [/immo/, "ImmoSuite"], avicosuite: [/avico|avicole|avinest|agro/, "AvicoSuite"], aluexpert: [/alu/, "AluExpert"] };
@@ -293,6 +294,30 @@ export function initJarvis(A, stage) {
     throw new Error("action finance inconnue");
   }
   const CRM_LAB = { crm_update: "modifiée", crm_log: "mise à jour dans l'historique", crm_create: "créée", crm_delete: "supprimée" };
+  /** Réponses e-mail des prospects et brouillons en attente de validation : lecture seule, texte lu tel quel (jamais exécuté). Aucune autre partie de la boîte n'est lue. */
+  const mailClean = (b) => String(b ?? "").split(/\r?\n/).filter((l) => !/^\s*>/.test(l)).join(" ").replace(/\s+(Le|On) .{5,120}(a écrit|wrote)\s*:.*$/i, "").replace(/\s+/g, " ").trim().replace(/[.!?…]+$/, "");
+  async function mailsReply(t) {
+    const [rep, app, msgs] = await Promise.all([
+      A.sb.from("crm_mail_replies").select("mail_id,from_email,received_at,body").order("received_at", { ascending: false }).limit(10),
+      A.sb.from("ai_approvals").select("id", { count: "exact", head: true }).eq("statut", "en_attente").ilike("motif", "Réponse e-mail%"),
+      A.sb.from("ai_messages").select("id", { count: "exact", head: true }).eq("canal", "email").eq("statut", "a_valider")]);
+    if (rep.error) throw rep.error;
+    const replies = rep.data ?? [], attente = (app.count ?? 0) + (msgs.count ?? 0);
+    const tail = attente ? ` ${plural(attente, "réponse rédigée attend", "réponses rédigées attendent")} votre validation.` : "";
+    if (/(valide|validation|brouillon|attente)/.test(t) && !/(lis|lire)/.test(t)) return attente ? `${plural(attente, "réponse e-mail attend", "réponses e-mail attendent")} votre validation, dans la section À valider.` : "Aucune réponse e-mail n'attend votre validation.";
+    if (!replies.length) return "Aucun prospect n'a répondu par e-mail pour le moment." + tail;
+    const ids = [...new Set(replies.map((r) => r.mail_id))];
+    const { data: mails } = await A.sb.from("crm_mails").select("id,to_email,client_rid,subject").in("id", ids);
+    const rows = await loadCrm().catch(() => []), byMail = new Map((mails ?? []).map((m) => [m.id, m]));
+    const nom = (r) => { const m = byMail.get(r.mail_id); const c = rows.find((x) => m?.client_rid && x.rid === m.client_rid); return c?.nom || r.from_email || m?.to_email || "un prospect"; };
+    const when = (r) => ago(r.received_at);
+    const q = t.replace(/.*(reponse|repondu|mail|email|courrier)s?( de| du| d| des)? ?/, "").trim();
+    const hit = q.length > 2 ? replies.find((r) => norm(nom(r)).includes(q) || norm(r.from_email).includes(q)) : null;
+    if (hit) return `Réponse de ${nom(hit)}, ${when(hit)} : ${clip(mailClean(hit.body), 420) || "message vide"}.${tail}`;
+    if (/(lis|lire|detail|contenu|que disent|dit)/.test(t)) return replies.slice(0, 3).map((r) => `${nom(r)}, ${when(r)} : ${clip(mailClean(r.body), 160) || "message vide"}`).join(". ") + "." + tail;
+    const n = replies.length, r0 = replies[0];
+    return `${plural(n, "réponse e-mail récente", "réponses e-mail récentes")}. La dernière vient de ${nom(r0)}, ${when(r0)}.${tail} Dites « lis les réponses » pour les entendre.`;
+  }
   async function crmLocalReply(t) {
     const rows = await loadCrm(); let sel = rows, lab = "";
     for (const [, [rx, label]] of Object.entries(PRODUCTS)) if (rx.test(t)) { sel = rows.filter((r) => rx.test(norm(r.logiciel))); lab = " " + label; break; }
@@ -423,6 +448,7 @@ export function initJarvis(A, stage) {
     if ((m = /^(?:montre|focus|zoom sur|va sur|affiche|approche toi de|selectionne)(?: moi)?(?: l agent| le| la| les)? (.+)/.exec(t))) { const a = findAgent(m[1]); if (a && view()?.focus(a.id)) return reply(`Voici ${a.nom}. ${agentReply(a)}`); if (!a) return reply("Je ne trouve pas cet agent."); }
     if (/mode (autonome|plein pouvoir|pleine capacite|plein regime)|(passe|mets|active).*(autonome)/.test(t)) { setAuto(true); return reply("Mode autonome activé. Je lance moi-même les consignes, missions et rapports, sans vous demander confirmation. Rien n'est envoyé à l'extérieur."); }
     if (/mode (prudent|manuel|confirmation)|(desactive|quitte).*(autonome)/.test(t)) { setAuto(false); return reply("Mode prudent. Je vous demanderai confirmation avant chaque action."); }
+    if (/(mail|courrier|reponse|repondu|boite)/.test(t) && /(prospect|client|e mail|mail|courrier|boite|reponses?|repondu|brouillon|valid)/.test(t) && !/(envoie|envoi|ecris|redige|supprime)/.test(t)) { try { return reply(await mailsReply(t)); } catch { return reply("Je n'arrive pas à lire les réponses e-mail pour le moment."); } }
     { const L = await askLLM(raw); if (L) return L; }   // conversation : Jarvis comprend la demande en langage naturel ; sans serveur, repli sur les réponses locales ci-dessous
     if (/(prospect|crm|clients?\b|fiches? (client|prospect))/.test(t)) { try { return reply(await crmLocalReply(t)); } catch { /* CRM indisponible */ } }
     if (/quelle heure|il est quelle heure/.test(t)) return reply("Il est " + new Intl.DateTimeFormat("fr-FR", { timeZone: "Africa/Abidjan", hour: "2-digit", minute: "2-digit" }).format(new Date()).replace(":", " heures ") + " à Abidjan.");
