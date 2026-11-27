@@ -28,6 +28,17 @@ const T = (name: string, fn: () => Promise<void>) => Deno.test({ name, fn, sanit
 T("T1 · instruction → organisation → exécution en chaîne → synthèse au président", async () => {
   await freshDb();
   Deno.env.set("FIRECRAWL_API_KEY", "test-firecrawl-key");
+  // Firecrawl simulé : create_prospect n'accepte qu'une URL lue avec firecrawl_scrape pendant la mission.
+  const realFetchT1 = globalThis.fetch;
+  globalThis.fetch = ((url: string | URL | Request, init?: RequestInit) => {
+    if (String(url).startsWith("https://api.firecrawl.dev/")) {
+      const page = String(JSON.parse(String(init?.body ?? "{}")).url);
+      return Promise.resolve(new Response(JSON.stringify({ success: true,
+        data: { markdown: `# ${page}\nPromoteur immobilier agréé à Abidjan. Contact publié sur la page.`, metadata: { url: page, title: "Promoteur" } } }), { status: 200 }));
+    }
+    return realFetchT1(url as any, init);
+  }) as typeof fetch;
+  try {
   let respCode = "", hunterCode = "", qualifCode = "", hunterTask = "";
   script({
     "SANIX AI GENERAL DIRECTOR": [
@@ -65,6 +76,11 @@ T("T1 · instruction → organisation → exécution en chaîne → synthèse au
       () => done("Équipe commerciale en place : 3 prospects trouvés, 2 qualifiés.", ["3 prospects", "2 qualifiés"]),
     ],
     "IA Prospect Hunter": [
+      () => reply([
+        use("firecrawl_scrape", { url: "https://exemple.ci/alpha" }),
+        use("firecrawl_scrape", { url: "https://exemple.ci/beta" }),
+        use("firecrawl_scrape", { url: "https://exemple.ci/gamma" }),
+      ]),
       () => reply([
         use("create_prospect", { entreprise: "Promoteur Alpha", secteur: "Immobilier", ville: "Abidjan", telephone: "0707000001", source_url: "https://exemple.ci/alpha", besoins_detectes: ["suivi des ventes"], produit_recommande: "immosuite" }),
         use("create_prospect", { entreprise: "Promoteur Beta", secteur: "Immobilier", ville: "Abidjan", telephone: "0707000002", email: "contact@beta.ci", source_url: "https://exemple.ci/beta", besoins_detectes: [], produit_recommande: "immosuite" }),
@@ -110,7 +126,8 @@ T("T1 · instruction → organisation → exécution en chaîne → synthèse au
   eq(Number(await val("select evaluation from ai_agent_tasks where titre like 'Trouver 3%'")), 85, "évaluation enregistrée");
   eq(await val("select incidents_consecutifs from ai_agents where code like '%hunter%'"), 0, "aucun incident");
   eq(await val("select activite from ai_agents where code like '%hunter%'"), "mission_terminee", "activité de fin de mission");
-  assert(Number(await val("select count(*) from ai_agent_memory")) === 1, "mémoire enregistrée");
+  eq(Number(await val("select count(*) from ai_agent_memory where task_id is null")), 1, "mémoire explicite enregistrée (memoriser)");
+  eq(Number(await val("select count(*) from ai_agent_memory where task_id is not null and 'mission' = any(tags)")), 4, "résumé automatique de chaque mission terminée");
   eq(Number(await val("select count(*) from ai_agent_communications where type = 'rapport'")), 3, "rapports hiérarchiques tracés (chercheur→responsable, qualificateur→responsable, directeur commercial→DG)");
 
   const cout = Number(await val("select coalesce(sum(cout_usd),0) from ai_actions where action = 'llm_turn'"));
@@ -119,7 +136,7 @@ T("T1 · instruction → organisation → exécution en chaîne → synthèse au
   eq(Number(await val("select count(*) from ai_incidents")), 0, "aucun incident");
   const stats = await rows("select nom, attribuees, terminees from ai_agent_stats(now() - interval '1 day', now() + interval '1 minute') where terminees > 0 order by nom");
   assert(stats.length >= 4, "statistiques de performance disponibles");
-  Deno.env.delete("FIRECRAWL_API_KEY");
+  } finally { globalThis.fetch = realFetchT1; Deno.env.delete("FIRECRAWL_API_KEY"); }
 });
 
 
@@ -207,7 +224,10 @@ T("T3 · autorité hiérarchique, anti-boucle, doublons, privilèges", async () 
   });
   const o1 = await runTask(racine, { deadline: Date.now() + 60000 });
   const o2 = await runTask(tA1, { deadline: Date.now() + 60000 });
-  eq([o1, o2], ["terminee", "terminee"], "missions terminées malgré les refus");
+  // Les refus n'interrompent pas les missions ; comme chacune a ouvert une sous-mission légitime (Travail A, Suite),
+  // sa clôture est différée jusqu'à leur traitement (garde-fou des missions mères, voir T9).
+  eq([o1, o2], ["attente", "attente"], "missions poursuivies malgré les refus, clôture différée");
+  eq(await val("select statut from ai_agent_tasks where id = $1", [racine]), "attente_sous_taches", "mission racine en attente de sa sous-mission");
   assert(e1[0].includes("identique est déjà ouverte"), `doublon refusé : ${e1[0]}`);
   assert(e1[1].includes("pas ton subordonné"), `autorité : ${e1[1]}`);
   assert(e1[2].includes("pas ton subordonné"), `ordre à un supérieur refusé : ${e1[2]}`);
@@ -257,6 +277,13 @@ T("T4 · communication externe : validation → envoi ; interdite ; autonome ; d
     await flushOutbox();
     eq(await val("select statut from ai_messages where id = $1", [m.id]), "a_envoyer", "WhatsApp non configuré : reste en file");
     Deno.env.set("WHATSAPP_TOKEN", "tok"); Deno.env.set("WHATSAPP_PHONE_NUMBER_ID", "123");
+    // fenêtre d'envoi fermée à coup sûr (heure courante d'Abidjan exclue) : rien ne part, le message reste en file
+    await sql(`update ai_governance set envoi_planifie = true, envoi_jours = '{1,2,3,4,5,6,7}',
+      envoi_debut = case when extract(hour from now() at time zone 'Africa/Abidjan') < 12 then '13:00'::time else '01:00'::time end,
+      envoi_fin = case when extract(hour from now() at time zone 'Africa/Abidjan') < 12 then '14:00'::time else '02:00'::time end`);
+    eq((await flushOutbox()).envoyes, 0, "hors fenêtre d'envoi : rien ne part");
+    eq(await val("select statut from ai_messages where id = $1", [m.id]), "a_envoyer", "hors fenêtre : reste en file");
+    await sql("update ai_governance set envoi_planifie = false");   // fenêtre levée
     const f = await flushOutbox();
     eq(f.envoyes, 1, "envoi après configuration");
     eq(await val("select statut from ai_messages where id = $1", [m.id]), "envoye", "message envoyé");

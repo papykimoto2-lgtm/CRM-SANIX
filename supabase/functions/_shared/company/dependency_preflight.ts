@@ -47,9 +47,13 @@ export function diagnoseAgentDependencies(
       status: configured ? "configured_unverified" : "missing",
       detail: configured
         ? "Secret présent ; validité et crédits non testés (aucun appel payant au précontrôle)"
-        : "Secret absent des Edge Functions Supabase",
+        : needsProspecting
+          ? "Secret absent des Edge Functions Supabase"
+          : "Secret absent : la lecture de pages échouera si l'agent l'utilise, mais ses autres missions ne sont pas bloquées",
     });
-    if (!configured) blockers.push("Configurer FIRECRAWL_API_KEY dans Supabase → Edge Functions → Secrets");
+    // Seule la création de fiches dépend de Firecrawl (source lue obligatoire) : un agent qui possède seulement
+    // firecrawl_scrape (directeur, marketing…) n'est pas bloqué pour une mission qui n'en a pas besoin.
+    if (!configured && needsProspecting) blockers.push("Configurer FIRECRAWL_API_KEY dans Supabase → Edge Functions → Secrets");
   }
 
   return { ready: blockers.length === 0, checks, blockers };
