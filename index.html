@@ -361,6 +361,12 @@ select.form-input{cursor:pointer}
 .sp-close{position:absolute;top:18px;right:18px;z-index:6;width:34px;height:34px;background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.25);color:#fff}
 .sp-close:hover{background:#EF4444}
 .sp-expand{right:60px}
+.sp-nav{position:absolute;top:18px;z-index:6;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;line-height:1;font-weight:700;transition:all .15s;user-select:none}
+.sp-nav:hover{background:var(--primary)}
+.sp-nav[aria-disabled=true]{opacity:.35;cursor:default;pointer-events:none}
+.sp-nav-next{right:102px}.sp-nav-prev{right:144px}
+.sp-nav-pos{position:absolute;top:26px;right:186px;z-index:6;color:rgba(255,255,255,.85);font-size:11px;font-weight:700;white-space:nowrap}
+@media(max-width:700px){.sp-nav-next{right:60px}.sp-nav-prev{right:102px}.sp-nav-pos{right:144px}}
 .sp-expand:hover{background:var(--primary)}
 .sp-overlay.sp-full .smart-panel{width:100%;max-width:none;border-radius:0;animation:none}
 .sp-overlay.sp-full .sp-scroll>div[style*="padding:20px 24px"],.sp-overlay.sp-full #client-detail-body{max-width:1280px;margin-left:auto;margin-right:auto}
@@ -4693,6 +4699,9 @@ Seriez-vous disponible pour une démonstration {rdv} ?
 <div id="modal-client-detail" class="modal-overlay hidden sp-overlay">
   <div class="smart-panel">
     <div class="modal-close sp-close sp-expand" role="button" tabindex="0" title="Plein écran" aria-label="Afficher en plein écran" onclick="spToggleFull('modal-client-detail')">⛶</div>
+    <div class="sp-nav sp-nav-next" id="sp-nav-next" role="button" tabindex="0" title="Fiche suivante (→)" aria-label="Fiche suivante" onclick="spNavGo(1)">›</div>
+    <div class="sp-nav sp-nav-prev" id="sp-nav-prev" role="button" tabindex="0" title="Fiche précédente (←)" aria-label="Fiche précédente" onclick="spNavGo(-1)">‹</div>
+    <span class="sp-nav-pos" id="sp-nav-pos" aria-live="polite"></span>
     <div class="modal-close sp-close" onclick="document.getElementById('modal-client-detail').classList.add('hidden')">✕</div>
     <div id="sp-header"></div>
     <div class="sp-scroll">
@@ -4784,6 +4793,39 @@ function spToggleFull(id, force){
   },true);
   document.querySelectorAll('.sp-expand').forEach(b=>b.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); b.click(); } }));
 })();
+</script>
+<script>
+/* Fiche client : flèches ‹ › et touches ← → pour passer au prospect précédent / suivant de la liste affichée (ordre, filtres et recherche conservés). */
+let _spNavIds=[];
+function spNavList(){
+  const cur=CLIENTS.find(x=>x.id===_aiCurrentClientId); if(!cur) return [];
+  if(_spNavIds.includes(cur.id)) return _spNavIds.filter(id=>CLIENTS.some(x=>x.id===id));
+  return CLIENTS.filter(x=>x.statut===cur.statut).map(x=>x.id);
+}
+function spNavRefresh(){
+  const ids=spNavList(), i=ids.indexOf(_aiCurrentClientId);
+  const prev=document.getElementById('sp-nav-prev'), next=document.getElementById('sp-nav-next'), pos=document.getElementById('sp-nav-pos');
+  if(!prev||!next||!pos) return;
+  prev.setAttribute('aria-disabled', String(i<=0)); next.setAttribute('aria-disabled', String(i<0||i>=ids.length-1));
+  pos.textContent = i>=0 ? (i+1)+' / '+ids.length : '';
+  const nom=id=>{ const c=CLIENTS.find(x=>x.id===id); return c?c.nom:''; };
+  prev.title = i>0 ? 'Précédent : '+nom(ids[i-1])+' (←)' : 'Premier de la liste';
+  next.title = i>=0 && i<ids.length-1 ? 'Suivant : '+nom(ids[i+1])+' (→)' : 'Dernier de la liste';
+}
+function spNavGo(d){
+  const ids=spNavList(), i=ids.indexOf(_aiCurrentClientId); if(i<0) return;
+  const j=i+d; if(j<0||j>=ids.length){ showToast(d>0?'Dernière fiche de la liste':'Première fiche de la liste'); return; }
+  showClientDetail(ids[j]);
+  const sc=document.querySelector('#modal-client-detail .sp-scroll'); if(sc) sc.scrollTop=0;
+}
+document.addEventListener('keydown',e=>{
+  if((e.key!=='ArrowRight'&&e.key!=='ArrowLeft')||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey) return;
+  const m=document.getElementById('modal-client-detail'); if(!m||m.classList.contains('hidden')) return;
+  if([...document.querySelectorAll('.modal-overlay:not(.hidden)')].some(x=>x!==m)) return;   // une autre fenêtre est ouverte par-dessus la fiche
+  const t=e.target; if(t&&(/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)||t.isContentEditable)) return;
+  e.preventDefault(); spNavGo(e.key==='ArrowRight'?1:-1);
+});
+document.querySelectorAll('.sp-nav').forEach(b=>b.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); b.click(); } }));
 </script>
 <div id="modal-dossier" class="modal-overlay hidden sp-overlay">
   <div class="smart-panel">
@@ -9355,6 +9397,7 @@ function statutBadge(c){ return clientContacte(c) ? 'badge-warning' : (STATUT_BA
 
 const _sel = new Set();   // ids des contacts cochés (conservés quand on change de filtre)
 function renderClients(list) {
+  try{ _spNavIds=list.map(c=>c.id); }catch(e){}
   updateClientCounts();
   try{ fillClientFilters(); }catch(e){}
   const _cc=document.getElementById('clients-count'); if(_cc) _cc.textContent=list.length+' résultat'+(list.length>1?'s':'');
@@ -9749,6 +9792,7 @@ function showClientDetail(id) {
   document.getElementById('ai-actions').style.display='none';
 
   document.getElementById('modal-client-detail').classList.remove('hidden');
+  try{ spNavRefresh(); }catch(e){}
   if(c.lat&&c.lng){
     setTimeout(()=>{
       const mapEl=document.getElementById('detail-geo-map-'+c.id);
