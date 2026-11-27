@@ -2970,9 +2970,9 @@ function diagnoseAgentDependencies(agent, readSecret = (name) => Deno.env.get(na
     checks.push({
       dependency: "FIRECRAWL_API_KEY",
       status: configured ? "configured_unverified" : "missing",
-      detail: configured ? "Secret pr\xE9sent ; validit\xE9 et cr\xE9dits non test\xE9s (aucun appel payant au pr\xE9contr\xF4le)" : "Secret absent des Edge Functions Supabase"
+      detail: configured ? "Secret pr\xE9sent ; validit\xE9 et cr\xE9dits non test\xE9s (aucun appel payant au pr\xE9contr\xF4le)" : needsProspecting ? "Secret absent des Edge Functions Supabase" : "Secret absent : la lecture de pages \xE9chouera si l'agent l'utilise, mais ses autres missions ne sont pas bloqu\xE9es"
     });
-    if (!configured) blockers.push("Configurer FIRECRAWL_API_KEY dans Supabase \u2192 Edge Functions \u2192 Secrets");
+    if (!configured && needsProspecting) blockers.push("Configurer FIRECRAWL_API_KEY dans Supabase \u2192 Edge Functions \u2192 Secrets");
   }
   return { ready: blockers.length === 0, checks, blockers };
 }
