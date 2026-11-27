@@ -4,7 +4,7 @@ import { q, S } from "./state.js";
 
 const STAGES = [
   ["identifie","Identifié"],["enregistre","Enregistré"],["qualifie","Qualifié"],
-  ["premier_contact","Premier contact"],["conversation","Conversation"],
+  ["premier_contact","Contacté"],["conversation","Conversation"],
   ["besoin_identifie","Besoin identifié"],["interesse","Intéressé"],
   ["rdv_propose","RDV proposé"],["rdv_confirme","RDV confirmé"],["demo_realisee","Démo réalisée"],
   ["offre_transmise","Offre transmise"],["negociation","Négociation"],["offre_acceptee","Offre acceptée"],
