@@ -511,6 +511,7 @@
       box.innerHTML = head
         + '<div style="margin:8px 0;font-size:13px">Agent responsable : <b>' + esc(p.agent ? p.agent.nom : '—') + '</b>' + (p.agent ? ' <span style="color:var(--muted)">· ' + esc(p.agent.fonction) + '</span>' : '') + '<br>Étape IA : <b>' + esc(p.prospect.stage) + '</b>' + (p.prospect.score != null ? ' · score ' + esc(p.prospect.score) + '/100 (' + esc(p.prospect.priorite) + ')' : '') + (p.prospect.produits && p.prospect.produits.length ? '<br>Produits recommandés : ' + esc(p.prospect.produits.join(', ')) : '') + '</div>'
         + (p.validations && p.validations.length ? '<div class="card" style="padding:8px;border-color:var(--warning)">⏳ ' + p.validations.length + ' validation(s) en attente : ' + p.validations.map(function (v) { return esc(v.type + ' — ' + v.motif); }).join(' · ') + '</div>' : '')
+        + instructionForm(c, p)
         + '<div style="font-weight:700;margin-top:8px">Missions</div>' + (p.missions.length ? p.missions.map(function (m) { return '<div style="font-size:12px;margin:3px 0"><span class="badge ' + (st[m.statut] || 'badge-muted') + '">' + esc(m.statut) + '</span> ' + esc(m.titre) + ' <span style="color:var(--muted)">· ' + esc(m.agent) + '</span>' + (m.rapport ? '<details><summary style="cursor:pointer">Compte rendu</summary><pre style="white-space:pre-wrap;font-family:inherit">' + esc(m.rapport) + '</pre></details>' : '') + '</div>'; }).join('') : '<div class="page-sub">Aucune mission.</div>')
         + '<div style="font-weight:700;margin-top:8px">Rendez-vous et comptes rendus</div>' + (p.rdv.length ? p.rdv.map(function (r) { return '<div style="font-size:12px;margin:3px 0">' + esc(fmtT(r.debut)) + ' · ' + esc(r.mode) + ' · <i>' + esc(r.statut) + '</i>' + (r.compte_rendu ? '<div style="background:var(--surface2);border-radius:6px;padding:6px;margin-top:2px">📝 ' + esc(r.compte_rendu) + '</div>' : '') + '</div>'; }).join('') : '<div class="page-sub">Aucun rendez-vous.</div>')
         + '<div style="font-weight:700;margin-top:8px">Offres</div>' + (p.offres.length ? p.offres.map(function (o) { return '<div style="font-size:12px;margin:3px 0">' + esc(o.reference) + ' · ' + esc(Number(o.total_ttc).toLocaleString('fr-FR')) + ' FCFA TTC · <i>' + esc(o.statut) + '</i></div>'; }).join('') : '<div class="page-sub">Aucune offre.</div>')
@@ -519,7 +520,43 @@
     };
     draw(panelCache[c._rid] || null);
     if (!c._rid || !session() || !cfg()) return;
-    rpc('crm_client_panel', { p_rid: c._rid }).then(function (p) { panelCache[c._rid] = p; if (document.getElementById('crm-ia-panel') === box) draw(p); }).catch(function () {});
+    rpc('crm_client_panel', { p_rid: c._rid }).then(function (p) { panelCache[c._rid] = p; var a = document.activeElement; if (document.getElementById('crm-ia-panel') === box && !(a && a.id === 'crm-instr-txt')) draw(p); }).catch(function () {});
+  }
+  // Instruction à l'agent responsable : devient une mission pour cet agent sur ce dossier (direction seulement, journalisée par le moteur).
+  var drafts = {}, PRIORITES = { 3: 'Normale', 4: 'Haute', 5: 'Urgente' };
+  function instructionForm(c, p) {
+    if (!p.agent || !p.agent.id || !p.prospect || !p.prospect.id) return '';
+    var d = drafts[c.id] || { texte: '', prio: 3, ouvert: false };
+    return '<details id="crm-instr" style="margin:10px 0;border:1px solid var(--border);border-radius:10px;padding:8px 12px;background:var(--surface2)"' + (d.ouvert ? ' open' : '') + ' ontoggle="SanixCrmSync.instrOuvert(' + Number(c.id) + ',this.open)">'
+      + '<summary style="cursor:pointer;font-weight:700;font-size:13px">💬 Donner une instruction à ' + esc(p.agent.nom) + '</summary>'
+      + '<div style="margin-top:8px;font-size:11px;color:var(--muted)">Elle devient une mission de cet agent sur ce dossier, traitée à sa prochaine exécution. Aucun message n\'est envoyé au prospect sans votre validation.</div>'
+      + '<textarea id="crm-instr-txt" rows="3" maxlength="2000" placeholder="Ex. : Relance ce prospect par WhatsApp demain matin en proposant une démonstration d\'ImmoSuite." style="width:100%;margin-top:8px;padding:8px;border:1px solid var(--border);border-radius:8px;font:inherit;font-size:12px;resize:vertical" oninput="SanixCrmSync.instrBrouillon(' + Number(c.id) + ',this.value)">' + esc(d.texte) + '</textarea>'
+      + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px"><label style="font-size:11px;color:var(--muted)">Priorité <select id="crm-instr-prio" style="font-size:12px" onchange="SanixCrmSync.instrPrio(' + Number(c.id) + ',this.value)">'
+      + Object.keys(PRIORITES).map(function (k) { return '<option value="' + k + '"' + (Number(d.prio) === Number(k) ? ' selected' : '') + '>' + PRIORITES[k] + '</option>'; }).join('')
+      + '</select></label><button class="btn btn-primary btn-sm" id="crm-instr-btn" onclick="SanixCrmSync.instruire(' + Number(c.id) + ')">Envoyer l\'instruction</button></div></details>';
+  }
+  function instrBrouillon(id, v) { (drafts[id] = drafts[id] || { texte: '', prio: 3, ouvert: true }).texte = v; }
+  function instrPrio(id, v) { (drafts[id] = drafts[id] || { texte: '', prio: 3, ouvert: true }).prio = Number(v) || 3; }
+  function instrOuvert(id, o) { (drafts[id] = drafts[id] || { texte: '', prio: 3, ouvert: false }).ouvert = !!o; }
+  function instruire(id) {
+    var c = STORES.clients.get().find(function (x) { return String(x.id) === String(id); }); if (!c || !c._rid) { toast('⏳ Dossier pas encore synchronisé : réessayez dans un instant'); return Promise.resolve(false); }
+    var p = panelCache[c._rid]; if (!p || !p.agent || !p.prospect) { toast('❌ Aucun agent responsable pour ce dossier'); return Promise.resolve(false); }
+    var d = drafts[id] || {}, texte = String(d.texte || '').trim();
+    if (texte.length < 5) { toast('✏️ Écrivez l\'instruction (5 caractères minimum)'); return Promise.resolve(false); }
+    if (!session()) { toast('🔐 Connectez d\'abord l\'agent IA'); return Promise.resolve(false); }
+    var btn = document.getElementById('crm-instr-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Envoi…'; }
+    var titre = 'Instruction du CRM : ' + texte.replace(/\s+/g, ' ').slice(0, 90);
+    return rpc('crm_assign_mission', { p_agent: p.agent.id, p_prospect: p.prospect.id, p_titre: titre, p_description: 'Instruction du président depuis la fiche du dossier (CRM) :\n' + texte, p_priorite: Number(d.prio) || 3, p_echeance_h: null })
+      .then(function () {
+        drafts[id] = { texte: '', prio: 3, ouvert: false };
+        toast('✅ Instruction transmise à ' + p.agent.nom + ' : mission créée, traitée à sa prochaine exécution');
+        delete panelCache[c._rid]; clientPanel(id); return true;
+      }).catch(function (e) {
+        var m = String((e && e.message) || e);
+        toast((e && String(e.code) === '23505') || /23505|duplicate key|identique/i.test(m) ? 'ℹ️ Une instruction identique est déjà en cours pour cet agent' : (e && String(e.code) === '42501') || /Réservé à la direction|42501/.test(m) ? '🔒 Réservé à la direction' : '❌ Instruction refusée : ' + m.slice(0, 120));
+        if (btn) { btn.disabled = false; btn.textContent = 'Envoyer l\'instruction'; }
+        return false;
+      });
   }
   function delegate(id) {
     var c = STORES.clients.get().find(function (x) { return String(x.id) === String(id); }); if (!c || !c._rid) { toast('⏳ Dossier pas encore synchronisé : réessayez dans un instant'); return Promise.resolve(false); }
@@ -583,7 +620,7 @@
 
   window.SanixCrmSync = {
     renewSession: renewSession, version: 1, available: function () { return !!(cfg() && session() && backend !== 'absent'); }, rpcAux: function (name, body) { return rpc(name, body, 20000, true); }, status: status, syncNow: function () { backend = 'unknown'; return sync(); }, flush: flush, pull: pull, scan: function (e) { return e ? scan(e) : ORDER.map(scan); },
-    openPanel: openPanel, exportBackup: exportBackup, backup: backup, delegate: delegate, claim: claim, clientPanel: clientPanel, onChange: function (f) { listeners.push(f); },
+    openPanel: openPanel, exportBackup: exportBackup, backup: backup, delegate: delegate, claim: claim, instruire: instruire, instrBrouillon: instrBrouillon, instrPrio: instrPrio, instrOuvert: instrOuvert, clientPanel: clientPanel, onChange: function (f) { listeners.push(f); },
     confirmDeletes: function () { suspiciousInfo = null; var save = allowDeletes; ORDER.forEach(function (e) { var known = state.hash[e] || {}, arr = STORES[e].get(), have = {}; arr.forEach(function (o) { have[ridOf(e, o)] = 1; }); Object.keys(known).forEach(function (rid) { if (!have[rid]) queue(e, rid, 'delete', 'x', { client_ts: new Date().toISOString() }); }); }); persistOutbox(); kick(0); emit(); },
     restoreFromServer: function () { suspiciousInfo = null; state.cursor = 0; ORDER.forEach(function (e) { var known = state.hash[e] || {}, have = {}; STORES[e].get().forEach(function (o) { have[ridOf(e, o)] = 1; }); Object.keys(known).forEach(function (rid) { if (!have[rid]) { delete known[rid]; delete state.ver[e + ':' + rid]; } }); }); persistState(); kick(0); emit(); },
     retryEvent: function (id) { return rpc('crm_event_retry', { p_id: id }).then(function () { toast('↻ Événement remis en file'); refreshServer(); }).catch(function (e) { toast('❌ ' + e.message); }); },
