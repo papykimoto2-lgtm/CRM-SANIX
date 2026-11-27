@@ -67,3 +67,10 @@ Les onglets Stratégie, Message WhatsApp, Objections, Relance et Closing de la f
 - L'exécuteur réclame la mission comme les autres, rédige le texte et clôture avec `ai_abonnement_cloturer` : le `rapport` est le texte affiché dans la fiche.
 - Le texte n'est jamais envoyé automatiquement. Le résultat est différé (prochaine exécution de la routine) ; la fiche se met à jour toute seule et réaffiche un résultat de moins de 24 h.
 - Retour à l'API (instantané, payant) : bouton « Abonnement Claude » dans l'assistant, préférence mémorisée sur l'appareil.
+
+## Enrichissement des coordonnées des prospects (migration `20261225000000_enrichissement_contacts.sql`)
+Constat du 27/11/2026 : 154 fiches sur 979 sans aucun contact, 834 sans e-mail. Un lot de 12 fiches au plus est confié à l'agent Data Analyst (`ia_enrich_1`, mode abonnement) :
+- **Lancement :** toutes les 2 heures (`ai_enrichissement_lancer`, job `ai_enrichissement_contacts`), un seul lot ouvert à la fois, ou à la demande par le bouton « 🔎 Enrichir maintenant » de la page Clients & Prospects (direction). Vague 1 : aucune coordonnée ; vague 2 : téléphone connu, e-mail manquant. Une fiche déjà cherchée attend 14 jours.
+- **Écriture :** `ai_abonnement_enrichir_contact` (téléphone au format +225 + 10 chiffres, e-mail valide, **source https obligatoire**, jamais d'écrasement, doublons refusés, 30 par mission) puis report dans la fiche du CRM. `ai_abonnement_contact_introuvable` consigne les recherches vaines.
+- **Suivi :** `ai_contacts_couverture` alimente l'indicateur de la page Clients & Prospects.
+- Le prompt de l'exécuteur (règle 11 bis) est dans `docs/prompt_executeur_abonnement.txt` ; la mission contient aussi la procédure exacte.

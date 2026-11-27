@@ -1775,6 +1775,7 @@ Seriez-vous disponible pour une démonstration {rdv} ?
         </div>
       </div>
 
+      <div id="contact-cover" class="hidden" style="margin:0 0 10px"></div>
       <div class="tabs" id="clients-tabs">
         <div class="tab active" onclick="filterClients('all',this)">Tous (<span id="cnt-all">0</span>)</div>
         <div class="tab" onclick="filterClients('client',this)">Clients (<span id="cnt-client">0</span>)</div>
@@ -4827,6 +4828,34 @@ document.addEventListener('keydown',e=>{
   e.preventDefault(); spNavGo(e.key==='ArrowRight'?1:-1);
 });
 document.querySelectorAll('.sp-nav').forEach(b=>b.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); b.click(); } }));
+</script>
+<script>
+/* Couverture des coordonnées des prospects (téléphone, e-mail) et lancement d'un lot d'enrichissement par l'IA (abonnement). */
+let _ccAt=0;
+async function contactCoverRefresh(force){
+  const el=document.getElementById('contact-cover'); if(!el) return;
+  if(!force && Date.now()-_ccAt<60000) return;
+  let r=null; try{ if(typeof aisSession==='function' && aisSession()) r=await aisApi('/rest/v1/rpc/ai_contacts_couverture',{method:'POST',body:'{}',timeout:15000}); }catch(e){}
+  if(!r||!r.total){ el.classList.add('hidden'); return; }
+  _ccAt=Date.now();
+  const pct=(n)=>Math.round(100*n/r.total), warn=r.sans_aucun_contact>0;
+  el.classList.remove('hidden');
+  el.innerHTML='<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-radius:12px;border:1px solid '+(warn?'#FCD34D':'var(--border)')+';background:'+(warn?'#FFFBEB':'var(--surface2)')+';font-size:12px">'
+    +'<b>📇 Coordonnées des prospects</b>'
+    +'<span><b>'+r.sans_aucun_contact+'</b> sans aucun contact ('+pct(r.sans_aucun_contact)+' %)</span>'
+    +'<span><b>'+r.sans_telephone+'</b> sans téléphone</span><span><b>'+r.sans_email+'</b> sans e-mail ('+pct(r.sans_email)+' %)</span>'
+    +(r.email_invalide?'<span><b>'+r.email_invalide+'</b> e-mails rejetés</span>':'')
+    +'<span style="color:var(--muted)">Enrichis par l\'IA cette semaine : <b>'+r.enrichis_7j+'</b> · recherches sans résultat : '+r.recherches_vaines_7j+'</span>'
+    +'<button class="btn btn-primary btn-sm" id="cc-btn" style="margin-left:auto" onclick="contactCoverLancer()" title="Crée un lot de 12 fiches pour l\'agent Data Analyst (abonnement). Un lot est aussi créé automatiquement toutes les 2 heures.">🔎 Enrichir maintenant</button></div>';
+}
+async function contactCoverLancer(){
+  const b=document.getElementById('cc-btn'); if(b){ b.disabled=true; b.textContent='Envoi…'; }
+  try{
+    const r=await aisApi('/rest/v1/rpc/ai_enrichissement_demander',{method:'POST',body:'{}',timeout:20000});
+    showToast(r&&r.lot_cree?'🔎 Lot d\'enrichissement créé : l\'agent Data Analyst le traite à sa prochaine exécution':'ℹ️ Un lot est déjà en cours, ou aucune fiche à enrichir');
+  }catch(e){ const m=String(e.message||e); showToast(/direction|42501/.test(m)?'🔒 Réservé à la direction':'❌ '+m.slice(0,100)); }
+  contactCoverRefresh(true);
+}
 </script>
 <div id="modal-dossier" class="modal-overlay hidden sp-overlay">
   <div class="smart-panel">
@@ -9399,6 +9428,7 @@ function statutBadge(c){ return clientContacte(c) ? 'badge-warning' : (STATUT_BA
 const _sel = new Set();   // ids des contacts cochés (conservés quand on change de filtre)
 function renderClients(list) {
   try{ _spNavIds=list.map(c=>c.id); }catch(e){}
+  try{ contactCoverRefresh(); }catch(e){}
   updateClientCounts();
   try{ fillClientFilters(); }catch(e){}
   const _cc=document.getElementById('clients-count'); if(_cc) _cc.textContent=list.length+' résultat'+(list.length>1?'s':'');
