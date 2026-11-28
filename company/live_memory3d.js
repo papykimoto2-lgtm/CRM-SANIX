@@ -9,7 +9,7 @@ function surfacePoint(side,theta,phi,scale=1){
   const x=-Math.cos(phi)*Math.sin(theta)*2.02*scale;
   const y=Math.cos(theta)*1.48*scale;
   const z=Math.sin(phi)*Math.sin(theta)*1.12*scale;
-  return new THREE.Vector3(side*x,y,z);
+  return new THREE.Vector3(x,y,z);
 }
 function makeCortex(side){
   const phiStart=side<0?-Math.PI/2:Math.PI/2;
@@ -36,7 +36,7 @@ function makeFolds(group,side){
   const dark=new THREE.MeshStandardMaterial({color:0x123c5d,roughness:.82,transparent:true,opacity:.72});
   const light=new THREE.MeshBasicMaterial({color:0x9deaff,transparent:true,opacity:.34});
   for(let i=0;i<15;i++){
-    const pts=[],theta0=.38+(i%5)*.43,phi0=-1.42+Math.floor(i/5)*.48;
+    const pts=[],theta0=.38+(i%5)*.43,phi0=(side<0?-1.42:Math.PI/2+.15)+Math.floor(i/5)*.48;
     for(let k=0;k<=44;k++){
       const u=k/44,theta=theta0+u*(2.30-theta0);
       const phi=phi0+Math.sin(u*Math.PI*2+i*.63)*.12+Math.sin(u*Math.PI*5+i)*.035;
@@ -105,7 +105,7 @@ export function createMemoryBrain3D(host){
   const fiberMat=new THREE.MeshBasicMaterial({color:0x41d9ff,transparent:true,opacity:.26});
   const fiberCurves=[];
   for(let i=0;i<24;i++){
-    const side=i%2?1:-1,theta=.48+(i%8)*.26,phi=(Math.floor(i/8)-1)*.55+(i%3)*.12;
+    const side=i%2?1:-1,theta=.48+(i%8)*.26,phi=(side<0?-1.15:Math.PI/2+.42)+(Math.floor(i/8)-1)*.55+(i%3)*.12;
     const points=[];
     for(let k=0;k<=24;k++){const u=k/24;points.push(surfacePoint(side,theta+u*.55,phi+Math.sin(u*Math.PI)*.24,.995));}
     const curve=new THREE.CatmullRomCurve3(points);fiberCurves.push(curve);
@@ -116,7 +116,7 @@ export function createMemoryBrain3D(host){
   const neurons=new THREE.InstancedMesh(neuronGeo,neuronMat,180);neurons.instanceMatrix.setUsage(THREE.DynamicDrawUsage);brain.add(neurons);
   const neuronDummy=new THREE.Object3D(),neuronColors=[];
   for(let i=0;i<180;i++){
-    const side=i%2?1:-1,theta=.28+((i*37)%137)/137*2.55,phi=(side<0?-1:1)*(.10+((i*19)%89)/89*1.43);
+    const side=i%2?1:-1,theta=.28+((i*37)%137)/137*2.55,phi=(side<0?-Math.PI/2:Math.PI/2)+((i*19)%89)/89*Math.PI;
     const p=surfacePoint(side,theta,phi,1.025);neuronDummy.position.copy(p);neuronDummy.scale.setScalar(.72+(i%5)*.13);neuronDummy.updateMatrix();neurons.setMatrixAt(i,neuronDummy.matrix);
     const color=new THREE.Color(i%11===0?0xa78bfa:i%7===0?0x34d399:0x4bdcff);neurons.setColorAt(i,color);neuronColors.push(color);
   }
