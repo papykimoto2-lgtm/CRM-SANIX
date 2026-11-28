@@ -24,11 +24,11 @@ function makeCerebellum(group){
  const cereb=new THREE.Group();cereb.position.set(0,-1.20,-.56);cereb.scale.set(1.03,.58,.68);group.add(cereb);
  const geo=new THREE.SphereGeometry(.76,88,56),p=geo.attributes.position,n=new THREE.Vector3();
  for(let i=0;i<p.count;i++){n.set(p.getX(i),p.getY(i),p.getZ(i)).normalize();const f=.018*Math.sin(n.y*46+Math.sin(n.x*9)*2)+.010*Math.sin(n.y*79+n.x*7);p.setXYZ(i,p.getX(i)*(1+f),p.getY(i)*(1+f),p.getZ(i)*(1+f));}
- geo.computeVertexNormals();cereb.add(new THREE.Mesh(geo,new THREE.MeshPhysicalMaterial({color:0x326f8c,metalness:.08,roughness:.72,clearcoat:.22})));
+ geo.computeVertexNormals();cereb.add(new THREE.Mesh(geo,new THREE.MeshPhysicalMaterial({color:0x3f9fc1,metalness:.02,roughness:.28,clearcoat:.8,transparent:true,opacity:.42,depthWrite:false})));
  const foliaMat=new THREE.MeshStandardMaterial({color:0x174c68,roughness:.86,transparent:true,opacity:.68});
  for(let i=0;i<17;i++){const y=-.48+i*.058,pts=[];for(let k=0;k<=32;k++){const a=-1.28+k*(2.56/32),r=Math.sqrt(Math.max(.06,1-(y/.78)**2));pts.push(new THREE.Vector3(Math.sin(a)*.72*r,y+Math.sin(a*2+i)*.018,Math.cos(a)*.52*r));}cereb.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),52,.009,4,false),foliaMat));}
  const stemGeo=new THREE.LatheGeometry([new THREE.Vector2(.20,0),new THREE.Vector2(.24,.16),new THREE.Vector2(.19,.38),new THREE.Vector2(.14,.62),new THREE.Vector2(.11,.84),new THREE.Vector2(.08,1.02)],48);
- const stem=new THREE.Mesh(stemGeo,new THREE.MeshPhysicalMaterial({color:0x397b98,roughness:.62,metalness:.08,clearcoat:.25}));stem.position.set(0,-1.65,-.28);stem.rotation.x=Math.PI;group.add(stem);
+ const stem=new THREE.Mesh(stemGeo,new THREE.MeshPhysicalMaterial({color:0x55b7d7,roughness:.25,metalness:.02,clearcoat:.8,transparent:true,opacity:.46,depthWrite:false}));stem.position.set(0,-1.65,-.28);stem.rotation.x=Math.PI;group.add(stem);
 }
 function fibonacciNormal(i,count){const y=1-2*(i+.5)/count,r=Math.sqrt(Math.max(0,1-y*y)),a=i*2.399963229728653;return new THREE.Vector3(Math.cos(a)*r,y,Math.sin(a)*r);}
 export function createMemoryBrain3D(host){
