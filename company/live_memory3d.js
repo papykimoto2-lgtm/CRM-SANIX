@@ -5,9 +5,10 @@ const TAU=Math.PI*2, clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
 function brainSurfacePoint(n,side,extra=0){
  const u=Math.atan2(n.z,n.y),v=Math.asin(clamp(n.x,-1,1));
- const folds=.026*Math.sin(15*u+3*Math.sin(5*v))+.018*Math.sin(23*u-4*v)+.012*Math.sin(31*v+2*Math.sin(7*u));
+ const folds=.040*Math.sin(15*u+3*Math.sin(5*v))+.026*Math.sin(23*u-4*v)+.016*Math.sin(31*v+2*Math.sin(7*u));
  const r=1+folds+extra;
- return new THREE.Vector3(side*(.88+Math.abs(n.x)*1.20*r),n.y*1.43*r,n.z*1.13*r);
+ // Bord médial proche de la ligne interhémisphérique ; volume plus large et ovale.
+ return new THREE.Vector3(side*(.065+Math.abs(n.x)*1.32*r),n.y*1.30*r,n.z*1.08*r);
 }
 function makeHemisphere(side){
  const geo=new THREE.SphereGeometry(1,144,112),p=geo.attributes.position,n=new THREE.Vector3();
@@ -15,8 +16,8 @@ function makeHemisphere(side){
  geo.computeVertexNormals();
  const mat=new THREE.MeshPhysicalMaterial({color:side>0?0x72c9e7:0x62b9dc,metalness:.02,roughness:.32,clearcoat:.8,clearcoatRoughness:.2,transparent:true,opacity:.43,depthWrite:false,side:THREE.DoubleSide,emissive:0x092d48,emissiveIntensity:.22});
  const mesh=new THREE.Mesh(geo,mat);
- // La géométrie locale couvre la moitié médiale ; décaler chaque hémisphère
- // sur son propre côté évite leur superposition (silhouette en noyau vertical).
+ // Les deux surfaces se rejoignent presque sur la ligne médiane, sans large fente.
+ // Chaque hémisphère reste un volume indépendant pour conserver le relief bilatéral.
  mesh.position.x=side*.88;
  return mesh;
 }
