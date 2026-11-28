@@ -151,6 +151,19 @@ Deno.serve(async (req) => {
     const history = cleanHistory(body.history);
     const context = body.context && typeof body.context === "object" ? { ...(body.context as Record<string, unknown>) } : {};
     delete context.finance; // les chiffres financiers fournis par le navigateur ne sont jamais fiables
+    // Le contexte neuronal est chargé côté serveur : le navigateur ne peut ni falsifier ni injecter ces données.
+    const [brainMemory, brainGoals] = await Promise.all([
+      db().rpc("ai_memoire_collective_interne", { p_q: message, p_n: 6 }),
+      db().rpc("ai_goals_calc"),
+    ]);
+    context.cerveau_neuronal = {
+      memoires: brainMemory.error ? [] : (brainMemory.data ?? []),
+      memoire_disponible: !brainMemory.error,
+      objectifs: brainGoals.error ? [] : (brainGoals.data ?? []).filter((g: { statut: string }) => g.statut === "actif").slice(0, 12),
+      objectifs_disponibles: !brainGoals.error,
+    };
+    if (brainMemory.error) console.warn("Jarvis : mémoire neuronale indisponible", brainMemory.error.message);
+    if (brainGoals.error) console.warn("Jarvis : Goal Engine indisponible", brainGoals.error.message);
     if (asksFinance(message)) {
       try { context.finance = await loadFinanceSnapshot(message); await audit({ agent: "jarvis", action: "jarvis_lecture_finance", ok: true, payload: { par: op.user_id } }).catch(() => {}); }
       catch (e) { context.finance = { disponible: false }; await audit({ agent: "jarvis", action: "jarvis_finance_erreur", ok: false, payload: { par: op.user_id, e: errMsg(e) } }).catch(() => {}); }
