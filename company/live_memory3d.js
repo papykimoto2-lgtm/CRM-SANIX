@@ -66,7 +66,7 @@ export function createMemoryBrain3D(host){
  // Faisceaux blancs : voies d'échange entre cortex et hippocampes.
  const fiberMat=new THREE.MeshBasicMaterial({color:0x66dfff,transparent:true,opacity:.24});
  const fibers=[];
- for(let side of [-1,1])for(let i=0;i<12;i++){const a=i/12*TAU,from=new THREE.Vector3(side*(.95+.22*Math.sin(a)),.82*Math.cos(a),.72*Math.sin(a));const to=new THREE.Vector3(side*.58,-.42,-.18);const mid=from.clone().lerp(to,.52);mid.y+=.28;const curve=new THREE.CatmullRomCurve3([from,mid,to]);const mesh=new THREE.Mesh(new THREE.TubeGeometry(curve,32,.008,4,false),fiberMat);brain.add(mesh);fibers.push({curve,side});}
+ for(let side of [-1,1])for(let i=0;i<12;i++){const a=i/12*TAU,from=new THREE.Vector3(side*(.95+.22*Math.sin(a)),.82*Math.cos(a),.72*Math.sin(a));const to=new THREE.Vector3(side*.58,-.42,-.18);const mid=from.clone().lerp(to,.52);mid.y+=.28;const curve=new THREE.CatmullRomCurve3([from,mid,to]);const mesh=new THREE.Mesh(new THREE.TubeGeometry(curve,32,.008,4,false),fiberMat);brain.add(mesh);fibers.push(mesh);}
  // Mémoire : neurones regroupés dans les deux hippocampes, non dispersés sur tout le cortex.
  const memGeo=new THREE.SphereGeometry(.024,10,8),memMat=new THREE.MeshBasicMaterial({color:0xffd18a}),memoryNodes=new THREE.InstancedMesh(memGeo,memMat,180);memoryNodes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);brain.add(memoryNodes);
  const dummy=new THREE.Object3D();
@@ -98,7 +98,7 @@ export function createMemoryBrain3D(host){
  let active=false,raf=0,last=0,disposed=false,observer=null,cameraSource=null,hostH=1,zoomLevel=1;
  function resize(){const r=host.getBoundingClientRect(),w=Math.max(1,r.width),h=Math.max(1,r.height);hostH=h;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
  function applyCamera(){const c=cameraSource?.()||{x:0,y:0,scale:1};zoomLevel=clamp(Number(c.scale)||1,.55,3.8);const upp=2*11.8*Math.tan(17*Math.PI/180)/hostH;brain.position.set((Number(c.x)||0)*upp,-(Number(c.y)||0)*upp,0);camera.position.z=11.8/Math.sqrt(zoomLevel);camera.lookAt(0,-.08,0);const inside=smooth(1.25,2.25,zoomLevel);cortexMats.forEach(m=>{m.opacity=.43*(1-inside*.72);m.depthWrite=inside<.55;});fibers.forEach(f=>{f.material.opacity=.24+inside*.35;});}
- function frame(now){if(!active||disposed)return;const dt=Math.min(64,now-(last||now));last=now;applyCamera();const t=now*.00022;flowParticles.forEach(p=>{const u=(t*.22+p.offset)%1;p.mesh.position.copy(p.curve.getPoint(u));});memoryNodes.material.opacity=.72+.2*Math.sin(now*.002);renderer.render(scene,camera);raf=requestAnimationFrame(frame);}
+ function frame(now){if(!active||disposed)return;const dt=Math.min(64,now-(last||now));last=now;applyCamera();const t=now*.00022;flowParticles.forEach(p=>{const u=(t*.22+p.offset)%1;p.mesh.position.copy(p.curve.getPoint(u));});renderer.render(scene,camera);raf=requestAnimationFrame(frame);}
  function setActive(v){active=!!v;canvas.style.display=active?"block":"none";if(active){resize();if(!raf){last=performance.now();raf=requestAnimationFrame(frame);}}else if(raf){cancelAnimationFrame(raf);raf=0;}}
  function destroy(){disposed=true;setActive(false);observer?.disconnect();renderer.dispose();canvas.remove();scene.traverse(o=>{o.geometry?.dispose?.();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose?.());else{o.material?.map?.dispose?.();o.material?.dispose?.();}});}
  observer=new ResizeObserver(resize);observer.observe(host);resize();
