@@ -1279,11 +1279,18 @@ async function loadNeuralMemory(force = false) {
   if (memoryLoading) return memoryLoading;
   if (!force && Date.now() - memoryLoadedAt < 30000) return;
   memoryLoading = (async () => {
-    const [mem, tasks] = await Promise.all([
+    const [mem, tasks, trust] = await Promise.all([
       safe(sb.from("ai_agent_memory").select("id,agent_id,contenu,tags,importance,created_at,task_id,statut,source,niveau_preuve").order("created_at", { ascending: false }).limit(180), { data: [] }),
       safe(sb.from("ai_agent_tasks").select("id,agent_id,prospect_id,produit,titre,statut").gte("created_at", since(180)).not("prospect_id", "is", null).limit(1200), { data: [] }),
+      safe(sb.rpc("ai_memoire_liste", { p_n: 180 }), { data: [] }),
     ]);
-    D.memories = mem?.data ?? []; D.memoryTasks = tasks?.data ?? []; memoryLoadedAt = Date.now();
+    const trustById = new Map((trust?.data ?? []).map((r) => [String(r.id), r]));
+    D.memories = (mem?.data ?? []).map((m) => {
+      const score = trustById.get(String(m.id));
+      return { ...m, fiabilite: score?.fiabilite ?? null, a_revalider: score?.a_revalider ?? false,
+        niveau_preuve: score?.niveau_preuve ?? m.niveau_preuve };
+    });
+    D.memoryTasks = tasks?.data ?? []; memoryLoadedAt = Date.now();
   })().finally(() => { memoryLoading = null; });
   return memoryLoading;
 }
@@ -1299,7 +1306,7 @@ const api3d = {
   get D() { return D; }, STATES, clip, agentState, deptColor, onSelect: (id) => { D.sel = id; renderDetail(); },
   onProspect: (p) => { D.relationSel = null; D.sel = null; D.prospectNetworkOrigin = { relation: null }; D.prospectSel = p; D.prospectHistory = null; renderDetail(); $("#detail")?.scrollIntoView?.({ behavior: "smooth", block: "nearest" }); },
   onAgent: (a) => { D.relationSel = null; D.prospectSel = null; D.sel = a.id; renderDetail(); },
-  onMemory: (m) => { const el = $("#relations-memory-detail"); if (!el) return; const status = m.statut === "valide" ? "Connaissance validée" : "Expérience / à vérifier"; const tags = Array.isArray(m.tags) ? m.tags : []; el.innerHTML = `<button type="button" class="memory-detail-close" data-memory-close aria-label="Fermer">×</button><b>🧠 MÉMOIRE ACTIVE · #${esc(m.id)}</b><p>${esc(m.contenu || "Souvenir sans contenu")}</p><small>${esc(m.agent_nom || (m.agent_id ? nameOf(m.agent_id) : "Mémoire partagée"))} · ${esc(status)} · importance ${esc(m.importance ?? "—")}</small><small>Preuve : ${esc(m.niveau_preuve ?? "non renseignée")} · ${esc(m.source || "source non renseignée")}</small>${tags.length ? `<small>Tags : ${esc(tags.join(" · "))}</small>` : ""}<small>${esc(ago(m.created_at))}${m.task_id ? ` · Mission ${esc(m.task_id)}` : ""}</small>`; el.hidden = false; },
+  onMemory: (m) => { const el = $("#relations-memory-detail"); if (!el) return; const status = m.statut === "valide" ? "Connaissance validée" : "Expérience / à vérifier"; const tags = Array.isArray(m.tags) ? m.tags : []; const trust = m.fiabilite == null ? "non calculé" : `${m.fiabilite}/100 (indice indicatif, pas une probabilité)`; el.innerHTML = `<button type="button" class="memory-detail-close" data-memory-close aria-label="Fermer">×</button><b>🧠 MÉMOIRE ACTIVE · #${esc(m.id)}</b><p>${esc(m.contenu || "Souvenir sans contenu")}</p><small>${esc(m.agent_nom || (m.agent_id ? nameOf(m.agent_id) : "Mémoire partagée"))} · ${esc(status)} · importance ${esc(m.importance ?? "—")}</small><small>Fiabilité : ${esc(trust)}${m.a_revalider ? " · à revalider" : ""}</small><small>Preuve : ${esc(m.niveau_preuve ?? "non renseignée")} · ${esc(m.source || "source non renseignée")}</small>${tags.length ? `<small>Tags : ${esc(tags.join(" · "))}</small>` : ""}<small>${esc(ago(m.created_at))}${m.task_id ? ` · Mission ${esc(m.task_id)}` : ""}</small>`; el.hidden = false; },
   onRelation: (r) => { D.relationSel = r; if (r) { D.sel = r.agent.id; D.prospectNetworkOrigin = { relation: r }; D.prospectSel = r.prospect; renderDetail(); window.__jarvis?.explainRelation?.(r); } else { D.relationSel = null; } },
   onClearSelection: () => { D.relationSel = null; D.prospectSel = null; D.prospectNetworkOrigin = null; D.sel = null; $("#detail").hidden = true; renderDetail(); },
   onLegend: (items) => { const el=$("#relations-legend"); if(!el)return; el.innerHTML=items.map(item=>`<span class="relations-legend-item"><i class="relations-legend-dot ${esc(item.type)}" style="--legend-color:${esc(item.color)}"></i><b>${esc(item.label)}</b>${item.count!=null?`<small>${item.count}</small>`:""}</span>`).join(""); },
