@@ -1322,8 +1322,7 @@ function initControls() {
     if (c === "relations") {
       relationsMode = !relationsMode; b.classList.toggle("on", relationsMode);
       $("#stage3d").hidden = relationsMode; cv.hidden = relationsMode || !!view3d; relationsCanvas.hidden = !relationsMode; $("#relations-filters").hidden = !relationsMode; $("#relations-legend").hidden = !relationsMode;
-      if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView ??= createProspectRelations(relationsCanvas, { ...api3d, onFilterCount: (n, total) => { $("#relations-filter-count").textContent = n + " / " + total + " éléments"; } }); if (relationViewMode === "memory") await loadNeuralMemory(true); relationsView.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.memoryTasks?.length ? D.memoryTasks : (D.tasks || []), memories: D.memories || [], mode: relationViewMode, products: D.products || [], aliases: D.productAliases || [], filters: relationFilters }); relationsView.resize(); syncMemoryBrain3D(); } else syncMemoryBrain3D();
-      else view3d?.resize();
+      if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView ??= createProspectRelations(relationsCanvas, { ...api3d, onFilterCount: (n, total) => { $("#relations-filter-count").textContent = n + " / " + total + " éléments"; } }); if (relationViewMode === "memory") await loadNeuralMemory(true); relationsView.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.memoryTasks?.length ? D.memoryTasks : (D.tasks || []), memories: D.memories || [], mode: relationViewMode, products: D.products || [], aliases: D.productAliases || [], filters: relationFilters }); relationsView.resize(); syncMemoryBrain3D(); } else { syncMemoryBrain3D(); view3d?.resize(); }
       return;
     }
     if (!view3d) return;
