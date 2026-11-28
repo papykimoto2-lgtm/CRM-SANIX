@@ -1305,7 +1305,7 @@ function initControls() {
     updateRelationFilters(); relationsView?.reset(); relationsView?.clearSelection();
   });
   $("#relations-filters").addEventListener("click", (ev) => { const b=ev.target.closest("[data-rel-camera]");if(!b||!relationsView)return;const action=b.dataset.relCamera;if(action==="in")relationsView.zoom(1.22);else if(action==="out")relationsView.zoom(.82);else if(action==="reset")relationsView.reset(); });
-  $("#ctl").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-c]"); if (!b) return; const c = b.dataset.c;
+  $("#ctl").addEventListener("click", async (ev) => { const b = ev.target.closest("button[data-c]"); if (!b) return; const c = b.dataset.c;
     if (c === "relations") {
       relationsMode = !relationsMode; b.classList.toggle("on", relationsMode);
       $("#stage3d").hidden = relationsMode; cv.hidden = relationsMode || !!view3d; relationsCanvas.hidden = !relationsMode; $("#relations-filters").hidden = !relationsMode; $("#relations-legend").hidden = !relationsMode;
