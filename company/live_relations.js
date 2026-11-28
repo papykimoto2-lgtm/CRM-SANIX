@@ -95,7 +95,7 @@ export function createProspectRelations(canvas, api) {
     prospects.forEach((p,i)=>{
       const ownerId=owners.get(String(p.id))||null,owner=ownerId?byOwner.get(ownerId):null;
       const group=owner?groups.get(ownerId):[],index=owner?group.findIndex(x=>String(x.id)===String(p.id)):i;
-      const x=owner?w*(.52+(index%3)*.045):w*.84;
+      const x=state.mode==="memory"?(owner?w*.84:w*.92):(owner?w*(.52+(index%3)*.045):w*.84);
       const y=owner?owner.y+(index-(group.length-1)/2)*24:h*(.10+.80*(i+0.5)/Math.max(1,prospects.length));
       const id=String(p.id),pos=state.manualPositions.get(id);prospectNodes.push({id,kind:"prospect",data:p,owner,x:pos?.x??x,y:pos?.y??Math.max(34,Math.min(h-34,y)),r:5});
     });
@@ -134,7 +134,7 @@ export function createProspectRelations(canvas, api) {
     const w=state.width,h=state.height;ctx.clearRect(0,0,w,h);
     const bg=ctx.createRadialGradient(w*.52,h*.5,10,w*.52,h*.5,Math.max(w,h)*.72);bg.addColorStop(0,"rgba(20,54,91,.34)");bg.addColorStop(1,"rgba(4,10,22,.98)");ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
     for(let i=0;i<55;i++){ctx.fillStyle="rgba(148,180,230,.18)";ctx.fillRect((i*137.5)%w,(i*83.7)%h,1,1);}
-    ctx.font="600 10px system-ui";ctx.fillStyle="#9FB2D3";ctx.fillText("ÉQUIPE COMMERCIALE",16,20);ctx.fillText("RELATIONS / ACTIVITÉS",w*.43,20);ctx.fillText("SANS LIAISON",w*.78,20);
+    ctx.font="600 10px system-ui";ctx.fillStyle="#9FB2D3";ctx.fillText("ÉQUIPE COMMERCIALE",16,20);ctx.fillText(state.mode==="memory"?"MÉMOIRE ACTIVE":"RELATIONS / ACTIVITÉS",w*.43,20);ctx.fillText(state.mode==="memory"?"PROSPECTS LIÉS":"SANS LIAISON",w*.78,20);
     ctx.save();ctx.translate(w/2+state.camera.x,h/2+state.camera.y);ctx.scale(state.camera.scale,state.camera.scale);ctx.translate(-w/2,-h/2);
     for(const e of state.edges){
       const {from,to,color}=e;const active=!state.selected||from.id===state.selected||to.id===state.selected;ctx.globalAlpha=active?1:.12;const c1=from.x+(to.x-from.x)*.36,c2=from.x+(to.x-from.x)*.68;ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.bezierCurveTo(c1,from.y,c2,to.y,to.x,to.y);
@@ -190,7 +190,7 @@ export function createProspectRelations(canvas, api) {
   const resetCamera=()=>{state.camera={x:0,y:0,scale:1};};
   const onPointerDown=ev=>{if(ev.button!==undefined&&ev.button!==0)return;const p=screenPoint(ev),hit=hitAt(p),edge=hit?null:edgeAt(p);state.pointer={id:ev.pointerId,start:p,last:p,hit,edge,moved:false,mode:hit?"node":edge?"relation":"pan"};canvas.setPointerCapture?.(ev.pointerId);canvas.classList.toggle("dragging",!hit&&!edge);};
   const onPointerMove=ev=>{const p=screenPoint(ev),pt=state.pointer;if(!pt){canvas.style.cursor=hitAt(p)?"pointer":"grab";return;}const dx=p.x-pt.last.x,dy=p.y-pt.last.y;if(Math.hypot(p.x-pt.start.x,p.y-pt.start.y)>4)pt.moved=true;if(pt.moved){if(pt.mode==="pan"){state.camera.x+=dx;state.camera.y+=dy;}else if(pt.mode==="node"&&pt.hit){const q=worldPoint(p);pt.hit.x=q.x;pt.hit.y=q.y;state.manualPositions.set(pt.hit.id,{x:q.x,y:q.y});}}pt.last=p;};
-  const onPointerUp=()=>{const pt=state.pointer;if(!pt)return;state.pointer=null;canvas.classList.remove("dragging");if(!pt.moved&&pt.edge){state.selected=null;state.selectedRelation=pt.edge;api.onRelation?.({kind:pt.edge.kind,agent:pt.edge.from.data,prospect:pt.edge.to.data,task:pt.edge.task||null,activity:pt.edge.activity||null,tasks:pt.edge.tasks||[],activities:pt.edge.activities||[],missionCount:pt.edge.missionCount||0,activityCount:pt.edge.activityCount||0});}else if(!pt.moved&&pt.hit){state.selected=pt.hit.id;state.selectedRelation=null;api.onRelation?.(null);if(pt.hit.kind==="prospect")api.onProspect?.(pt.hit.data);else if(pt.hit.kind==="memory")api.onMemory?.(pt.hit.data);else api.onAgent?.(pt.hit.data);}};
+  const onPointerUp=()=>{const pt=state.pointer;if(!pt)return;state.pointer=null;canvas.classList.remove("dragging");if(!pt.moved&&pt.edge){state.selected=null;state.selectedRelation=pt.edge;if(pt.edge.memory)api.onMemory?.(pt.edge.memory);else api.onRelation?.({kind:pt.edge.kind,agent:pt.edge.from.data,prospect:pt.edge.to.data,task:pt.edge.task||null,activity:pt.edge.activity||null,tasks:pt.edge.tasks||[],activities:pt.edge.activities||[],missionCount:pt.edge.missionCount||0,activityCount:pt.edge.activityCount||0});}else if(!pt.moved&&pt.hit){state.selected=pt.hit.id;state.selectedRelation=null;api.onRelation?.(null);if(pt.hit.kind==="prospect")api.onProspect?.(pt.hit.data);else if(pt.hit.kind==="memory")api.onMemory?.(pt.hit.data);else api.onAgent?.(pt.hit.data);}};
   const onWheel=ev=>{ev.preventDefault();zoomAt(ev.deltaY<0?1.12:.89,screenPoint(ev));};
   const onDoubleClick=ev=>{ev.preventDefault();resetCamera();};
   canvas.addEventListener("pointerdown",onPointerDown);canvas.addEventListener("pointermove",onPointerMove);canvas.addEventListener("pointerup",onPointerUp);canvas.addEventListener("pointercancel",onPointerUp);canvas.addEventListener("wheel",onWheel,{passive:false});canvas.addEventListener("dblclick",onDoubleClick);
