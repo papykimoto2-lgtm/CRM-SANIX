@@ -5,6 +5,7 @@
 import { SUPABASE_DEFAULT } from "./config.js";
 import { initJarvis } from "./live_voice.js";
 import { createProspectRelations } from "./live_relations.js";
+import { createMemoryBrain3D } from "./live_memory3d.js";
 
 const $ = (s) => document.querySelector(s);
 const LS = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
@@ -1242,6 +1243,22 @@ $("#wf-journal-kind")?.addEventListener("change", ev => { D.journalKind = ev.tar
 
 // ───────── Vue 3D (repli 2D si WebGL indisponible ou ?2d) ─────────
 let view3d = null, relationsView = null, relationsMode = false;
+let memoryBrain3d = null;
+function syncMemoryBrain3D() {
+  const requested = relationsMode && relationViewMode === "memory";
+  if (requested && !memoryBrain3d) {
+    try {
+      const host = document.querySelector(".stage");
+      if (host) memoryBrain3d = createMemoryBrain3D(host);
+    } catch (error) {
+      console.warn("Cerveau WebGL indisponible, repli sur le cerveau 2D :", error);
+    }
+  }
+  const active = requested && !!memoryBrain3d;
+  relationsView?.setBrain3D(active);
+  memoryBrain3d?.update(D.memories || []);
+  memoryBrain3d?.setActive(active);
+}
 const relationFilters = { agent: "", product: "", prospect: "" };
 function renderRelationAgentOptions() {
   const select = $("#relations-agent"), current = relationFilters.agent;
@@ -1275,6 +1292,7 @@ function updateRelationFilters() {
   relationFilters.product = $("#relations-product").value;
   relationFilters.prospect = $("#relations-prospect").value.trim();
   relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.memoryTasks?.length ? D.memoryTasks : (D.tasks || []), memories: D.memories || [], mode: relationViewMode, products: D.products || [], aliases: D.productAliases || [], filters: relationFilters });
+  syncMemoryBrain3D();
 }
 const relationsCanvas = $("#relations-canvas");
 const api3d = {
@@ -1297,7 +1315,7 @@ function initControls() {
   $("#relations-agent").addEventListener("change", updateRelationFilters);
   $("#relations-product").addEventListener("change", updateRelationFilters);
   $("#relations-prospect").addEventListener("input", updateRelationFilters);
-  $("#relations-mode").addEventListener("change", async (ev) => { relationViewMode = ev.target.value; if (relationViewMode === "memory") await loadNeuralMemory(true); updateRelationFilters(); relationsView?.reset(); });
+  $("#relations-mode").addEventListener("change", async (ev) => { relationViewMode = ev.target.value; if (relationViewMode === "memory") await loadNeuralMemory(true); updateRelationFilters(); relationsView?.reset(); syncMemoryBrain3D(); });
   $("#relations-memory-detail").addEventListener("click", (ev) => { if (ev.target.closest("[data-memory-close]")) $("#relations-memory-detail").hidden = true; });
   $("#relations-reset").addEventListener("click", () => {
     relationFilters.agent = ""; relationFilters.product = ""; relationFilters.prospect = "";
@@ -1309,8 +1327,7 @@ function initControls() {
     if (c === "relations") {
       relationsMode = !relationsMode; b.classList.toggle("on", relationsMode);
       $("#stage3d").hidden = relationsMode; cv.hidden = relationsMode || !!view3d; relationsCanvas.hidden = !relationsMode; $("#relations-filters").hidden = !relationsMode; $("#relations-legend").hidden = !relationsMode;
-      if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView ??= createProspectRelations(relationsCanvas, { ...api3d, onFilterCount: (n, total) => { $("#relations-filter-count").textContent = n + " / " + total + " éléments"; } }); if (relationViewMode === "memory") await loadNeuralMemory(true); relationsView.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.memoryTasks?.length ? D.memoryTasks : (D.tasks || []), memories: D.memories || [], mode: relationViewMode, products: D.products || [], aliases: D.productAliases || [], filters: relationFilters }); relationsView.resize(); }
-      else view3d?.resize();
+      if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView ??= createProspectRelations(relationsCanvas, { ...api3d, onFilterCount: (n, total) => { $("#relations-filter-count").textContent = n + " / " + total + " éléments"; } }); if (relationViewMode === "memory") await loadNeuralMemory(true); relationsView.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.memoryTasks?.length ? D.memoryTasks : (D.tasks || []), memories: D.memories || [], mode: relationViewMode, products: D.products || [], aliases: D.productAliases || [], filters: relationFilters }); relationsView.resize(); syncMemoryBrain3D(); } else { syncMemoryBrain3D(); view3d?.resize(); }
       return;
     }
     if (!view3d) return;
