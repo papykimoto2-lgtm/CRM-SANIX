@@ -13,7 +13,7 @@ function makeCortex(){
  const geo=new THREE.SphereGeometry(1,176,128),pos=geo.attributes.position,n=new THREE.Vector3();
  for(let i=0;i<pos.count;i++){n.set(pos.getX(i),pos.getY(i),pos.getZ(i)).normalize();const p=corticalPoint(n);pos.setXYZ(i,p.x,p.y,p.z);}
  geo.computeVertexNormals();
- return new THREE.Mesh(geo,new THREE.MeshPhysicalMaterial({color:0x438cac,metalness:.12,roughness:.64,clearcoat:.32,clearcoatRoughness:.42,emissive:0x06283d,emissiveIntensity:.20}));
+ return new THREE.Mesh(geo,new THREE.MeshPhysicalMaterial({color:0x62c9ed,metalness:.04,roughness:.20,clearcoat:.95,clearcoatRoughness:.12,transparent:true,opacity:.30,depthWrite:false,side:THREE.DoubleSide,emissive:0x073b58,emissiveIntensity:.34}));
 }
 function makeMidline(group){
  const pts=[];
@@ -24,16 +24,16 @@ function makeCerebellum(group){
  const cereb=new THREE.Group();cereb.position.set(0,-1.20,-.56);cereb.scale.set(1.03,.58,.68);group.add(cereb);
  const geo=new THREE.SphereGeometry(.76,88,56),p=geo.attributes.position,n=new THREE.Vector3();
  for(let i=0;i<p.count;i++){n.set(p.getX(i),p.getY(i),p.getZ(i)).normalize();const f=.018*Math.sin(n.y*46+Math.sin(n.x*9)*2)+.010*Math.sin(n.y*79+n.x*7);p.setXYZ(i,p.getX(i)*(1+f),p.getY(i)*(1+f),p.getZ(i)*(1+f));}
- geo.computeVertexNormals();cereb.add(new THREE.Mesh(geo,new THREE.MeshPhysicalMaterial({color:0x326f8c,metalness:.08,roughness:.72,clearcoat:.22})));
+ geo.computeVertexNormals();cereb.add(new THREE.Mesh(geo,new THREE.MeshPhysicalMaterial({color:0x3f9fc1,metalness:.02,roughness:.28,clearcoat:.8,transparent:true,opacity:.42,depthWrite:false})));
  const foliaMat=new THREE.MeshStandardMaterial({color:0x174c68,roughness:.86,transparent:true,opacity:.68});
  for(let i=0;i<17;i++){const y=-.48+i*.058,pts=[];for(let k=0;k<=32;k++){const a=-1.28+k*(2.56/32),r=Math.sqrt(Math.max(.06,1-(y/.78)**2));pts.push(new THREE.Vector3(Math.sin(a)*.72*r,y+Math.sin(a*2+i)*.018,Math.cos(a)*.52*r));}cereb.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),52,.009,4,false),foliaMat));}
  const stemGeo=new THREE.LatheGeometry([new THREE.Vector2(.20,0),new THREE.Vector2(.24,.16),new THREE.Vector2(.19,.38),new THREE.Vector2(.14,.62),new THREE.Vector2(.11,.84),new THREE.Vector2(.08,1.02)],48);
- const stem=new THREE.Mesh(stemGeo,new THREE.MeshPhysicalMaterial({color:0x397b98,roughness:.62,metalness:.08,clearcoat:.25}));stem.position.set(0,-1.65,-.28);stem.rotation.x=Math.PI;group.add(stem);
+ const stem=new THREE.Mesh(stemGeo,new THREE.MeshPhysicalMaterial({color:0x55b7d7,roughness:.25,metalness:.02,clearcoat:.8,transparent:true,opacity:.46,depthWrite:false}));stem.position.set(0,-1.65,-.28);stem.rotation.x=Math.PI;group.add(stem);
 }
 function fibonacciNormal(i,count){const y=1-2*(i+.5)/count,r=Math.sqrt(Math.max(0,1-y*y)),a=i*2.399963229728653;return new THREE.Vector3(Math.cos(a)*r,y,Math.sin(a)*r);}
 export function createMemoryBrain3D(host){
  const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:"high-performance"});renderer.setClearColor(0x000000,0);renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.02;
- const canvas=renderer.domElement;canvas.className="sanix-memory-brain-3d";canvas.setAttribute("aria-label","Cerveau cortical SANIX en trois dimensions, rotation complète à 360 degrés");canvas.style.cssText="position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;z-index:2";host.appendChild(canvas);
+ const canvas=renderer.domElement;canvas.className="sanix-memory-brain-3d";canvas.setAttribute("aria-label","Cerveau SANIX anatomique 3D translucide, fixe, avec activité neuronale interne");canvas.style.cssText="position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;z-index:2";host.appendChild(canvas);
  const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(34,1,.1,100);camera.position.set(0,.02,10.9);camera.lookAt(0,-.08,0);
  scene.add(new THREE.HemisphereLight(0xc5efff,0x07172a,1.45));const key=new THREE.DirectionalLight(0xe8f8ff,2.25);key.position.set(-4,5,7);scene.add(key);const fill=new THREE.DirectionalLight(0x36bce8,1.25);fill.position.set(5,1,4);scene.add(fill);const rim=new THREE.DirectionalLight(0x665bff,1.8);rim.position.set(0,3,-5);scene.add(rim);
  const brain=new THREE.Group();brain.scale.setScalar(.79);brain.position.y=.04;scene.add(brain);brain.add(makeCortex());makeMidline(brain);makeCerebellum(brain);
@@ -46,7 +46,7 @@ export function createMemoryBrain3D(host){
  const pulseGeo=new THREE.SphereGeometry(.032,10,8),pulseMat=new THREE.MeshBasicMaterial({color:0xbaf8ff}),pulses=Array.from({length:7},()=>{const m=new THREE.Mesh(pulseGeo,pulseMat);scene.add(m);return m;});
  let active=false,raf=0,last=0,disposed=false,observer=null;
  function resize(){const r=host.getBoundingClientRect(),w=Math.max(1,r.width),h=Math.max(1,r.height);renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
- function frame(now){if(!active||disposed)return;const dt=Math.min(.05,(now-last)/1000||0);last=now;brain.rotation.y+=dt*TAU/30000;brain.rotation.x=Math.sin(now*.00019)*.018;halo.rotation.z-=dt*.075;const t=now*.00016;pulses.forEach((p,i)=>{const a=t+i*TAU/pulses.length;p.position.set(Math.cos(a)*2.34,Math.sin(a)*.54-.12,Math.sin(a)*.22);});renderer.render(scene,camera);raf=requestAnimationFrame(frame);}
+ function frame(now){if(!active||disposed)return;last=now;const t=now*.00016;pulses.forEach((p,i)=>{const a=t+i*TAU/pulses.length;p.position.set(Math.cos(a)*1.72,Math.sin(a)*.86-.12,Math.sin(a)*.72);});renderer.render(scene,camera);raf=requestAnimationFrame(frame);}
  function setActive(value){active=!!value;canvas.style.display=active?"block":"none";if(active){resize();if(!raf){last=performance.now();raf=requestAnimationFrame(frame);}}else if(raf){cancelAnimationFrame(raf);raf=0;}}
  function update(memories=[]){const rows=Array.isArray(memories)?memories.slice(0,180):[];for(let i=0;i<180;i++){const visible=i<rows.length,n=fibonacciNormal(i,180),p=corticalPoint(n,visible?.022:0);dummy.position.copy(p);dummy.scale.setScalar(visible ? .78+(Number(rows[i]?.importance)||1)*.07 : 0);dummy.updateMatrix();neurons.setMatrixAt(i,dummy.matrix);const status=rows[i]?.statut==="valide"?0x34d399:rows[i]?.statut==="partagee"?0xa78bfa:0xfbbf24;neurons.setColorAt(i,new THREE.Color(status));}neurons.instanceMatrix.needsUpdate=true;if(neurons.instanceColor)neurons.instanceColor.needsUpdate=true;}
  function destroy(){disposed=true;setActive(false);observer?.disconnect();renderer.dispose();canvas.remove();scene.traverse(o=>{o.geometry?.dispose?.();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose?.());else o.material?.dispose?.();});}
