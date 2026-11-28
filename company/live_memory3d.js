@@ -14,7 +14,11 @@ function makeHemisphere(side){
  for(let i=0;i<p.count;i++){n.set(p.getX(i),p.getY(i),p.getZ(i)).normalize();const q=brainSurfacePoint(n,side);p.setXYZ(i,q.x-side*.88,q.y,q.z);}
  geo.computeVertexNormals();
  const mat=new THREE.MeshPhysicalMaterial({color:side>0?0x72c9e7:0x62b9dc,metalness:.02,roughness:.32,clearcoat:.8,clearcoatRoughness:.2,transparent:true,opacity:.43,depthWrite:false,side:THREE.DoubleSide,emissive:0x092d48,emissiveIntensity:.22});
- const mesh=new THREE.Mesh(geo,mat);\n // La géométrie locale couvre la moitié médiale ; décaler chaque hémisphère\n // sur son propre côté évite leur superposition (silhouette en noyau vertical).\n mesh.position.x=side*.88;\n return mesh;
+ const mesh=new THREE.Mesh(geo,mat);
+ // La géométrie locale couvre la moitié médiale ; décaler chaque hémisphère
+ // sur son propre côté évite leur superposition (silhouette en noyau vertical).
+ mesh.position.x=side*.88;
+ return mesh;
 }
 function makeSulci(group,side){
  const mat=new THREE.MeshBasicMaterial({color:0x164c68,transparent:true,opacity:.38});
