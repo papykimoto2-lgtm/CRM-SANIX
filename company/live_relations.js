@@ -122,7 +122,7 @@ export function createProspectRelations(canvas, api) {
     state.activities=Array.isArray(data.activities)?data.activities:[];
     state.tasks=Array.isArray(data.tasks)?data.tasks:[];
     state.memories=Array.isArray(data.memories)?data.memories:[];
-    state.mode=data.mode==="memory"?"memory":"relations";
+    const nextMode=data.mode==="memory"?"memory":"relations";if(nextMode!==state.mode){state.selected=null;state.selectedRelation=null;}state.mode=nextMode;
     state.totalProspects=state.prospects.length;
     state.products=Array.isArray(data.products)?data.products:[];
     state.aliases=Array.isArray(data.aliases)?data.aliases:[];
@@ -185,7 +185,7 @@ export function createProspectRelations(canvas, api) {
       return q.x>=left&&q.x<=left+Math.max(24,width)&&q.y>=top&&q.y<=n.y+9;
     });
   };
-  const edgeAt=p=>{const q=worldPoint(p);let best=null,dist=Infinity;for(const e of state.edges){let prev={x:e.from.x,y:e.from.y};for(let i=1;i<=28;i++){const t=i/28,u=1-t,x=u*u*u*e.from.x+3*u*u*t*state.width*.34+3*u*t*t*state.width*.38+t*t*t*e.to.x,y=u*u*u*e.from.y+3*u*u*t*e.from.y+3*u*t*t*e.to.y+t*t*t*e.to.y,dx=x-prev.x,dy=y-prev.y,len=dx*dx+dy*dy||1,k=Math.max(0,Math.min(1,((q.x-prev.x)*dx+(q.y-prev.y)*dy)/len)),d=Math.hypot(q.x-(prev.x+k*dx),q.y-(prev.y+k*dy));if(d<dist){dist=d;best=e;}prev={x,y};}}return dist<10?best:null;};
+  const edgeAt=p=>{const q=worldPoint(p);let best=null,dist=Infinity;for(const e of state.edges){const c1=e.from.x+(e.to.x-e.from.x)*.36,c2=e.from.x+(e.to.x-e.from.x)*.68;let prev={x:e.from.x,y:e.from.y};for(let i=1;i<=28;i++){const t=i/28,u=1-t,x=u*u*u*e.from.x+3*u*u*t*c1+3*u*t*t*c2+t*t*t*e.to.x,y=u*u*u*e.from.y+3*u*u*t*e.from.y+3*u*t*t*e.to.y+t*t*t*e.to.y,dx=x-prev.x,dy=y-prev.y,len=dx*dx+dy*dy||1,k=Math.max(0,Math.min(1,((q.x-prev.x)*dx+(q.y-prev.y)*dy)/len)),d=Math.hypot(q.x-(prev.x+k*dx),q.y-(prev.y+k*dy));if(d<dist){dist=d;best=e;}prev={x,y};}}return dist<10?best:null;};
   const zoomAt=(factor,p={x:state.width/2,y:state.height/2})=>{const before=worldPoint(p);state.camera.scale=Math.max(.55,Math.min(2.8,state.camera.scale*factor));const after=worldPoint(p);state.camera.x+=(after.x-before.x)*state.camera.scale;state.camera.y+=(after.y-before.y)*state.camera.scale;};
   const resetCamera=()=>{state.camera={x:0,y:0,scale:1};};
   const onPointerDown=ev=>{if(ev.button!==undefined&&ev.button!==0)return;const p=screenPoint(ev),hit=hitAt(p),edge=hit?null:edgeAt(p);state.pointer={id:ev.pointerId,start:p,last:p,hit,edge,moved:false,mode:hit?"node":edge?"relation":"pan"};canvas.setPointerCapture?.(ev.pointerId);canvas.classList.toggle("dragging",!hit&&!edge);};
