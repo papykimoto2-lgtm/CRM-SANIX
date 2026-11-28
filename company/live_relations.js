@@ -100,7 +100,14 @@ export function createProspectRelations(canvas, api) {
       const id=String(p.id),pos=state.manualPositions.get(id);prospectNodes.push({id,kind:"prospect",data:p,owner,x:pos?.x??x,y:pos?.y??Math.max(34,Math.min(h-34,y)),r:5});
     });
     const nodeByProspect=new Map(prospectNodes.map(n=>[n.id,n]));
-    const memoryNodes=memoryRows.map((m,i)=>{const owner=m.agent_id?byOwner.get(String(m.agent_id)):null;const task=taskById.get(String(m.task_id));const pos=state.manualPositions.get("memory:"+m.id);return{id:"memory:"+m.id,kind:"memory",data:m,owner,task,x:pos?.x??w*.49,y:pos?.y??h*(.08+.84*(i+.5)/Math.max(1,memoryRows.length)),r:5};});
+    const brainW=Math.min(w*.43,h*.92),brainH=Math.min(h*.66,w*.48),brainCx=w*.51,brainCy=h*.51;
+    const memoryNodes=memoryRows.map((m,i)=>{
+      const owner=m.agent_id?byOwner.get(String(m.agent_id)):null,task=taskById.get(String(m.task_id)),pos=state.manualPositions.get("memory:"+m.id);
+      // Répartition en spirale dans les deux hémisphères du cerveau.
+      const angle=i*2.399963229728653,rad=.84*Math.sqrt((i+.5)/Math.max(1,memoryRows.length));
+      const nx=Math.cos(angle)*rad,ny=Math.sin(angle)*rad;
+      return{id:"memory:"+m.id,kind:"memory",data:m,owner,task,x:pos?.x??brainCx+nx*brainW*.47,y:pos?.y??brainCy+ny*brainH*.43,r:4.2};
+    });
     const edges=[];
     const linkedPairs=new Set([...activityPairs.keys(),...missionPairs.keys()]);
     for(const key of linkedPairs){
@@ -129,6 +136,40 @@ export function createProspectRelations(canvas, api) {
     state.filters={ agent: String(data.filters?.agent || ""), product: String(data.filters?.product || ""), prospect: String(data.filters?.prospect || "") };
     layout();
   }
+  const clipMemory=(v,n)=>{const text=String(v||"Souvenir");return text.length>n?text.slice(0,n-1)+"…":text;};
+  function drawBrain(cx,cy,bw,bh,t){
+    ctx.save();
+    const pulse=.5+.5*Math.sin(t/850);
+    ctx.beginPath();
+    ctx.moveTo(cx,cy+bh*.43);
+    ctx.bezierCurveTo(cx-bw*.20,cy+bh*.52,cx-bw*.53,cy+bh*.38,cx-bw*.49,cy+bh*.10);
+    ctx.bezierCurveTo(cx-bw*.60,cy-bh*.12,cx-bw*.43,cy-bh*.43,cx-bw*.22,cy-bh*.43);
+    ctx.bezierCurveTo(cx-bw*.08,cy-bh*.54,cx-bw*.025,cy-bh*.43,cx,cy-bh*.39);
+    ctx.bezierCurveTo(cx+bw*.025,cy-bh*.43,cx+bw*.08,cy-bh*.54,cx+bw*.22,cy-bh*.43);
+    ctx.bezierCurveTo(cx+bw*.43,cy-bh*.43,cx+bw*.60,cy-bh*.12,cx+bw*.49,cy+bh*.10);
+    ctx.bezierCurveTo(cx+bw*.53,cy+bh*.38,cx+bw*.20,cy+bh*.52,cx,cy+bh*.43);
+    ctx.closePath();
+    const fill=ctx.createRadialGradient(cx,cy-bh*.12,4,cx,cy,bw*.62);
+    fill.addColorStop(0,"rgba(34,211,238,.20)");fill.addColorStop(.58,"rgba(99,102,241,.13)");fill.addColorStop(1,"rgba(8,18,42,.04)");
+    ctx.fillStyle=fill;ctx.shadowColor="#22D3EE";ctx.shadowBlur=18+12*pulse;ctx.fill();
+    ctx.shadowBlur=0;ctx.lineWidth=2;ctx.strokeStyle="rgba(91,220,255,.82)";ctx.stroke();
+    // Sillons des hémisphères : une silhouette immédiatement reconnaissable.
+    ctx.beginPath();ctx.moveTo(cx,cy-bh*.38);ctx.bezierCurveTo(cx-bw*.045,cy-bh*.12,cx+bw*.035,cy+bh*.12,cx,cy+bh*.39);
+    ctx.strokeStyle="rgba(167,139,250,.75)";ctx.lineWidth=2;ctx.stroke();
+    for(const side of [-1,1]){
+      ctx.beginPath();
+      ctx.moveTo(cx+side*bw*.08,cy-bh*.30);
+      ctx.bezierCurveTo(cx+side*bw*.30,cy-bh*.43,cx+side*bw*.43,cy-bh*.22,cx+side*bw*.34,cy-bh*.08);
+      ctx.bezierCurveTo(cx+side*bw*.18,cy+bh*.02,cx+side*bw*.42,cy+bh*.12,cx+side*bw*.28,cy+bh*.29);
+      ctx.strokeStyle="rgba(34,211,238,.42)";ctx.lineWidth=1.5;ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx+side*bw*.10,cy+bh*.02);
+      ctx.bezierCurveTo(cx+side*bw*.25,cy-bh*.04,cx+side*bw*.30,cy+bh*.13,cx+side*bw*.18,cy+bh*.23);
+      ctx.strokeStyle="rgba(168,139,250,.38)";ctx.stroke();
+    }
+    ctx.font="700 11px system-ui";ctx.textAlign="center";ctx.fillStyle="#BDEFFF";
+    ctx.shadowColor="#22D3EE";ctx.shadowBlur=10;ctx.fillText("SANIX · MÉMOIRE NEURONALE",cx,cy-bh*.59);ctx.shadowBlur=0;
+    ctx.restore();
+  }
   function draw(t){
     if(state.stopped)return;
     const w=state.width,h=state.height;ctx.clearRect(0,0,w,h);
@@ -136,6 +177,10 @@ export function createProspectRelations(canvas, api) {
     for(let i=0;i<55;i++){ctx.fillStyle="rgba(148,180,230,.18)";ctx.fillRect((i*137.5)%w,(i*83.7)%h,1,1);}
     ctx.font="600 10px system-ui";ctx.fillStyle="#9FB2D3";ctx.fillText("ÉQUIPE COMMERCIALE",16,20);ctx.fillText(state.mode==="memory"?"MÉMOIRE ACTIVE":"RELATIONS / ACTIVITÉS",w*.43,20);ctx.fillText(state.mode==="memory"?"PROSPECTS LIÉS":"SANS LIAISON",w*.78,20);
     ctx.save();ctx.translate(w/2+state.camera.x,h/2+state.camera.y);ctx.scale(state.camera.scale,state.camera.scale);ctx.translate(-w/2,-h/2);
+    if(state.mode==="memory"){
+      const bw=Math.min(w*.43,h*.92),bh=Math.min(h*.66,w*.48);
+      drawBrain(w*.51,h*.51,bw,bh,t);
+    }
     for(const e of state.edges){
       const {from,to,color}=e;const active=!state.selected||from.id===state.selected||to.id===state.selected;ctx.globalAlpha=active?1:.12;const c1=from.x+(to.x-from.x)*.36,c2=from.x+(to.x-from.x)*.68;ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.bezierCurveTo(c1,from.y,c2,to.y,to.x,to.y);
       ctx.setLineDash(e.kind==="mission"?[5,4]:e.kind==="assignment"?[2,5]:e.kind==="memory_link"?[3,5]:[]);ctx.strokeStyle=e.kind==="activity"?color+"D8":e.kind==="mission"?color+"C0":e.kind==="memory"?"#FBBF24D8":e.kind==="memory_link"?color+"C0":color+"70";ctx.lineWidth=e.kind==="memory"?2.2:e.kind==="memory_link"?1.8:e.activityCount&&e.missionCount?2.8:e.kind==="activity"?2:e.kind==="mission"?1.6:1.2;ctx.stroke();ctx.setLineDash([]);
@@ -150,10 +195,15 @@ export function createProspectRelations(canvas, api) {
       const phase=t/500+n.y, pulse=3.5+Math.sin(phase)*2;if(state.selected===n.id){ctx.beginPath();ctx.arc(n.x,n.y,n.r+10,0,Math.PI*2);ctx.strokeStyle="#FFFFFF";ctx.lineWidth=1.5;ctx.stroke();}
       ctx.beginPath();ctx.arc(n.x,n.y,n.r+ pulse,0,Math.PI*2);ctx.fillStyle=color+"18";ctx.fill();
       ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,Math.PI*2);ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=12;ctx.fill();ctx.shadowBlur=0;
-      ctx.font=n.kind==="agent"?"600 10px system-ui":n.kind==="memory"?"8px system-ui":"9px system-ui";ctx.fillStyle=n.kind==="agent"?"#E5F5FF":n.kind==="memory"?"#E8F7EF":"#C8D6ED";
-      const name=n.kind==="agent"?(p.nom||p.code||"Agent"):n.kind==="memory"?(p.contenu||"Mémoire"):(p.entreprise||"Prospect");
-      const max=n.kind==="memory"?42:23;ctx.fillText(name.length>max?name.slice(0,max-1)+"…":name,n.x+(n.kind==="agent"?12:9),n.y+3);
-      if(n.kind==="prospect"){ctx.font="8px system-ui";ctx.fillStyle=color;ctx.fillText(label(p.stage),n.x+9,n.y+13);}else if(n.kind==="memory"){ctx.font="7px system-ui";ctx.fillStyle=color;ctx.fillText(p.statut==="valide"?"validée":"à vérifier",n.x+9,n.y+12);}
+      if(n.kind==="agent"||n.kind==="prospect"){
+        ctx.font=n.kind==="agent"?"600 10px system-ui":"9px system-ui";ctx.fillStyle=n.kind==="agent"?"#E5F5FF":"#C8D6ED";
+        const name=n.kind==="agent"?(p.nom||p.code||"Agent"):(p.entreprise||"Prospect"),max=n.kind==="agent"?23:22;
+        ctx.fillText(name.length>max?name.slice(0,max-1)+"…":name,n.x+(n.kind==="agent"?12:9),n.y+3);
+        if(n.kind==="prospect"){ctx.font="8px system-ui";ctx.fillStyle=color;ctx.fillText(label(p.stage),n.x+9,n.y+13);}
+      }else if(n.kind==="memory"){
+        ctx.beginPath();ctx.arc(n.x,n.y,n.r+2+Math.sin(phase)*1.4,0,Math.PI*2);ctx.fillStyle=color+"25";ctx.fill();
+        if(state.selected===n.id){ctx.font="600 10px system-ui";ctx.fillStyle="#F8FAFF";ctx.fillText(clipMemory(p.contenu,54),n.x+10,n.y-8);}
+      }
     }
     ctx.restore();ctx.globalAlpha=1;
     const prospectNodes=state.nodes.filter(n=>n.kind==="prospect"),memoryNodes=state.nodes.filter(n=>n.kind==="memory"),total=prospectNodes.length,linked=new Set(state.edges.map(e=>e.to.id)).size,activityEdges=state.edges.filter(e=>e.kind==="activity").length,missionEdges=state.edges.filter(e=>e.kind==="mission").length,assigned=prospectNodes.filter(n=>n.owner).length;
