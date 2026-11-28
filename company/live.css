@@ -743,3 +743,7 @@ body.exec-view .executive-facts{padding:8px 0}
   .relations-filters .relations-camera{grid-column:2;justify-content:flex-end}
   .relations-filters small{grid-column:1/-1;width:auto;margin:0}
 }
+
+/* Mémoire neuronale active : restitution du souvenir sélectionné. */
+.relations-memory-detail{position:absolute;z-index:8;right:58px;top:64px;width:min(360px,calc(100% - 80px));max-height:42%;overflow:auto;padding:14px 16px;background:rgba(5,16,32,.96);border:1px solid rgba(52,211,153,.65);border-radius:14px;box-shadow:0 12px 38px rgba(0,0,0,.48),0 0 22px rgba(52,211,153,.12);backdrop-filter:blur(10px)}
+.relations-memory-detail b{display:block;color:#6EE7B7;font-size:11px;letter-spacing:.08em;margin:0 24px 8px 0}.relations-memory-detail p{font-size:13px;line-height:1.5;margin:8px 0;color:#E8F5EF;white-space:pre-wrap;overflow-wrap:anywhere}.relations-memory-detail small{display:block;color:#9FB2C5;font-size:10px;margin-top:5px;overflow-wrap:anywhere}.memory-detail-close{position:absolute;right:8px;top:7px;border:1px solid #36516A;background:#10233B;color:#DCE8FA;border-radius:8px;width:27px;height:27px;cursor:pointer;font-size:17px}

@@ -17,7 +17,7 @@ const ORIGIN = location.origin;
 const STATES = { run: ["Au travail", "#22D3EE"], wait: ["Coordonne ses équipes", "#A855F7"], valid: ["Attend une validation", "#F59E0B"], bad: ["Mission bloquée", "#EF4444"], queue: ["Mission en attente", "#64748B"], idle: ["Disponible", "#3B5A94"], off: ["Suspendu", "#475569"] };
 const TASK_C = { en_cours: "#22D3EE", attente_sous_taches: "#A855F7", attente_validation: "#F59E0B", a_faire: "#64748B", bloquee: "#EF4444", echouee: "#EF4444", terminee: "#22C55E" };
 const TASK_L = { en_cours: "En cours", attente_sous_taches: "Attend ses équipes", attente_validation: "À valider", a_faire: "À faire", bloquee: "Bloquée", echouee: "Échouée", terminee: "Terminée", annulee: "Annulée" };
-const D = { agents: [], depts: [], tasks: [], tasks90: null, orderRows: null, execRows: null, execConfig: null, products: null, productAliases: null, actions: [], relationRows: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, costCenter90: null, salesRows: null, offerRows: null, whatsapp: null, gov: null, prospectHistory: null, prospectNetworkOrigin: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0, journalAgent: "", journalKind: "" };
+const D = { agents: [], depts: [], tasks: [], memoryTasks: [], memories: [], tasks90: null, orderRows: null, execRows: null, execConfig: null, products: null, productAliases: null, actions: [], relationRows: [], created: {}, recent: [], todayRows: [], nToday: 0, nTotal: 0, approvals: 0, budget: null, costCenter: null, costCenter90: null, salesRows: null, offerRows: null, whatsapp: null, gov: null, prospectHistory: null, prospectNetworkOrigin: null, sel: null, taskFilter: "all", lastId: 0, first: true, fails: 0, journalAgent: "", journalKind: "" };
 let sb = null;
 
 // ───────── Configuration et session ─────────
@@ -1257,17 +1257,31 @@ function renderRelationProductOptions() {
   select.value = products.some(p => String(p.id) === String(current)) ? String(current) : "";
   relationFilters.product = select.value;
 }
+let relationViewMode = "relations", memoryLoadedAt = 0, memoryLoading = null;
+async function loadNeuralMemory(force = false) {
+  if (memoryLoading) return memoryLoading;
+  if (!force && Date.now() - memoryLoadedAt < 30000) return;
+  memoryLoading = (async () => {
+    const [mem, tasks] = await Promise.all([
+      safe(sb.from("ai_agent_memory").select("id,agent_id,contenu,tags,importance,created_at,task_id,statut,source,niveau_preuve").order("created_at", { ascending: false }).limit(180), { data: [] }),
+      safe(sb.from("ai_agent_tasks").select("id,agent_id,prospect_id,produit,titre,statut").gte("created_at", since(180)).not("prospect_id", "is", null).limit(1200), { data: [] }),
+    ]);
+    D.memories = mem?.data ?? []; D.memoryTasks = tasks?.data ?? []; memoryLoadedAt = Date.now();
+  })().finally(() => { memoryLoading = null; });
+  return memoryLoading;
+}
 function updateRelationFilters() {
   relationFilters.agent = $("#relations-agent").value;
   relationFilters.product = $("#relations-product").value;
   relationFilters.prospect = $("#relations-prospect").value.trim();
-  relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.tasks || [], products: D.products || [], aliases: D.productAliases || [], filters: relationFilters });
+  relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.memoryTasks?.length ? D.memoryTasks : (D.tasks || []), memories: D.memories || [], mode: relationViewMode, products: D.products || [], aliases: D.productAliases || [], filters: relationFilters });
 }
 const relationsCanvas = $("#relations-canvas");
 const api3d = {
   get D() { return D; }, STATES, clip, agentState, deptColor, onSelect: (id) => { D.sel = id; renderDetail(); },
   onProspect: (p) => { D.relationSel = null; D.sel = null; D.prospectNetworkOrigin = { relation: null }; D.prospectSel = p; D.prospectHistory = null; renderDetail(); $("#detail")?.scrollIntoView?.({ behavior: "smooth", block: "nearest" }); },
   onAgent: (a) => { D.relationSel = null; D.prospectSel = null; D.sel = a.id; renderDetail(); },
+  onMemory: (m) => { const el = $("#relations-memory-detail"); if (!el) return; const status = m.statut === "valide" ? "Connaissance validée" : "Expérience / à vérifier"; const tags = Array.isArray(m.tags) ? m.tags : []; el.innerHTML = `<button type="button" class="memory-detail-close" data-memory-close aria-label="Fermer">×</button><b>🧠 MÉMOIRE ACTIVE · #${esc(m.id)}</b><p>${esc(m.contenu || "Souvenir sans contenu")}</p><small>${esc(m.agent_nom || (m.agent_id ? nameOf(m.agent_id) : "Mémoire partagée"))} · ${esc(status)} · importance ${esc(m.importance ?? "—")}</small><small>Preuve : ${esc(m.niveau_preuve ?? "non renseignée")} · ${esc(m.source || "source non renseignée")}</small>${tags.length ? `<small>Tags : ${esc(tags.join(" · "))}</small>` : ""}<small>${esc(ago(m.created_at))}${m.task_id ? ` · Mission ${esc(m.task_id)}` : ""}</small>`; el.hidden = false; },
   onRelation: (r) => { D.relationSel = r; if (r) { D.sel = r.agent.id; D.prospectNetworkOrigin = { relation: r }; D.prospectSel = r.prospect; renderDetail(); window.__jarvis?.explainRelation?.(r); } else { D.relationSel = null; } },
   onClearSelection: () => { D.relationSel = null; D.prospectSel = null; D.prospectNetworkOrigin = null; D.sel = null; $("#detail").hidden = true; renderDetail(); },
   onLegend: (items) => { const el=$("#relations-legend"); if(!el)return; el.innerHTML=items.map(item=>`<span class="relations-legend-item"><i class="relations-legend-dot ${esc(item.type)}" style="--legend-color:${esc(item.color)}"></i><b>${esc(item.label)}</b>${item.count!=null?`<small>${item.count}</small>`:""}</span>`).join(""); },
@@ -1283,6 +1297,8 @@ function initControls() {
   $("#relations-agent").addEventListener("change", updateRelationFilters);
   $("#relations-product").addEventListener("change", updateRelationFilters);
   $("#relations-prospect").addEventListener("input", updateRelationFilters);
+  $("#relations-mode").addEventListener("change", async (ev) => { relationViewMode = ev.target.value; if (relationViewMode === "memory") await loadNeuralMemory(true); updateRelationFilters(); relationsView?.reset(); });
+  $("#relations-memory-detail").addEventListener("click", (ev) => { if (ev.target.closest("[data-memory-close]")) $("#relations-memory-detail").hidden = true; });
   $("#relations-reset").addEventListener("click", () => {
     relationFilters.agent = ""; relationFilters.product = ""; relationFilters.prospect = "";
     $("#relations-agent").value = ""; $("#relations-product").value = ""; $("#relations-prospect").value = "";
@@ -1293,7 +1309,7 @@ function initControls() {
     if (c === "relations") {
       relationsMode = !relationsMode; b.classList.toggle("on", relationsMode);
       $("#stage3d").hidden = relationsMode; cv.hidden = relationsMode || !!view3d; relationsCanvas.hidden = !relationsMode; $("#relations-filters").hidden = !relationsMode; $("#relations-legend").hidden = !relationsMode;
-      if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView ??= createProspectRelations(relationsCanvas, { ...api3d, onFilterCount: (n, total) => { $("#relations-filter-count").textContent = n + " / " + total + " prospects"; } }); relationsView.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.tasks || [], products: D.products || [], aliases: D.productAliases || [], filters: relationFilters }); relationsView.resize(); }
+      if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView ??= createProspectRelations(relationsCanvas, { ...api3d, onFilterCount: (n, total) => { $("#relations-filter-count").textContent = n + " / " + total + " éléments"; } }); if (relationViewMode === "memory") await loadNeuralMemory(true); relationsView.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.memoryTasks?.length ? D.memoryTasks : (D.tasks || []), memories: D.memories || [], mode: relationViewMode, products: D.products || [], aliases: D.productAliases || [], filters: relationFilters }); relationsView.resize(); }
       else view3d?.resize();
       return;
     }
@@ -1326,7 +1342,7 @@ function tick() {
 async function cycle() {
   try {
     await pull(); D.fails = 0; conn("ok", `En direct · ${new Date().toLocaleTimeString("fr-FR", { timeZone: "Africa/Abidjan" })}`);
-    layout(); view3d?.update(); if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.tasks || [], filters: relationFilters }); } renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderWorkfloor(); if (!$("#wf-journal")?.hidden) renderJournal(); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
+    layout(); view3d?.update(); if (relationsMode) { renderRelationAgentOptions(); renderRelationProductOptions(); if (relationViewMode === "memory") await loadNeuralMemory(); relationsView?.update({ agents: D.agents, prospects: D.salesRows || [], activities: D.relationRows || [], tasks: D.memoryTasks?.length ? D.memoryTasks : (D.tasks || []), memories: D.memories || [], mode: relationViewMode, filters: relationFilters }); } renderKpis(); renderWorkflow(); renderMissions(); renderFeed(!D.first); renderWorkfloor(); if (!$("#wf-journal")?.hidden) renderJournal(); renderAlerts(); renderHealth(); renderBusiness(); renderFinance(); renderWhatsApp(); renderAgentPerformance(); renderOperationsDirector(); renderBusinessIntelligence(); renderPredictiveDirector(); renderExecutiveCommandCenter(); renderTicker(); renderDetail(); D.first = false;
   } catch (e) { D.fails++; conn("bad", D.fails > 1 ? "Reconnexion… (session ou réseau)" : "Rafraîchissement…"); if (D.fails > 2) askSession(); }
 }
 async function boot() {
