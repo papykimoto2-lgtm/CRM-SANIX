@@ -115,14 +115,14 @@ async function buildBrief(ctx: CoCtx): Promise<Brief> {
     console.warn("Mémoire neuronale indisponible pour", agent.code, memError.message);
     L.push("Mémoire neuronale : indisponible pour cette mission. N'invente aucun souvenir ni précédent.");
   } else if (mem?.length) {
-    L.push("Mémoire neuronale pertinente (à interpréter selon le statut et les preuves) :\\n" + mem.map((m: {
+    L.push("Mémoire neuronale pertinente (à interpréter selon le statut et les preuves) :\n" + mem.map((m: {
       contenu: string; statut: string; experience: boolean; niveau_preuve: number | null;
       fiabilite: number; source: string | null; partage: boolean;
     }) => {
       const nature = m.statut === "valide" && !m.experience ? "FAIT VALIDÉ" : m.experience ? "EXPÉRIENCE — pas une règle générale" : "À VÉRIFIER — ne pas présenter comme un fait";
       const preuve = m.niveau_preuve == null ? "non renseigné" : `niveau ${m.niveau_preuve}/5`;
       return `- [${nature} · fiabilité indicative ${m.fiabilite}/100 · preuve ${preuve}${m.partage ? " · partagé" : ""}${m.source ? ` · source : ${clip(m.source, 160)}` : ""}] ${clip(m.contenu, 420)}`;
-    }).join("\\n"));
+    }).join("\n"));
   } else {
     L.push("Mémoire neuronale : aucun souvenir pertinent retrouvé. Ne transforme pas une supposition en connaissance.");
   }
@@ -136,11 +136,11 @@ async function buildBrief(ctx: CoCtx): Promise<Brief> {
     } else {
       const active = (goals ?? []).filter((g: { statut: string }) => g.statut === "actif");
       if (active.length) {
-        L.push("OBJECTIFS STRATÉGIQUES ACTIFS — source : moteur Goal Engine, données CRM réelles :\\n" + active.slice(0, 12).map((g: {
+        L.push("OBJECTIFS STRATÉGIQUES ACTIFS — source : moteur Goal Engine, données CRM réelles :\n" + active.slice(0, 12).map((g: {
           titre: string; metrique: string; produit: string | null; cible: number; baseline: number;
           actuel: number; fait: number; pct: number; temps_pct: number; etat: string; echeance: string;
           agent_nom: string | null;
-        }) => `- ${g.titre} · ${g.produit ?? "tous produits"} · ${g.metrique} : ${g.fait}/${g.cible} incrémental (${g.pct} %) · temps écoulé ${g.temps_pct} % · état ${g.etat} · échéance ${new Date(g.echeance).toLocaleDateString("fr-FR", { timeZone: "Africa/Abidjan" })}${g.agent_nom ? ` · responsable ${g.agent_nom}` : ""}`).join("\\n"));
+        }) => `- ${g.titre} · ${g.produit ?? "tous produits"} · ${g.metrique} : ${g.fait}/${g.cible} incrémental (${g.pct} %) · temps écoulé ${g.temps_pct} % · état ${g.etat} · échéance ${new Date(g.echeance).toLocaleDateString("fr-FR", { timeZone: "Africa/Abidjan" })}${g.agent_nom ? ` · responsable ${g.agent_nom}` : ""}`).join("\n"));
         L.push("Règle décisionnelle : priorise les objectifs en retard selon l'impact, les preuves, le coût et les dépendances. Toute mission déléguée doit contribuer à un objectif actif ou justifier explicitement sa priorité. Ne déclare jamais un objectif atteint sur la seule base d'un rapport d'agent.");
       } else {
         L.push("AUCUN OBJECTIF STRATÉGIQUE ACTIF N'EST CONFIGURÉ dans Goal Engine. N'invente aucune cible ; signale ce manque à la direction et pilote les missions selon les instructions explicites du Président et les indicateurs vérifiables.");
