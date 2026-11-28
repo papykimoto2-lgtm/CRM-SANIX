@@ -4400,8 +4400,38 @@ D\xE9cisions : ${clip(pv.decisions, 1500)}`);
   <donnees_transmises>${clip(c.contenu, 800)}</donnees_transmises>`).join("\n"));
     await db().from("ai_agent_communications").update({ lu_at: (/* @__PURE__ */ new Date()).toISOString() }).in("id", inbox.map((c) => c.id));
   }
-  const { data: mem } = await db().rpc("ai_memory_search", { p_agent: agent.id, p_q: task.titre, p_n: 5 });
-  if (mem?.length) L.push("M\xE9moire pertinente :\n" + mem.map((m) => `- ${m.partage ? "[partag\xE9] " : ""}${clip(m.contenu, 400)}`).join("\n"));
+  const { data: mem, error: memError } = await db().rpc("ai_memoire_recherche_interne", {
+    p_agent: agent.id,
+    p_q: `${task.titre} ${task.description}`,
+    p_n: 6
+  });
+  if (memError) {
+    console.warn("M\xE9moire neuronale indisponible pour", agent.code, memError.message);
+    L.push("M\xE9moire neuronale : indisponible pour cette mission. N'invente aucun souvenir ni pr\xE9c\xE9dent.");
+  } else if (mem?.length) {
+    L.push("M\xE9moire neuronale pertinente (\xE0 interpr\xE9ter selon le statut et les preuves) :\n" + mem.map((m) => {
+      const nature = m.statut === "valide" && !m.experience ? "FAIT VALID\xC9" : m.experience ? "EXP\xC9RIENCE \u2014 pas une r\xE8gle g\xE9n\xE9rale" : "\xC0 V\xC9RIFIER \u2014 ne pas pr\xE9senter comme un fait";
+      const preuve = m.niveau_preuve == null ? "non renseign\xE9" : `niveau ${m.niveau_preuve}/5`;
+      return `- [${nature} \xB7 fiabilit\xE9 indicative ${m.fiabilite}/100 \xB7 preuve ${preuve}${m.partage ? " \xB7 partag\xE9" : ""}${m.source ? ` \xB7 source : ${clip(m.source, 160)}` : ""}] ${clip(m.contenu, 420)}`;
+    }).join("\n"));
+  } else {
+    L.push("M\xE9moire neuronale : aucun souvenir pertinent retrouv\xE9. Ne transforme pas une supposition en connaissance.");
+  }
+  if (agent.niveau === 1) {
+    const { data: goals, error: goalsError } = await db().rpc("ai_goals_calc");
+    if (goalsError) {
+      console.warn("Moteur d'objectifs indisponible pour le DG", goalsError.message);
+      L.push("Moteur d'objectifs : lecture indisponible. Ne pr\xE9tends pas conna\xEEtre la progression des objectifs.");
+    } else {
+      const active = (goals ?? []).filter((g) => g.statut === "actif");
+      if (active.length) {
+        L.push("OBJECTIFS STRAT\xC9GIQUES ACTIFS \u2014 source : moteur Goal Engine, donn\xE9es CRM r\xE9elles :\n" + active.slice(0, 12).map((g) => `- ${g.titre} \xB7 ${g.produit ?? "tous produits"} \xB7 ${g.metrique} : ${g.fait}/${g.cible} incr\xE9mental (${g.pct} %) \xB7 temps \xE9coul\xE9 ${g.temps_pct} % \xB7 \xE9tat ${g.etat} \xB7 \xE9ch\xE9ance ${new Date(g.echeance).toLocaleDateString("fr-FR", { timeZone: "Africa/Abidjan" })}${g.agent_nom ? ` \xB7 responsable ${g.agent_nom}` : ""}`).join("\n"));
+        L.push("R\xE8gle d\xE9cisionnelle : priorise les objectifs en retard selon l'impact, les preuves, le co\xFBt et les d\xE9pendances. Toute mission d\xE9l\xE9gu\xE9e doit contribuer \xE0 un objectif actif ou justifier explicitement sa priorit\xE9. Ne d\xE9clare jamais un objectif atteint sur la seule base d'un rapport d'agent.");
+      } else {
+        L.push("AUCUN OBJECTIF STRAT\xC9GIQUE ACTIF N'EST CONFIGUR\xC9 dans Goal Engine. N'invente aucune cible ; signale ce manque \xE0 la direction et pilote les missions selon les instructions explicites du Pr\xE9sident et les indicateurs v\xE9rifiables.");
+      }
+    }
+  }
   if (agent.outils.includes("assigner_mission") || agent.outils.includes("creer_agent")) {
     const { data: open } = await db().from("ai_agent_tasks").select("agent_id").in("statut", [...OPEN_STATES]).limit(2e3);
     const charge = /* @__PURE__ */ new Map();
