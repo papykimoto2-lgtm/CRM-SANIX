@@ -137,37 +137,64 @@ export function createProspectRelations(canvas, api) {
     layout();
   }
   const clipMemory=(v,n)=>{const text=String(v||"Souvenir");return text.length>n?text.slice(0,n-1)+"…":text;};
-  function drawBrain(cx,cy,bw,bh,t){
-    ctx.save();
-    const pulse=.5+.5*Math.sin(t/850);
+  function brainPath(cx,cy,bw,bh){
     ctx.beginPath();
     ctx.moveTo(cx,cy+bh*.43);
-    ctx.bezierCurveTo(cx-bw*.20,cy+bh*.52,cx-bw*.53,cy+bh*.38,cx-bw*.49,cy+bh*.10);
-    ctx.bezierCurveTo(cx-bw*.60,cy-bh*.12,cx-bw*.43,cy-bh*.43,cx-bw*.22,cy-bh*.43);
-    ctx.bezierCurveTo(cx-bw*.08,cy-bh*.54,cx-bw*.025,cy-bh*.43,cx,cy-bh*.39);
-    ctx.bezierCurveTo(cx+bw*.025,cy-bh*.43,cx+bw*.08,cy-bh*.54,cx+bw*.22,cy-bh*.43);
-    ctx.bezierCurveTo(cx+bw*.43,cy-bh*.43,cx+bw*.60,cy-bh*.12,cx+bw*.49,cy+bh*.10);
-    ctx.bezierCurveTo(cx+bw*.53,cy+bh*.38,cx+bw*.20,cy+bh*.52,cx,cy+bh*.43);
+    ctx.bezierCurveTo(cx-bw*.17,cy+bh*.52,cx-bw*.48,cy+bh*.40,cx-bw*.49,cy+bh*.13);
+    ctx.bezierCurveTo(cx-bw*.61,cy-bh*.08,cx-bw*.46,cy-bh*.38,cx-bw*.23,cy-bh*.42);
+    ctx.bezierCurveTo(cx-bw*.12,cy-bh*.50,cx-bw*.045,cy-bh*.43,cx,cy-bh*.34);
+    ctx.bezierCurveTo(cx+bw*.045,cy-bh*.43,cx+bw*.12,cy-bh*.50,cx+bw*.23,cy-bh*.42);
+    ctx.bezierCurveTo(cx+bw*.46,cy-bh*.38,cx+bw*.61,cy-bh*.08,cx+bw*.49,cy+bh*.13);
+    ctx.bezierCurveTo(cx+bw*.48,cy+bh*.40,cx+bw*.17,cy+bh*.52,cx,cy+bh*.43);
     ctx.closePath();
-    const fill=ctx.createRadialGradient(cx,cy-bh*.12,4,cx,cy,bw*.62);
-    fill.addColorStop(0,"rgba(34,211,238,.20)");fill.addColorStop(.58,"rgba(99,102,241,.13)");fill.addColorStop(1,"rgba(8,18,42,.04)");
-    ctx.fillStyle=fill;ctx.shadowColor="#22D3EE";ctx.shadowBlur=18+12*pulse;ctx.fill();
-    ctx.shadowBlur=0;ctx.lineWidth=2;ctx.strokeStyle="rgba(91,220,255,.82)";ctx.stroke();
-    // Sillons des hémisphères : une silhouette immédiatement reconnaissable.
-    ctx.beginPath();ctx.moveTo(cx,cy-bh*.38);ctx.bezierCurveTo(cx-bw*.045,cy-bh*.12,cx+bw*.035,cy+bh*.12,cx,cy+bh*.39);
-    ctx.strokeStyle="rgba(167,139,250,.75)";ctx.lineWidth=2;ctx.stroke();
-    for(const side of [-1,1]){
-      ctx.beginPath();
-      ctx.moveTo(cx+side*bw*.08,cy-bh*.30);
-      ctx.bezierCurveTo(cx+side*bw*.30,cy-bh*.43,cx+side*bw*.43,cy-bh*.22,cx+side*bw*.34,cy-bh*.08);
-      ctx.bezierCurveTo(cx+side*bw*.18,cy+bh*.02,cx+side*bw*.42,cy+bh*.12,cx+side*bw*.28,cy+bh*.29);
-      ctx.strokeStyle="rgba(34,211,238,.42)";ctx.lineWidth=1.5;ctx.stroke();
-      ctx.beginPath();ctx.moveTo(cx+side*bw*.10,cy+bh*.02);
-      ctx.bezierCurveTo(cx+side*bw*.25,cy-bh*.04,cx+side*bw*.30,cy+bh*.13,cx+side*bw*.18,cy+bh*.23);
-      ctx.strokeStyle="rgba(168,139,250,.38)";ctx.stroke();
+  }
+  function drawBrain(cx,cy,bw,bh,t){
+    ctx.save();
+    const pulse=.5+.5*Math.sin(t/1050), sheen=.5+.5*Math.sin(t/2400);
+    brainPath(cx,cy,bw,bh);
+    const volume=ctx.createRadialGradient(cx-bw*.17,cy-bh*.27,2,cx,cy,bw*.69);
+    volume.addColorStop(0,"rgba(116,225,255,.48)");
+    volume.addColorStop(.25,"rgba(48,133,190,.42)");
+    volume.addColorStop(.62,"rgba(29,66,119,.68)");
+    volume.addColorStop(1,"rgba(7,18,43,.96)");
+    ctx.fillStyle=volume;ctx.shadowColor="#22D3EE";ctx.shadowBlur=30+18*pulse;ctx.fill();
+    ctx.shadowBlur=0;ctx.lineWidth=2.2;ctx.strokeStyle="rgba(112,224,255,.9)";ctx.stroke();
+    // Relief organique : sillons ramifiés, dessinés à l'intérieur du volume.
+    ctx.save();brainPath(cx,cy,bw,bh);ctx.clip();
+    const folds=[
+      [-.39,-.22,-.29,-.39,-.12,-.32,-.09,-.15],[-.43,-.02,-.28,-.15,-.14,-.05,-.19,.12],
+      [-.38,.22,-.25,.08,-.13,.27,-.22,.36],[-.28,-.36,-.21,-.19,-.31,-.05,-.20,.02],
+      [-.18,-.27,-.06,-.16,-.22,.04,-.10,.16],[-.12,.02,-.03,.15,-.16,.26,-.08,.34],
+      [.39,-.22,.29,-.39,.12,-.32,.09,-.15],[.43,-.02,.28,-.15,.14,-.05,.19,.12],
+      [.38,.22,.25,.08,.13,.27,.22,.36],[.28,-.36,.21,-.19,.31,-.05,.20,.02],
+      [.18,-.27,.06,-.16,.22,.04,.10,.16],[.12,.02,.03,.15,.16,.26,.08,.34]
+    ];
+    for(let i=0;i<folds.length;i++){
+      const a=folds[i],side=a[0]<0?-1:1;
+      ctx.beginPath();ctx.moveTo(cx+bw*a[0],cy+bh*a[1]);
+      ctx.bezierCurveTo(cx+bw*a[2],cy+bh*a[3],cx+bw*a[4],cy+bh*a[5],cx+bw*a[6],cy+bh*a[7]);
+      ctx.strokeStyle=i%2?"rgba(124,222,255,.34)":"rgba(5,19,48,.48)";
+      ctx.lineWidth=i%3===0?4:2.2;ctx.lineCap="round";ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx+bw*a[0],cy+bh*a[1]-2);
+      ctx.bezierCurveTo(cx+bw*a[2],cy+bh*a[3]-2,cx+bw*a[4],cy+bh*a[5]-2,cx+bw*a[6],cy+bh*a[7]-2);
+      ctx.strokeStyle="rgba(177,241,255,.19)";ctx.lineWidth=1;ctx.stroke();
     }
-    ctx.font="700 11px system-ui";ctx.textAlign="center";ctx.fillStyle="#BDEFFF";
-    ctx.shadowColor="#22D3EE";ctx.shadowBlur=10;ctx.fillText("SANIX · MÉMOIRE NEURONALE",cx,cy-bh*.59);ctx.shadowBlur=0;
+    // Petites fibres lumineuses évoquant les réseaux neuronaux.
+    for(let i=0;i<34;i++){
+      const side=i%2?-1:1,xx=cx+side*bw*(.08+(i%7)*.045),yy=cy+bh*(-.28+Math.floor(i/7)*.13);
+      ctx.beginPath();ctx.moveTo(xx,yy);ctx.quadraticCurveTo(xx+side*bw*.055,yy-bh*.055,xx+side*bw*.10,yy+bh*.015);
+      ctx.strokeStyle="rgba(67,220,255,"+(.12+.12*sheen)+")";ctx.lineWidth=1;ctx.stroke();
+    }
+    ctx.restore();
+    // Fissure interhémisphérique et liseré de lumière.
+    ctx.beginPath();ctx.moveTo(cx,cy-bh*.34);ctx.bezierCurveTo(cx-bw*.045,cy-bh*.12,cx+bw*.04,cy+bh*.12,cx,cy+bh*.39);
+    ctx.strokeStyle="rgba(173,240,255,.82)";ctx.lineWidth=2.4;ctx.shadowColor="#57DFFF";ctx.shadowBlur=12;ctx.stroke();ctx.shadowBlur=0;
+    // Reflet volumétrique supérieur et ombre basale.
+    const gloss=ctx.createRadialGradient(cx-bw*.18,cy-bh*.30,1,cx-bw*.08,cy-bh*.12,bw*.40);
+    gloss.addColorStop(0,"rgba(220,250,255,.23)");gloss.addColorStop(1,"rgba(220,250,255,0)");
+    brainPath(cx,cy,bw,bh);ctx.fillStyle=gloss;ctx.fill();
+    ctx.font="700 11px system-ui";ctx.textAlign="center";ctx.fillStyle="#C9F4FF";ctx.shadowColor="#22D3EE";ctx.shadowBlur=12;
+    ctx.fillText("SANIX  /  MÉMOIRE NEURONALE",cx,cy-bh*.59);ctx.shadowBlur=0;
     ctx.restore();
   }
   function draw(t){
@@ -177,10 +204,6 @@ export function createProspectRelations(canvas, api) {
     for(let i=0;i<55;i++){ctx.fillStyle="rgba(148,180,230,.18)";ctx.fillRect((i*137.5)%w,(i*83.7)%h,1,1);}
     ctx.font="600 10px system-ui";ctx.fillStyle="#9FB2D3";ctx.fillText("ÉQUIPE COMMERCIALE",16,20);ctx.fillText(state.mode==="memory"?"MÉMOIRE ACTIVE":"RELATIONS / ACTIVITÉS",w*.43,20);ctx.fillText(state.mode==="memory"?"PROSPECTS LIÉS":"SANS LIAISON",w*.78,20);
     ctx.save();ctx.translate(w/2+state.camera.x,h/2+state.camera.y);ctx.scale(state.camera.scale,state.camera.scale);ctx.translate(-w/2,-h/2);
-    if(state.mode==="memory"){
-      const bw=Math.min(w*.43,h*.92),bh=Math.min(h*.66,w*.48);
-      drawBrain(w*.51,h*.51,bw,bh,t);
-    }
     for(const e of state.edges){
       const {from,to,color}=e;const active=!state.selected||from.id===state.selected||to.id===state.selected;ctx.globalAlpha=active?1:.12;const c1=from.x+(to.x-from.x)*.36,c2=from.x+(to.x-from.x)*.68;ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.bezierCurveTo(c1,from.y,c2,to.y,to.x,to.y);
       ctx.setLineDash(e.kind==="mission"?[5,4]:e.kind==="assignment"?[2,5]:e.kind==="memory_link"?[3,5]:[]);ctx.strokeStyle=e.kind==="activity"?color+"D8":e.kind==="mission"?color+"C0":e.kind==="memory"?"#FBBF24D8":e.kind==="memory_link"?color+"C0":color+"70";ctx.lineWidth=e.kind==="memory"?2.2:e.kind==="memory_link"?1.8:e.activityCount&&e.missionCount?2.8:e.kind==="activity"?2:e.kind==="mission"?1.6:1.2;ctx.stroke();ctx.setLineDash([]);
@@ -189,6 +212,10 @@ export function createProspectRelations(canvas, api) {
       const x=q*q*q*from.x+3*q*q*k*c1+3*q*k*k*c2+k*k*k*to.x;
       const y=q*q*q*from.y+3*q*q*k*from.y+3*q*k*k*to.y+k*k*k*to.y;
       ctx.beginPath();ctx.arc(x,y,e.kind==="activity"?2.8:e.kind==="mission"?2.4:e.kind==="memory"?3:2,0,Math.PI*2);ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=11;ctx.fill();ctx.shadowBlur=0;
+    }
+    if(state.mode==="memory"){
+      const bw=Math.min(w*.43,h*.92),bh=Math.min(h*.66,w*.48);
+      drawBrain(w*.51,h*.51,bw,bh,t);
     }
     for(const n of state.nodes){
       const p=n.data,color=n.kind==="agent"?"#22D3EE":n.kind==="memory"?(p.statut==="valide"?"#34D399":p.agent_id?"#FBBF24":"#A78BFA"):prospectColor(p),active=!state.selected||n.id===state.selected||state.edges.some(e=>(e.from.id===state.selected&&e.to.id===n.id)||(e.to.id===state.selected&&e.from.id===n.id));ctx.globalAlpha=active?1:.18;
