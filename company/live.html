@@ -44,6 +44,7 @@
       <section class="wf-journal" id="wf-journal" hidden aria-label="Journal chronologique des opérations"><div class="wf-journal-head"><div><b>JOURNAL DES OPÉRATIONS</b><small id="wf-journal-meta">Historique réel · données enregistrées dans Supabase</small></div><button type="button" id="wf-journal-close" aria-label="Fermer le journal">✕</button></div><div class="wf-journal-filters"><label>Agent<select id="wf-journal-agent"><option value="">Tous les agents</option></select></label><label>Nature<select id="wf-journal-kind"><option value="">Toutes les opérations</option><option value="action">Actions des agents</option><option value="communication">Échanges / décisions</option><option value="mission">Missions enregistrées</option><option value="error">Erreurs / blocages</option></select></label></div><div class="wf-journal-list" id="wf-journal-list"></div></section>
       <div id="stage3d"></div>
       <div id="relations-filters" class="relations-filters" hidden aria-label="Filtres du réseau relationnel">
+        <label>Vue<select id="relations-mode"><option value="relations">Relations</option><option value="memory">Mémoire active</option></select></label>
         <label>Agent<select id="relations-agent"><option value="">Tous les agents</option></select></label>
         <label>Logiciel<select id="relations-product"><option value="">Tous les logiciels</option></select></label>
         <label>Prospect<input id="relations-prospect" type="search" placeholder="Rechercher un prospect…"></label>
@@ -52,6 +53,7 @@
       </div>
       <canvas id="relations-canvas" aria-label="Relations vérifiées entre agents commerciaux et prospects" hidden></canvas>
       <div id="relations-legend" class="relations-legend" hidden aria-label="Légende du réseau neuronal"></div>
+      <section id="relations-memory-detail" class="relations-memory-detail" hidden aria-live="polite"></section>
       <canvas id="net" aria-label="Réseau des agents : un point lumineux par agent, animé quand il travaille"></canvas>
       <div class="ctl" id="ctl" role="toolbar" aria-label="Caméra">
         <button type="button" data-c="in" title="Zoom avant">＋</button><button type="button" data-c="out" title="Zoom arrière">－</button>
