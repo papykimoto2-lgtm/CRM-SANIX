@@ -151,6 +151,15 @@ export function createProspectRelations(canvas, api) {
   function drawBrain(cx,cy,bw,bh,t){
     ctx.save();
     const pulse=.5+.5*Math.sin(t/1050), sheen=.5+.5*Math.sin(t/2400);
+    // Rotation continue sur 360° autour de l'axe vertical (un tour en 18 secondes).
+    const angle=(t/18000)*Math.PI*2, facing=Math.cos(angle), depth=Math.max(.075,Math.abs(facing));
+    // Halo orbital indépendant : donne un repère spatial pendant le tour.
+    ctx.save();ctx.translate(cx,cy+bh*.04);ctx.scale(1,.19);ctx.beginPath();ctx.ellipse(0,0,bw*.61,bw*.61,0,0,Math.PI*2);
+    ctx.strokeStyle="rgba(91,220,255,.28)";ctx.lineWidth=1.4;ctx.shadowColor="#22D3EE";ctx.shadowBlur=9;ctx.stroke();ctx.shadowBlur=0;
+    const orbitA=angle+Math.PI*.18,ox=Math.cos(orbitA)*bw*.61,oy=Math.sin(orbitA)*bw*.61;
+    ctx.beginPath();ctx.arc(ox,oy,3.5+2*pulse,0,Math.PI*2);ctx.fillStyle="#9CF3FF";ctx.shadowColor="#22D3EE";ctx.shadowBlur=14;ctx.fill();ctx.restore();
+    // Compression de perspective : le cerveau devient presque de profil à 90°/270°.
+    ctx.translate(cx,cy);ctx.scale((facing<0?-1:1)*depth,1);ctx.translate(-cx,-cy);
     brainPath(cx,cy,bw,bh);
     const volume=ctx.createRadialGradient(cx-bw*.17,cy-bh*.27,2,cx,cy,bw*.69);
     volume.addColorStop(0,"rgba(116,225,255,.48)");
@@ -193,6 +202,8 @@ export function createProspectRelations(canvas, api) {
     const gloss=ctx.createRadialGradient(cx-bw*.18,cy-bh*.30,1,cx-bw*.08,cy-bh*.12,bw*.40);
     gloss.addColorStop(0,"rgba(220,250,255,.23)");gloss.addColorStop(1,"rgba(220,250,255,0)");
     brainPath(cx,cy,bw,bh);ctx.fillStyle=gloss;ctx.fill();
+    ctx.restore();
+    // Titre toujours lisible, même lorsque le cerveau présente son profil.
     ctx.font="700 11px system-ui";ctx.textAlign="center";ctx.fillStyle="#C9F4FF";ctx.shadowColor="#22D3EE";ctx.shadowBlur=12;
     ctx.fillText("SANIX  /  MÉMOIRE NEURONALE",cx,cy-bh*.59);ctx.shadowBlur=0;
     ctx.restore();
