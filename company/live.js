@@ -1249,7 +1249,7 @@ function syncMemoryBrain3D() {
   if (requested && !memoryBrain3d) {
     try {
       const host = document.querySelector(".stage");
-      if (host) memoryBrain3d = createMemoryBrain3D(host);
+      if (host) { memoryBrain3d = createMemoryBrain3D(host); memoryBrain3d.setCameraSource(() => relationsView?.getCamera?.()); }
     } catch (error) {
       console.warn("Cerveau WebGL indisponible, repli sur le cerveau 2D :", error);
     }
@@ -1308,6 +1308,8 @@ const api3d = {
   onAgent: (a) => { D.relationSel = null; D.prospectSel = null; D.sel = a.id; renderDetail(); },
   onMemory: (m) => { const el = $("#relations-memory-detail"); if (!el) return; const status = m.statut === "valide" ? "Connaissance validée" : "Expérience / à vérifier"; const tags = Array.isArray(m.tags) ? m.tags : []; const trust = m.fiabilite == null ? "non calculé" : `${m.fiabilite}/100 (indice indicatif, pas une probabilité)`; el.innerHTML = `<button type="button" class="memory-detail-close" data-memory-close aria-label="Fermer">×</button><b>🧠 MÉMOIRE ACTIVE · #${esc(m.id)}</b><p>${esc(m.contenu || "Souvenir sans contenu")}</p><small>${esc(m.agent_nom || (m.agent_id ? nameOf(m.agent_id) : "Mémoire partagée"))} · ${esc(status)} · importance ${esc(m.importance ?? "—")}</small><small>Fiabilité : ${esc(trust)}${m.a_revalider ? " · à revalider" : ""}</small><small>Preuve : ${esc(m.niveau_preuve ?? "non renseignée")} · ${esc(m.source || "source non renseignée")}</small>${tags.length ? `<small>Tags : ${esc(tags.join(" · "))}</small>` : ""}<small>${esc(ago(m.created_at))}${m.task_id ? ` · Mission ${esc(m.task_id)}` : ""}</small>`; el.hidden = false; },
   onRelation: (r) => { D.relationSel = r; if (r) { D.sel = r.agent.id; D.prospectNetworkOrigin = { relation: r }; D.prospectSel = r.prospect; renderDetail(); window.__jarvis?.explainRelation?.(r); } else { D.relationSel = null; } },
+  onRotate: (dx, dy) => memoryBrain3d?.rotate(dx, dy),
+  onReset: () => memoryBrain3d?.resetView(),
   onClearSelection: () => { D.relationSel = null; D.prospectSel = null; D.prospectNetworkOrigin = null; D.sel = null; $("#detail").hidden = true; renderDetail(); },
   onLegend: (items) => { const el=$("#relations-legend"); if(!el)return; el.innerHTML=items.map(item=>`<span class="relations-legend-item"><i class="relations-legend-dot ${esc(item.type)}" style="--legend-color:${esc(item.color)}"></i><b>${esc(item.label)}</b>${item.count!=null?`<small>${item.count}</small>`:""}</span>`).join(""); },
   onHover: (h) => { if (!h) { tip.hidden = true; return; } const n = h.n, cur = D.tasks.find((t) => t.agent_id === n.id && t.statut === "en_cours") ?? D.tasks.find((t) => t.agent_id === n.id && OPENS.includes(t.statut));
@@ -1329,7 +1331,7 @@ function initControls() {
     $("#relations-agent").value = ""; $("#relations-product").value = ""; $("#relations-prospect").value = "";
     updateRelationFilters(); relationsView?.reset(); relationsView?.clearSelection();
   });
-  $("#relations-filters").addEventListener("click", (ev) => { const b=ev.target.closest("[data-rel-camera]");if(!b||!relationsView)return;const action=b.dataset.relCamera;if(action==="in")relationsView.zoom(1.22);else if(action==="out")relationsView.zoom(.82);else if(action==="reset")relationsView.reset(); });
+  $("#relations-filters").addEventListener("click", (ev) => { const b=ev.target.closest("[data-rel-camera]");if(!b||!relationsView)return;const action=b.dataset.relCamera;if(action==="in")relationsView.zoom(1.22);else if(action==="out")relationsView.zoom(.82);else if(action==="reset")relationsView.reset();else if(action==="spin"&&memoryBrain3d){const on=memoryBrain3d.setAutoRotate(!memoryBrain3d.isAutoRotate());b.setAttribute("aria-pressed",String(on));b.classList.toggle("on",on);} });
   $("#ctl").addEventListener("click", async (ev) => { const b = ev.target.closest("button[data-c]"); if (!b) return; const c = b.dataset.c;
     if (c === "relations") {
       relationsMode = !relationsMode; b.classList.toggle("on", relationsMode);
@@ -1387,6 +1389,7 @@ async function boot() {
   $("#fs").addEventListener("click", () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.()));
   requestAnimationFrame(draw); tick(); setInterval(tick, 1000); askSession(); setInterval(askSession, 20 * 60000);
   await init3d(); initControls();
+  window.__brain3d = () => memoryBrain3d;
   window.__jarvisApi = { D, sb, STATES, health, agentState, nameOf, agentById, OPENS, TASK_L, targetOf, get view() { return view3d; }, setFocus: (on) => { document.body.classList.toggle("focus", on); setTimeout(() => view3d?.resize(), 60); }, isFocus: () => document.body.classList.contains("focus"), fullscreen: () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.()), refresh: () => cycle() };
   initJarvis(window.__jarvisApi, $("#stage3d").parentElement);
   await cycle(); setInterval(() => cycle(), /[?&]fast/.test(location.search) ? 800 : 6000);
