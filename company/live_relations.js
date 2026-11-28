@@ -141,7 +141,7 @@ export function createProspectRelations(canvas, api) {
       ctx.setLineDash(e.kind==="mission"?[5,4]:e.kind==="assignment"?[2,5]:e.kind==="memory_link"?[3,5]:[]);ctx.strokeStyle=e.kind==="activity"?color+"D8":e.kind==="mission"?color+"C0":e.kind==="memory"?"#FBBF24D8":e.kind==="memory_link"?color+"C0":color+"70";ctx.lineWidth=e.kind==="memory"?2.2:e.kind==="memory_link"?1.8:e.activityCount&&e.missionCount?2.8:e.kind==="activity"?2:e.kind==="mission"?1.6:1.2;ctx.stroke();ctx.setLineDash([]);
       const seed=(Number(String(to.id).replace(/\D/g,"").slice(-4))||13)%97/97;
       const k=(t*.00012+seed)%1,q=1-k;
-      const c1=from.x+(to.x-from.x)*.36,c2=from.x+(to.x-from.x)*.68;const x=q*q*q*from.x+3*q*q*k*c1+3*q*k*k*c2+k*k*k*to.x;
+      const x=q*q*q*from.x+3*q*q*k*c1+3*q*k*k*c2+k*k*k*to.x;
       const y=q*q*q*from.y+3*q*q*k*from.y+3*q*k*k*to.y+k*k*k*to.y;
       ctx.beginPath();ctx.arc(x,y,e.kind==="activity"?2.8:e.kind==="mission"?2.4:e.kind==="memory"?3:2,0,Math.PI*2);ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=11;ctx.fill();ctx.shadowBlur=0;
     }
