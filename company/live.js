@@ -1250,6 +1250,7 @@ function syncMemoryBrain3D() {
     const host = document.querySelector(".stage");
     if (host) memoryBrain3d = createMemoryBrain3D(host);
   }
+  relationsView?.setBrain3D(active);
   memoryBrain3d?.update(D.memories || []);
   memoryBrain3d?.setActive(active);
 }
