@@ -152,14 +152,30 @@ export function createProspectRelations(canvas, api) {
     ctx.save();
     const pulse=.5+.5*Math.sin(t/1050), sheen=.5+.5*Math.sin(t/2400);
     // Rotation continue sur 360° autour de l'axe vertical (un tour en 18 secondes).
-    const angle=(t/18000)*Math.PI*2, facing=Math.cos(angle), depth=Math.max(.075,Math.abs(facing));
+    const angle=(t/18000)*Math.PI*2, facing=Math.cos(angle), side=Math.sin(angle);
+    // Une vraie épaisseur visuelle : la projection ne s'écrase jamais en feuille.
+    const depth=.34+.66*Math.abs(facing), bodyShift=side*bw*.16, bodyThickness=bw*.25;
     // Halo orbital indépendant : donne un repère spatial pendant le tour.
     ctx.save();ctx.translate(cx,cy+bh*.04);ctx.scale(1,.19);ctx.beginPath();ctx.ellipse(0,0,bw*.61,bw*.61,0,0,Math.PI*2);
     ctx.strokeStyle="rgba(91,220,255,.28)";ctx.lineWidth=1.4;ctx.shadowColor="#22D3EE";ctx.shadowBlur=9;ctx.stroke();ctx.shadowBlur=0;
     const orbitA=angle+Math.PI*.18,ox=Math.cos(orbitA)*bw*.61,oy=Math.sin(orbitA)*bw*.61;
     ctx.beginPath();ctx.arc(ox,oy,3.5+2*pulse,0,Math.PI*2);ctx.fillStyle="#9CF3FF";ctx.shadowColor="#22D3EE";ctx.shadowBlur=14;ctx.fill();ctx.restore();
-    // Compression de perspective : le cerveau devient presque de profil à 90°/270°.
-    ctx.translate(cx,cy);ctx.scale((facing<0?-1:1)*depth,1);ctx.translate(-cx,-cy);
+    // Projection volumétrique : coque arrière, tranche corticale et face avant.
+    // La tranche reste visible de profil grâce à l'épaisseur du volume.
+    ctx.save();
+    const mirror=facing<0?-1:1, projectedCx=cx+bodyShift;
+    ctx.translate(projectedCx,cy);ctx.scale(mirror*depth,1);ctx.translate(-cx,-cy);
+    for(let layer=12;layer>=1;layer--){
+      const offset=side*bodyThickness*(layer/12);
+      brainPath(cx+offset,cy+Math.abs(offset)*.10,bw,bh);
+      const shade=layer/12;
+      ctx.fillStyle="rgba(4,15,38,"+(.22+.42*shade)+")";
+      ctx.strokeStyle="rgba(38,132,181,"+(.12+.20*(1-shade))+")";
+      ctx.lineWidth=1;ctx.fill();ctx.stroke();
+    }
+    ctx.restore();
+    ctx.save();
+    ctx.translate(projectedCx,cy);ctx.scale(mirror*depth,1);ctx.translate(-cx,-cy);
     brainPath(cx,cy,bw,bh);
     const volume=ctx.createRadialGradient(cx-bw*.17,cy-bh*.27,2,cx,cy,bw*.69);
     volume.addColorStop(0,"rgba(116,225,255,.48)");
@@ -195,13 +211,24 @@ export function createProspectRelations(canvas, api) {
       ctx.strokeStyle="rgba(67,220,255,"+(.12+.12*sheen)+")";ctx.lineWidth=1;ctx.stroke();
     }
     ctx.restore();
-    // Fissure interhémisphérique et liseré de lumière.
-    ctx.beginPath();ctx.moveTo(cx,cy-bh*.34);ctx.bezierCurveTo(cx-bw*.045,cy-bh*.12,cx+bw*.04,cy+bh*.12,cx,cy+bh*.39);
-    ctx.strokeStyle="rgba(173,240,255,.82)";ctx.lineWidth=2.4;ctx.shadowColor="#57DFFF";ctx.shadowBlur=12;ctx.stroke();ctx.shadowBlur=0;
+    // Sillon central uniquement visible lorsque la face avant est orientée vers nous.
+    if(Math.abs(facing)>.42){
+      ctx.beginPath();ctx.moveTo(cx,cy-bh*.34);ctx.bezierCurveTo(cx-bw*.045,cy-bh*.12,cx+bw*.04,cy+bh*.12,cx,cy+bh*.39);
+      ctx.strokeStyle="rgba(173,240,255,.82)";ctx.lineWidth=2.4;ctx.shadowColor="#57DFFF";ctx.shadowBlur=12;ctx.stroke();ctx.shadowBlur=0;
+    }else{
+      // Crête lumineuse du profil : révèle l'épaisseur anatomique, pas une tranche plate.
+      ctx.beginPath();ctx.moveTo(cx+side*bw*.11,cy-bh*.34);ctx.bezierCurveTo(cx+side*bw*.27,cy-bh*.18,cx+side*bw*.23,cy+bh*.17,cx+side*bw*.10,cy+bh*.37);
+      ctx.strokeStyle="rgba(174,241,255,.72)";ctx.lineWidth=3.5;ctx.shadowColor="#57DFFF";ctx.shadowBlur=16;ctx.stroke();ctx.shadowBlur=0;
+    }
     // Reflet volumétrique supérieur et ombre basale.
     const gloss=ctx.createRadialGradient(cx-bw*.18,cy-bh*.30,1,cx-bw*.08,cy-bh*.12,bw*.40);
     gloss.addColorStop(0,"rgba(220,250,255,.23)");gloss.addColorStop(1,"rgba(220,250,255,0)");
     brainPath(cx,cy,bw,bh);ctx.fillStyle=gloss;ctx.fill();
+    // Reflet latéral mobile pour matérialiser le relief pendant la rotation.
+    const rimX=cx-side*bw*.30;
+    const rim=ctx.createRadialGradient(rimX,cy,2,rimX,cy,bw*.38);
+    rim.addColorStop(0,"rgba(107,231,255,.28)");rim.addColorStop(1,"rgba(107,231,255,0)");
+    brainPath(cx,cy,bw,bh);ctx.fillStyle=rim;ctx.fill();
     ctx.restore();
     // Titre toujours lisible, même lorsque le cerveau présente son profil.
     ctx.font="700 11px system-ui";ctx.textAlign="center";ctx.fillStyle="#C9F4FF";ctx.shadowColor="#22D3EE";ctx.shadowBlur=12;
