@@ -1,5 +1,5 @@
-// SANIX AI — cerveau humain anatomique, agents corticaux et hippocampes mémoriels.
-// Le modèle est volontairement fixe : seule la caméra zoome dans l'anatomie.
+// SANIX AI — cerveau humain anatomique rotatif, agents fixés au cortex et hippocampes mémoriels.
+// Le cerveau, les agents corticaux et les voies neuronales tournent comme un seul ensemble.
 import * as THREE from "./vendor/three.bundle.js";
 const TAU=Math.PI*2, clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
@@ -100,11 +100,17 @@ export function createMemoryBrain3D(host){
   memoryNodes.instanceMatrix.needsUpdate=true;if(memoryNodes.instanceColor)memoryNodes.instanceColor.needsUpdate=true;
  }
  let active=false,raf=0,last=0,disposed=false,observer=null,cameraSource=null,hostH=1,zoomLevel=1;
+ let yaw=0,pitch=.035,autoRotate=true,pauseUntil=0;
+ const ROTATION_PERIOD_MS=60000;
  function resize(){const r=host.getBoundingClientRect(),w=Math.max(1,r.width),h=Math.max(1,r.height);hostH=h;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
  function applyCamera(){const c=cameraSource?.()||{x:0,y:0,scale:1};zoomLevel=clamp(Number(c.scale)||1,.55,3.8);const upp=2*11.8*Math.tan(17*Math.PI/180)/hostH;brain.position.set((Number(c.x)||0)*upp,-(Number(c.y)||0)*upp,0);camera.position.z=11.8/Math.sqrt(zoomLevel);camera.lookAt(0,-.08,0);const inside=smooth(1.25,2.25,zoomLevel);cortexMats.forEach(m=>{m.opacity=.43*(1-inside*.72);m.depthWrite=inside<.55;});fibers.forEach(f=>{f.material.opacity=.24+inside*.35;});}
- function frame(now){if(!active||disposed)return;const dt=Math.min(64,now-(last||now));last=now;applyCamera();const t=now*.00022;flowParticles.forEach(p=>{const u=(t*.22+p.offset)%1;p.mesh.position.copy(p.curve.getPoint(u));});renderer.render(scene,camera);raf=requestAnimationFrame(frame);}
+ function frame(now){if(!active||disposed)return;const dt=Math.min(64,now-(last||now));last=now;if(autoRotate&&now>=pauseUntil)yaw=(yaw+dt*TAU/ROTATION_PERIOD_MS)%TAU;brain.rotation.set(pitch,yaw,0,"YXZ");applyCamera();const t=now*.00022;flowParticles.forEach(p=>{const u=(t*.22+p.offset)%1;p.mesh.position.copy(p.curve.getPoint(u));});renderer.render(scene,camera);raf=requestAnimationFrame(frame);}
  function setActive(v){active=!!v;canvas.style.display=active?"block":"none";if(active){resize();if(!raf){last=performance.now();raf=requestAnimationFrame(frame);}}else if(raf){cancelAnimationFrame(raf);raf=0;}}
  function destroy(){disposed=true;setActive(false);observer?.disconnect();renderer.dispose();canvas.remove();scene.traverse(o=>{o.geometry?.dispose?.();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose?.());else{o.material?.map?.dispose?.();o.material?.dispose?.();}});}
  observer=new ResizeObserver(resize);observer.observe(host);resize();
- return{setActive,update,resize,destroy,setCameraSource(fn){cameraSource=typeof fn==="function"?fn:null;},rotate(){},resetView(){},setAutoRotate(){return false;},isAutoRotate(){return false;},state(){return{zoom:zoomLevel,anatomical:true,agents:agentMeshes.length,hippocampi:2};}};
+ return{setActive,update,resize,destroy,setCameraSource(fn){cameraSource=typeof fn==="function"?fn:null;},
+  rotate(dx=0,dy=0){yaw=(yaw+Number(dx||0)*.008)%TAU;pitch=clamp(pitch+Number(dy||0)*.006,-.72,.72);pauseUntil=performance.now()+3500;},
+  resetView(){yaw=0;pitch=.035;autoRotate=true;pauseUntil=0;},
+  setAutoRotate(v){autoRotate=!!v;pauseUntil=0;return autoRotate;},isAutoRotate(){return autoRotate;},
+  state(){return{yaw,pitch,autoRotate,zoom:zoomLevel,anatomical:true,agents:agentMeshes.length,hippocampi:2};}};
 }
