@@ -1,0 +1,26 @@
+name: Syntaxe du front SANIX
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "company/**"
+      - "shared/**"
+      - "tests/esm_syntaxe_test.js"
+      - ".github/workflows/syntaxe-front.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  syntaxe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Vérifier la syntaxe de tous les modules et scripts du front
+        run: node tests/esm_syntaxe_test.js
