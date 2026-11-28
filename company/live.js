@@ -1256,7 +1256,7 @@ function syncMemoryBrain3D() {
   }
   const active = requested && !!memoryBrain3d;
   relationsView?.setBrain3D(active);
-  memoryBrain3d?.update(D.memories || []);
+  memoryBrain3d?.update({ memories: D.memories || [], agents: D.agents || [] });
   memoryBrain3d?.setActive(active);
 }
 const relationFilters = { agent: "", product: "", prospect: "" };
