@@ -157,7 +157,7 @@ export function createMemoryBrain3D(host){
     for(let i=0;i<180;i++){
       const visible=i<rows.length,side=i%2?1:-1,theta=.28+((i*37)%137)/137*2.55,phi=(side<0?-1:1)*(.10+((i*19)%89)/89*1.43);
       const p=surfacePoint(side,theta,phi,visible?1.04:.001);
-      neuronDummy.position.copy(p);neuronDummy.scale.setScalar(visible?.72+(Number(rows[i]?.importance)||1)*.08:0);
+      neuronDummy.position.copy(p);neuronDummy.scale.setScalar(visible ? (.72 + (Number(rows[i]?.importance)||1)*.08) : 0);
       neuronDummy.updateMatrix();neurons.setMatrixAt(i,neuronDummy.matrix);
       const status=rows[i]?.statut==="valide"?0x34d399:rows[i]?.statut==="partagee"?0xa78bfa:0xfbbf24;
       neurons.setColorAt(i,new THREE.Color(status));
