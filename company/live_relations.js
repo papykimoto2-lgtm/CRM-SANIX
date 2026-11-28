@@ -3,7 +3,7 @@
 // Les événements sans agent_id restent visibles comme non attribués : aucune relation n'est inventée.
 export function createProspectRelations(canvas, api) {
   const ctx = canvas.getContext("2d");
-  const state = { agents: [], prospects: [], activities: [], tasks: [], width: 0, height: 0, dpr: 1, nodes: [], edges: [], raf: 0, stopped: false, filters: { agent: "", product: "", prospect: "" }, products: [], aliases: [], totalProspects: 0, camera: { x: 0, y: 0, scale: 1 }, selected: null, selectedRelation: null, pointer: null, manualPositions: new Map() };
+  const state = { agents: [], prospects: [], activities: [], tasks: [], memories: [], mode: "relations", width: 0, height: 0, dpr: 1, nodes: [], edges: [], raf: 0, stopped: false, filters: { agent: "", product: "", prospect: "" }, products: [], aliases: [], totalProspects: 0, camera: { x: 0, y: 0, scale: 1 }, selected: null, selectedRelation: null, pointer: null, manualPositions: new Map() };
   const palette = { nouveau:"#64748B",a_qualifier:"#94A3B8",qualifie:"#22D3EE",premier_contact:"#38BDF8",conversation:"#60A5FA",besoin_identifie:"#818CF8",interesse:"#A78BFA",rdv_propose:"#F59E0B",rdv_confirme:"#FBBF24",demo_realisee:"#F97316",offre_transmise:"#FB923C",negociation:"#E879F9",offre_acceptee:"#22C55E",contrat_transmis:"#4ADE80",marche_gagne:"#16A34A",client_fidelise:"#10B981",perdu:"#EF4444",en_veille:"#64748B" };
   const label = s => String(s || "nouveau").replace(/_/g," ");
   const norm = v => String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("fr").trim();
@@ -84,7 +84,10 @@ export function createProspectRelations(canvas, api) {
     for(const rows of activityPairs.values()) { const a=rows[0]; if(a&&!owners.has(String(a.prospect_id))) owners.set(String(a.prospect_id),String(a.agent_id)); }
     const linkedIds=new Set([...owners.keys()]);
     const ranked=filteredProspects.slice().sort((a,b)=>Number(linkedIds.has(String(b.id)))-Number(linkedIds.has(String(a.id)))||String(b.next_action_at||"").localeCompare(String(a.next_action_at||"")));
-    const prospects=ranked.slice(0,70),groups=new Map();
+    const taskById=new Map(state.tasks.map(t=>[String(t.id),t]));
+    const memoryRows=state.mode==="memory"?state.memories.filter(m=>(!state.filters.agent||String(m.agent_id||"")===state.filters.agent)&&(!state.filters.prospect||norm([m.contenu,m.source,(m.tags||[]).join(" ")].join(" ")).includes(norm(state.filters.prospect)))&&(!state.filters.product||String(taskById.get(String(m.task_id))?.produit||"")===String(state.filters.product))).slice(0,90):[];
+    const memoryProspectIds=new Set(memoryRows.map(m=>taskById.get(String(m.task_id))?.prospect_id).filter(Boolean).map(String));
+    const prospects=(state.mode==="memory"?ranked.filter(p=>memoryProspectIds.has(String(p.id))).slice(0,45):ranked.slice(0,70)),groups=new Map();
     prospects.forEach(p=>{const owner=owners.get(String(p.id));if(owner){if(!groups.has(owner))groups.set(owner,[]);groups.get(owner).push(p);}});
     const agentNodes=[],prospectNodes=[];
     left.forEach((a,i)=>{const id=String(a.id),pos=state.manualPositions.get(id);agentNodes.push({id,kind:"agent",data:a,x:pos?.x??w*.16,y:pos?.y??h*(.12+.76*(i+.5)/Math.max(1,left.length)),r:7});});
@@ -97,6 +100,7 @@ export function createProspectRelations(canvas, api) {
       const id=String(p.id),pos=state.manualPositions.get(id);prospectNodes.push({id,kind:"prospect",data:p,owner,x:pos?.x??x,y:pos?.y??Math.max(34,Math.min(h-34,y)),r:5});
     });
     const nodeByProspect=new Map(prospectNodes.map(n=>[n.id,n]));
+    const memoryNodes=memoryRows.map((m,i)=>{const owner=m.agent_id?byOwner.get(String(m.agent_id)):null;const task=taskById.get(String(m.task_id));const pos=state.manualPositions.get("memory:"+m.id);return{id:"memory:"+m.id,kind:"memory",data:m,owner,task,x:pos?.x??w*.49,y:pos?.y??h*(.08+.84*(i+.5)/Math.max(1,memoryRows.length)),r:5};});
     const edges=[];
     const linkedPairs=new Set([...activityPairs.keys(),...missionPairs.keys()]);
     for(const key of linkedPairs){
@@ -108,13 +112,17 @@ export function createProspectRelations(canvas, api) {
     for(const n of prospectNodes){
       if(n.owner&&!linkedPairs.has(n.owner.id+"|"+n.id)) edges.push({from:n.owner,to:n,color:prospectColor(n.data),kind:"assignment"});
     }
-    state.nodes=[...agentNodes,...prospectNodes];state.edges=edges;api.onFilterCount?.(filteredProspects.length,state.totalProspects);
+    const memoryEdges=[];
+    for(const n of memoryNodes){const color=n.data.statut==="valide"?"#34D399":n.data.agent_id?"#FBBF24":"#A78BFA";if(n.owner)memoryEdges.push({from:n.owner,to:n,color,kind:"memory",memory:n.data});const p=n.task?.prospect_id?nodeByProspect.get(String(n.task.prospect_id)):null;if(p)memoryEdges.push({from:n,to:p,color:prospectColor(p.data),kind:"memory_link",memory:n.data,task:n.task});}
+    state.nodes=state.mode==="memory"?[...agentNodes,...memoryNodes,...prospectNodes]:[...agentNodes,...prospectNodes];state.edges=state.mode==="memory"?memoryEdges:edges;api.onFilterCount?.(state.mode==="memory"?memoryRows.length:filteredProspects.length,state.mode==="memory"?state.memories.length:state.totalProspects);
   }
   function update(data){
     state.agents=Array.isArray(data.agents)?data.agents:[];
     state.prospects=Array.isArray(data.prospects)?data.prospects:[];
     state.activities=Array.isArray(data.activities)?data.activities:[];
     state.tasks=Array.isArray(data.tasks)?data.tasks:[];
+    state.memories=Array.isArray(data.memories)?data.memories:[];
+    state.mode=data.mode==="memory"?"memory":"relations";
     state.totalProspects=state.prospects.length;
     state.products=Array.isArray(data.products)?data.products:[];
     state.aliases=Array.isArray(data.aliases)?data.aliases:[];
@@ -129,28 +137,29 @@ export function createProspectRelations(canvas, api) {
     ctx.font="600 10px system-ui";ctx.fillStyle="#9FB2D3";ctx.fillText("ÉQUIPE COMMERCIALE",16,20);ctx.fillText("RELATIONS / ACTIVITÉS",w*.43,20);ctx.fillText("SANS LIAISON",w*.78,20);
     ctx.save();ctx.translate(w/2+state.camera.x,h/2+state.camera.y);ctx.scale(state.camera.scale,state.camera.scale);ctx.translate(-w/2,-h/2);
     for(const e of state.edges){
-      const {from,to,color}=e;const active=!state.selected||from.id===state.selected||to.id===state.selected;ctx.globalAlpha=active?1:.12;ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.bezierCurveTo(state.width*.34,from.y,state.width*.38,to.y,to.x,to.y);
-      ctx.setLineDash(e.kind==="mission"?[5,4]:e.kind==="assignment"?[2,5]:[]);ctx.strokeStyle=e.kind==="activity"?color+"D8":e.kind==="mission"?color+"C0":color+"70";ctx.lineWidth=e.activityCount&&e.missionCount?2.8:e.kind==="activity"?2:e.kind==="mission"?1.6:1.2;ctx.stroke();ctx.setLineDash([]);
+      const {from,to,color}=e;const active=!state.selected||from.id===state.selected||to.id===state.selected;ctx.globalAlpha=active?1:.12;const c1=from.x+(to.x-from.x)*.36,c2=from.x+(to.x-from.x)*.68;ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.bezierCurveTo(c1,from.y,c2,to.y,to.x,to.y);
+      ctx.setLineDash(e.kind==="mission"?[5,4]:e.kind==="assignment"?[2,5]:e.kind==="memory_link"?[3,5]:[]);ctx.strokeStyle=e.kind==="activity"?color+"D8":e.kind==="mission"?color+"C0":e.kind==="memory"?"#FBBF24D8":e.kind==="memory_link"?color+"C0":color+"70";ctx.lineWidth=e.kind==="memory"?2.2:e.kind==="memory_link"?1.8:e.activityCount&&e.missionCount?2.8:e.kind==="activity"?2:e.kind==="mission"?1.6:1.2;ctx.stroke();ctx.setLineDash([]);
       const seed=(Number(String(to.id).replace(/\D/g,"").slice(-4))||13)%97/97;
       const k=(t*.00012+seed)%1,q=1-k;
-      const x=q*q*q*from.x+3*q*q*k*state.width*.34+3*q*k*k*state.width*.38+k*k*k*to.x;
+      const c1=from.x+(to.x-from.x)*.36,c2=from.x+(to.x-from.x)*.68;const x=q*q*q*from.x+3*q*q*k*c1+3*q*k*k*c2+k*k*k*to.x;
       const y=q*q*q*from.y+3*q*q*k*from.y+3*q*k*k*to.y+k*k*k*to.y;
-      ctx.beginPath();ctx.arc(x,y,e.kind==="activity"?2.8:e.kind==="mission"?2.4:2,0,Math.PI*2);ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=11;ctx.fill();ctx.shadowBlur=0;
+      ctx.beginPath();ctx.arc(x,y,e.kind==="activity"?2.8:e.kind==="mission"?2.4:e.kind==="memory"?3:2,0,Math.PI*2);ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=11;ctx.fill();ctx.shadowBlur=0;
     }
     for(const n of state.nodes){
-      const p=n.data,color=n.kind==="agent"?"#22D3EE":prospectColor(p),active=!state.selected||n.id===state.selected||state.edges.some(e=>(e.from.id===state.selected&&e.to.id===n.id)||(e.to.id===state.selected&&e.from.id===n.id));ctx.globalAlpha=active?1:.18;
+      const p=n.data,color=n.kind==="agent"?"#22D3EE":n.kind==="memory"?(p.statut==="valide"?"#34D399":p.agent_id?"#FBBF24":"#A78BFA"):prospectColor(p),active=!state.selected||n.id===state.selected||state.edges.some(e=>(e.from.id===state.selected&&e.to.id===n.id)||(e.to.id===state.selected&&e.from.id===n.id));ctx.globalAlpha=active?1:.18;
       const phase=t/500+n.y, pulse=3.5+Math.sin(phase)*2;if(state.selected===n.id){ctx.beginPath();ctx.arc(n.x,n.y,n.r+10,0,Math.PI*2);ctx.strokeStyle="#FFFFFF";ctx.lineWidth=1.5;ctx.stroke();}
       ctx.beginPath();ctx.arc(n.x,n.y,n.r+ pulse,0,Math.PI*2);ctx.fillStyle=color+"18";ctx.fill();
       ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,Math.PI*2);ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=12;ctx.fill();ctx.shadowBlur=0;
-      ctx.font=n.kind==="agent"?"600 10px system-ui":"9px system-ui";ctx.fillStyle=n.kind==="agent"?"#E5F5FF":"#C8D6ED";
-      const name=n.kind==="agent"?(p.nom||p.code||"Agent"):(p.entreprise||"Prospect");
-      ctx.fillText(name.length>23?name.slice(0,22)+"…":name,n.x+(n.kind==="agent"?12:9),n.y+3);
-      if(n.kind==="prospect"){ctx.font="8px system-ui";ctx.fillStyle=color;ctx.fillText(label(p.stage),n.x+9,n.y+13);}
+      ctx.font=n.kind==="agent"?"600 10px system-ui":n.kind==="memory"?"8px system-ui":"9px system-ui";ctx.fillStyle=n.kind==="agent"?"#E5F5FF":n.kind==="memory"?"#E8F7EF":"#C8D6ED";
+      const name=n.kind==="agent"?(p.nom||p.code||"Agent"):n.kind==="memory"?(p.contenu||"Mémoire"):(p.entreprise||"Prospect");
+      const max=n.kind==="memory"?42:23;ctx.fillText(name.length>max?name.slice(0,max-1)+"…":name,n.x+(n.kind==="agent"?12:9),n.y+3);
+      if(n.kind==="prospect"){ctx.font="8px system-ui";ctx.fillStyle=color;ctx.fillText(label(p.stage),n.x+9,n.y+13);}else if(n.kind==="memory"){ctx.font="7px system-ui";ctx.fillStyle=color;ctx.fillText(p.statut==="valide"?"validée":"à vérifier",n.x+9,n.y+12);}
     }
     ctx.restore();ctx.globalAlpha=1;
-    const prospectNodes=state.nodes.filter(n=>n.kind==="prospect"),total=prospectNodes.length,linked=new Set(state.edges.map(e=>e.to.id)).size,activityEdges=state.edges.filter(e=>e.kind==="activity").length,missionEdges=state.edges.filter(e=>e.kind==="mission").length,assigned=prospectNodes.filter(n=>n.owner).length;
+    const prospectNodes=state.nodes.filter(n=>n.kind==="prospect"),memoryNodes=state.nodes.filter(n=>n.kind==="memory"),total=prospectNodes.length,linked=new Set(state.edges.map(e=>e.to.id)).size,activityEdges=state.edges.filter(e=>e.kind==="activity").length,missionEdges=state.edges.filter(e=>e.kind==="mission").length,assigned=prospectNodes.filter(n=>n.owner).length;
     const noAgent=state.activities.filter(a=>a.prospect_id&&!a.agent_id).length;
     const legendItems=[{type:"agent",label:"Agents",color:"#22D3EE"}];
+    if(state.mode==="memory"){legendItems.push({type:"memory",label:"Mémoire à vérifier",color:"#FBBF24",count:memoryNodes.filter(n=>n.data.statut!=="valide").length},{type:"memory-valid",label:"Mémoire validée",color:"#34D399",count:memoryNodes.filter(n=>n.data.statut==="valide").length},{type:"memory-shared",label:"Mémoire partagée",color:"#A78BFA",count:memoryNodes.filter(n=>!n.data.agent_id).length});}
     const productCounts=new Map(),stageCounts=new Map();
     for(const n of prospectNodes){const product=productOf(n.data);if(product)productCounts.set(product,(productCounts.get(product)||0)+1);else{const stage=label(n.data.stage);stageCounts.set(stage,(stageCounts.get(stage)||0)+1);}}
     for(const [name,count] of [...productCounts].sort((a,b)=>a[0].localeCompare(b[0],"fr"))) legendItems.push({type:"product",label:name,color:productColor(name),count});
@@ -160,7 +169,7 @@ export function createProspectRelations(canvas, api) {
     legendItems.push({type:"assignment",label:"Affectation",color:"#64748B"});
     api.onLegend?.(legendItems);
     ctx.fillStyle="#DCE8FA";ctx.font="600 11px system-ui";
-    ctx.fillText(total+" prospects · "+linked+" reliés · "+assigned+" affectations · "+missionEdges+" missions · "+activityEdges+" activités · "+noAgent+" activités sans agent identifié",16,h-16);
+    ctx.fillText(state.mode==="memory"?memoryNodes.length+" mémoires affichées · "+memoryNodes.filter(n=>n.data.statut==="valide").length+" validées · "+memoryNodes.filter(n=>n.data.statut!=="valide").length+" à vérifier · "+memoryNodes.filter(n=>!n.data.agent_id).length+" partagées":total+" prospects · "+linked+" reliés · "+assigned+" affectations · "+missionEdges+" missions · "+activityEdges+" activités · "+noAgent+" activités sans agent identifié",16,h-16);
     state.raf=requestAnimationFrame(draw);
   }
   const screenPoint=ev=>{const r=canvas.getBoundingClientRect();return{x:ev.clientX-r.left,y:ev.clientY-r.top};};
@@ -169,9 +178,9 @@ export function createProspectRelations(canvas, api) {
     const q=worldPoint(p);
     return [...state.nodes].reverse().find(n=>{
       if(Math.hypot(n.x-q.x,n.y-q.y)<=Math.max(15,n.r+8))return true;
-      const data=n.data||{},name=String(n.kind==="agent"?(data.nom||data.code||"Agent"):(data.entreprise||"Prospect"));
-      ctx.save();ctx.font=n.kind==="agent"?"600 10px system-ui":"9px system-ui";
-      const width=ctx.measureText(name.length>23?name.slice(0,22)+"…":name).width;ctx.restore();
+      const data=n.data||{},name=String(n.kind==="agent"?(data.nom||data.code||"Agent"):n.kind==="memory"?(data.contenu||"Mémoire"):(data.entreprise||"Prospect"));
+      ctx.save();ctx.font=n.kind==="agent"?"600 10px system-ui":n.kind==="memory"?"8px system-ui":"9px system-ui";
+      const max=n.kind==="memory"?42:23,width=ctx.measureText(name.length>max?name.slice(0,max-1)+"…":name).width;ctx.restore();
       const left=n.x+(n.kind==="agent"?12:9),top=n.y-7;
       return q.x>=left&&q.x<=left+Math.max(24,width)&&q.y>=top&&q.y<=n.y+9;
     });
@@ -181,7 +190,7 @@ export function createProspectRelations(canvas, api) {
   const resetCamera=()=>{state.camera={x:0,y:0,scale:1};};
   const onPointerDown=ev=>{if(ev.button!==undefined&&ev.button!==0)return;const p=screenPoint(ev),hit=hitAt(p),edge=hit?null:edgeAt(p);state.pointer={id:ev.pointerId,start:p,last:p,hit,edge,moved:false,mode:hit?"node":edge?"relation":"pan"};canvas.setPointerCapture?.(ev.pointerId);canvas.classList.toggle("dragging",!hit&&!edge);};
   const onPointerMove=ev=>{const p=screenPoint(ev),pt=state.pointer;if(!pt){canvas.style.cursor=hitAt(p)?"pointer":"grab";return;}const dx=p.x-pt.last.x,dy=p.y-pt.last.y;if(Math.hypot(p.x-pt.start.x,p.y-pt.start.y)>4)pt.moved=true;if(pt.moved){if(pt.mode==="pan"){state.camera.x+=dx;state.camera.y+=dy;}else if(pt.mode==="node"&&pt.hit){const q=worldPoint(p);pt.hit.x=q.x;pt.hit.y=q.y;state.manualPositions.set(pt.hit.id,{x:q.x,y:q.y});}}pt.last=p;};
-  const onPointerUp=()=>{const pt=state.pointer;if(!pt)return;state.pointer=null;canvas.classList.remove("dragging");if(!pt.moved&&pt.edge){state.selected=null;state.selectedRelation=pt.edge;api.onRelation?.({kind:pt.edge.kind,agent:pt.edge.from.data,prospect:pt.edge.to.data,task:pt.edge.task||null,activity:pt.edge.activity||null,tasks:pt.edge.tasks||[],activities:pt.edge.activities||[],missionCount:pt.edge.missionCount||0,activityCount:pt.edge.activityCount||0});}else if(!pt.moved&&pt.hit){state.selected=pt.hit.id;state.selectedRelation=null;api.onRelation?.(null);if(pt.hit.kind==="prospect")api.onProspect?.(pt.hit.data);else api.onAgent?.(pt.hit.data);}};
+  const onPointerUp=()=>{const pt=state.pointer;if(!pt)return;state.pointer=null;canvas.classList.remove("dragging");if(!pt.moved&&pt.edge){state.selected=null;state.selectedRelation=pt.edge;api.onRelation?.({kind:pt.edge.kind,agent:pt.edge.from.data,prospect:pt.edge.to.data,task:pt.edge.task||null,activity:pt.edge.activity||null,tasks:pt.edge.tasks||[],activities:pt.edge.activities||[],missionCount:pt.edge.missionCount||0,activityCount:pt.edge.activityCount||0});}else if(!pt.moved&&pt.hit){state.selected=pt.hit.id;state.selectedRelation=null;api.onRelation?.(null);if(pt.hit.kind==="prospect")api.onProspect?.(pt.hit.data);else if(pt.hit.kind==="memory")api.onMemory?.(pt.hit.data);else api.onAgent?.(pt.hit.data);}};
   const onWheel=ev=>{ev.preventDefault();zoomAt(ev.deltaY<0?1.12:.89,screenPoint(ev));};
   const onDoubleClick=ev=>{ev.preventDefault();resetCamera();};
   canvas.addEventListener("pointerdown",onPointerDown);canvas.addEventListener("pointermove",onPointerMove);canvas.addEventListener("pointerup",onPointerUp);canvas.addEventListener("pointercancel",onPointerUp);canvas.addEventListener("wheel",onWheel,{passive:false});canvas.addEventListener("dblclick",onDoubleClick);
