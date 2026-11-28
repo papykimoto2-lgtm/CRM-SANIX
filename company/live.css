@@ -477,6 +477,7 @@ button.alert-item:hover,button.alert-item:focus-visible{border-color:var(--cy);o
 .relations-camera{display:flex;align-items:center;gap:4px;padding-left:5px;border-left:1px solid rgba(168,139,250,.3)}
 .relations-camera button{width:32px;min-width:32px;height:32px;padding:0;border:1px solid rgba(168,139,250,.45);border-radius:7px;background:rgba(168,139,250,.1);color:#E9D5FF;font:700 16px var(--font);cursor:pointer}
 .relations-camera button:hover{background:rgba(168,139,250,.22);border-color:#C4B5FD}
+.relations-camera button.on{background:rgba(54,216,255,.22);border-color:#36D8FF;color:#CFFAFE}
 @media(max-width:640px){.relations-camera{padding-left:0;border-left:0}.relations-camera button{width:29px;min-width:29px;height:30px}}
 
 /* V17 — poste de consultation du prospect depuis le réseau relationnel. */
