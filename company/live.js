@@ -1245,11 +1245,16 @@ $("#wf-journal-kind")?.addEventListener("change", ev => { D.journalKind = ev.tar
 let view3d = null, relationsView = null, relationsMode = false;
 let memoryBrain3d = null;
 function syncMemoryBrain3D() {
-  const active = relationsMode && relationViewMode === "memory";
-  if (active && !memoryBrain3d) {
-    const host = document.querySelector(".stage");
-    if (host) memoryBrain3d = createMemoryBrain3D(host);
+  const requested = relationsMode && relationViewMode === "memory";
+  if (requested && !memoryBrain3d) {
+    try {
+      const host = document.querySelector(".stage");
+      if (host) memoryBrain3d = createMemoryBrain3D(host);
+    } catch (error) {
+      console.warn("Cerveau WebGL indisponible, repli sur le cerveau 2D :", error);
+    }
   }
+  const active = requested && !!memoryBrain3d;
   relationsView?.setBrain3D(active);
   memoryBrain3d?.update(D.memories || []);
   memoryBrain3d?.setActive(active);
